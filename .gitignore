@@ -42,4 +42,4 @@ temp/
 .claude/plans/
 
 # Auto-generated claude-mem files
-docs/plans/CLAUDE.md
+**/CLAUDE.md
