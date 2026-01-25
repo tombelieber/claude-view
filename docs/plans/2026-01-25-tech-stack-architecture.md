@@ -356,29 +356,29 @@ export const useAppStore = create<AppState>((set) => ({
 
 ```bash
 # Terminal 1: Run backend
-npm run dev:server
+bun run dev:server
 
 # Terminal 2: Run frontend (proxies API to backend)
-npm run dev
+bun run dev
 
 # Or use a single command with concurrently (optional)
-npx concurrently "npm run dev:server" "npm run dev"
+bun x concurrently "bun run dev:server" "bun run dev"
 ```
 
 ## Production Build
 
 ```bash
 # Build everything
-npm run build
+bun run build
 
 # Output:
 # dist/client/     <- Vite build (static files)
 # dist/server/     <- tsc build (Node.js server)
 
 # Run production
-npm start
+bun run start
 # or
-npx claude-view
+npx claude-view  # Works for end users (npm compatible)
 ```
 
 ## Key Differences from Original Plan
