@@ -1,22 +1,21 @@
 import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
 import { generateStandaloneHtml, downloadHtml } from '../lib/export-html'
+import type { ProjectInfo } from '../hooks/use-projects'
 
-interface ConversationViewProps {
-  projectDir: string
-  projectName: string
-  sessionId: string
-  onBack: () => void
-}
+export function ConversationView() {
+  const { projectId, sessionId } = useParams()
+  const navigate = useNavigate()
+  const { projects } = useOutletContext<{ projects: ProjectInfo[] }>()
 
-export function ConversationView({
-  projectDir,
-  projectName,
-  sessionId,
-  onBack,
-}: ConversationViewProps) {
-  const { data: session, isLoading, error } = useSession(projectDir, sessionId)
+  const projectDir = projectId ? decodeURIComponent(projectId) : ''
+  const project = projects.find(p => p.name === projectDir)
+  const projectName = project?.displayName || projectDir
+
+  const handleBack = () => navigate(-1)
+  const { data: session, isLoading, error } = useSession(projectDir, sessionId || '')
 
   const handleExport = () => {
     if (!session) return
@@ -43,7 +42,7 @@ export function ConversationView({
           <p className="font-medium">Failed to load conversation</p>
           <p className="text-sm mt-1">{error.message}</p>
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="mt-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
           >
             Go back
@@ -59,7 +58,7 @@ export function ConversationView({
         <div className="text-center text-gray-500">
           <p>No conversation data found</p>
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="mt-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
           >
             Go back
@@ -75,7 +74,7 @@ export function ConversationView({
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
         <div className="flex items-center gap-4">
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
