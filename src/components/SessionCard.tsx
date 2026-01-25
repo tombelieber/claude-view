@@ -37,8 +37,8 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export function SessionCard({ session, isSelected, isActive, onClick }: SessionCardProps) {
-  const totalTools = session.toolCounts.edit + session.toolCounts.bash +
-                     session.toolCounts.read + session.toolCounts.write
+  const toolCounts = session.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
+  const totalTools = toolCounts.edit + toolCounts.bash + toolCounts.read + toolCounts.write
 
   return (
     <button
@@ -76,11 +76,11 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
       </div>
 
       {/* Files touched */}
-      {session.filesTouched.length > 0 && (
+      {(session.filesTouched?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-500">
           <FileText className="w-3.5 h-3.5 text-gray-400" />
           <span className="truncate">
-            {session.filesTouched.join(', ')}
+            {session.filesTouched?.join(', ')}
           </span>
         </div>
       )}
@@ -91,31 +91,31 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
           {/* Tool counts */}
           {totalTools > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-400">
-              {session.toolCounts.edit > 0 && (
+              {toolCounts.edit > 0 && (
                 <span className="flex items-center gap-0.5" title="Edits">
                   <Pencil className="w-3 h-3" />
-                  {session.toolCounts.edit}
+                  {toolCounts.edit}
                 </span>
               )}
-              {session.toolCounts.bash > 0 && (
+              {toolCounts.bash > 0 && (
                 <span className="flex items-center gap-0.5" title="Bash commands">
                   <Terminal className="w-3 h-3" />
-                  {session.toolCounts.bash}
+                  {toolCounts.bash}
                 </span>
               )}
-              {session.toolCounts.read > 0 && (
+              {toolCounts.read > 0 && (
                 <span className="flex items-center gap-0.5" title="File reads">
                   <Eye className="w-3 h-3" />
-                  {session.toolCounts.read}
+                  {toolCounts.read}
                 </span>
               )}
             </div>
           )}
 
           {/* Skills used */}
-          {session.skillsUsed.length > 0 && (
+          {(session.skillsUsed?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1">
-              {session.skillsUsed.slice(0, 2).map(skill => (
+              {session.skillsUsed?.slice(0, 2).map(skill => (
                 <span
                   key={skill}
                   className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded font-mono"
@@ -123,9 +123,9 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
                   {skill}
                 </span>
               ))}
-              {session.skillsUsed.length > 2 && (
+              {(session.skillsUsed?.length ?? 0) > 2 && (
                 <span className="text-xs text-gray-400">
-                  +{session.skillsUsed.length - 2}
+                  +{(session.skillsUsed?.length ?? 0) - 2}
                 </span>
               )}
             </div>
