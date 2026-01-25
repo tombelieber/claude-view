@@ -1,4 +1,4 @@
-import { readdir, stat, readFile } from 'fs/promises'
+import { readdir, stat, open } from 'fs/promises'
 import { join } from 'path'
 import { homedir } from 'os'
 
@@ -24,6 +24,13 @@ const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
  * Convert project directory name to readable path format
  * e.g., "-Users-name-project" -> "Users/name/project"
  * e.g., "-Users-TBGor-dev--vicky-ai" -> "Users/TBGor/dev/@vicky-ai"
+ *
+ * LIMITATION: This function cannot perfectly decode paths containing literal hyphens.
+ * For example, "@vicky-ai" encodes the same as "@vicky/ai" would. Claude's encoding
+ * scheme uses dashes for path separators, making it impossible to distinguish between
+ * literal hyphens and path separators without checking the filesystem. We keep the
+ * current behavior (treating all single dashes as path separators) as it's the best
+ * we can do without filesystem lookups, and most paths don't contain literal hyphens.
  */
 function formatProjectName(dirName: string): string {
   // Remove leading dash and replace remaining dashes with slashes
@@ -39,10 +46,15 @@ function formatProjectName(dirName: string): string {
 
 /**
  * Extract the first user message from a JSONL session file for preview
+ * Only reads the first 8KB of the file to avoid memory issues with large sessions
  */
 async function getSessionPreview(filePath: string): Promise<string> {
+  let handle
   try {
-    const content = await readFile(filePath, 'utf-8')
+    handle = await open(filePath, 'r')
+    const buffer = Buffer.alloc(8192)  // Read first 8KB
+    await handle.read(buffer, 0, 8192, 0)
+    const content = buffer.toString('utf-8')
     const lines = content.split('\n')
 
     for (const line of lines) {
@@ -52,9 +64,12 @@ async function getSessionPreview(filePath: string): Promise<string> {
         const entry = JSON.parse(line)
         if (entry.type === 'user' && entry.message?.content) {
           // Get the content, handling various formats
+          // Extract text from content blocks if it's an array
           let preview = typeof entry.message.content === 'string'
             ? entry.message.content
-            : JSON.stringify(entry.message.content)
+            : (Array.isArray(entry.message.content)
+                ? entry.message.content.find((b: any) => b.type === 'text')?.text
+                : '') || ''
 
           // Clean up command tags if present
           preview = preview.replace(/<command-[^>]*>[^<]*<\/command-[^>]*>/g, '').trim()
@@ -67,7 +82,7 @@ async function getSessionPreview(filePath: string): Promise<string> {
           return preview || '(empty message)'
         }
       } catch {
-        // Skip malformed JSON lines
+        // Skip malformed JSON lines (may be truncated at buffer boundary)
         continue
       }
     }
@@ -75,6 +90,8 @@ async function getSessionPreview(filePath: string): Promise<string> {
     return '(no user message found)'
   } catch {
     return '(unable to read session)'
+  } finally {
+    await handle?.close()
   }
 }
 
