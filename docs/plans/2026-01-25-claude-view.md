@@ -55,8 +55,8 @@ npm init -y
 **Step 2: Install dependencies**
 
 ```bash
-npm install express open get-port
-npm install -D typescript @types/node @types/express ts-node
+bun add express open get-port
+bun add -D typescript @types/node @types/express tsx
 ```
 
 **Step 3: Create tsconfig.json**
@@ -129,7 +129,7 @@ Add to package.json:
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js",
-    "dev": "ts-node src/cli.ts"
+    "dev": "bun run --watch src/cli.ts"
   }
 }
 ```
@@ -137,8 +137,8 @@ Add to package.json:
 **Step 7: Build and test**
 
 ```bash
-npm run build
-npm start
+bun run build
+bun run start
 ```
 Expected: Browser opens, shows "Claude Session Viewer - Coming soon..."
 
@@ -306,7 +306,7 @@ export async function startServer(): Promise<number> {
 **Step 3: Test the API**
 
 ```bash
-npm run build && npm start
+bun run build && bun run start
 # In another terminal:
 curl http://localhost:3000/api/projects | jq '.[0]'
 ```
@@ -508,10 +508,10 @@ git commit -m "feat: add session content parser with tool call grouping"
 ```bash
 mkdir -p client
 cd client
-npm init -y
-npm install react react-dom react-markdown remark-gfm
-npm install -D vite @vitejs/plugin-react typescript @types/react @types/react-dom tailwindcss postcss autoprefixer
-npx tailwindcss init -p
+bun init -y
+bun add react react-dom react-markdown remark-gfm
+bun add -D vite @vitejs/plugin-react typescript @types/react @types/react-dom tailwindcss postcss autoprefixer
+bunx tailwindcss init -p
 ```
 
 **Step 2: Create vite.config.ts**
@@ -658,7 +658,7 @@ export default function App() {
 
 ```bash
 cd client
-npm run dev
+bun run dev
 ```
 Expected: Browser shows session list with previews
 
@@ -1014,7 +1014,7 @@ export default function App() {
 **Step 6: Test**
 
 ```bash
-cd client && npm run dev
+cd client && bun run dev
 ```
 Expected: Click session → see rendered conversation with markdown
 
@@ -1208,7 +1208,7 @@ Update the export button onClick:
 **Step 3: Test export**
 
 ```bash
-cd client && npm run dev
+cd client && bun run dev
 ```
 1. Click a session
 2. Click "Export HTML"
@@ -1330,23 +1330,23 @@ export async function startServer(): Promise<number> {
 **Step 3: Build everything**
 
 ```bash
-npm install concurrently -D
-cd client && npm install && npm run build
-cd .. && npm run build
+bun add -D concurrently
+cd client && bun install && bun run build
+cd .. && bun run build
 ```
 
 **Step 4: Test production build**
 
 ```bash
-npm start
+bun run start
 ```
 Expected: Browser opens with working app, no dev server needed
 
-**Step 5: Test npx locally**
+**Step 5: Test locally**
 
 ```bash
-npm link
-npx claude-view
+bun link
+bunx claude-view
 ```
 
 **Step 6: Commit**
@@ -1375,11 +1375,13 @@ npm publish
 **Step 3: Test installation**
 
 ```bash
-npm unlink claude-view
+bun unlink claude-view
 npx claude-view
 ```
 
 Expected: Downloads from npm, runs successfully
+
+> **Note:** We use bun for local development but publish to npm for broad compatibility. End users can use `npx claude-view` regardless of their package manager.
 
 ---
 
