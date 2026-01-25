@@ -68,7 +68,7 @@ async function getSessionPreview(filePath: string): Promise<string> {
           let preview = typeof entry.message.content === 'string'
             ? entry.message.content
             : (Array.isArray(entry.message.content)
-                ? entry.message.content.find((b: any) => b.type === 'text')?.text
+                ? entry.message.content.find((b: { type: string; text?: string }) => b.type === 'text')?.text
                 : '') || ''
 
           // Clean up command tags if present
