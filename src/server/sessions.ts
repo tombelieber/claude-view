@@ -11,6 +11,16 @@ export interface SessionInfo {
   modifiedAt: Date
   sizeBytes: number
   preview: string
+  // Rich metadata fields
+  lastMessage: string          // Last user message
+  filesTouched: string[]       // Files edited/written (max 5)
+  skillsUsed: string[]         // Slash commands detected
+  toolCounts: {
+    edit: number
+    read: number
+    bash: number
+    write: number
+  }
 }
 
 export interface ProjectInfo {
@@ -149,17 +159,41 @@ function getJoinVariants(segments: string[]): string[] {
   return variants
 }
 
+interface SessionMetadata {
+  preview: string
+  lastMessage: string
+  filesTouched: string[]
+  skillsUsed: string[]
+  toolCounts: {
+    edit: number
+    read: number
+    bash: number
+    write: number
+  }
+}
+
 /**
- * Extract the first user message from a JSONL session file for preview
- * Only reads the first 8KB of the file to avoid memory issues with large sessions
+ * Extract rich metadata from a JSONL session file
+ * Scans the entire file but processes efficiently line-by-line
  */
-async function getSessionPreview(filePath: string): Promise<string> {
+async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
+  const result: SessionMetadata = {
+    preview: '(no user message found)',
+    lastMessage: '',
+    filesTouched: [],
+    skillsUsed: [],
+    toolCounts: { edit: 0, read: 0, bash: 0, write: 0 }
+  }
+
+  const filesSet = new Set<string>()
+  const skillsSet = new Set<string>()
+  let firstUserMessage = ''
+  let lastUserMessage = ''
+
   let handle
   try {
     handle = await open(filePath, 'r')
-    const buffer = Buffer.alloc(8192)  // Read first 8KB
-    await handle.read(buffer, 0, 8192, 0)
-    const content = buffer.toString('utf-8')
+    const content = await handle.readFile({ encoding: 'utf-8' })
     const lines = content.split('\n')
 
     for (const line of lines) {
@@ -167,34 +201,73 @@ async function getSessionPreview(filePath: string): Promise<string> {
 
       try {
         const entry = JSON.parse(line)
+
+        // Extract user messages
         if (entry.type === 'user' && entry.message?.content) {
-          // Get the content, handling various formats
-          // Extract text from content blocks if it's an array
-          let preview = typeof entry.message.content === 'string'
+          let text = typeof entry.message.content === 'string'
             ? entry.message.content
             : (Array.isArray(entry.message.content)
                 ? entry.message.content.find((b: { type: string; text?: string }) => b.type === 'text')?.text
                 : '') || ''
 
-          // Clean up command tags if present
-          preview = preview.replace(/<command-[^>]*>[^<]*<\/command-[^>]*>/g, '').trim()
+          // Clean command tags
+          text = text.replace(/<command-[^>]*>[^<]*<\/command-[^>]*>/g, '').trim()
 
-          // Truncate to reasonable preview length
-          if (preview.length > 200) {
-            preview = preview.substring(0, 200) + '...'
+          // Skip system/tool messages
+          if (text && !text.startsWith('<') && text.length > 10) {
+            if (!firstUserMessage) {
+              firstUserMessage = text.length > 200 ? text.substring(0, 200) + '…' : text
+            }
+            lastUserMessage = text.length > 200 ? text.substring(0, 200) + '…' : text
+
+            // Detect skills (slash commands)
+            const skillMatches = text.match(/\/[\w:-]+/g)
+            if (skillMatches) {
+              skillMatches.forEach(s => skillsSet.add(s))
+            }
           }
+        }
 
-          return preview || '(empty message)'
+        // Count tool usage and extract files
+        if (entry.type === 'assistant' && entry.message?.content) {
+          const content = entry.message.content
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === 'tool_use') {
+                const toolName = block.name?.toLowerCase() || ''
+                if (toolName === 'edit') {
+                  result.toolCounts.edit++
+                  if (block.input?.file_path) filesSet.add(block.input.file_path)
+                } else if (toolName === 'write') {
+                  result.toolCounts.write++
+                  if (block.input?.file_path) filesSet.add(block.input.file_path)
+                } else if (toolName === 'read') {
+                  result.toolCounts.read++
+                } else if (toolName === 'bash') {
+                  result.toolCounts.bash++
+                }
+              }
+            }
+          }
         }
       } catch {
-        // Skip malformed JSON lines (may be truncated at buffer boundary)
+        // Skip malformed lines
         continue
       }
     }
 
-    return '(no user message found)'
+    result.preview = firstUserMessage || '(no user message found)'
+    result.lastMessage = lastUserMessage
+    result.filesTouched = Array.from(filesSet).slice(0, 5).map(f => {
+      // Shorten to just filename for display
+      const parts = f.split('/')
+      return parts[parts.length - 1]
+    })
+    result.skillsUsed = Array.from(skillsSet).slice(0, 5)
+
+    return result
   } catch {
-    return '(unable to read session)'
+    return result
   } finally {
     await handle?.close()
   }
@@ -241,8 +314,8 @@ export async function getProjects(): Promise<ProjectInfo[]> {
             // Extract session ID from filename (remove .jsonl extension)
             const sessionId = file.replace('.jsonl', '')
 
-            // Get preview from first user message
-            const preview = await getSessionPreview(filePath)
+            // Get rich metadata from session
+            const metadata = await getSessionMetadata(filePath)
 
             sessions.push({
               id: sessionId,
@@ -251,7 +324,11 @@ export async function getProjects(): Promise<ProjectInfo[]> {
               filePath,
               modifiedAt: fileStat.mtime,
               sizeBytes: fileStat.size,
-              preview
+              preview: metadata.preview,
+              lastMessage: metadata.lastMessage,
+              filesTouched: metadata.filesTouched,
+              skillsUsed: metadata.skillsUsed,
+              toolCounts: metadata.toolCounts
             })
           } catch {
             // Skip files we can't stat
