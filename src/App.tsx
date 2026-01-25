@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Loader2, FolderOpen, HelpCircle, Settings } from 'lucide-react'
+import { Loader2, FolderOpen, HelpCircle, Settings } from 'lucide-react'
 import { useProjects, type ProjectInfo, type SessionInfo } from './hooks/use-projects'
 import { ConversationView } from './components/ConversationView'
 import { cn } from './lib/utils'
@@ -7,42 +7,6 @@ import { cn } from './lib/utils'
 interface SelectedSession {
   projectDir: string
   sessionId: string
-}
-
-interface ProjectTreeItemProps {
-  project: ProjectInfo
-  isExpanded: boolean
-  isSelected: boolean
-  onToggle: () => void
-  onClick: () => void
-}
-
-function ProjectTreeItem({ project, isExpanded, isSelected, onToggle, onClick }: ProjectTreeItemProps) {
-  // Extract just the last part of the path for display
-  const displayName = project.name.split('/').pop() || project.name
-
-  return (
-    <div>
-      <button
-        onClick={() => {
-          onClick()
-          onToggle()
-        }}
-        className={cn(
-          'w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-200 rounded-md transition-colors',
-          isSelected && 'bg-blue-50 text-blue-700'
-        )}
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        )}
-        <span className="truncate flex-1">{displayName}</span>
-        <span className="text-gray-400 text-xs">({project.sessions.length})</span>
-      </button>
-    </div>
-  )
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -118,104 +82,50 @@ function SessionCard({ session, isSelected, isActive, onClick }: SessionCardProp
 function Sidebar({
   projects,
   selectedProject,
-  expandedProjects,
   onProjectClick,
-  onToggleProject,
 }: {
   projects: ProjectInfo[]
   selectedProject: string | null
-  expandedProjects: Set<string>
   onProjectClick: (project: ProjectInfo) => void
-  onToggleProject: (projectName: string) => void
 }) {
-  // Group projects by their parent folder (first part of path)
-  const groupedProjects = useMemo(() => {
-    const groups: Record<string, ProjectInfo[]> = {}
-
-    for (const project of projects) {
-      const parts = project.name.split('/')
-      // Use the parent folder as the group key, or 'Other' for single-level paths
-      const groupKey = parts.length > 1 ? parts.slice(0, -1).join('/') : 'Other'
-      if (!groups[groupKey]) {
-        groups[groupKey] = []
-      }
-      groups[groupKey].push(project)
-    }
-
-    return groups
-  }, [projects])
-
-  // Recent sessions (last 5 unique projects by most recent activity)
-  const recentSessions = useMemo(() => {
-    return projects.slice(0, 5).map(p => ({
-      project: p,
-      latestSession: p.sessions[0],
-    }))
-  }, [projects])
-
   return (
-    <aside className="w-64 lg:w-72 bg-gray-100 border-r border-gray-200 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* Projects Section */}
-        <div className="mb-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Projects
-          </h2>
-          <div className="space-y-1">
-            {Object.entries(groupedProjects).map(([group, groupProjects]) => (
-              <div key={group}>
-                {group !== 'Other' && (
-                  <div className="flex items-center gap-2 px-3 py-1 text-xs text-gray-500">
-                    <FolderOpen className="w-3 h-3" />
-                    <span className="truncate">{group}</span>
-                  </div>
-                )}
-                <div className={cn(group !== 'Other' && 'ml-2')}>
-                  {groupProjects.map((project) => (
-                    <ProjectTreeItem
-                      key={project.name}
-                      project={project}
-                      isExpanded={expandedProjects.has(project.name)}
-                      isSelected={selectedProject === project.name}
-                      onToggle={() => onToggleProject(project.name)}
-                      onClick={() => onProjectClick(project)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+    <aside className="w-56 bg-gray-50/80 border-r border-gray-200 flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto py-2">
+        {/* All Projects - Finder style flat list */}
+        {projects.map((project) => {
+          const isSelected = selectedProject === project.name
+          const isRecent = projects.indexOf(project) === 0
 
-        {/* Recent Section */}
-        <div>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Recent
-          </h2>
-          <div className="space-y-2">
-            {recentSessions.map(({ project, latestSession }) => (
-              <button
-                key={project.name}
-                onClick={() => onProjectClick(project)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-200 rounded-md transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-gray-300" />
-                  <span className="truncate flex-1">
-                    {project.name.split('/').pop()}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400 ml-4 mt-0.5">
-                  {new Date(latestSession.modifiedAt).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true,
-                  })}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
+          return (
+            <button
+              key={project.name}
+              onClick={() => onProjectClick(project)}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-left transition-colors',
+                isSelected
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-700 hover:bg-gray-200/70'
+              )}
+            >
+              <FolderOpen className={cn(
+                'w-4 h-4 flex-shrink-0',
+                isSelected ? 'text-white' : 'text-blue-400'
+              )} />
+              <span className="truncate flex-1 font-medium">
+                {project.displayName}
+              </span>
+              <span className={cn(
+                'text-xs tabular-nums',
+                isSelected ? 'text-blue-100' : 'text-gray-400'
+              )}>
+                {project.sessions.length}
+              </span>
+              {isRecent && !isSelected && (
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+              )}
+            </button>
+          )
+        })}
       </div>
     </aside>
   )
@@ -294,7 +204,6 @@ export default function App() {
   const { data: projects, isLoading, error } = useProjects()
   const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null)
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
 
   const selectedProject = useMemo(() => {
     if (!projects || !selectedProjectName) return null
@@ -303,24 +212,7 @@ export default function App() {
 
   const handleProjectClick = (project: ProjectInfo) => {
     setSelectedProjectName(project.name)
-    // Auto-expand when clicking
-    setExpandedProjects(prev => {
-      const next = new Set(prev)
-      next.add(project.name)
-      return next
-    })
-  }
-
-  const handleToggleProject = (projectName: string) => {
-    setExpandedProjects(prev => {
-      const next = new Set(prev)
-      if (next.has(projectName)) {
-        next.delete(projectName)
-      } else {
-        next.add(projectName)
-      }
-      return next
-    })
+    setSelectedSession(null) // Clear session when switching projects
   }
 
   const handleSessionClick = (session: SessionInfo) => {
@@ -387,6 +279,11 @@ export default function App() {
 
       {/* Main Layout */}
       <div className="flex-1 flex overflow-hidden">
+        <Sidebar
+          projects={projects}
+          selectedProject={selectedProjectName}
+          onProjectClick={handleProjectClick}
+        />
         {selectedSession ? (
           <ConversationView
             projectDir={selectedSession.projectDir}
@@ -395,20 +292,11 @@ export default function App() {
             onBack={handleBackFromConversation}
           />
         ) : (
-          <>
-            <Sidebar
-              projects={projects}
-              selectedProject={selectedProjectName}
-              expandedProjects={expandedProjects}
-              onProjectClick={handleProjectClick}
-              onToggleProject={handleToggleProject}
-            />
-            <MainContent
-              selectedProject={selectedProject}
-              selectedSession={selectedSession}
-              onSessionClick={handleSessionClick}
-            />
-          </>
+          <MainContent
+            selectedProject={selectedProject}
+            selectedSession={selectedSession}
+            onSessionClick={handleSessionClick}
+          />
         )}
       </div>
 

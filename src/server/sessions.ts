@@ -1,5 +1,6 @@
 import { readdir, stat, open } from 'fs/promises'
-import { join } from 'path'
+import { existsSync } from 'fs'
+import { join, basename } from 'path'
 import { homedir } from 'os'
 
 export interface SessionInfo {
@@ -14,34 +15,99 @@ export interface SessionInfo {
 
 export interface ProjectInfo {
   name: string
+  displayName: string  // Just the project folder name (e.g., "claude-view")
   path: string
   sessions: SessionInfo[]
 }
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
-/**
- * Convert project directory name to readable path format
- * e.g., "-Users-name-project" -> "Users/name/project"
- * e.g., "-Users-user-dev--myorg" -> "Users/user/dev/@myorg"
- *
- * LIMITATION: This function cannot perfectly decode paths containing literal hyphens.
- * For example, "@myorg" encodes the same as "@myproject/ai" would. Claude's encoding
- * scheme uses dashes for path separators, making it impossible to distinguish between
- * literal hyphens and path separators without checking the filesystem. We keep the
- * current behavior (treating all single dashes as path separators) as it's the best
- * we can do without filesystem lookups, and most paths don't contain literal hyphens.
- */
-function formatProjectName(dirName: string): string {
-  // Remove leading dash and replace remaining dashes with slashes
-  // Handle double dashes which represent @ symbol in directory encoding
-  const formatted = dirName
-    .replace(/^-/, '')  // Remove leading dash
-    .replace(/--/g, '/@')  // Double dash represents @ (e.g., dev--myproject -> dev/@myproject)
-    .replace(/-/g, '/')  // Replace single dashes with slashes
+interface ResolvedProject {
+  fullPath: string      // e.g., "Users/user/dev/@myorg/claude-view"
+  displayName: string   // e.g., "claude-view"
+}
 
-  // Handle edge case of empty string (directory named just "-")
-  return formatted || '(unknown)'
+/**
+ * Resolve an encoded directory name to its actual filesystem path.
+ * Uses filesystem verification to correctly handle directory names with hyphens.
+ *
+ * Claude encodes paths like: /Users/user/dev/@myorg/claude-view
+ * As directory names like: -Users-user-dev--myorg-claude-view
+ *
+ * The challenge is that hyphens in directory names (e.g., "claude-view")
+ * look the same as path separators. We verify against the filesystem to
+ * find the correct interpretation.
+ */
+function resolveProjectPath(encodedName: string): ResolvedProject {
+  // Step 1: Basic decode (this may be wrong if dir names contain hyphens)
+  const basicDecode = '/' + encodedName
+    .replace(/^-/, '')      // Remove leading dash
+    .replace(/--/g, '/@')   // Double dash represents @
+    .replace(/-/g, '/')     // Single dash represents /
+
+  // Step 2: Check if the basic decode exists on filesystem
+  if (existsSync(basicDecode)) {
+    return {
+      fullPath: basicDecode.slice(1), // Remove leading /
+      displayName: basename(basicDecode)
+    }
+  }
+
+  // Step 3: Use recursive resolution to find the correct path
+  // by trying different hyphen combinations at each level
+  const segments = basicDecode.slice(1).split('/')
+  const resolvedPath = resolveSegments(segments, '')
+
+  if (resolvedPath) {
+    return {
+      fullPath: resolvedPath.slice(1), // Remove leading /
+      displayName: basename(resolvedPath)
+    }
+  }
+
+  // Fallback: return the basic decode even if it doesn't exist
+  // (project directory may have been deleted)
+  return {
+    fullPath: basicDecode.slice(1),
+    displayName: basename(basicDecode)
+  }
+}
+
+/**
+ * Recursively resolve path segments, trying different hyphen combinations
+ * at each level to find the actual filesystem path.
+ */
+function resolveSegments(segments: string[], currentPath: string): string | null {
+  if (segments.length === 0) {
+    return currentPath || null
+  }
+
+  // Try joining progressively more segments with hyphens
+  // Start with most segments joined (longest possible directory name)
+  // and work down to single segments
+  for (let joinCount = segments.length; joinCount >= 1; joinCount--) {
+    const joined = segments.slice(0, joinCount).join('-')
+    const testPath = currentPath ? `${currentPath}/${joined}` : `/${joined}`
+
+    if (existsSync(testPath)) {
+      // This path exists, recursively resolve remaining segments
+      const remaining = segments.slice(joinCount)
+
+      if (remaining.length === 0) {
+        // No more segments, we found the full path
+        return testPath
+      }
+
+      // Try to resolve remaining segments
+      const result = resolveSegments(remaining, testPath)
+      if (result) {
+        return result
+      }
+      // If remaining segments couldn't be resolved, try fewer joined segments
+    }
+  }
+
+  return null
 }
 
 /**
@@ -111,6 +177,7 @@ export async function getProjects(): Promise<ProjectInfo[]> {
       }
 
       const projectDirPath = join(CLAUDE_PROJECTS_DIR, entry.name)
+      const resolved = resolveProjectPath(entry.name)
       const sessions: SessionInfo[] = []
 
       try {
@@ -141,7 +208,7 @@ export async function getProjects(): Promise<ProjectInfo[]> {
             sessions.push({
               id: sessionId,
               project: entry.name,
-              projectPath: formatProjectName(entry.name),
+              projectPath: resolved.fullPath,
               filePath,
               modifiedAt: fileStat.mtime,
               sizeBytes: fileStat.size,
@@ -163,7 +230,8 @@ export async function getProjects(): Promise<ProjectInfo[]> {
         sessions.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
 
         projects.push({
-          name: formatProjectName(entry.name),
+          name: resolved.fullPath,
+          displayName: resolved.displayName,
           path: projectDirPath,
           sessions
         })
