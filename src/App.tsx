@@ -33,10 +33,10 @@ function Sidebar({
     const fileCounts = new Map<string, number>()
 
     for (const session of selectedProjectData.sessions) {
-      for (const skill of session.skillsUsed) {
+      for (const skill of session.skillsUsed ?? []) {
         skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1)
       }
-      for (const file of session.filesTouched) {
+      for (const file of session.filesTouched ?? []) {
         fileCounts.set(file, (fileCounts.get(file) || 0) + 1)
       }
     }
