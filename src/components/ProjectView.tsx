@@ -43,7 +43,7 @@ export function ProjectView() {
         {project.sessions.map((session) => (
           <Link
             key={session.id}
-            to={`/session/${encodeURIComponent(project.name)}/${session.id}`}
+            to={`/session/${encodeURIComponent(session.project)}/${session.id}`}
           >
             <SessionCard
               session={session}

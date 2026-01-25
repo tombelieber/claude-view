@@ -66,7 +66,7 @@ export function SearchResults() {
             return (
               <Link
                 key={session.id}
-                to={`/session/${encodeURIComponent(project?.name || session.project)}/${session.id}`}
+                to={`/session/${encodeURIComponent(session.project)}/${session.id}`}
               >
                 <SessionCard
                   session={session}
