@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Loader2, FolderOpen, HelpCircle, Settings } from 'lucide-react'
 import { useProjects, type ProjectInfo, type SessionInfo } from './hooks/use-projects'
 import { ConversationView } from './components/ConversationView'
@@ -237,21 +237,67 @@ export default function App() {
     return projects.find(p => p.name === selectedProjectName) || null
   }, [projects, selectedProjectName])
 
+  // Parse URL on initial load
+  useEffect(() => {
+    const path = window.location.pathname
+    const match = path.match(/^\/session\/([^/]+)\/(.+)$/)
+    if (match) {
+      const [, projectDir, sessionId] = match
+      setSelectedSession({ projectDir: decodeURIComponent(projectDir), sessionId })
+      // Find and select the project
+      if (projects) {
+        const project = projects.find(p =>
+          p.sessions.some(s => s.project === decodeURIComponent(projectDir) && s.id === sessionId)
+        )
+        if (project) setSelectedProjectName(project.name)
+      }
+    }
+  }, [projects])
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.session) {
+        setSelectedSession(event.state.session)
+        if (event.state.projectName) {
+          setSelectedProjectName(event.state.projectName)
+        }
+      } else {
+        setSelectedSession(null)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   const handleProjectClick = (project: ProjectInfo) => {
     setSelectedProjectName(project.name)
-    setSelectedSession(null) // Clear session when switching projects
+    setSelectedSession(null)
+    // Update URL to root when selecting project
+    window.history.pushState({ projectName: project.name }, '', '/')
   }
 
-  const handleSessionClick = (session: SessionInfo) => {
-    setSelectedSession({
+  const handleSessionClick = useCallback((session: SessionInfo) => {
+    const newSession = {
       projectDir: session.project,
       sessionId: session.id,
-    })
-  }
+    }
+    setSelectedSession(newSession)
+    // Push to history with session URL
+    const url = `/session/${encodeURIComponent(session.project)}/${session.id}`
+    window.history.pushState(
+      { session: newSession, projectName: selectedProjectName },
+      '',
+      url
+    )
+  }, [selectedProjectName])
 
-  const handleBackFromConversation = () => {
+  const handleBackFromConversation = useCallback(() => {
     setSelectedSession(null)
-  }
+    // Go back in history (this triggers popstate)
+    window.history.back()
+  }, [])
 
   if (isLoading) {
     return (
