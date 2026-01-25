@@ -74,40 +74,78 @@ function resolveProjectPath(encodedName: string): ResolvedProject {
 }
 
 /**
- * Recursively resolve path segments, trying different hyphen combinations
+ * Recursively resolve path segments, trying different separator combinations
  * at each level to find the actual filesystem path.
+ *
+ * Claude's encoding uses `-` for multiple characters: `/`, `.`, and literal `-`
+ * So we try joining segments with both `-` and `.` to find the actual directory.
  */
 function resolveSegments(segments: string[], currentPath: string): string | null {
   if (segments.length === 0) {
     return currentPath || null
   }
 
-  // Try joining progressively more segments with hyphens
+  // Try joining progressively more segments
   // Start with most segments joined (longest possible directory name)
   // and work down to single segments
   for (let joinCount = segments.length; joinCount >= 1; joinCount--) {
-    const joined = segments.slice(0, joinCount).join('-')
-    const testPath = currentPath ? `${currentPath}/${joined}` : `/${joined}`
+    const toJoin = segments.slice(0, joinCount)
 
-    if (existsSync(testPath)) {
-      // This path exists, recursively resolve remaining segments
-      const remaining = segments.slice(joinCount)
+    // Try different separator combinations: all hyphens, all dots, or mixed
+    const joinVariants = getJoinVariants(toJoin)
 
-      if (remaining.length === 0) {
-        // No more segments, we found the full path
-        return testPath
+    for (const joined of joinVariants) {
+      const testPath = currentPath ? `${currentPath}/${joined}` : `/${joined}`
+
+      if (existsSync(testPath)) {
+        // This path exists, recursively resolve remaining segments
+        const remaining = segments.slice(joinCount)
+
+        if (remaining.length === 0) {
+          // No more segments, we found the full path
+          return testPath
+        }
+
+        // Try to resolve remaining segments
+        const result = resolveSegments(remaining, testPath)
+        if (result) {
+          return result
+        }
+        // If remaining segments couldn't be resolved, try other join variants
       }
-
-      // Try to resolve remaining segments
-      const result = resolveSegments(remaining, testPath)
-      if (result) {
-        return result
-      }
-      // If remaining segments couldn't be resolved, try fewer joined segments
     }
   }
 
   return null
+}
+
+/**
+ * Generate different ways to join segments using `-` and `.` separators.
+ * For efficiency, we prioritize common patterns:
+ * 1. All hyphens (most common for multi-word names like "claude-view")
+ * 2. Single dot before last segment (common for domains like "famatch.io")
+ * 3. All dots (less common but possible)
+ */
+function getJoinVariants(segments: string[]): string[] {
+  if (segments.length === 1) {
+    return [segments[0]]
+  }
+
+  const variants: string[] = []
+
+  // All hyphens (e.g., "claude-view", "my-cool-project")
+  variants.push(segments.join('-'))
+
+  // Dot before last segment (e.g., "famatch.io", "example.com")
+  if (segments.length === 2) {
+    variants.push(segments.join('.'))
+  } else if (segments.length > 2) {
+    // e.g., ["my", "app", "io"] -> "my-app.io"
+    const beforeLast = segments.slice(0, -1).join('-')
+    variants.push(`${beforeLast}.${segments[segments.length - 1]}`)
+  }
+
+  return variants
 }
 
 /**
