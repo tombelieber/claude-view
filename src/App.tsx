@@ -2,81 +2,12 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Loader2, FolderOpen, HelpCircle, Settings } from 'lucide-react'
 import { useProjects, type ProjectInfo, type SessionInfo } from './hooks/use-projects'
 import { ConversationView } from './components/ConversationView'
+import { SessionCard } from './components/SessionCard'
 import { cn } from './lib/utils'
 
 interface SelectedSession {
   projectDir: string
   sessionId: string
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  // Format time
-  const timeStr = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-
-  if (diffDays === 0) {
-    if (diffHours === 0 && diffMins < 60) {
-      return `Today, ${timeStr}`
-    }
-    return `Today, ${timeStr}`
-  } else if (diffDays === 1) {
-    return `Yesterday, ${timeStr}`
-  } else if (diffDays < 7) {
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' })
-    return `${dayName}, ${timeStr}`
-  } else {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-    }) + `, ${timeStr}`
-  }
-}
-
-interface SessionCardProps {
-  session: SessionInfo
-  isSelected: boolean
-  isActive: boolean
-  onClick: () => void
-}
-
-function SessionCard({ session, isSelected, isActive, onClick }: SessionCardProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'w-full text-left p-4 rounded-lg border transition-colors',
-        isSelected
-          ? 'bg-blue-50 border-blue-500'
-          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm text-gray-900 line-clamp-2 flex-1">
-          "{session.preview}"
-        </p>
-        {isActive && (
-          <span className="flex items-center gap-1 text-xs text-green-600 flex-shrink-0">
-            <span className="w-2 h-2 bg-green-500 rounded-full" />
-            Active
-          </span>
-        )}
-      </div>
-      <p className="text-xs text-gray-500 mt-2">
-        {formatRelativeTime(session.modifiedAt)}
-      </p>
-    </button>
-  )
 }
 
 function Sidebar({
@@ -215,12 +146,23 @@ function StatusBar({ projects }: { projects: ProjectInfo[] }) {
   const totalSessions = projects.reduce((sum, p) => sum + p.sessions.length, 0)
   const latestActivity = projects[0]?.sessions[0]?.modifiedAt
 
+  // Format date for display
+  const formatLastActivity = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  }
+
   return (
     <footer className="h-8 bg-white border-t border-gray-200 px-4 flex items-center text-xs text-gray-500">
       <span>
         {projects.length} projects &bull; {totalSessions} sessions
         {latestActivity && (
-          <> &bull; Last activity: {formatRelativeTime(latestActivity)}</>
+          <> &bull; Last activity: {formatLastActivity(latestActivity)}</>
         )}
       </span>
     </footer>
