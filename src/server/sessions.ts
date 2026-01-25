@@ -268,9 +268,9 @@ export async function getProjects(): Promise<ProjectInfo[]> {
         // Sort sessions by modified date (newest first)
         sessions.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
 
-        // Count sessions active in the last hour
-        const oneHourAgo = Date.now() - 60 * 60 * 1000
-        const activeCount = sessions.filter(s => s.modifiedAt.getTime() > oneHourAgo).length
+        // Count sessions active in the last 5 minutes (likely still in use)
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000
+        const activeCount = sessions.filter(s => s.modifiedAt.getTime() > fiveMinutesAgo).length
 
         projects.push({
           name: resolved.fullPath,
