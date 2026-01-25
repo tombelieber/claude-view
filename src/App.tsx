@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Loader2, FolderOpen, HelpCircle, Settings } from 'lucide-react'
 import { useProjects, type ProjectInfo, type SessionInfo } from './hooks/use-projects'
+import { ConversationView } from './components/ConversationView'
 import { cn } from './lib/utils'
 
 interface SelectedSession {
@@ -329,6 +330,10 @@ export default function App() {
     })
   }
 
+  const handleBackFromConversation = () => {
+    setSelectedSession(null)
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -382,18 +387,29 @@ export default function App() {
 
       {/* Main Layout */}
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar
-          projects={projects}
-          selectedProject={selectedProjectName}
-          expandedProjects={expandedProjects}
-          onProjectClick={handleProjectClick}
-          onToggleProject={handleToggleProject}
-        />
-        <MainContent
-          selectedProject={selectedProject}
-          selectedSession={selectedSession}
-          onSessionClick={handleSessionClick}
-        />
+        {selectedSession ? (
+          <ConversationView
+            projectDir={selectedSession.projectDir}
+            projectName={selectedProjectName || selectedSession.projectDir}
+            sessionId={selectedSession.sessionId}
+            onBack={handleBackFromConversation}
+          />
+        ) : (
+          <>
+            <Sidebar
+              projects={projects}
+              selectedProject={selectedProjectName}
+              expandedProjects={expandedProjects}
+              onProjectClick={handleProjectClick}
+              onToggleProject={handleToggleProject}
+            />
+            <MainContent
+              selectedProject={selectedProject}
+              selectedSession={selectedSession}
+              onSessionClick={handleSessionClick}
+            />
+          </>
+        )}
       </div>
 
       {/* Status Bar */}
