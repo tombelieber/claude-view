@@ -1,6 +1,7 @@
 import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
+import { generateStandaloneHtml, downloadHtml } from '../lib/export-html'
 
 interface ConversationViewProps {
   projectDir: string
@@ -18,8 +19,10 @@ export function ConversationView({
   const { data: session, isLoading, error } = useSession(projectDir, sessionId)
 
   const handleExport = () => {
-    // TODO: Implement export modal (Task 6)
-    console.log('Export clicked')
+    if (!session) return
+    const html = generateStandaloneHtml(session.messages)
+    const filename = `claude-conversation-${sessionId}.html`
+    downloadHtml(html, filename)
   }
 
   if (isLoading) {
