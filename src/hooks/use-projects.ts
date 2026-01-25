@@ -15,6 +15,7 @@ export interface ProjectInfo {
   displayName: string  // Just the project folder name (e.g., "claude-view")
   path: string
   sessions: SessionInfo[]
+  activeCount: number  // Number of sessions active in the last hour
 }
 
 async function fetchProjects(): Promise<ProjectInfo[]> {
