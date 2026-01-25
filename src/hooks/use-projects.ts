@@ -12,6 +12,7 @@ export interface SessionInfo {
 
 export interface ProjectInfo {
   name: string
+  displayName: string  // Just the project folder name (e.g., "claude-view")
   path: string
   sessions: SessionInfo[]
 }
