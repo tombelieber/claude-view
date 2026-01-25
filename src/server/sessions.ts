@@ -223,7 +223,7 @@ async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
             // Detect skills (slash commands)
             const skillMatches = text.match(/\/[\w:-]+/g)
             if (skillMatches) {
-              skillMatches.forEach(s => skillsSet.add(s))
+              skillMatches.forEach((s: string) => skillsSet.add(s))
             }
           }
         }
