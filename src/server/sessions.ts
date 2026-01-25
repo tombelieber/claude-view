@@ -18,6 +18,7 @@ export interface ProjectInfo {
   displayName: string  // Just the project folder name (e.g., "claude-view")
   path: string
   sessions: SessionInfo[]
+  activeCount: number  // Number of sessions active in the last hour
 }
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
@@ -262,16 +263,21 @@ export async function getProjects(): Promise<ProjectInfo[]> {
         continue
       }
 
-      // Only include projects that have sessions
-      if (sessions.length > 0) {
+      // Only include projects that have sessions and valid displayName
+      if (sessions.length > 0 && resolved.displayName) {
         // Sort sessions by modified date (newest first)
         sessions.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
+
+        // Count sessions active in the last hour
+        const oneHourAgo = Date.now() - 60 * 60 * 1000
+        const activeCount = sessions.filter(s => s.modifiedAt.getTime() > oneHourAgo).length
 
         projects.push({
           name: resolved.fullPath,
           displayName: resolved.displayName,
           path: projectDirPath,
-          sessions
+          sessions,
+          activeCount
         })
       }
     }

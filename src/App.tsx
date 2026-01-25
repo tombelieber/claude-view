@@ -94,9 +94,9 @@ function Sidebar({
         {/* All Projects - Finder style list with path subtext */}
         {projects.map((project) => {
           const isSelected = selectedProject === project.name
-          const isRecent = projects.indexOf(project) === 0
           // Show parent path without the project name itself
           const parentPath = project.name.split('/').slice(0, -1).join('/')
+          const hasActive = project.activeCount > 0
 
           return (
             <button
@@ -118,9 +118,6 @@ function Sidebar({
                   <span className="truncate font-medium text-[13px]">
                     {project.displayName}
                   </span>
-                  {isRecent && !isSelected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                  )}
                 </div>
                 {parentPath && (
                   <p className={cn(
@@ -131,12 +128,28 @@ function Sidebar({
                   </p>
                 )}
               </div>
-              <span className={cn(
-                'text-xs tabular-nums flex-shrink-0',
-                isSelected ? 'text-blue-100' : 'text-gray-400'
-              )}>
-                {project.sessions.length}
-              </span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {hasActive && (
+                  <span className="flex items-center gap-1">
+                    <span className={cn(
+                      'w-1.5 h-1.5 rounded-full',
+                      isSelected ? 'bg-green-300' : 'bg-green-500'
+                    )} />
+                    <span className={cn(
+                      'text-xs tabular-nums',
+                      isSelected ? 'text-green-200' : 'text-green-600'
+                    )}>
+                      {project.activeCount}
+                    </span>
+                  </span>
+                )}
+                <span className={cn(
+                  'text-xs tabular-nums',
+                  isSelected ? 'text-blue-100' : 'text-gray-400'
+                )}>
+                  {project.sessions.length}
+                </span>
+              </div>
             </button>
           )
         })}
