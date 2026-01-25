@@ -146,7 +146,7 @@ export function filterSessions(
 
     // Path filter (glob match against files touched)
     if (query.path) {
-      const hasMatch = session.filesTouched.some(f =>
+      const hasMatch = (session.filesTouched ?? []).some(f =>
         globMatch(query.path!, f.toLowerCase())
       )
       if (!hasMatch) return false
@@ -154,7 +154,7 @@ export function filterSessions(
 
     // Skill filter
     if (query.skill) {
-      const hasSkill = session.skillsUsed.some(s =>
+      const hasSkill = (session.skillsUsed ?? []).some(s =>
         s.toLowerCase().includes(query.skill!)
       )
       if (!hasSkill) return false
@@ -173,7 +173,7 @@ export function filterSessions(
 
     // Text search (all terms must match somewhere)
     if (query.text.length > 0) {
-      const searchable = `${session.preview} ${session.lastMessage} ${session.filesTouched.join(' ')} ${session.skillsUsed.join(' ')}`.toLowerCase()
+      const searchable = `${session.preview} ${session.lastMessage} ${(session.filesTouched ?? []).join(' ')} ${(session.skillsUsed ?? []).join(' ')}`.toLowerCase()
       const allMatch = query.text.every(term => searchable.includes(term))
       if (!allMatch) return false
     }
