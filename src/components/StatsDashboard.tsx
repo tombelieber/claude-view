@@ -15,7 +15,7 @@ export function StatsDashboard({ projects, onFilterClick }: StatsDashboardProps)
     // Aggregate skills across all sessions
     const skillCounts = new Map<string, number>()
     for (const session of allSessions) {
-      for (const skill of session.skillsUsed) {
+      for (const skill of session.skillsUsed ?? []) {
         skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1)
       }
     }
