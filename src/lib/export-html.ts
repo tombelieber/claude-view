@@ -63,19 +63,26 @@ function markdownToHtml(markdown: string): string {
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
 
-  // Links
+  // Links (escape quotes in URL for href attribute safety)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const safeUrl = url.replace(/"/g, '&quot;')
+    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${text}</a>`
+  })
+
+  // Unordered lists - mark with data attribute first, then wrap
+  html = html.replace(/^- (.+)$/gm, '<li data-list="ul">$1</li>')
+  html = html.replace(/^\* (.+)$/gm, '<li data-list="ul">$1</li>')
   html = html.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+    /(<li data-list="ul">[\s\S]*?<\/li>\n?)+/g,
+    (match) => `<ul>${match.replace(/ data-list="ul"/g, '')}</ul>`
   )
 
-  // Unordered lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
-  html = html.replace(/^\* (.+)$/gm, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-
-  // Ordered lists
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+  // Ordered lists - mark with data attribute first, then wrap
+  html = html.replace(/^\d+\. (.+)$/gm, '<li data-list="ol">$1</li>')
+  html = html.replace(
+    /(<li data-list="ol">[\s\S]*?<\/li>\n?)+/g,
+    (match) => `<ol>${match.replace(/ data-list="ol"/g, '')}</ol>`
+  )
 
   // Paragraphs (convert double newlines to paragraph breaks)
   html = html
