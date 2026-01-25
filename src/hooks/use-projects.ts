@@ -5,9 +5,18 @@ export interface SessionInfo {
   project: string
   projectPath: string
   filePath: string
-  modifiedAt: string // ISO date string from JSON
+  modifiedAt: string  // JSON serialized date
   sizeBytes: number
   preview: string
+  lastMessage: string
+  filesTouched: string[]
+  skillsUsed: string[]
+  toolCounts: {
+    edit: number
+    read: number
+    bash: number
+    write: number
+  }
 }
 
 export interface ProjectInfo {
