@@ -487,3 +487,17 @@ export function downloadHtml(html: string, filename: string): void {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
+
+/**
+ * Opens a print dialog to save conversation as PDF
+ * Uses browser's native print-to-PDF functionality
+ */
+export function exportToPdf(messages: Message[]): void {
+  const html = generateStandaloneHtml(messages)
+  const printWindow = window.open('', '_blank')
+  if (printWindow) {
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.print()
+  }
+}
