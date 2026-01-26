@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react'
 import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
@@ -18,17 +19,36 @@ export function ConversationView() {
   const handleBack = () => navigate(-1)
   const { data: session, isLoading, error } = useSession(projectDir, sessionId || '')
 
-  const handleExportHtml = () => {
+  const handleExportHtml = useCallback(() => {
     if (!session) return
     const html = generateStandaloneHtml(session.messages)
     const filename = `conversation-${sessionId}.html`
     downloadHtml(html, filename)
-  }
+  }, [session, sessionId])
 
-  const handleExportPdf = () => {
+  const handleExportPdf = useCallback(() => {
     if (!session) return
     exportToPdf(session.messages)
-  }
+  }, [session])
+
+  // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd (Mac) or Ctrl (Windows/Linux)
+      const modifierKey = e.metaKey || e.ctrlKey
+
+      if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        handleExportHtml()
+      } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        handleExportPdf()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleExportHtml, handleExportPdf])
 
   if (isLoading) {
     return (
