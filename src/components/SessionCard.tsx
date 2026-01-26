@@ -44,10 +44,11 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left p-4 rounded-lg border transition-colors',
+        'w-full text-left p-4 rounded-lg border transition-all',
         isSelected
-          ? 'bg-blue-50 border-blue-500'
-          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+          ? 'bg-blue-50 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
+          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm',
+        isActive && 'border-l-2 border-l-green-500'
       )}
     >
       {/* Header: Started message + Active indicator */}
