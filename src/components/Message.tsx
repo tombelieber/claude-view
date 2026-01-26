@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm'
 import type { Message as MessageType } from '../hooks/use-session'
 import { ToolBadge } from './ToolBadge'
 import { CodeBlock } from './CodeBlock'
+import { XmlCard, extractXmlBlocks } from './XmlCard'
 import { cn } from '../lib/utils'
 
 interface MessageProps {
@@ -18,6 +19,40 @@ function formatTime(timestamp?: string): string | null {
     minute: '2-digit',
     hour12: true,
   })
+}
+
+/**
+ * Process message content to extract XML blocks
+ * Returns segments of text and XML for mixed rendering
+ */
+function processContent(content: string): Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> {
+  const xmlBlocks = extractXmlBlocks(content)
+
+  if (xmlBlocks.length === 0) {
+    return [{ type: 'text', content }]
+  }
+
+  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> = []
+  let remaining = content
+
+  for (const block of xmlBlocks) {
+    const index = remaining.indexOf(block.xml)
+    if (index > 0) {
+      const textBefore = remaining.substring(0, index).trim()
+      if (textBefore) {
+        segments.push({ type: 'text', content: textBefore })
+      }
+    }
+    segments.push({ type: 'xml', content: block.xml, xmlType: block.type })
+    remaining = remaining.substring(index + block.xml.length)
+  }
+
+  const textAfter = remaining.trim()
+  if (textAfter) {
+    segments.push({ type: 'text', content: textAfter })
+  }
+
+  return segments
 }
 
 export function Message({ message }: MessageProps) {
@@ -58,101 +93,114 @@ export function Message({ message }: MessageProps) {
 
       {/* Content */}
       <div className="pl-11">
-        <div className="prose prose-sm prose-gray max-w-none break-words">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '')
-                const isInline = !match && !String(children).includes('\n')
+        {processContent(message.content).map((segment, i) => {
+          if (segment.type === 'xml' && segment.xmlType) {
+            return (
+              <XmlCard
+                key={i}
+                content={segment.content}
+                type={segment.xmlType}
+              />
+            )
+          }
+          return (
+            <div key={i} className="prose prose-sm prose-gray max-w-none break-words">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    const isInline = !match && !String(children).includes('\n')
 
-                if (isInline) {
-                  return (
-                    <code
-                      className="px-1.5 py-0.5 bg-gray-100 rounded text-sm font-mono"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  )
-                }
+                    if (isInline) {
+                      return (
+                        <code
+                          className="px-1.5 py-0.5 bg-gray-100 rounded text-sm font-mono"
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      )
+                    }
 
-                return (
-                  <CodeBlock
-                    code={String(children).replace(/\n$/, '')}
-                    language={match?.[1]}
-                  />
-                )
-              },
-              pre({ children }) {
-                // Let the code component handle the pre
-                return <>{children}</>
-              },
-              // Styling for other elements
-              p({ children }) {
-                return <p className="mb-2 last:mb-0">{children}</p>
-              },
-              ul({ children }) {
-                return <ul className="list-disc pl-4 mb-2">{children}</ul>
-              },
-              ol({ children }) {
-                return <ol className="list-decimal pl-4 mb-2">{children}</ol>
-              },
-              li({ children }) {
-                return <li className="mb-1">{children}</li>
-              },
-              a({ href, children }) {
-                return (
-                  <a
-                    href={href}
-                    className="text-blue-500 hover:text-blue-700 underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {children}
-                  </a>
-                )
-              },
-              blockquote({ children }) {
-                return (
-                  <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-2">
-                    {children}
-                  </blockquote>
-                )
-              },
-              h1({ children }) {
-                return <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>
-              },
-              h2({ children }) {
-                return <h2 className="text-lg font-bold mt-3 mb-2">{children}</h2>
-              },
-              h3({ children }) {
-                return <h3 className="text-base font-bold mt-2 mb-1">{children}</h3>
-              },
-              table({ children }) {
-                return (
-                  <div className="overflow-x-auto my-2">
-                    <table className="min-w-full border border-gray-200">{children}</table>
-                  </div>
-                )
-              },
-              th({ children }) {
-                return (
-                  <th className="px-3 py-2 bg-gray-100 border border-gray-200 text-left font-medium">
-                    {children}
-                  </th>
-                )
-              },
-              td({ children }) {
-                return (
-                  <td className="px-3 py-2 border border-gray-200">{children}</td>
-                )
-              },
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-        </div>
+                    return (
+                      <CodeBlock
+                        code={String(children).replace(/\n$/, '')}
+                        language={match?.[1]}
+                      />
+                    )
+                  },
+                  pre({ children }) {
+                    // Let the code component handle the pre
+                    return <>{children}</>
+                  },
+                  // Styling for other elements
+                  p({ children }) {
+                    return <p className="mb-2 last:mb-0">{children}</p>
+                  },
+                  ul({ children }) {
+                    return <ul className="list-disc pl-4 mb-2">{children}</ul>
+                  },
+                  ol({ children }) {
+                    return <ol className="list-decimal pl-4 mb-2">{children}</ol>
+                  },
+                  li({ children }) {
+                    return <li className="mb-1">{children}</li>
+                  },
+                  a({ href, children }) {
+                    return (
+                      <a
+                        href={href}
+                        className="text-blue-500 hover:text-blue-700 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {children}
+                      </a>
+                    )
+                  },
+                  blockquote({ children }) {
+                    return (
+                      <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-2">
+                        {children}
+                      </blockquote>
+                    )
+                  },
+                  h1({ children }) {
+                    return <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>
+                  },
+                  h2({ children }) {
+                    return <h2 className="text-lg font-bold mt-3 mb-2">{children}</h2>
+                  },
+                  h3({ children }) {
+                    return <h3 className="text-base font-bold mt-2 mb-1">{children}</h3>
+                  },
+                  table({ children }) {
+                    return (
+                      <div className="overflow-x-auto my-2">
+                        <table className="min-w-full border border-gray-200">{children}</table>
+                      </div>
+                    )
+                  },
+                  th({ children }) {
+                    return (
+                      <th className="px-3 py-2 bg-gray-100 border border-gray-200 text-left font-medium">
+                        {children}
+                      </th>
+                    )
+                  },
+                  td({ children }) {
+                    return (
+                      <td className="px-3 py-2 border border-gray-200">{children}</td>
+                    )
+                  },
+                }}
+              >
+                {segment.content}
+              </ReactMarkdown>
+            </div>
+          )
+        })}
 
         {/* Tool calls badge */}
         {message.toolCalls && message.toolCalls.length > 0 && (
