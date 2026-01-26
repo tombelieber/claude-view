@@ -1,2 +1,38 @@
 // crates/server/src/routes/mod.rs
-// Stub - will be implemented in Task 7
+//! API route handlers for the vibe-recall server.
+
+pub mod health;
+pub mod projects;
+pub mod sessions;
+
+use std::sync::Arc;
+
+use axum::Router;
+
+use crate::state::AppState;
+
+/// Create the combined API router with all routes under /api prefix.
+///
+/// Routes:
+/// - GET /api/health - Health check
+/// - GET /api/projects - List all projects with sessions
+/// - GET /api/session/:project_dir/:session_id - Get a specific session
+pub fn api_routes(state: Arc<AppState>) -> Router {
+    Router::new()
+        .nest("/api", health::router())
+        .nest("/api", projects::router())
+        .nest("/api", sessions::router())
+        .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_api_routes_creation() {
+        let state = AppState::new();
+        let _router = api_routes(state);
+        // Router creation should not panic
+    }
+}
