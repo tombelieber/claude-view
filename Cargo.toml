@@ -43,6 +43,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 regex-lite = "0.1"
+urlencoding = "2"
 
 # Testing
 tempfile = "3"
