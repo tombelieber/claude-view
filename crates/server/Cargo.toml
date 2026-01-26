@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+urlencoding = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
