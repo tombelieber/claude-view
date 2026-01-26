@@ -4,6 +4,11 @@ node_modules/
 # Build outputs
 dist/
 
+# Rust/Cargo
+target/
+**/*.rs.bk
+*.pdb
+
 # Environment files
 .env
 .env.local
