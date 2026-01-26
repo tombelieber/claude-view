@@ -1,0 +1,8 @@
+{"type":"user","message":{"content":"<command-name>/commit</command-name>\nPlease commit my changes"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"assistant","message":{"content":"I'll commit your changes now."},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"user","message":{"content":"<command-name>/review-pr</command-name>\n<command-args>123</command-args>\nReview this PR"},"timestamp":"2026-01-27T10:00:02Z"}
+{"type":"assistant","message":{"content":"Looking at PR #123..."},"timestamp":"2026-01-27T10:00:03Z"}
+{"type":"user","message":{"content":"<command-name>/help</command-name>"},"timestamp":"2026-01-27T10:00:04Z"}
+{"type":"assistant","message":{"content":"Here are the available commands..."},"timestamp":"2026-01-27T10:00:05Z"}
+{"type":"user","message":{"content":"Just a normal message without commands"},"timestamp":"2026-01-27T10:00:06Z"}
+{"type":"assistant","message":{"content":"I understand."},"timestamp":"2026-01-27T10:00:07Z"}
