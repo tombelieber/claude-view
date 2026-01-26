@@ -22,7 +22,8 @@ export function ProjectView() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="h-full overflow-y-auto p-6">
+      <div className="max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">
           {project.displayName}
@@ -52,6 +53,7 @@ export function ProjectView() {
           Load more sessions...
         </button>
       )}
+      </div>
     </div>
   )
 }
