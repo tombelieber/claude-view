@@ -70,7 +70,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar projects={projects} />
 
-        <main className="flex-1 overflow-y-auto bg-gray-50">
+        <main className="flex-1 overflow-hidden bg-gray-50">
           <Outlet context={{ projects }} />
         </main>
       </div>
