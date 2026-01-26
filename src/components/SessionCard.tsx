@@ -8,8 +8,9 @@ interface SessionCardProps {
   onClick: () => void
 }
 
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
+function formatRelativeTime(timestamp: number): string {
+  // timestamp is Unix seconds, convert to milliseconds for JavaScript Date
+  const date = new Date(timestamp * 1000)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
