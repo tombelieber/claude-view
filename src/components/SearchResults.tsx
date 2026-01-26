@@ -71,7 +71,6 @@ export function SearchResults() {
                 <SessionCard
                   session={session}
                   isSelected={false}
-                  isActive={false}
                   onClick={() => {}}
                 />
               </Link>
