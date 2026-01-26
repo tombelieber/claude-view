@@ -1,6 +1,29 @@
 # Claude View v2 - Design Specification
 
-> Local personal intelligence system for Claude Code chat history
+> Local web server for browsing Claude Code chat history
+
+**Architecture:** Localhost web server (not a desktop app). Runs a Rust backend, serves React SPA, opens in your default browser.
+
+---
+
+## ⛔ Finalized Decisions (Do Not Revisit)
+
+| Topic | Decision | Alternatives Rejected |
+|-------|----------|----------------------|
+| **Distribution** | `npx` + `brew` | ❌ cargo install (users need Rust) |
+| **Runtime** | Localhost web server | ❌ Tauri desktop (v3.0 maybe) |
+| **Docker** | Skip for MVP | ❌ Complicates `~/.claude/` access |
+| **Port** | `47892` default + ENV override | ❌ 3000 (collision prone) |
+| **Platforms (MVP)** | macOS only | ❌ Linux/Windows (v2.1+) |
+| **Role model** | vibe-kanban | npx downloads binary pattern |
+
+**Why these decisions?**
+- App reads local files (`~/.claude/projects/`) → Docker adds friction
+- Users are devs but may not have Rust → no cargo install
+- 3000-8080 ports are collision city → use unique high port
+- Ship fast → Mac-first, iterate
+
+---
 
 ## 1. Problem Statement
 
@@ -48,34 +71,45 @@ React SPA ──HTTP──► Rust Backend (single binary)
 | Backend | **Rust** | ~30MB RAM, fast cold start, single binary |
 | Search | **Tantivy** | Embedded, no external service, ~15MB |
 | Metadata | **SQLite** | Tags persist across reindex, skill stats |
-| Distribution | **brew / cargo** | Single command install |
+| Distribution | **npx / brew** | npx downloads binary on first run (like vibe-kanban) |
 | Frontend | **Keep React** | 80% UI exists, swap API layer |
+| Runtime | **Localhost web server** | Opens in browser, not a native desktop app |
 
 ## 4. Architecture
 
 ```
-~/.claude/projects/**/*.jsonl
-            │
-            ▼
-   ┌─────────────────┐
-   │  Rust Indexer   │  (background, incremental)
-   └────────┬────────┘
-            │
-     ┌──────┴──────┐
-     ▼             ▼
-┌─────────┐  ┌──────────┐
-│ Tantivy │  │  SQLite  │
-│ (search)│  │ (meta)   │
-└────┬────┘  └────┬─────┘
-     └──────┬─────┘
-            ▼
-   ┌─────────────────┐
-   │  Rust REST API  │  (Axum)
-   └────────┬────────┘
-            ▼
-   ┌─────────────────┐
-   │   React SPA     │
-   └─────────────────┘
+npx claude-view
+      │
+      ▼
+┌─────────────────────────────────────────────────┐
+│  Rust Binary (single ~15MB executable)          │
+│                                                 │
+│  ~/.claude/projects/**/*.jsonl                  │
+│              │                                  │
+│              ▼                                  │
+│     ┌─────────────────┐                         │
+│     │  Rust Indexer   │  (background)           │
+│     └────────┬────────┘                         │
+│              │                                  │
+│       ┌──────┴──────┐                           │
+│       ▼             ▼                           │
+│  ┌─────────┐  ┌──────────┐                      │
+│  │ Tantivy │  │  SQLite  │                      │
+│  │ (search)│  │ (meta)   │                      │
+│  └────┬────┘  └────┬─────┘                      │
+│       └──────┬─────┘                            │
+│              ▼                                  │
+│     ┌─────────────────┐                         │
+│     │  Axum Server    │  localhost:3000         │
+│     │  (REST API)     │                         │
+│     └────────┬────────┘                         │
+│              │                                  │
+└──────────────┼──────────────────────────────────┘
+               ▼
+      ┌─────────────────┐
+      │  Browser        │  ← opens automatically
+      │  (React SPA)    │
+      └─────────────────┘
 ```
 
 ### Index Unit: Turn-Based
@@ -150,13 +184,23 @@ Both use same Tantivy index with different query filters.
 
 ## 8. Distribution
 
+**Primary:** npx (downloads pre-built binary on first run, like vibe-kanban)
+
 ```bash
-brew install claude-view   # macOS
-cargo install claude-view  # Rust users
-claude-view                # → builds index, opens browser
+npx claude-view            # Downloads binary, starts server, opens browser
+brew install claude-view   # Alternative for macOS users
 ```
 
-Single ~15MB binary, no dependencies, data in `~/.claude-view/`.
+**How npx works:**
+1. npm package is a lightweight JS wrapper (~few KB)
+2. On first run, detects platform (macos-arm64, macos-x64, etc.)
+3. Downloads pre-built Rust binary from cloud storage (R2/S3)
+4. Caches binary locally for future runs
+5. Starts localhost server, opens browser
+
+**Binary specs:** Single ~15MB binary, no dependencies, data in `~/.claude-view/`.
+
+**Platform support (MVP):** macOS only (Apple Silicon + Intel). Linux/Windows in v2.1+.
 
 ## 9. Success Criteria
 
@@ -167,7 +211,7 @@ Single ~15MB binary, no dependencies, data in `~/.claude-view/`.
 - [ ] Skill autocomplete shows usage counts
 - [ ] Dashboard shows top skills
 - [ ] Tags persist after restart
-- [ ] `brew install && claude-view` works
+- [ ] `npx claude-view` downloads binary and opens browser
 
 ## 10. Post-MVP Roadmap
 

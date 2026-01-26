@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Node-18+-green.svg" alt="Node 18+">
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://github.com/myorg/claude-view/stargazers"><img src="https://img.shields.io/github/stars/myorg/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -54,26 +54,25 @@ That's it. Opens in your browser. All your sessions, organized and searchable.
 
 ## 🚀 Quick Start
 
-### Option 1: Run directly (recommended)
-
 ```bash
 npx claude-view
-```
-
-### Option 2: Install globally
-
-```bash
-npm install -g claude-view
-claude-view
 ```
 
 Opens at `http://localhost:3000` — your sessions are waiting.
 
 ---
 
+## 📦 Installation
+
+| Method | Command |
+|--------|---------|
+| **npx** (recommended) | `npx claude-view` |
+| **Homebrew** | `brew install claude-view` |
+
+---
+
 ## 📋 Requirements
 
-- **Node.js 18+**
 - **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we read
 
 ---
@@ -93,6 +92,19 @@ If **claude-view** saves you time, consider giving it a star! It helps others di
     <img src="https://img.shields.io/github/stars/myorg/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
+
+---
+
+## 🗺️ Platform Roadmap
+
+| Platform | Status | ETA |
+|----------|--------|-----|
+| macOS (Apple Silicon) | ✅ Available | Now |
+| macOS (Intel) | ✅ Available | Now |
+| Linux (x64) | 🔜 Coming | v2.1 |
+| Linux (ARM64) | 🔜 Coming | v2.1 |
+| Windows (x64) | 🔜 Coming | v2.2 |
+| Windows (ARM64) | 🔜 Coming | v2.2 |
 
 ---
 
