@@ -5,7 +5,6 @@ import type { SessionInfo } from '../hooks/use-projects'
 interface SessionCardProps {
   session: SessionInfo
   isSelected: boolean
-  isActive: boolean
   onClick: () => void
 }
 
@@ -36,7 +35,7 @@ function formatRelativeTime(dateString: string): string {
   }
 }
 
-export function SessionCard({ session, isSelected, isActive, onClick }: SessionCardProps) {
+export function SessionCard({ session, isSelected, onClick }: SessionCardProps) {
   const toolCounts = session.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
   const totalTools = toolCounts.edit + toolCounts.bash + toolCounts.read + toolCounts.write
 
@@ -47,8 +46,7 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
         'w-full text-left p-4 rounded-lg border transition-all',
         isSelected
           ? 'bg-blue-50 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
-          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm',
-        isActive && 'border-l-2 border-l-green-500'
+          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
       )}
     >
       {/* Header: Started message + Active indicator */}
@@ -68,12 +66,6 @@ export function SessionCard({ session, isSelected, isActive, onClick }: SessionC
           )}
         </div>
 
-        {isActive && (
-          <span className="flex items-center gap-1 text-xs text-green-600 flex-shrink-0">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            Active
-          </span>
-        )}
       </div>
 
       {/* Files touched */}
