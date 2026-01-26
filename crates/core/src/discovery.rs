@@ -439,8 +439,7 @@ fn extract_content_quick(line: &str) -> Option<String> {
     let after_content = &line[content_start + 10..];
 
     // Handle string content
-    if after_content.starts_with('"') {
-        let content_str = &after_content[1..];
+    if let Some(content_str) = after_content.strip_prefix('"') {
         if let Some(end) = find_string_end(content_str) {
             let content = &content_str[..end];
             // Unescape basic JSON escapes
