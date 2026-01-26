@@ -35,6 +35,12 @@ pnpm-debug.log*
 # Testing
 coverage/
 
+# Playwright
+playwright-report/
+test-results/
+e2e/screenshots/*
+!e2e/screenshots/.gitkeep
+
 # Temporary files
 .tmp/
 tmp/
