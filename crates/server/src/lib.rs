@@ -12,17 +12,37 @@ pub use error::*;
 pub use routes::api_routes;
 pub use state::AppState;
 
+use std::path::PathBuf;
+
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-/// Create the Axum application with all routes and middleware.
+/// Create the Axum application with all routes and middleware (API-only mode).
 ///
 /// This sets up:
 /// - API routes (health, projects, sessions)
 /// - CORS for development (allows any origin)
 /// - Request tracing
 pub fn create_app() -> Router {
+    create_app_with_static(None)
+}
+
+/// Create the Axum application with optional static file serving.
+///
+/// This sets up:
+/// - API routes (health, projects, sessions)
+/// - CORS for development (allows any origin)
+/// - Request tracing
+/// - Static file serving with SPA fallback (if static_dir is provided)
+///
+/// # Arguments
+///
+/// * `static_dir` - Optional path to the directory containing static files (e.g., React build output).
+///   If provided, the server will serve static files and fall back to index.html
+///   for client-side routing (SPA mode).
+pub fn create_app_with_static(static_dir: Option<PathBuf>) -> Router {
     let state = AppState::new();
 
     let cors = CorsLayer::new()
@@ -30,10 +50,20 @@ pub fn create_app() -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    Router::new()
+    let mut app = Router::new()
         .merge(api_routes(state))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http());
+
+    // Serve static files with SPA fallback
+    // Use .fallback() instead of .not_found_service() to return 200 for SPA routing
+    // (not_found_service returns 404, which is incorrect for client-side routing)
+    if let Some(dir) = static_dir {
+        let index = dir.join("index.html");
+        app = app.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(&index)));
+    }
+
+    app
 }
 
 // ============================================================================
@@ -247,6 +277,19 @@ mod tests {
         let _app = create_app();
     }
 
+    #[test]
+    fn test_create_app_with_static_none() {
+        // Should not panic when no static dir is provided
+        let _app = create_app_with_static(None);
+    }
+
+    #[test]
+    fn test_create_app_with_static_some() {
+        // Should not panic when a static dir path is provided
+        // (even if the path doesn't exist - ServeDir handles this gracefully)
+        let _app = create_app_with_static(Some(std::path::PathBuf::from("/nonexistent")));
+    }
+
     #[tokio::test]
     async fn test_multiple_requests() {
         // Verify the app can handle multiple requests
@@ -259,5 +302,82 @@ mod tests {
         // Second request
         let (status2, _) = get(app, "/api/health").await;
         assert_eq!(status2, StatusCode::OK);
+    }
+
+    // ========================================================================
+    // Static File Serving Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_static_serving_with_temp_dir() {
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Create a temporary directory with an index.html
+        let temp_dir = TempDir::new().unwrap();
+        let index_path = temp_dir.path().join("index.html");
+        let mut index_file = std::fs::File::create(&index_path).unwrap();
+        writeln!(index_file, "<!DOCTYPE html><html><body>Test</body></html>").unwrap();
+
+        // Create app with static serving
+        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+
+        // Root path should serve index.html
+        let (status, body) = get(app.clone(), "/").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("<!DOCTYPE html>"));
+
+        // API endpoints should still work
+        let (status, _) = get(app, "/api/health").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_static_serving_spa_fallback() {
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Create a temporary directory with an index.html
+        let temp_dir = TempDir::new().unwrap();
+        let index_path = temp_dir.path().join("index.html");
+        let mut index_file = std::fs::File::create(&index_path).unwrap();
+        writeln!(index_file, "<!DOCTYPE html><html><body>SPA</body></html>").unwrap();
+
+        // Create app with static serving
+        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+
+        // Unknown paths should fall back to index.html (SPA routing)
+        let (status, body) = get(app, "/some/client/route").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("SPA"));
+    }
+
+    #[tokio::test]
+    async fn test_static_serving_serves_actual_files() {
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Create a temporary directory with multiple files
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create index.html
+        let index_path = temp_dir.path().join("index.html");
+        let mut index_file = std::fs::File::create(&index_path).unwrap();
+        writeln!(index_file, "<!DOCTYPE html><html><body>Index</body></html>").unwrap();
+
+        // Create a JS file in assets/
+        let assets_dir = temp_dir.path().join("assets");
+        std::fs::create_dir(&assets_dir).unwrap();
+        let js_path = assets_dir.join("app.js");
+        let mut js_file = std::fs::File::create(&js_path).unwrap();
+        writeln!(js_file, "console.log('Hello');").unwrap();
+
+        // Create app with static serving
+        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+
+        // JS file should be served directly
+        let (status, body) = get(app, "/assets/app.js").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("console.log"));
     }
 }
