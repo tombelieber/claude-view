@@ -58,9 +58,18 @@ mod tests {
             active_count: 1,
         };
 
-        let json = serde_json::to_string(&project).unwrap();
-        assert!(json.contains("\"name\":\"test-project\""));
-        assert!(json.contains("\"displayName\":\"Test Project\""));
-        assert!(json.contains("\"activeCount\":1"));
+        let json = serde_json::to_string_pretty(&project).unwrap();
+        // Verify camelCase field names
+        assert!(json.contains("\"name\": \"test-project\""));
+        assert!(json.contains("\"displayName\": \"Test Project\""));
+        assert!(json.contains("\"activeCount\": 1"));
+        // Verify modifiedAt is serialized as number (Unix timestamp in seconds)
+        assert!(json.contains("\"modifiedAt\": 1706369000"));
+        // Verify toolCounts structure
+        assert!(json.contains("\"toolCounts\""));
+        assert!(json.contains("\"edit\": 5"));
+        assert!(json.contains("\"read\": 10"));
+        assert!(json.contains("\"bash\": 3"));
+        assert!(json.contains("\"write\": 2"));
     }
 }
