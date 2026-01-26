@@ -43,16 +43,22 @@ export async function startServer(): Promise<number> {
     }
   })
 
-  // Serve static frontend in production
-  const clientPath = join(__dirname, '..', 'client')
-  app.use(express.static(clientPath))
-  app.get('*', (_req, res) => {
-    res.sendFile(join(clientPath, 'index.html'))
-  })
+  // Serve static frontend in production only
+  const isDev = process.env.NODE_ENV !== 'production'
+  if (!isDev) {
+    const clientPath = join(__dirname, '..', 'client')
+    app.use(express.static(clientPath))
+    app.get('*', (_req, res) => {
+      res.sendFile(join(clientPath, 'index.html'))
+    })
+  }
 
   return new Promise((resolve) => {
     app.listen(port, () => {
-      open(`http://localhost:${port}`)
+      // Only auto-open browser in production
+      if (!isDev) {
+        open(`http://localhost:${port}`)
+      }
       resolve(port)
     })
   })
