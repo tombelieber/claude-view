@@ -1,6 +1,7 @@
 ---
-status: pending
+status: done
 date: 2026-01-27
+completed: 2026-01-27
 ---
 
 # Phase 2: Backend Swap + UI Enhancement
@@ -273,9 +274,9 @@ Task 1 → Task 2 → Task 3 (must pass) → Task 4 → Task 5
 
 ## Success Criteria
 
-- [ ] Rust serves React app
-- [ ] Node backend removed
-- [ ] Smoke test passes with screenshots
-- [ ] Tool counts visible in UI
-- [ ] Skills badges visible in UI
-- [ ] Health indicator works
+- [x] Rust serves React app
+- [x] Node backend removed
+- [x] Smoke test passes with screenshots
+- [x] Tool counts visible in UI
+- [x] Skills badges visible in UI
+- [x] Health indicator works
