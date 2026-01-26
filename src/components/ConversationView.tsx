@@ -1,5 +1,6 @@
 import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
+import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
 import { generateStandaloneHtml, downloadHtml } from '../lib/export-html'
@@ -94,24 +95,30 @@ export function ConversationView() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-6">
-          <div className="space-y-4">
-            {session.messages.map((message, index) => (
-              <Message key={index} message={message} />
-            ))}
+      <Virtuoso
+        data={session.messages}
+        itemContent={(index, message) => (
+          <div className="max-w-4xl mx-auto px-6 pb-4">
+            <Message key={message.id || index} message={message} />
           </div>
-
-          {session.messages.length > 0 && (
-            <div className="mt-6 text-center text-sm text-gray-400">
-              {session.metadata.totalMessages} messages
-              {session.metadata.toolCallCount > 0 && (
-                <> &bull; {session.metadata.toolCallCount} tool calls</>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+        )}
+        components={{
+          Header: () => <div className="h-6" />,
+          Footer: () => (
+            session.messages.length > 0 ? (
+              <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
+                {session.metadata.totalMessages} messages
+                {session.metadata.toolCallCount > 0 && (
+                  <> &bull; {session.metadata.toolCallCount} tool calls</>
+                )}
+              </div>
+            ) : null
+          )
+        }}
+        increaseViewportBy={{ top: 400, bottom: 400 }}
+        initialTopMostItemIndex={0}
+        className="flex-1 overflow-auto"
+      />
     </main>
   )
 }
