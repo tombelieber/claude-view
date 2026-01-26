@@ -77,7 +77,6 @@ export function Sidebar({ projects }: SidebarProps) {
         {projects.map((project) => {
           const isSelected = selectedProjectId === project.name
           const parentPath = project.name.split('/').slice(0, -1).join('/')
-          const hasActive = project.activeCount > 0
 
           return (
             <Link
@@ -107,28 +106,12 @@ export function Sidebar({ projects }: SidebarProps) {
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {hasActive && (
-                  <span className="flex items-center gap-1">
-                    <span className={cn(
-                      'w-1.5 h-1.5 rounded-full animate-pulse',
-                      isSelected ? 'bg-green-300' : 'bg-green-500'
-                    )} />
-                    <span className={cn(
-                      'text-xs tabular-nums',
-                      isSelected ? 'text-green-200' : 'text-green-600'
-                    )}>
-                      {project.activeCount}
-                    </span>
-                  </span>
-                )}
-                <span className={cn(
-                  'text-xs tabular-nums',
-                  isSelected ? 'text-blue-100' : 'text-gray-400'
-                )}>
-                  {project.sessions.length}
-                </span>
-              </div>
+              <span className={cn(
+                'text-xs tabular-nums',
+                isSelected ? 'text-blue-100' : 'text-gray-400'
+              )}>
+                {project.sessions.length}
+              </span>
             </Link>
           )
         })}
@@ -146,11 +129,6 @@ export function Sidebar({ projects }: SidebarProps) {
               {selectedProject.path}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {selectedProject.activeCount > 0 && (
-                <span className="text-green-600">
-                  ●{selectedProject.activeCount} active ·
-                </span>
-              )}
               {selectedProject.sessions.length} sessions
             </p>
           </div>
