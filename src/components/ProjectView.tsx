@@ -21,8 +21,6 @@ export function ProjectView() {
     )
   }
 
-  const activeSessionId = project.sessions[0]?.id
-
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
@@ -31,11 +29,6 @@ export function ProjectView() {
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           {project.sessions.length} sessions
-          {project.activeCount > 0 && (
-            <span className="text-green-600 ml-2">
-              · {project.activeCount} active
-            </span>
-          )}
         </p>
       </div>
 
@@ -48,7 +41,6 @@ export function ProjectView() {
             <SessionCard
               session={session}
               isSelected={false}
-              isActive={session.id === activeSessionId}
               onClick={() => {}}
             />
           </Link>

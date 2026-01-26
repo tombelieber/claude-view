@@ -6,7 +6,6 @@ interface StatusBarProps {
 
 export function StatusBar({ projects }: StatusBarProps) {
   const totalSessions = projects.reduce((sum, p) => sum + p.sessions.length, 0)
-  const totalActive = projects.reduce((sum, p) => sum + p.activeCount, 0)
   const latestActivity = projects[0]?.sessions[0]?.modifiedAt
 
   const formatLastActivity = (dateString: string) => {
@@ -23,11 +22,6 @@ export function StatusBar({ projects }: StatusBarProps) {
     <footer className="h-8 bg-white border-t border-gray-200 px-4 flex items-center justify-between text-xs text-gray-500">
       <span>
         {projects.length} projects · {totalSessions} sessions
-        {totalActive > 0 && (
-          <span className="text-green-600 ml-2">
-            · {totalActive} active
-          </span>
-        )}
       </span>
       {latestActivity && (
         <span>
