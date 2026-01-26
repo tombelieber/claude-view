@@ -24,6 +24,7 @@ function formatTime(timestamp?: string): string | null {
 /**
  * Process message content to extract XML blocks
  * Returns segments of text and XML for mixed rendering
+ * Uses position tracking from original content to handle duplicate XML blocks correctly
  */
 function processContent(content: string): Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> {
   const xmlBlocks = extractXmlBlocks(content)
@@ -32,24 +33,44 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
     return [{ type: 'text', content }]
   }
 
-  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> = []
-  let remaining = content
+  // Find positions of each block in original content, tracking search offset for duplicates
+  const blocksWithPositions: Array<{ xml: string; type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown'; index: number }> = []
+  let searchOffset = 0
 
   for (const block of xmlBlocks) {
-    const index = remaining.indexOf(block.xml)
-    if (index > 0) {
-      const textBefore = remaining.substring(0, index).trim()
+    const index = content.indexOf(block.xml, searchOffset)
+    if (index !== -1) {
+      blocksWithPositions.push({ ...block, index })
+      searchOffset = index + block.xml.length
+    }
+  }
+
+  // Sort by position (should already be sorted, but ensure correctness)
+  blocksWithPositions.sort((a, b) => a.index - b.index)
+
+  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> = []
+  let lastIndex = 0
+
+  for (const block of blocksWithPositions) {
+    // Add text before this XML block
+    if (block.index > lastIndex) {
+      const textBefore = content.substring(lastIndex, block.index).trim()
       if (textBefore) {
         segments.push({ type: 'text', content: textBefore })
       }
     }
+
+    // Add the XML block
     segments.push({ type: 'xml', content: block.xml, xmlType: block.type })
-    remaining = remaining.substring(index + block.xml.length)
+    lastIndex = block.index + block.xml.length
   }
 
-  const textAfter = remaining.trim()
-  if (textAfter) {
-    segments.push({ type: 'text', content: textAfter })
+  // Add any remaining text after the last XML block
+  if (lastIndex < content.length) {
+    const textAfter = content.substring(lastIndex).trim()
+    if (textAfter) {
+      segments.push({ type: 'text', content: textAfter })
+    }
   }
 
   return segments
