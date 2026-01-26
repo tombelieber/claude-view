@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Node-18+-green.svg" alt="Node 18+">
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://github.com/myorg/claude-view/stargazers"><img src="https://img.shields.io/github/stars/myorg/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -54,26 +54,25 @@ npx claude-view
 
 ## 🚀 快速开始
 
-### 方法一：直接运行（推荐）
-
 ```bash
 npx claude-view
-```
-
-### 方法二：全局安装
-
-```bash
-npm install -g claude-view
-claude-view
 ```
 
 在 `http://localhost:3000` 打开 — 你的对话已准备就绪。
 
 ---
 
+## 📦 安装方式
+
+| 方式 | 命令 |
+|------|------|
+| **npx**（推荐） | `npx claude-view` |
+| **Homebrew** | `brew install claude-view` |
+
+---
+
 ## 📋 系统要求
 
-- **Node.js 18+**
 - 已安装 **Claude Code**（[点此获取](https://docs.anthropic.com/en/docs/claude-code)）— 本工具读取其产生的对话文件
 
 ---
@@ -93,6 +92,19 @@ claude-view
     <img src="https://img.shields.io/github/stars/myorg/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
+
+---
+
+## 🗺️ 平台支持路线图
+
+| 平台 | 状态 | 预计 |
+|------|------|------|
+| macOS (Apple Silicon) | ✅ 已支持 | 现在 |
+| macOS (Intel) | ✅ 已支持 | 现在 |
+| Linux (x64) | 🔜 即将推出 | v2.1 |
+| Linux (ARM64) | 🔜 即将推出 | v2.1 |
+| Windows (x64) | 🔜 即将推出 | v2.2 |
+| Windows (ARM64) | 🔜 即将推出 | v2.2 |
 
 ---
 
