@@ -1,3 +1,8 @@
+---
+status: approved
+date: 2026-01-27
+---
+
 # vibe-recall v2 - Design Specification
 
 > Local web server for browsing and searching Claude Code chat history
