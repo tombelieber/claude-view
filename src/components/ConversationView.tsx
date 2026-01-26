@@ -27,18 +27,18 @@ export function ConversationView() {
 
   if (isLoading) {
     return (
-      <main className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="flex items-center gap-3 text-gray-600">
           <Loader2 className="w-5 h-5 animate-spin" />
           <span>Loading conversation...</span>
         </div>
-      </main>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <main className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="text-center text-red-600">
           <p className="font-medium">Failed to load conversation</p>
           <p className="text-sm mt-1">{error.message}</p>
@@ -49,13 +49,13 @@ export function ConversationView() {
             Go back
           </button>
         </div>
-      </main>
+      </div>
     )
   }
 
   if (!session) {
     return (
-      <main className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="text-center text-gray-500">
           <p>No conversation data found</p>
           <button
@@ -65,12 +65,12 @@ export function ConversationView() {
             Go back
           </button>
         </div>
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div className="h-full flex flex-col overflow-hidden bg-gray-50">
       {/* Conversation Header */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
         <div className="flex items-center gap-4">
@@ -119,6 +119,6 @@ export function ConversationView() {
         initialTopMostItemIndex={0}
         className="flex-1 overflow-auto"
       />
-    </main>
+    </div>
   )
 }
