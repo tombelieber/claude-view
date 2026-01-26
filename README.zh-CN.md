@@ -1,45 +1,101 @@
 # claude-view
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Node](https://img.shields.io/badge/Node-18+-green.svg)](https://nodejs.org)
-
-[English](./README.md) · [繁體中文](./README.zh-TW.md) · [简体中文]
-
 <p align="center">
   <img src="./docs/screenshot.png" alt="claude-view" width="800" />
 </p>
 
 <p align="center">
-  浏览与导出你的 Claude Code 对话记录
+  <strong>浏览与导出你的 Claude Code 对话记录</strong>
 </p>
 
-## 这是什么？
+<p align="center">
+  <a href="./README.md">English</a> ·
+  <a href="./README.zh-TW.md">繁體中文</a> ·
+  <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-**claude-view** 是一个本地网页界面，用于浏览你的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 对话历史。Claude Code 将对话存储为 `~/.claude/projects/` 中的 JSONL 文件 — 这个工具将它们转换为可搜索、可浏览的存档，并支持导出功能。
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Node-18+-green.svg" alt="Node 18+">
+  <a href="https://github.com/myorg/claude-view/stargazers"><img src="https://img.shields.io/github/stars/myorg/claude-view?style=social" alt="GitHub stars"></a>
+</p>
 
-如果你使用 Claude Code（Anthropic 的 AI 编程助手）并想回顾过去的对话、跨对话搜索，或将它们导出为可分享的 HTML 文件，这个工具就是为你打造的。
+---
 
-## 快速开始
+## 😤 问题
+
+你已经用 **Claude Code** 好几周了。几十个对话、上百次交流。但它们去哪了？
+
+它们被埋在 `~/.claude/projects/` 里，变成一堆难以解读的 **JSONL 文件**。想找到那次 Claude 帮你解决棘手 bug 的对话？祝你好运。
+
+## ✨ 解决方案
+
+**claude-view** 将你的 Claude Code 对话历史变成**美观、可搜索的存档**。
 
 ```bash
 npx claude-view
 ```
 
-自动在浏览器打开 `http://localhost:3000`
+就这样。在浏览器中打开。所有对话，整理有序，随时可搜。
 
-## 功能特色
+---
 
-- **按项目浏览** — 对话按工作目录分类整理
-- **丰富预览** — 一目了然：修改的文件、使用的工具、启用的技能
-- **完整对话** — 语法高亮的代码块、Markdown 渲染
-- **导出 HTML** — 分享或归档对话为独立文件
-- **键盘优先** — `⌘K` 跨所有对话搜索
+## 🎯 功能特色
 
-## 系统要求
+| 功能 | 说明 |
+|------|------|
+| 📁 **按项目浏览** | 对话按工作目录分类整理 |
+| 🔍 **丰富预览** | 一目了然：修改的文件、使用的工具、启用的技能 |
+| 💬 **完整对话** | 语法高亮代码、Markdown 渲染 |
+| 📤 **导出 HTML** | 分享或归档为独立文件 |
+| ⌨️ **键盘优先** | `⌘K` 跨所有对话搜索 |
 
-- Node.js 18+
-- 已安装 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（本工具读取其产生的对话文件）
+---
 
-## 许可证
+## 🚀 快速开始
 
-MIT
+### 方法一：直接运行（推荐）
+
+```bash
+npx claude-view
+```
+
+### 方法二：全局安装
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+在 `http://localhost:3000` 打开 — 你的对话已准备就绪。
+
+---
+
+## 📋 系统要求
+
+- **Node.js 18+**
+- 已安装 **Claude Code**（[点此获取](https://docs.anthropic.com/en/docs/claude-code)）— 本工具读取其产生的对话文件
+
+---
+
+## 🤔 什么是 Claude Code？
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 是 Anthropic 的 AI 编程助手，在终端中运行。你与它的每次对话都会保存在本地。**claude-view** 帮助你回顾、搜索和导出这些对话。
+
+---
+
+## ⭐ 喜欢这个项目？
+
+如果 **claude-view** 节省了你的时间，请考虑给它一颗星！这有助于更多人发现这个工具。
+
+<p align="center">
+  <a href="https://github.com/myorg/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/myorg/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  </a>
+</p>
+
+---
+
+## 📄 许可证
+
+MIT © 2026
