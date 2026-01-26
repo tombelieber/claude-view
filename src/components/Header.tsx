@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { Home, Search, HelpCircle, Settings, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../store/app-store'
+import { HealthIndicator } from './HealthIndicator'
 
 export function Header() {
   const location = useLocation()
@@ -48,6 +49,7 @@ export function Header() {
         >
           <Home className="w-4 h-4 text-gray-400" />
           <h1 className="text-lg font-semibold text-gray-900">Claude View</h1>
+          <HealthIndicator />
         </Link>
 
         {breadcrumbs.map((crumb, i) => (
