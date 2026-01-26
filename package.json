@@ -10,7 +10,8 @@
     "dist"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "bun run dev:server & bun run dev:client",
+    "dev:client": "vite",
     "dev:server": "tsx watch src/server/index.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
