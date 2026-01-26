@@ -5,7 +5,7 @@ export interface SessionInfo {
   project: string
   projectPath: string
   filePath: string
-  modifiedAt: string  // JSON serialized date
+  modifiedAt: number  // Unix timestamp in seconds
   sizeBytes: number
   preview: string
   lastMessage: string
