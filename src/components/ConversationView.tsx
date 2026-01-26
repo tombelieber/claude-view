@@ -3,7 +3,7 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
-import { generateStandaloneHtml, downloadHtml } from '../lib/export-html'
+import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
 import type { ProjectInfo } from '../hooks/use-projects'
 
 export function ConversationView() {
@@ -18,11 +18,16 @@ export function ConversationView() {
   const handleBack = () => navigate(-1)
   const { data: session, isLoading, error } = useSession(projectDir, sessionId || '')
 
-  const handleExport = () => {
+  const handleExportHtml = () => {
     if (!session) return
     const html = generateStandaloneHtml(session.messages)
-    const filename = `claude-conversation-${sessionId}.html`
+    const filename = `conversation-${sessionId}.html`
     downloadHtml(html, filename)
+  }
+
+  const handleExportPdf = () => {
+    if (!session) return
+    exportToPdf(session.messages)
   }
 
   if (isLoading) {
@@ -85,13 +90,22 @@ export function ConversationView() {
           <span className="font-medium text-gray-900">{projectName}</span>
         </div>
 
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors"
-        >
-          <span>Export HTML</span>
-          <Download className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportHtml}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <span>HTML</span>
+            <Download className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExportPdf}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <span>PDF</span>
+            <Download className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
