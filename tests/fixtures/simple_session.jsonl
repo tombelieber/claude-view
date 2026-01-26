@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"Hello, can you help me?"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Of course! How can I help you today?"}]},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"user","message":{"role":"user","content":"What is 2+2?"},"timestamp":"2026-01-27T10:00:02Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"2+2 equals 4."}]},"timestamp":"2026-01-27T10:00:03Z"}
