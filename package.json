@@ -3,23 +3,19 @@
   "version": "0.1.0",
   "description": "Browse and export Claude Code sessions as beautiful HTML",
   "type": "module",
-  "bin": {
-    "claude-view": "./dist/server/index.js"
-  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "dev": "bun run dev:server & bun run dev:client",
-    "dev:client": "vite",
-    "dev:server": "tsx watch src/server/index.ts",
-    "build": "npm run build:client && npm run build:server",
+    "dev": "concurrently \"cargo run -p vibe-recall-server\" \"vite --port 5173\"",
+    "dev:client": "vite --port 5173",
+    "build": "vite build",
     "build:client": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
-    "start": "node dist/server/index.js",
+    "preview": "cargo run -p vibe-recall-server",
+    "start": "cargo run -p vibe-recall-server --release",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "test": "cargo test --workspace"
   },
   "keywords": [
     "claude",
@@ -34,10 +30,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.90.18",
     "clsx": "^2.1.1",
-    "express": "^4.21.0",
-    "get-port": "^7.1.0",
     "lucide-react": "^0.562.0",
-    "open": "^10.1.0",
     "prism-react-renderer": "^2.3.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -52,19 +45,18 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/vite": "^4.1.18",
-    "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",
+    "concurrently": "^9.1.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^17.0.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "tsx": "^4.19.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4"
