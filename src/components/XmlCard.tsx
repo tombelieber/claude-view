@@ -230,19 +230,40 @@ export function detectXmlType(content: string): XmlCardProps['type'] | null {
 export function extractXmlBlocks(content: string): { xml: string; type: XmlCardProps['type'] }[] {
   const blocks: { xml: string; type: XmlCardProps['type'] }[] = []
 
-  const patterns = [
+  // Specific patterns with known types
+  const knownPatterns = [
     { regex: /<observed_from_primary_session>[\s\S]*?<\/observed_from_primary_session>/g, type: 'observed_from_primary_session' as const },
     { regex: /<observation>[\s\S]*?<\/observation>/g, type: 'observation' as const },
+    { regex: /<tool_call>[\s\S]*?<\/tool_call>/g, type: 'tool_call' as const },
   ]
 
-  for (const { regex, type } of patterns) {
-    const matches = content.match(regex)
-    if (matches) {
-      for (const match of matches) {
-        blocks.push({ xml: match, type })
-      }
+  const matchedRanges: Array<{ start: number; end: number }> = []
+
+  for (const { regex, type } of knownPatterns) {
+    let match
+    while ((match = regex.exec(content)) !== null) {
+      blocks.push({ xml: match[0], type })
+      matchedRanges.push({ start: match.index, end: match.index + match[0].length })
     }
   }
+
+  // Generic pattern for other XML-like structures (e.g., local-command-stdout, system-reminder)
+  // Only match if longer than 50 chars to avoid catching small inline tags
+  const genericRegex = /<([a-z][a-z0-9_-]*)>[\s\S]*?<\/\1>/gi
+  let match
+  while ((match = genericRegex.exec(content)) !== null) {
+    // Skip if already matched by a known pattern
+    const isOverlapping = matchedRanges.some(
+      range => match!.index >= range.start && match!.index < range.end
+    )
+    if (!isOverlapping && match[0].length > 20) {
+      blocks.push({ xml: match[0], type: 'unknown' })
+      matchedRanges.push({ start: match.index, end: match.index + match[0].length })
+    }
+  }
+
+  // Sort by position in content
+  blocks.sort((a, b) => content.indexOf(a.xml) - content.indexOf(b.xml))
 
   return blocks
 }
