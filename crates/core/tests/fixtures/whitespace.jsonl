@@ -1,0 +1,9 @@
+{"type":"user","message":{"content":"First message"},"timestamp":"2026-01-27T10:00:00Z"}
+
+
+{"type":"assistant","message":{"content":"Response to first"},"timestamp":"2026-01-27T10:00:01Z"}
+
+{"type":"user","message":{"content":"Second message"},"timestamp":"2026-01-27T10:00:02Z"}
+
+
+{"type":"assistant","message":{"content":"Response to second"},"timestamp":"2026-01-27T10:00:03Z"}

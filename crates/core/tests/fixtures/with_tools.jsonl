@@ -1,0 +1,6 @@
+{"type":"user","message":{"content":"Read the config file"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Let me read that file for you."},{"type":"tool_use","name":"Read","input":{"path":"/etc/config.json"}},{"type":"tool_use","name":"Read","input":{"path":"/etc/settings.yaml"}}]},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"user","message":{"content":"Now edit it"},"timestamp":"2026-01-27T10:00:02Z"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I will edit the file."},{"type":"tool_use","name":"Edit","input":{"file":"/etc/config.json","content":"new content"}},{"type":"tool_result","content":"Edit successful"}]},"timestamp":"2026-01-27T10:00:03Z"}
+{"type":"user","message":{"content":"Run a test"},"timestamp":"2026-01-27T10:00:04Z"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}},{"type":"tool_use","name":"Bash","input":{"command":"npm run lint"}},{"type":"tool_use","name":"Write","input":{"path":"test.txt","content":"data"}}]},"timestamp":"2026-01-27T10:00:05Z"}
