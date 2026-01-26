@@ -1,0 +1,64 @@
+# Cargo.toml (root)
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/user/vibe-recall"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.43", features = ["full", "test-util"] }
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tower = { version = "0.5", features = ["util"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Search (Phase 2)
+tantivy = "0.22"
+
+# File watcher (Phase 2)
+notify = "8.0"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+regex-lite = "0.1"
+
+# Testing
+tempfile = "3"
+tokio-test = "0.4"
+axum-test = "16"
+assert-json-diff = "2"
+pretty_assertions = "1"
+
+# Internal crates
+vibe-recall-core = { path = "crates/core" }
+vibe-recall-db = { path = "crates/db" }
+vibe-recall-search = { path = "crates/search" }
+
+[profile.release]
+lto = true
+strip = true
+
+[profile.test]
+opt-level = 1  # Faster test compilation

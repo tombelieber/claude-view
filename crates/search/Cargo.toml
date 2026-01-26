@@ -1,0 +1,17 @@
+# crates/search/Cargo.toml
+[package]
+name = "vibe-recall-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vibe-recall-core = { workspace = true }
+tantivy = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }
