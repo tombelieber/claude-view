@@ -17,6 +17,8 @@ export interface SessionInfo {
     bash: number
     write: number
   }
+  messageCount: number   // Total messages in session
+  turnCount: number      // Human→assistant exchange pairs
 }
 
 export interface ProjectInfo {
