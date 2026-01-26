@@ -1,45 +1,101 @@
 # claude-view
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Node](https://img.shields.io/badge/Node-18+-green.svg)](https://nodejs.org)
-
-[English] · [繁體中文](./README.zh-TW.md) · [简体中文](./README.zh-CN.md)
-
 <p align="center">
   <img src="./docs/screenshot.png" alt="claude-view" width="800" />
 </p>
 
 <p align="center">
-  Browse and export your Claude Code sessions.
+  <strong>Browse and export your Claude Code sessions</strong>
 </p>
 
-## What is this?
+<p align="center">
+  <a href="./README.md">English</a> ·
+  <a href="./README.zh-TW.md">繁體中文</a> ·
+  <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-**claude-view** is a local web UI for browsing your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) conversation history. Claude Code stores sessions as JSONL files in `~/.claude/projects/` — this tool turns them into a searchable, browsable archive with export capabilities.
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Node-18+-green.svg" alt="Node 18+">
+  <a href="https://github.com/vicky-ai/claude-view/stargazers"><img src="https://img.shields.io/github/stars/vicky-ai/claude-view?style=social" alt="GitHub stars"></a>
+</p>
 
-If you use Claude Code (Anthropic's AI coding assistant) and want to revisit past conversations, search across sessions, or export them as shareable HTML files, this is for you.
+---
 
-## Quick Start
+## 😤 The Problem
+
+You've been using **Claude Code** for weeks. Dozens of sessions. Hundreds of conversations. But where did they go?
+
+They're buried in `~/.claude/projects/` as cryptic **JSONL files**. Good luck finding that one conversation where Claude helped you fix that tricky bug.
+
+## ✨ The Solution
+
+**claude-view** turns your Claude Code session history into a **beautiful, searchable archive**.
 
 ```bash
 npx claude-view
 ```
 
-Opens in your browser at `http://localhost:3000`
+That's it. Opens in your browser. All your sessions, organized and searchable.
 
-## Features
+---
 
-- **Browse by project** — Sessions organized by working directory
-- **Rich previews** — See files touched, tools used, and skills invoked at a glance
-- **Full conversations** — Syntax-highlighted code blocks, markdown rendering
-- **Export to HTML** — Share or archive sessions as standalone files
-- **Keyboard-first** — `⌘K` to search across all sessions
+## 🎯 Features
 
-## Requirements
+| Feature | Description |
+|---------|-------------|
+| 📁 **Browse by project** | Sessions organized by working directory |
+| 🔍 **Rich previews** | See files touched, tools used, skills invoked — at a glance |
+| 💬 **Full conversations** | Syntax-highlighted code, rendered markdown |
+| 📤 **Export to HTML** | Share or archive as standalone files |
+| ⌨️ **Keyboard-first** | `⌘K` to search across all sessions |
 
-- Node.js 18+
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed (creates the session files this tool reads)
+---
 
-## License
+## 🚀 Quick Start
 
-MIT
+### Option 1: Run directly (recommended)
+
+```bash
+npx claude-view
+```
+
+### Option 2: Install globally
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+Opens at `http://localhost:3000` — your sessions are waiting.
+
+---
+
+## 📋 Requirements
+
+- **Node.js 18+**
+- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we read
+
+---
+
+## 🤔 What is Claude Code?
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's AI coding assistant that runs in your terminal. Every conversation you have with it is saved locally. **claude-view** helps you revisit, search, and export those conversations.
+
+---
+
+## ⭐ Like this project?
+
+If **claude-view** saves you time, consider giving it a star! It helps others discover this tool.
+
+<p align="center">
+  <a href="https://github.com/vicky-ai/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/vicky-ai/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  </a>
+</p>
+
+---
+
+## 📄 License
+
+MIT © 2026
