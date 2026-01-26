@@ -15,6 +15,8 @@
 | **Docker** | Skip for MVP | ❌ Complicates `~/.claude/` access |
 | **Port** | `47892` default + ENV override | ❌ 3000 (collision prone) |
 | **Platforms (MVP)** | macOS only | ❌ Linux/Windows (v2.1+) |
+| **Distribution runtime** | npx (Node) | ❌ Bun-only (95% have Node, 15% have Bun) |
+| **Dev runtime** | Bun ✅ | Fast, npm-compatible — dev choice ≠ user choice |
 | **Role model** | vibe-kanban | npx downloads binary pattern |
 
 **Why these decisions?**
