@@ -1,0 +1,7 @@
+{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"future_type","data":"some future data format"}
+{"type":"assistant","message":{"content":"Hi there!"},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"system","message":"system message"}
+{"type":"user","message":{"content":"Goodbye"},"timestamp":"2026-01-27T10:00:02Z"}
+{"type":"metadata","version":"2.0"}
+{"type":"assistant","message":{"content":"Goodbye!"},"timestamp":"2026-01-27T10:00:03Z"}
