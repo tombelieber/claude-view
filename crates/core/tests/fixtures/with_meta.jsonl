@@ -1,0 +1,7 @@
+{"type":"user","message":{"content":"System initialization"},"timestamp":"2026-01-27T09:59:00Z","isMeta":true}
+{"type":"user","message":{"content":"Hello, how are you?"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"assistant","message":{"content":"I'm doing well, thank you!"},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"user","message":{"content":"Meta command"},"timestamp":"2026-01-27T10:00:02Z","isMeta":true}
+{"type":"user","message":{"content":"What is 2 + 2?"},"timestamp":"2026-01-27T10:00:03Z"}
+{"type":"assistant","message":{"content":"2 + 2 equals 4."},"timestamp":"2026-01-27T10:00:04Z"}
+{"type":"user","message":{"content":"Another meta"},"timestamp":"2026-01-27T10:00:05Z","isMeta":true}

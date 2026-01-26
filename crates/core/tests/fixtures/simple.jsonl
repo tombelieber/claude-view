@@ -1,0 +1,4 @@
+{"type":"user","message":{"content":"Hello, Claude!"},"timestamp":"2026-01-27T10:00:00Z"}
+{"type":"assistant","message":{"content":"Hello! How can I help you today?"},"timestamp":"2026-01-27T10:00:01Z"}
+{"type":"user","message":{"content":"What is the capital of France?"},"timestamp":"2026-01-27T10:00:02Z"}
+{"type":"assistant","message":{"content":"The capital of France is Paris."},"timestamp":"2026-01-27T10:00:03Z"}

@@ -1,0 +1,7 @@
+{"type":"user","message":{"content":"Valid first message"},"timestamp":"2026-01-27T10:00:00Z"}
+this is not valid json at all
+{"type":"assistant","message":{"content":"Valid response"},"timestamp":"2026-01-27T10:00:01Z"}
+{broken json missing bracket
+{"type":"user","message":{"content":"Another valid message"},"timestamp":"2026-01-27T10:00:02Z"}
+{"incomplete":
+{"type":"assistant","message":{"content":"Final valid response"},"timestamp":"2026-01-27T10:00:03Z"}
