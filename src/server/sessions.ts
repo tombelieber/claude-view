@@ -21,6 +21,8 @@ export interface SessionInfo {
     bash: number
     write: number
   }
+  messageCount: number         // Total messages in session
+  turnCount: number            // Human→assistant exchange pairs
 }
 
 export interface ProjectInfo {
@@ -170,6 +172,8 @@ interface SessionMetadata {
     bash: number
     write: number
   }
+  messageCount: number
+  turnCount: number
 }
 
 /**
@@ -182,13 +186,17 @@ async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
     lastMessage: '',
     filesTouched: [],
     skillsUsed: [],
-    toolCounts: { edit: 0, read: 0, bash: 0, write: 0 }
+    toolCounts: { edit: 0, read: 0, bash: 0, write: 0 },
+    messageCount: 0,
+    turnCount: 0
   }
 
   const filesSet = new Set<string>()
   const skillsSet = new Set<string>()
   let firstUserMessage = ''
   let lastUserMessage = ''
+  let userMessageCount = 0
+  let assistantMessageCount = 0
 
   let handle
   try {
@@ -215,6 +223,7 @@ async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
 
           // Skip system/tool messages
           if (text && !text.startsWith('<') && text.length > 10) {
+            userMessageCount++
             if (!firstUserMessage) {
               firstUserMessage = text.length > 200 ? text.substring(0, 200) + '…' : text
             }
@@ -230,6 +239,7 @@ async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
 
         // Count tool usage and extract files
         if (entry.type === 'assistant' && entry.message?.content) {
+          assistantMessageCount++
           const content = entry.message.content
           if (Array.isArray(content)) {
             for (const block of content) {
@@ -264,6 +274,8 @@ async function getSessionMetadata(filePath: string): Promise<SessionMetadata> {
       return parts[parts.length - 1]
     })
     result.skillsUsed = Array.from(skillsSet).slice(0, 5)
+    result.messageCount = userMessageCount + assistantMessageCount
+    result.turnCount = Math.min(userMessageCount, assistantMessageCount)
 
     return result
   } catch {
@@ -328,7 +340,9 @@ export async function getProjects(): Promise<ProjectInfo[]> {
               lastMessage: metadata.lastMessage,
               filesTouched: metadata.filesTouched,
               skillsUsed: metadata.skillsUsed,
-              toolCounts: metadata.toolCounts
+              toolCounts: metadata.toolCounts,
+              messageCount: metadata.messageCount,
+              turnCount: metadata.turnCount
             })
           } catch {
             // Skip files we can't stat
