@@ -40,7 +40,6 @@ export function StatsDashboard() {
         name: p.displayName,
         fullName: p.name,
         sessions: p.sessions.length,
-        activeCount: p.activeCount,
       }))
       .sort((a, b) => b.sessions - a.sessions)
       .slice(0, 5)
@@ -144,27 +143,14 @@ export function StatsDashboard() {
                 className="w-full group block"
               >
                 <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="flex items-center gap-2">
-                    <span className="text-gray-700 group-hover:text-blue-600 transition-colors">
-                      {project.name}
-                    </span>
-                    {project.activeCount > 0 && (
-                      <span className="flex items-center gap-1 text-xs text-green-600">
-                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                        {project.activeCount}
-                      </span>
-                    )}
+                  <span className="text-gray-700 group-hover:text-blue-600 transition-colors">
+                    {project.name}
                   </span>
                   <span className="tabular-nums text-gray-400">{project.sessions}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className={cn(
-                      "h-full rounded-full transition-colors",
-                      project.activeCount > 0
-                        ? "bg-green-400 group-hover:bg-green-500"
-                        : "bg-gray-300 group-hover:bg-blue-500"
-                    )}
+                    className="h-full rounded-full transition-colors bg-gray-300 group-hover:bg-blue-500"
                     style={{ width: `${(project.sessions / stats.maxProjectSessions) * 100}%` }}
                   />
                 </div>
