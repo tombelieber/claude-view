@@ -1,9 +1,11 @@
+---
+status: draft
+date: 2026-01-27
+---
+
 # vibe-recall Analytics - Design Specification
 
 > Productivity analytics for vibe coders, built into vibe-recall Phase 2
-
-**Status:** Draft
-**Date:** 2026-01-27
 
 ---
 

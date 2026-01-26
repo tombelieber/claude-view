@@ -1,3 +1,8 @@
+---
+status: pending
+date: 2026-01-27
+---
+
 # vibe-recall Phase 1: Backend Foundation (Production-Ready)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
