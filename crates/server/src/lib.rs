@@ -15,6 +15,7 @@ pub use routes::api_routes;
 pub use state::AppState;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
@@ -34,20 +35,45 @@ pub fn create_app(db: Database) -> Router {
 
 /// Create the Axum application with optional static file serving.
 ///
-/// This sets up:
-/// - API routes (health, projects, sessions)
-/// - CORS for development (allows any origin)
-/// - Request tracing
-/// - Static file serving with SPA fallback (if static_dir is provided)
+/// Uses a default (idle) `IndexingState`. For server-first startup where the
+/// caller owns the indexing handle, use [`create_app_with_indexing_and_static`].
 ///
 /// # Arguments
 ///
 /// * `db` - Database handle for session/project queries.
-/// * `static_dir` - Optional path to the directory containing static files (e.g., React build output).
-///   If provided, the server will serve static files and fall back to index.html
-///   for client-side routing (SPA mode).
+/// * `static_dir` - Optional path to static files directory.
 pub fn create_app_with_static(db: Database, static_dir: Option<PathBuf>) -> Router {
-    let state = AppState::new(db);
+    create_app_with_indexing_and_static(db, Arc::new(IndexingState::new()), static_dir)
+}
+
+/// Create app with an external `IndexingState` (API-only mode).
+///
+/// This is the primary entry point for server-first startup, where the caller
+/// creates an `IndexingState`, passes it here, and also hands it to the
+/// background indexing task.
+pub fn create_app_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Router {
+    create_app_with_indexing_and_static(db, indexing, None)
+}
+
+/// Create the Axum application with an external `IndexingState` and optional
+/// static file serving.
+///
+/// This is the most flexible constructor — all other `create_app*` functions
+/// delegate to this one.
+///
+/// # Arguments
+///
+/// * `db` - Database handle for session/project queries.
+/// * `indexing` - Shared indexing progress state.
+/// * `static_dir` - Optional path to the directory containing static files
+///   (e.g., React build output). If provided, the server will serve static
+///   files and fall back to `index.html` for client-side routing (SPA mode).
+pub fn create_app_with_indexing_and_static(
+    db: Database,
+    indexing: Arc<IndexingState>,
+    static_dir: Option<PathBuf>,
+) -> Router {
+    let state = AppState::new_with_indexing(db, indexing);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
