@@ -135,6 +135,21 @@ Or step by step:
 | `bun run dist:test` | All of the above in one shot |
 | `bun run dist:clean` | Remove all dist cache and temp files |
 
+### Releasing
+
+```bash
+bun run release          # patch bump: 0.1.0 → 0.1.1
+bun run release:minor    # minor bump: 0.1.0 → 0.2.0
+bun run release:major    # major bump: 0.1.0 → 1.0.0
+```
+
+This bumps the version in `npx-cli/package.json`, commits, and creates a git tag. Then:
+
+```bash
+git push origin main --tags    # triggers CI → builds all platforms
+cd npx-cli && npm publish      # publish to npm after CI finishes
+```
+
 ---
 
 ## 🗺️ Platform Roadmap
