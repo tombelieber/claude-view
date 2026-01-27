@@ -379,6 +379,17 @@ impl Database {
         Ok(())
     }
 
+    /// Get sessions that haven't been deep-indexed yet.
+    /// Returns Vec<(id, file_path)> for sessions where deep_indexed_at IS NULL.
+    pub async fn get_sessions_needing_deep_index(&self) -> DbResult<Vec<(String, String)>> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, file_path FROM sessions WHERE deep_indexed_at IS NULL",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
     /// Also cleans up corresponding indexer_state entries.
     /// Both deletes run in a transaction for consistency.
