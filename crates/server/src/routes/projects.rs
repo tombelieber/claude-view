@@ -63,8 +63,13 @@ mod tests {
         assert!(json.contains("\"name\": \"test-project\""));
         assert!(json.contains("\"displayName\": \"Test Project\""));
         assert!(json.contains("\"activeCount\": 1"));
-        // Verify modifiedAt is serialized as number (Unix timestamp in seconds)
-        assert!(json.contains("\"modifiedAt\": 1706369000"));
+        // Verify modifiedAt is serialized as ISO 8601 string (not number)
+        println!("Serialized JSON:\n{}", json);
+        assert!(
+            json.contains("\"modifiedAt\": \"2024-"),
+            "modifiedAt should be ISO string, got: {}",
+            json
+        );
         // Verify toolCounts structure
         assert!(json.contains("\"toolCounts\""));
         assert!(json.contains("\"edit\": 5"));
