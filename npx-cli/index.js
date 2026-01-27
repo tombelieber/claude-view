@@ -7,7 +7,7 @@ const os = require("os");
 const https = require("https");
 const zlib = require("zlib");
 
-const VERSION = "0.1.0";
+const VERSION = require("./package.json").version;
 const REPO = "vicky-ai/claude-view";
 const BINARY_NAME = process.platform === "win32" ? "vibe-recall.exe" : "vibe-recall";
 
