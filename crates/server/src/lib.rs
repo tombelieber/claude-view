@@ -18,6 +18,7 @@ use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+use vibe_recall_db::Database;
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
@@ -25,8 +26,8 @@ use tower_http::trace::TraceLayer;
 /// - API routes (health, projects, sessions)
 /// - CORS for development (allows any origin)
 /// - Request tracing
-pub fn create_app() -> Router {
-    create_app_with_static(None)
+pub fn create_app(db: Database) -> Router {
+    create_app_with_static(db, None)
 }
 
 /// Create the Axum application with optional static file serving.
@@ -39,11 +40,12 @@ pub fn create_app() -> Router {
 ///
 /// # Arguments
 ///
+/// * `db` - Database handle for session/project queries.
 /// * `static_dir` - Optional path to the directory containing static files (e.g., React build output).
 ///   If provided, the server will serve static files and fall back to index.html
 ///   for client-side routing (SPA mode).
-pub fn create_app_with_static(static_dir: Option<PathBuf>) -> Router {
-    let state = AppState::new();
+pub fn create_app_with_static(db: Database, static_dir: Option<PathBuf>) -> Router {
+    let state = AppState::new(db);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -79,6 +81,11 @@ mod tests {
     };
     use tower::ServiceExt;
 
+    /// Helper: create an in-memory database for tests.
+    async fn test_db() -> Database {
+        Database::new_in_memory().await.expect("in-memory DB for tests")
+    }
+
     /// Helper to make a GET request to the app.
     async fn get(app: Router, uri: &str) -> (StatusCode, String) {
         let response = app
@@ -101,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, body) = get(app, "/api/health").await;
 
         assert_eq!(status, StatusCode::OK);
@@ -112,7 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_endpoint_response_structure() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, body) = get(app, "/api/health").await;
 
         assert_eq!(status, StatusCode::OK);
@@ -130,24 +137,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_projects_endpoint() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, body) = get(app, "/api/projects").await;
 
-        // Should return 200 with an array (may be empty or have error depending on system)
-        // On systems without Claude projects dir, it will return an error
-        // On systems with Claude projects dir, it returns an array
-        // Either way, it should be a valid response
-        assert!(
-            status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR,
-            "Expected 200 or 500, got {}",
-            status
-        );
-
-        if status == StatusCode::OK {
-            // Verify it's an array
-            let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-            assert!(json.is_array(), "Expected array, got: {}", body);
-        }
+        // With an empty in-memory DB, should always return 200 with an empty array
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(json.is_array(), "Expected array, got: {}", body);
+        assert_eq!(json.as_array().unwrap().len(), 0);
     }
 
     // ========================================================================
@@ -156,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_not_found() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, body) = get(app, "/api/session/nonexistent-project/nonexistent-session").await;
 
         // Should return 404 or 500 (depending on whether projects dir exists)
@@ -173,7 +170,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_invalid_project() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, body) = get(app, "/api/session/invalid%2Fpath/abc123").await;
 
         // Should return an error (404 or 500)
@@ -193,7 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cors_headers() {
-        let app = create_app();
+        let app = create_app(test_db().await);
 
         // Make an OPTIONS preflight request
         let response = app
@@ -219,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cors_allows_any_origin() {
-        let app = create_app();
+        let app = create_app(test_db().await);
 
         let response = app
             .oneshot(
@@ -244,7 +241,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_404_for_unknown_route() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, _body) = get(app, "/api/nonexistent").await;
 
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -252,7 +249,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_404_for_root_path() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, _body) = get(app, "/").await;
 
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -260,7 +257,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_404_for_non_api_path() {
-        let app = create_app();
+        let app = create_app(test_db().await);
         let (status, _body) = get(app, "/health").await;
 
         // Without /api prefix, should be 404
@@ -271,29 +268,29 @@ mod tests {
     // App Creation Tests
     // ========================================================================
 
-    #[test]
-    fn test_create_app() {
+    #[tokio::test]
+    async fn test_create_app() {
         // Should not panic
-        let _app = create_app();
+        let _app = create_app(test_db().await);
     }
 
-    #[test]
-    fn test_create_app_with_static_none() {
+    #[tokio::test]
+    async fn test_create_app_with_static_none() {
         // Should not panic when no static dir is provided
-        let _app = create_app_with_static(None);
+        let _app = create_app_with_static(test_db().await, None);
     }
 
-    #[test]
-    fn test_create_app_with_static_some() {
+    #[tokio::test]
+    async fn test_create_app_with_static_some() {
         // Should not panic when a static dir path is provided
         // (even if the path doesn't exist - ServeDir handles this gracefully)
-        let _app = create_app_with_static(Some(std::path::PathBuf::from("/nonexistent")));
+        let _app = create_app_with_static(test_db().await, Some(std::path::PathBuf::from("/nonexistent")));
     }
 
     #[tokio::test]
     async fn test_multiple_requests() {
         // Verify the app can handle multiple requests
-        let app = create_app();
+        let app = create_app(test_db().await);
 
         // First request
         let (status1, _) = get(app.clone(), "/api/health").await;
@@ -320,7 +317,7 @@ mod tests {
         writeln!(index_file, "<!DOCTYPE html><html><body>Test</body></html>").unwrap();
 
         // Create app with static serving
-        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+        let app = create_app_with_static(test_db().await, Some(temp_dir.path().to_path_buf()));
 
         // Root path should serve index.html
         let (status, body) = get(app.clone(), "/").await;
@@ -344,7 +341,7 @@ mod tests {
         writeln!(index_file, "<!DOCTYPE html><html><body>SPA</body></html>").unwrap();
 
         // Create app with static serving
-        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+        let app = create_app_with_static(test_db().await, Some(temp_dir.path().to_path_buf()));
 
         // Unknown paths should fall back to index.html (SPA routing)
         let (status, body) = get(app, "/some/client/route").await;
@@ -373,7 +370,7 @@ mod tests {
         writeln!(js_file, "console.log('Hello');").unwrap();
 
         // Create app with static serving
-        let app = create_app_with_static(Some(temp_dir.path().to_path_buf()));
+        let app = create_app_with_static(test_db().await, Some(temp_dir.path().to_path_buf()));
 
         // JS file should be served directly
         let (status, body) = get(app, "/assets/app.js").await;
