@@ -1,3 +1,160 @@
 // crates/db/src/lib.rs
-// Phase 2: Database functionality
-pub fn placeholder() {}
+// Phase 2: SQLite database for vibe-recall session indexing
+
+mod migrations;
+mod queries;
+pub mod indexer;
+
+pub use queries::IndexerEntry;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::SqlitePool;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use thiserror::Error;
+use tracing::info;
+
+#[derive(Debug, Error)]
+pub enum DbError {
+    #[error("SQLite error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+
+    #[error("Failed to determine cache directory")]
+    NoCacheDir,
+
+    #[error("Failed to create database directory: {0}")]
+    CreateDir(#[from] std::io::Error),
+}
+
+pub type DbResult<T> = Result<T, DbError>;
+
+/// Main database handle wrapping a SQLite connection pool.
+#[derive(Debug, Clone)]
+pub struct Database {
+    pool: SqlitePool,
+}
+
+impl Database {
+    /// Open (or create) the database at the given path and run migrations.
+    pub async fn new(path: &Path) -> DbResult<Self> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))
+            .map_err(sqlx::Error::from)?
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal);
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(options)
+            .await?;
+
+        let db = Self { pool };
+        db.run_migrations().await?;
+
+        info!("Database opened at {}", path.display());
+        Ok(db)
+    }
+
+    /// Create an in-memory database (for testing).
+    pub async fn new_in_memory() -> DbResult<Self> {
+        let pool = SqlitePool::connect("sqlite::memory:").await?;
+        let db = Self { pool };
+        db.run_migrations().await?;
+        Ok(db)
+    }
+
+    /// Open the database at the default location: `~/.cache/vibe-recall/vibe-recall.db`
+    pub async fn open_default() -> DbResult<Self> {
+        let path = default_db_path()?;
+        Self::new(&path).await
+    }
+
+    /// Run all inline migrations.
+    async fn run_migrations(&self) -> DbResult<()> {
+        for migration in migrations::MIGRATIONS {
+            sqlx::query(migration).execute(&self.pool).await?;
+        }
+        Ok(())
+    }
+
+    /// Get a reference to the underlying connection pool.
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+}
+
+/// Returns the default database path: `~/.cache/vibe-recall/vibe-recall.db`
+pub fn default_db_path() -> DbResult<PathBuf> {
+    let cache_dir = dirs::cache_dir().ok_or(DbError::NoCacheDir)?;
+    Ok(cache_dir.join("vibe-recall").join("vibe-recall.db"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_database() {
+        // Open in-memory DB, run migrations, verify no errors
+        let db = Database::new_in_memory().await.expect("should create in-memory database");
+
+        // Verify sessions table exists by querying it
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+            .fetch_one(db.pool())
+            .await
+            .expect("sessions table should exist");
+        assert_eq!(count.0, 0);
+
+        // Verify indexer_state table exists
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM indexer_state")
+            .fetch_one(db.pool())
+            .await
+            .expect("indexer_state table should exist");
+        assert_eq!(count.0, 0);
+    }
+
+    #[tokio::test]
+    async fn test_migrations_idempotent() {
+        // Run migrations twice — should not error
+        let db = Database::new_in_memory().await.expect("first open should succeed");
+
+        // Run migrations again explicitly
+        db.run_migrations().await.expect("second migration run should succeed");
+
+        // Still works
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+            .fetch_one(db.pool())
+            .await
+            .expect("sessions table should still exist");
+        assert_eq!(count.0, 0);
+    }
+
+    #[tokio::test]
+    async fn test_file_based_database() {
+        let tmp = tempfile::tempdir().expect("should create temp dir");
+        let db_path = tmp.path().join("test.db");
+
+        let db = Database::new(&db_path).await.expect("should create file-based database");
+
+        // Verify table exists
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+            .fetch_one(db.pool())
+            .await
+            .expect("sessions table should exist");
+        assert_eq!(count.0, 0);
+
+        assert!(db_path.exists(), "database file should be created on disk");
+    }
+
+    #[tokio::test]
+    async fn test_default_db_path() {
+        let path = default_db_path().expect("should resolve default path");
+        assert!(path.to_string_lossy().contains("vibe-recall"));
+        assert!(path.to_string_lossy().ends_with("vibe-recall.db"));
+    }
+}
