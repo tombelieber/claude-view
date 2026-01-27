@@ -7,17 +7,22 @@
     "dist"
   ],
   "scripts": {
-    "dev": "concurrently \"cargo run -p vibe-recall-server\" \"vite --port 5173\"",
+    "dev": "concurrently -n rust,vite -c red,cyan \"bun run dev:server\" \"bun run dev:client:wait\"",
+    "dev:server": "RUST_LOG=debug cargo watch -w crates -x 'run -p vibe-recall-server'",
     "dev:client": "vite --port 5173",
+    "dev:client:wait": "bunx wait-on http://localhost:47892/api/health && bun run dev:client",
     "build": "vite build",
-    "build:client": "vite build",
-    "preview": "cargo run -p vibe-recall-server",
+    "preview": "bun run build && cargo run -p vibe-recall-server --release",
     "start": "cargo run -p vibe-recall-server --release",
-    "lint": "eslint .",
+    "lint": "eslint . && cargo clippy --workspace -- -D warnings",
+    "lint:client": "eslint .",
+    "lint:server": "cargo clippy --workspace -- -D warnings",
     "typecheck": "tsc --noEmit",
+    "fmt": "cargo fmt --all",
     "test": "cargo test --workspace",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "check": "bun run typecheck && bun run lint && bun run test"
   },
   "keywords": [
     "claude",
