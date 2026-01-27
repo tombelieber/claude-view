@@ -100,6 +100,12 @@ impl IndexingState {
         self.indexed.fetch_add(1, Ordering::Relaxed) + 1
     }
 
+    /// Set the indexed counter directly (useful when the background task
+    /// already tracks progress and reports the current count).
+    pub fn set_indexed(&self, val: usize) {
+        self.indexed.store(val, Ordering::Relaxed);
+    }
+
     /// Number of projects discovered.
     pub fn projects_found(&self) -> usize {
         self.projects_found.load(Ordering::Relaxed)
