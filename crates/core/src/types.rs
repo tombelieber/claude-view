@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Tool usage statistics for a session
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 pub struct ToolCounts {
     pub edit: usize,
     pub read: usize,
@@ -22,7 +23,8 @@ impl ToolCounts {
 }
 
 /// Message role in a conversation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
@@ -30,14 +32,16 @@ pub enum Role {
 }
 
 /// A tool call made by the assistant
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 pub struct ToolCall {
     pub name: String,
     pub count: usize,
 }
 
 /// A message in a conversation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -87,7 +91,8 @@ impl Message {
 }
 
 /// Session metadata extracted from parsing
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadata {
     pub total_messages: usize,
@@ -95,7 +100,8 @@ pub struct SessionMetadata {
 }
 
 /// A parsed session with messages and metadata
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 pub struct ParsedSession {
     pub messages: Vec<Message>,
     pub metadata: SessionMetadata,
@@ -124,14 +130,14 @@ impl ParsedSession {
 }
 
 /// Session info for listing (without full message content)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: String,
     pub project: String,
     pub project_path: String,
     pub file_path: String,
-    #[serde(with = "unix_to_iso")]
     pub modified_at: i64,
     pub size_bytes: u64,
     pub preview: String,
@@ -152,7 +158,8 @@ pub struct SessionInfo {
 }
 
 /// Project info with sessions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
     pub name: String,
@@ -471,17 +478,17 @@ mod tests {
     }
 
     // ============================================================================
-    // Issue 1: modifiedAt should serialize as ISO 8601 string
+    // modifiedAt serialization tests
     // ============================================================================
 
     #[test]
-    fn test_session_info_modified_at_serializes_as_iso_string() {
+    fn test_session_info_modified_at_serializes_as_number() {
         let session = SessionInfo {
             id: "test-123".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
             file_path: "/path/to/session.jsonl".to_string(),
-            modified_at: 1769482232, // 2026-01-27T02:50:32Z
+            modified_at: 1769482232, // Unix timestamp
             size_bytes: 1024,
             preview: "Test".to_string(),
             last_message: "Test".to_string(),
@@ -497,73 +504,10 @@ mod tests {
         };
         let json = serde_json::to_string(&session).unwrap();
 
-        // Should serialize as ISO string, not number
+        // Should serialize as number
         assert!(
-            json.contains("\"modifiedAt\":\"2026-"),
-            "modifiedAt should be ISO string, got: {}",
-            json
-        );
-        assert!(
-            !json.contains("\"modifiedAt\":1769"),
-            "modifiedAt should NOT be a number"
-        );
-    }
-
-    #[test]
-    fn test_session_info_iso_format_with_utc_timezone() {
-        let session = SessionInfo {
-            id: "test-123".to_string(),
-            project: "test-project".to_string(),
-            project_path: "/path/to/project".to_string(),
-            file_path: "/path/to/session.jsonl".to_string(),
-            modified_at: 1769482232,
-            size_bytes: 1024,
-            preview: "Test".to_string(),
-            last_message: "Test".to_string(),
-            files_touched: vec![],
-            skills_used: vec![],
-            tool_counts: ToolCounts::default(),
-            message_count: 1,
-            turn_count: 1,
-            summary: None,
-            git_branch: None,
-            is_sidechain: false,
-            deep_indexed: false,
-        };
-        let json = serde_json::to_string(&session).unwrap();
-
-        // Should contain T separator and Z suffix for UTC
-        assert!(json.contains("T"), "ISO string should have T separator");
-        assert!(json.contains("Z"), "ISO string should end with Z for UTC");
-    }
-
-    #[test]
-    fn test_session_info_modified_at_correct_date() {
-        let session = SessionInfo {
-            id: "test-123".to_string(),
-            project: "test-project".to_string(),
-            project_path: "/path/to/project".to_string(),
-            file_path: "/path/to/session.jsonl".to_string(),
-            modified_at: 1769482232, // 2026-01-27T02:50:32Z
-            size_bytes: 1024,
-            preview: "Test".to_string(),
-            last_message: "Test".to_string(),
-            files_touched: vec![],
-            skills_used: vec![],
-            tool_counts: ToolCounts::default(),
-            message_count: 1,
-            turn_count: 1,
-            summary: None,
-            git_branch: None,
-            is_sidechain: false,
-            deep_indexed: false,
-        };
-        let json = serde_json::to_string(&session).unwrap();
-
-        // Should contain correct date components
-        assert!(
-            json.contains("2026-01-27"),
-            "Should contain correct date: {}",
+            json.contains("\"modifiedAt\":1769482232"),
+            "modifiedAt should be a number, got: {}",
             json
         );
     }
