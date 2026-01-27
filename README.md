@@ -95,6 +95,30 @@ If **claude-view** saves you time, consider giving it a star! It helps others di
 
 ---
 
+## 🛠️ Development
+
+Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo install cargo-watch`
+
+```bash
+bun install        # Install frontend dependencies
+bun dev            # Start full-stack dev (Rust + Vite with hot reload)
+```
+
+| Command | Description |
+|---------|-------------|
+| `bun dev` | Full-stack dev — Rust auto-restarts on changes, Vite HMR |
+| `bun dev:server` | Rust backend only (with cargo-watch) |
+| `bun dev:client` | Vite frontend only (assumes backend running) |
+| `bun run build` | Build frontend for production |
+| `bun run preview` | Build + serve via release binary |
+| `bun run lint` | Lint both frontend (ESLint) and backend (Clippy) |
+| `bun run fmt` | Format Rust code |
+| `bun run check` | Typecheck + lint + test (pre-commit gate) |
+| `bun test` | Run Rust test suite |
+| `bun run test:e2e` | Run Playwright end-to-end tests |
+
+---
+
 ## 🗺️ Platform Roadmap
 
 | Platform | Status | ETA |
