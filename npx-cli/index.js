@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -158,13 +158,21 @@ async function main() {
   // Set STATIC_DIR so the server finds the frontend assets
   const env = { ...process.env, STATIC_DIR: distDir };
 
-  // Run the server, forwarding stdio and exit code
-  try {
-    execFileSync(binaryPath, process.argv.slice(2), { stdio: "inherit", env });
-  } catch (err) {
-    // execFileSync throws on non-zero exit; forward the code
-    process.exit(err.status ?? 1);
+  // Run the server, forwarding signals and exit code
+  const child = spawn(binaryPath, process.argv.slice(2), { stdio: "inherit", env });
+
+  // Forward signals to child process
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(sig, () => child.kill(sig));
   }
+
+  child.on("exit", (code, signal) => {
+    if (signal) {
+      process.kill(process.pid, signal);
+    } else {
+      process.exit(code ?? 1);
+    }
+  });
 }
 
 main();
