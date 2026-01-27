@@ -28,7 +28,10 @@
     "dist:install": "rm -rf ~/.cache/claude-view && mkdir -p ~/.cache/claude-view/bin && tar -xzf /tmp/claude-view-darwin-arm64.tar.gz -C ~/.cache/claude-view/bin && echo '0.1.0' > ~/.cache/claude-view/version && echo 'Installed to ~/.cache/claude-view/'",
     "dist:run": "node npx-cli/index.js",
     "dist:test": "bun run build && cargo build --release -p vibe-recall-server && bun run dist:pack && bun run dist:install && bun run dist:run",
-    "dist:clean": "rm -rf ~/.cache/claude-view /tmp/claude-view-staging /tmp/claude-view-darwin-arm64.tar.gz && echo 'Cleaned dist cache'"
+    "dist:clean": "rm -rf ~/.cache/claude-view /tmp/claude-view-staging /tmp/claude-view-darwin-arm64.tar.gz && echo 'Cleaned dist cache'",
+    "release": "./scripts/release.sh",
+    "release:minor": "./scripts/release.sh minor",
+    "release:major": "./scripts/release.sh major"
   },
   "keywords": [
     "claude",
