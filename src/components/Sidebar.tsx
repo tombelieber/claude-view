@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
-import { FolderOpen, Pencil, Eye, Terminal } from 'lucide-react'
+import { FolderOpen, Clock, Pencil, Eye, Terminal } from 'lucide-react'
 import type { ProjectInfo } from '../hooks/use-projects'
 import { cn } from '../lib/utils'
 
@@ -72,6 +72,22 @@ export function Sidebar({ projects }: SidebarProps) {
 
   return (
     <aside className="w-72 bg-gray-50/80 border-r border-gray-200 flex flex-col overflow-hidden">
+      {/* Nav Links */}
+      <div className="px-3 py-2 border-b border-gray-200">
+        <Link
+          to="/history"
+          className={cn(
+            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors',
+            location.pathname === '/history'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 hover:bg-gray-200/70'
+          )}
+        >
+          <Clock className="w-4 h-4" />
+          <span className="font-medium">History</span>
+        </Link>
+      </div>
+
       {/* Project List */}
       <div className="flex-1 overflow-y-auto py-2">
         {projects.map((project) => {

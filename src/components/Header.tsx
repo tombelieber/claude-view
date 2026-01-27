@@ -34,6 +34,10 @@ export function Header() {
       crumbs.push({ label: 'Search', path: '/search' })
     }
 
+    if (location.pathname === '/history') {
+      crumbs.push({ label: 'History', path: '/history' })
+    }
+
     return crumbs
   }
 
