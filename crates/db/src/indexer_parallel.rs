@@ -6,8 +6,10 @@ use memchr::memmem;
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use vibe_recall_core::{read_all_session_indexes, resolve_project_path, ToolCounts};
+use std::sync::{Arc, RwLock};
+use vibe_recall_core::{
+    read_all_session_indexes, resolve_project_path, ClassifyResult, Registry, ToolCounts,
+};
 
 use crate::Database;
 
@@ -22,8 +24,29 @@ pub struct ExtendedMetadata {
     pub turn_count: usize,
 }
 
+/// A raw tool_use extracted from JSONL, before classification.
+#[derive(Debug, Clone)]
+pub struct RawInvocation {
+    pub name: String,
+    pub input: Option<serde_json::Value>,
+    pub byte_offset: usize,
+    pub timestamp: i64,
+}
+
+/// Result of parse_bytes(): deep metadata plus raw tool invocations.
+#[derive(Debug, Clone, Default)]
+pub struct ParseResult {
+    pub deep: ExtendedMetadata,
+    pub raw_invocations: Vec<RawInvocation>,
+    pub turns: Vec<vibe_recall_core::RawTurn>,
+    pub models_seen: Vec<String>,
+}
+
 /// Read a file using memory-mapped I/O with fallback to regular read.
 /// mmap is faster for large files (>64KB) because it avoids copying data through kernel buffers.
+///
+/// NOTE: This returns `Vec<u8>` (a heap copy). For zero-copy parsing, see
+/// `pass_2_deep_index` which mmaps and parses inline without copying.
 pub fn read_file_fast(path: &Path) -> io::Result<Vec<u8>> {
     let file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
@@ -48,8 +71,11 @@ pub fn read_file_fast(path: &Path) -> io::Result<Vec<u8>> {
 }
 
 /// SIMD-accelerated line scanner that extracts only the fields NOT in sessions-index.json.
-pub fn parse_bytes(data: &[u8]) -> ExtendedMetadata {
-    let mut meta = ExtendedMetadata::default();
+///
+/// Returns a `ParseResult` containing both the deep metadata (tool counts, skills, etc.)
+/// and raw tool_use invocations for downstream classification.
+pub fn parse_bytes(data: &[u8]) -> ParseResult {
+    let mut result = ParseResult::default();
     let mut user_count = 0usize;
     let mut assistant_count = 0usize;
     let mut last_user_content: Option<String> = None;
@@ -66,7 +92,16 @@ pub fn parse_bytes(data: &[u8]) -> ExtendedMetadata {
     // File path pattern (from tool_use inputs)
     let file_path_finder = memmem::Finder::new(b"\"file_path\"");
 
-    for line in split_lines_simd(data) {
+    // SIMD pre-filter for tool_use blocks (only parse JSON for lines containing this)
+    let tool_use_finder = memmem::Finder::new(b"\"tool_use\"");
+
+    // Hoisted finders for helper functions (avoid rebuilding SIMD tables per line)
+    let content_finder = memmem::Finder::new(b"\"content\":\"");
+    let text_finder = memmem::Finder::new(b"\"text\":\"");
+    let skill_name_finder = memmem::Finder::new(b"\"skill\":\"");
+    let file_path_value_finder = memmem::Finder::new(b"\"file_path\":\"");
+
+    for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             continue;
         }
@@ -74,48 +109,59 @@ pub fn parse_bytes(data: &[u8]) -> ExtendedMetadata {
         if user_finder.find(line).is_some() {
             user_count += 1;
             // Extract content for last_message tracking
-            if let Some(content) = extract_first_text_content(line) {
+            if let Some(content) =
+                extract_first_text_content(line, &content_finder, &text_finder)
+            {
                 last_user_content = Some(content);
             }
             // Check for skill invocations in user messages
-            extract_skills_from_line(line, &mut meta.skills_used);
+            extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
         } else if asst_finder.find(line).is_some() {
             assistant_count += 1;
             // Count tool usage
             if read_finder.find(line).is_some() {
-                meta.tool_counts.read += count_occurrences(line, &read_finder);
+                result.deep.tool_counts.read += count_occurrences(line, &read_finder);
             }
             if edit_finder.find(line).is_some() {
-                meta.tool_counts.edit += count_occurrences(line, &edit_finder);
+                result.deep.tool_counts.edit += count_occurrences(line, &edit_finder);
             }
             if write_finder.find(line).is_some() {
-                meta.tool_counts.write += count_occurrences(line, &write_finder);
+                result.deep.tool_counts.write += count_occurrences(line, &write_finder);
             }
             if bash_finder.find(line).is_some() {
-                meta.tool_counts.bash += count_occurrences(line, &bash_finder);
+                result.deep.tool_counts.bash += count_occurrences(line, &bash_finder);
             }
             // Extract file paths from tool_use inputs
             if file_path_finder.find(line).is_some() {
-                extract_file_paths_from_line(line, &mut meta.files_touched);
+                extract_file_paths_from_line(
+                    line,
+                    &file_path_value_finder,
+                    &mut result.deep.files_touched,
+                );
+            }
+            // Extract raw tool_use invocations (SIMD pre-filter: only parse JSON if "tool_use" present)
+            if tool_use_finder.find(line).is_some() {
+                extract_raw_invocations(line, byte_offset, &mut result.raw_invocations);
             }
         }
     }
 
-    meta.turn_count = user_count.min(assistant_count);
-    meta.last_message = last_user_content
+    result.deep.turn_count = user_count.min(assistant_count);
+    result.deep.last_message = last_user_content
         .map(|c| truncate(&c, 200))
         .unwrap_or_default();
 
     // Deduplicate
-    meta.skills_used.sort();
-    meta.skills_used.dedup();
-    meta.files_touched.sort();
-    meta.files_touched.dedup();
+    result.deep.skills_used.sort();
+    result.deep.skills_used.dedup();
+    result.deep.files_touched.sort();
+    result.deep.files_touched.dedup();
 
-    meta
+    result
 }
 
 /// Split data into lines using SIMD-accelerated newline search.
+#[cfg(test)]
 fn split_lines_simd(data: &[u8]) -> impl Iterator<Item = &[u8]> {
     let mut start = 0;
     let mut positions = memchr::memchr_iter(b'\n', data).chain(std::iter::once(data.len()));
@@ -130,6 +176,73 @@ fn split_lines_simd(data: &[u8]) -> impl Iterator<Item = &[u8]> {
             line
         })
     })
+}
+
+/// Split data into lines with byte offsets using SIMD-accelerated newline search.
+/// Returns `(byte_offset, line_slice)` for each line.
+fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])> {
+    let mut start = 0;
+    let mut positions = memchr::memchr_iter(b'\n', data).chain(std::iter::once(data.len()));
+
+    std::iter::from_fn(move || {
+        if start > data.len() {
+            return None;
+        }
+        positions.next().map(|end| {
+            let offset = start;
+            let line = &data[start..end];
+            start = end + 1;
+            (offset, line)
+        })
+    })
+}
+
+/// Extract raw tool_use invocations from a JSONL line by parsing it as JSON.
+///
+/// Only called on lines that already passed the SIMD `"tool_use"` pre-filter.
+/// Extracts all `{"type": "tool_use", "name": ..., "input": ...}` blocks from
+/// the assistant message's content array.
+fn extract_raw_invocations(line: &[u8], byte_offset: usize, out: &mut Vec<RawInvocation>) {
+    // Parse the line as JSON
+    let value: serde_json::Value = match serde_json::from_slice(line) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    // Extract timestamp from the top-level object (if present)
+    let timestamp = value
+        .get("timestamp")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+
+    // Navigate to the content array: could be at .message.content or .content
+    let content = value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .or_else(|| value.get("content"));
+
+    let content_arr = match content.and_then(|c| c.as_array()) {
+        Some(arr) => arr,
+        None => return,
+    };
+
+    for block in content_arr {
+        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        let name = match block.get("name").and_then(|n| n.as_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let input = block.get("input").cloned();
+
+        out.push(RawInvocation {
+            name,
+            input,
+            byte_offset,
+            timestamp,
+        });
+    }
 }
 
 /// Count occurrences of a pattern in a line.
@@ -148,17 +261,19 @@ fn count_occurrences(line: &[u8], finder: &memmem::Finder) -> usize {
 }
 
 /// Extract the first text content from a JSONL line (best-effort, no full JSON parse).
-fn extract_first_text_content(line: &[u8]) -> Option<String> {
+fn extract_first_text_content(
+    line: &[u8],
+    content_finder: &memmem::Finder,
+    text_finder: &memmem::Finder,
+) -> Option<String> {
     // Look for "content":"..." pattern (simple string content)
-    let text_finder = memmem::Finder::new(b"\"content\":\"");
-    if let Some(pos) = text_finder.find(line) {
+    if let Some(pos) = content_finder.find(line) {
         let start = pos + b"\"content\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
 
     // or "text":"..." in content blocks
-    let text_finder2 = memmem::Finder::new(b"\"text\":\"");
-    if let Some(pos) = text_finder2.find(line) {
+    if let Some(pos) = text_finder.find(line) {
         let start = pos + b"\"text\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
@@ -195,8 +310,11 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
 }
 
 /// Extract skill names from a user message line (looking for "skill":"..." patterns).
-fn extract_skills_from_line(line: &[u8], skills: &mut Vec<String>) {
-    let skill_name_finder = memmem::Finder::new(b"\"skill\":\"");
+fn extract_skills_from_line(
+    line: &[u8],
+    skill_name_finder: &memmem::Finder,
+    skills: &mut Vec<String>,
+) {
     let mut start = 0;
     while start < line.len() {
         if let Some(pos) = skill_name_finder.find(&line[start..]) {
@@ -214,8 +332,7 @@ fn extract_skills_from_line(line: &[u8], skills: &mut Vec<String>) {
 }
 
 /// Extract file_path values from tool_use inputs.
-fn extract_file_paths_from_line(line: &[u8], paths: &mut Vec<String>) {
-    let finder = memmem::Finder::new(b"\"file_path\":\"");
+fn extract_file_paths_from_line(line: &[u8], finder: &memmem::Finder, paths: &mut Vec<String>) {
     let mut start = 0;
     while start < line.len() {
         if let Some(pos) = finder.find(&line[start..]) {
@@ -332,9 +449,17 @@ pub async fn pass_1_read_indexes(
 /// skills, files touched, last message, and turn count using SIMD-accelerated
 /// scanning, then updates the database.
 ///
+/// Uses zero-copy mmap: the file is memory-mapped and `parse_bytes` runs
+/// directly on the mapped pages. The mmap stays alive for the duration of
+/// parsing, then drops — no heap copy is ever made.
+///
+/// If `registry` is `Some`, raw tool_use invocations are classified and
+/// batch-inserted into the `invocations` table.
+///
 /// Calls `on_file_done(indexed_so_far, total)` after each file completes.
 pub async fn pass_2_deep_index<F>(
     db: &Database,
+    registry: Option<&Registry>,
     on_file_done: F,
 ) -> Result<usize, String>
 where
@@ -348,6 +473,9 @@ where
     if sessions.is_empty() {
         return Ok(0);
     }
+
+    // Clone registry into an Arc so we can share across spawned tasks.
+    let registry: Option<Arc<Registry>> = registry.map(|r| Arc::new(r.clone()));
 
     let total = sessions.len();
     let counter = Arc::new(AtomicUsize::new(0));
@@ -366,6 +494,7 @@ where
         let sem = semaphore.clone();
         let counter = counter.clone();
         let on_done = on_file_done.clone();
+        let registry = registry.clone();
 
         let handle = tokio::spawn(async move {
             let _permit = sem
@@ -375,13 +504,43 @@ where
 
             let path = std::path::PathBuf::from(&file_path);
 
-            // Read and parse in a blocking thread
-            let meta = tokio::task::spawn_blocking(move || match read_file_fast(&path) {
-                Ok(data) => parse_bytes(&data),
-                Err(_) => ExtendedMetadata::default(),
+            // Zero-copy mmap + parse in a blocking thread.
+            // The mmap stays alive while parse_bytes runs on the mapped pages,
+            // then drops after parsing — no heap allocation for the file content.
+            let parse_result = tokio::task::spawn_blocking(move || {
+                let file = match std::fs::File::open(&path) {
+                    Ok(f) => f,
+                    Err(_) => return ParseResult::default(),
+                };
+                let metadata = match file.metadata() {
+                    Ok(m) => m,
+                    Err(_) => return ParseResult::default(),
+                };
+                let len = metadata.len() as usize;
+                if len == 0 {
+                    return ParseResult::default();
+                }
+                // Small files: regular read (mmap overhead not worth it)
+                if len < 64 * 1024 {
+                    match std::fs::read(&path) {
+                        Ok(data) => return parse_bytes(&data),
+                        Err(_) => return ParseResult::default(),
+                    }
+                }
+                // Large files: zero-copy mmap — parse directly from mapped pages
+                // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
+                match unsafe { memmap2::Mmap::map(&file) } {
+                    Ok(mmap) => parse_bytes(&mmap), // zero-copy! mmap drops after parse
+                    Err(_) => match std::fs::read(&path) {
+                        Ok(data) => parse_bytes(&data),
+                        Err(_) => ParseResult::default(),
+                    },
+                }
             })
             .await
             .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+
+            let meta = &parse_result.deep;
 
             // Serialize vec fields to JSON strings
             let files_touched =
@@ -402,6 +561,40 @@ where
             )
             .await
             .map_err(|e| format!("Failed to update deep fields for {}: {}", id, e))?;
+
+            // Classify raw invocations and batch-insert if registry is available
+            if let Some(ref registry) = registry {
+                let classified: Vec<(String, i64, String, String, String, i64)> = parse_result
+                    .raw_invocations
+                    .iter()
+                    .filter_map(|raw| {
+                        let result = vibe_recall_core::classify_tool_use(
+                            &raw.name,
+                            &raw.input,
+                            registry,
+                        );
+                        match result {
+                            ClassifyResult::Valid { invocable_id, .. } => Some((
+                                file_path.clone(),
+                                raw.byte_offset as i64,
+                                invocable_id,
+                                id.clone(),
+                                String::new(), // project filled by caller if needed
+                                raw.timestamp,
+                            )),
+                            _ => None, // Rejected and Ignored are discarded
+                        }
+                    })
+                    .collect();
+
+                if !classified.is_empty() {
+                    db.batch_insert_invocations(&classified)
+                        .await
+                        .map_err(|e| {
+                            format!("Failed to insert invocations for {}: {}", id, e)
+                        })?;
+                }
+            }
 
             let indexed = counter.fetch_add(1, Ordering::Relaxed) + 1;
             on_done(indexed, total);
@@ -433,13 +626,22 @@ where
     Ok(counter.load(Ordering::Relaxed))
 }
 
-/// Full background indexing orchestrator: Pass 1 (index JSON) then Pass 2 (deep JSONL).
+/// Type alias for the shared registry holder used by the server.
+pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
+
+/// Full background indexing orchestrator: Pass 1 (index JSON) + Registry build
+/// in parallel, then Pass 2 (deep JSONL) with registry available.
 ///
-/// This is the main entry point for background indexing. It runs both passes
-/// sequentially and reports progress via callbacks.
+/// This is the main entry point for background indexing. It runs Pass 1 and
+/// registry construction concurrently via `tokio::join!`, then Pass 2
+/// sequentially with the registry available for invocation classification.
+///
+/// If `registry_holder` is provided, the built registry is stored in it so
+/// API routes can access it after indexing completes.
 pub async fn run_background_index<F>(
     claude_dir: &Path,
     db: &Database,
+    registry_holder: Option<RegistryHolder>,
     on_pass1_done: impl FnOnce(usize, usize),
     on_file_done: F,
     on_complete: impl FnOnce(usize),
@@ -447,12 +649,45 @@ pub async fn run_background_index<F>(
 where
     F: Fn(usize, usize) + Send + Sync + 'static,
 {
-    // Pass 1: fast index JSON reads
-    let (projects, sessions) = pass_1_read_indexes(claude_dir, db).await?;
+    // Pass 1 and Registry build are independent — run in parallel.
+    let claude_dir_owned = claude_dir.to_path_buf();
+    let (pass1_result, registry) = tokio::join!(
+        pass_1_read_indexes(claude_dir, db),
+        vibe_recall_core::build_registry(&claude_dir_owned),
+    );
+
+    let (projects, sessions) = pass1_result?;
     on_pass1_done(projects, sessions);
 
-    // Pass 2: parallel deep JSONL parsing
-    let indexed = pass_2_deep_index(db, on_file_done).await?;
+    // Seed invocables into the DB so invocations can reference them (FK constraint).
+    let invocable_tuples: Vec<(String, Option<String>, String, String, String)> = registry
+        .all_invocables()
+        .map(|info| {
+            (
+                info.id.clone(),
+                info.plugin_name.clone(),
+                info.name.clone(),
+                info.kind.to_string(),
+                info.description.clone(),
+            )
+        })
+        .collect();
+    if !invocable_tuples.is_empty() {
+        db.batch_upsert_invocables(&invocable_tuples)
+            .await
+            .map_err(|e| format!("Failed to seed invocables: {}", e))?;
+    }
+
+    // Pass 2: use the registry for invocation classification
+    let indexed = pass_2_deep_index(db, Some(&registry), on_file_done).await?;
+
+    // Store registry in shared holder for API routes to use
+    if let Some(holder) = registry_holder {
+        if let Ok(mut guard) = holder.write() {
+            *guard = Some(registry);
+        }
+    }
+
     on_complete(indexed);
 
     Ok(())
@@ -467,10 +702,11 @@ mod tests {
 
     #[test]
     fn test_parse_bytes_empty() {
-        let meta = parse_bytes(b"");
-        assert_eq!(meta.turn_count, 0);
-        assert!(meta.last_message.is_empty());
-        assert!(meta.tool_counts.is_empty());
+        let result = parse_bytes(b"");
+        assert_eq!(result.deep.turn_count, 0);
+        assert!(result.deep.last_message.is_empty());
+        assert!(result.deep.tool_counts.is_empty());
+        assert!(result.raw_invocations.is_empty());
     }
 
     #[test]
@@ -480,12 +716,12 @@ mod tests {
 {"type":"user","message":{"content":"thanks"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}
 "#;
-        let meta = parse_bytes(data);
-        assert_eq!(meta.turn_count, 2);
-        assert_eq!(meta.tool_counts.read, 1);
-        assert_eq!(meta.tool_counts.edit, 1);
-        assert_eq!(meta.tool_counts.bash, 1);
-        assert_eq!(meta.tool_counts.write, 0);
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.turn_count, 2);
+        assert_eq!(result.deep.tool_counts.read, 1);
+        assert_eq!(result.deep.tool_counts.edit, 1);
+        assert_eq!(result.deep.tool_counts.bash, 1);
+        assert_eq!(result.deep.tool_counts.write, 0);
     }
 
     #[test]
@@ -495,8 +731,90 @@ mod tests {
 {"type":"user","message":{"content":"second question"}}
 {"type":"assistant","message":{"content":"answer 2"}}
 "#;
-        let meta = parse_bytes(data);
-        assert_eq!(meta.last_message, "second question");
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.last_message, "second question");
+    }
+
+    #[test]
+    fn test_parse_bytes_extracts_raw_invocations() {
+        let data = br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","timestamp":1706200000,"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs"}}]}}
+{"type":"user","message":{"content":"run tests"}}
+{"type":"assistant","timestamp":1706200100,"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cargo test"}},{"type":"text","text":"Done!"}]}}
+"#;
+        let result = parse_bytes(data);
+
+        // Should extract 3 raw invocations: Read, Edit, Bash
+        assert_eq!(
+            result.raw_invocations.len(),
+            3,
+            "Should extract 3 tool_use invocations"
+        );
+
+        // First line (user) is at offset 0, second line (assistant with Read+Edit) starts after first newline
+        assert_eq!(result.raw_invocations[0].name, "Read");
+        assert_eq!(
+            result.raw_invocations[0]
+                .input
+                .as_ref()
+                .and_then(|v| v.get("file_path"))
+                .and_then(|v| v.as_str()),
+            Some("/src/main.rs")
+        );
+        assert_eq!(result.raw_invocations[0].timestamp, 1706200000);
+
+        assert_eq!(result.raw_invocations[1].name, "Edit");
+        assert_eq!(result.raw_invocations[1].timestamp, 1706200000);
+
+        assert_eq!(result.raw_invocations[2].name, "Bash");
+        assert_eq!(
+            result.raw_invocations[2]
+                .input
+                .as_ref()
+                .and_then(|v| v.get("command"))
+                .and_then(|v| v.as_str()),
+            Some("cargo test")
+        );
+        assert_eq!(result.raw_invocations[2].timestamp, 1706200100);
+
+        // Byte offsets: first two invocations share the same line offset,
+        // third invocation is on a different line
+        assert_eq!(
+            result.raw_invocations[0].byte_offset,
+            result.raw_invocations[1].byte_offset,
+            "Read and Edit are on the same JSONL line"
+        );
+        assert_ne!(
+            result.raw_invocations[0].byte_offset,
+            result.raw_invocations[2].byte_offset,
+            "Bash is on a different JSONL line"
+        );
+    }
+
+    #[test]
+    fn test_parse_bytes_no_invocations_without_tool_use() {
+        let data = br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"content":"Just text, no tools."}}
+"#;
+        let result = parse_bytes(data);
+        assert!(
+            result.raw_invocations.is_empty(),
+            "No tool_use blocks, no invocations"
+        );
+    }
+
+    #[test]
+    fn test_parse_bytes_timestamp_defaults_to_zero() {
+        // No timestamp field on the assistant message
+        let data = br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/foo"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.raw_invocations.len(), 1);
+        assert_eq!(
+            result.raw_invocations[0].timestamp, 0,
+            "Missing timestamp should default to 0"
+        );
     }
 
     #[test]
@@ -532,8 +850,9 @@ mod tests {
     #[test]
     fn test_extract_file_paths() {
         let line = br#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs"}}]}}"#;
+        let finder = memmem::Finder::new(b"\"file_path\":\"");
         let mut paths = Vec::new();
-        extract_file_paths_from_line(line, &mut paths);
+        extract_file_paths_from_line(line, &finder, &mut paths);
         assert!(paths.contains(&"/src/main.rs".to_string()));
         assert!(paths.contains(&"/src/lib.rs".to_string()));
     }
@@ -629,10 +948,10 @@ mod tests {
             "Should not be deep indexed yet"
         );
 
-        // Run Pass 2
+        // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let indexed = pass_2_deep_index(&db, move |done, _total| {
+        let indexed = pass_2_deep_index(&db, None, move |done, _total| {
             progress_clone.store(done, Ordering::Relaxed);
         })
         .await
@@ -662,11 +981,11 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let first_run = pass_2_deep_index(&db, |_, _| {}).await.unwrap();
+        let first_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let second_run = pass_2_deep_index(&db, |_, _| {}).await.unwrap();
+        let second_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -684,6 +1003,7 @@ mod tests {
         run_background_index(
             &claude_dir,
             &db,
+            None, // no registry holder
             move |projects, sessions| {
                 *p1.lock().unwrap() = (projects, sessions);
             },
