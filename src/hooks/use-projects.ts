@@ -34,7 +34,18 @@ async function fetchProjects(): Promise<ProjectInfo[]> {
   if (!response.ok) {
     throw new Error('Failed to fetch projects')
   }
-  return response.json()
+  const data = await response.json()
+
+  // API returns modifiedAt as ISO 8601 strings; convert to Unix seconds
+  for (const project of data) {
+    for (const session of project.sessions) {
+      if (typeof session.modifiedAt === 'string') {
+        session.modifiedAt = Math.floor(new Date(session.modifiedAt).getTime() / 1000)
+      }
+    }
+  }
+
+  return data
 }
 
 export function useProjects() {
