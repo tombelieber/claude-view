@@ -13,6 +13,7 @@ repository = "https://github.com/user/vibe-recall"
 # Async runtime
 tokio = { version = "1.43", features = ["full", "test-util"] }
 tokio-stream = "0.1"
+async-stream = "0.3"
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
