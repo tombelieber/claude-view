@@ -7,6 +7,7 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 use vibe_recall_core::{DiscoveryError, ParseError};
+use vibe_recall_db::DbError;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize)]
@@ -47,6 +48,9 @@ pub enum ApiError {
 
     #[error("Discovery error: {0}")]
     Discovery(#[from] DiscoveryError),
+
+    #[error("Database error: {0}")]
+    Database(#[from] DbError),
 
     #[error("Internal server error: {0}")]
     Internal(String),
@@ -123,6 +127,13 @@ impl IntoResponse for ApiError {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     ErrorResponse::with_details(error_msg, discovery_err.to_string()),
+                )
+            }
+            ApiError::Database(db_err) => {
+                tracing::error!(error = %db_err, "Database error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse::with_details("Database error", db_err.to_string()),
                 )
             }
             ApiError::Internal(msg) => {
