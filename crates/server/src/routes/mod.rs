@@ -2,6 +2,7 @@
 //! API route handlers for the vibe-recall server.
 
 pub mod health;
+pub mod indexing;
 pub mod projects;
 pub mod sessions;
 
@@ -17,11 +18,13 @@ use crate::state::AppState;
 /// - GET /api/health - Health check
 /// - GET /api/projects - List all projects with sessions
 /// - GET /api/session/:project_dir/:session_id - Get a specific session
+/// - GET /api/indexing/progress - SSE stream of indexing progress
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
         .nest("/api", projects::router())
         .nest("/api", sessions::router())
+        .nest("/api", indexing::router())
         .with_state(state)
 }
 
