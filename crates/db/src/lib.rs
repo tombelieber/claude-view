@@ -75,9 +75,36 @@ impl Database {
     }
 
     /// Run all inline migrations.
+    ///
+    /// Uses a `_migrations` table to track which migrations have already been
+    /// applied, so that non-idempotent statements (e.g. ALTER TABLE ADD COLUMN)
+    /// are only executed once.
     async fn run_migrations(&self) -> DbResult<()> {
-        for migration in migrations::MIGRATIONS {
-            sqlx::query(migration).execute(&self.pool).await?;
+        // Ensure the migration-tracking table exists
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Find the highest version already applied (0 if none)
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COALESCE(MAX(version), 0) FROM _migrations"
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let current_version = row.0 as usize;
+
+        // Run only new migrations
+        for (i, migration) in migrations::MIGRATIONS.iter().enumerate() {
+            let version = i + 1; // 1-based
+            if version > current_version {
+                sqlx::query(migration).execute(&self.pool).await?;
+                sqlx::query("INSERT INTO _migrations (version) VALUES (?)")
+                    .bind(version as i64)
+                    .execute(&self.pool)
+                    .await?;
+            }
         }
         Ok(())
     }

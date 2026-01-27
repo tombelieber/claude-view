@@ -47,4 +47,9 @@ CREATE TABLE IF NOT EXISTS indexer_state (
     indexed_at INTEGER NOT NULL
 );
 "#,
+    // Migration 4: add session index fields
+    r#"ALTER TABLE sessions ADD COLUMN summary TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN git_branch TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN is_sidechain BOOLEAN NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN deep_indexed_at INTEGER;"#,
 ];
