@@ -3,6 +3,7 @@
 
 pub mod health;
 pub mod indexing;
+pub mod invocables;
 pub mod projects;
 pub mod sessions;
 
@@ -19,12 +20,15 @@ use crate::state::AppState;
 /// - GET /api/projects - List all projects with sessions
 /// - GET /api/session/:project_dir/:session_id - Get a specific session
 /// - GET /api/indexing/progress - SSE stream of indexing progress
+/// - GET /api/invocables - List all invocables with usage counts
+/// - GET /api/stats/overview - Aggregate usage statistics
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
         .nest("/api", projects::router())
         .nest("/api", sessions::router())
         .nest("/api", indexing::router())
+        .nest("/api", invocables::router())
         .with_state(state)
 }
 

@@ -10,6 +10,15 @@ use tracing::warn;
 
 use crate::error::SessionIndexError;
 
+/// Wrapper for the `sessions-index.json` file format.
+/// The file is `{"version": N, "entries": [...]}`.
+#[derive(Debug, Clone, Deserialize)]
+struct SessionIndexFile {
+    #[allow(dead_code)]
+    version: Option<u32>,
+    entries: Vec<SessionIndexEntry>,
+}
+
 /// A single entry from a `sessions-index.json` file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +49,11 @@ pub struct SessionIndexEntry {
 /// Parse a single `sessions-index.json` file into a list of entries.
 pub fn parse_session_index(path: &Path) -> Result<Vec<SessionIndexEntry>, SessionIndexError> {
     let contents = std::fs::read_to_string(path).map_err(|e| SessionIndexError::io(path, e))?;
+    // Try wrapper format {"version": N, "entries": [...]} first,
+    // fall back to bare array [...] for backward compatibility.
+    if let Ok(file) = serde_json::from_str::<SessionIndexFile>(&contents) {
+        return Ok(file.entries);
+    }
     let entries: Vec<SessionIndexEntry> = serde_json::from_str(&contents).map_err(|e| {
         SessionIndexError::MalformedJson {
             path: path.to_path_buf(),
@@ -119,7 +133,30 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_parse_well_formed_json() {
+    fn test_parse_wrapper_format() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("sessions-index.json");
+        let json = r#"{"version": 1, "entries": [
+            {
+                "sessionId": "abc-123",
+                "fullPath": "/tmp/abc-123.jsonl",
+                "firstPrompt": "hello world",
+                "summary": "Test session",
+                "messageCount": 10,
+                "gitBranch": "main",
+                "isSidechain": false
+            }
+        ]}"#;
+        std::fs::write(&path, json).unwrap();
+
+        let entries = parse_session_index(&path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].session_id, "abc-123");
+        assert_eq!(entries[0].summary.as_deref(), Some("Test session"));
+    }
+
+    #[test]
+    fn test_parse_bare_array_format() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("sessions-index.json");
         let json = r#"[
@@ -217,7 +254,7 @@ mod tests {
         // Project with a valid sessions-index.json
         let proj_a = projects_dir.join("project-a");
         std::fs::create_dir(&proj_a).unwrap();
-        let json_a = r#"[{"sessionId": "sess-1"}, {"sessionId": "sess-2"}]"#;
+        let json_a = r#"{"version":1,"entries":[{"sessionId": "sess-1"}, {"sessionId": "sess-2"}]}"#;
         std::fs::write(proj_a.join("sessions-index.json"), json_a).unwrap();
 
         // Project without sessions-index.json (should be skipped)
