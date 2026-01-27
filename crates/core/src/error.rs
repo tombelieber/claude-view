@@ -67,6 +67,40 @@ impl ParseError {
     }
 }
 
+/// Errors that can occur when parsing session index files
+#[derive(Debug, Error)]
+pub enum SessionIndexError {
+    #[error("Session index file not found: {path}")]
+    NotFound { path: PathBuf },
+
+    #[error("Permission denied reading session index: {path}")]
+    PermissionDenied { path: PathBuf },
+
+    #[error("IO error reading session index {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Malformed JSON in session index {path}: {message}")]
+    MalformedJson { path: PathBuf, message: String },
+
+    #[error("Projects directory not found: {path}")]
+    ProjectsDirNotFound { path: PathBuf },
+}
+
+impl SessionIndexError {
+    pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
+        let path = path.into();
+        match source.kind() {
+            std::io::ErrorKind::NotFound => Self::NotFound { path },
+            std::io::ErrorKind::PermissionDenied => Self::PermissionDenied { path },
+            _ => Self::Io { path, source },
+        }
+    }
+}
+
 impl DiscoveryError {
     pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
         let path = path.into();
