@@ -82,6 +82,8 @@ pub struct Message {
     pub timestamp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
 }
 
 impl Message {
@@ -91,6 +93,7 @@ impl Message {
             content: content.into(),
             timestamp: None,
             tool_calls: None,
+            thinking: None,
         }
     }
 
@@ -100,6 +103,7 @@ impl Message {
             content: content.into(),
             timestamp: None,
             tool_calls: None,
+            thinking: None,
         }
     }
 
@@ -110,6 +114,11 @@ impl Message {
 
     pub fn with_tools(mut self, tools: Vec<ToolCall>) -> Self {
         self.tool_calls = Some(tools);
+        self
+    }
+
+    pub fn with_thinking(mut self, thinking: impl Into<String>) -> Self {
+        self.thinking = Some(thinking.into());
         self
     }
 }
@@ -201,6 +210,36 @@ impl ProjectInfo {
 }
 
 // ============================================================================
+// Turn-level types (Phase 2B: token & model tracking)
+// ============================================================================
+
+/// A single assistant turn extracted from JSONL, capturing model and token usage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawTurn {
+    pub uuid: String,
+    pub parent_uuid: Option<String>,
+    pub seq: u32,
+    pub model_id: String,
+    pub content_type: String,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub service_tier: Option<String>,
+    pub timestamp: Option<i64>,
+}
+
+/// A model record for the models table (deduplicated across all sessions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRecord {
+    pub id: String,
+    pub provider: String,
+    pub family: String,
+    pub first_seen: i64,
+    pub last_seen: i64,
+}
+
+// ============================================================================
 // JSONL Parsing Types (internal, for deserializing Claude Code format)
 // ============================================================================
 
@@ -239,6 +278,9 @@ pub enum JsonlContent {
 pub enum ContentBlock {
     Text {
         text: String,
+    },
+    Thinking {
+        thinking: String,
     },
     ToolUse {
         name: String,
@@ -417,9 +459,20 @@ mod tests {
         let msg = Message::user("Hello");
         let json = serde_json::to_string(&msg).unwrap();
 
-        // Should not contain timestamp or tool_calls when None
+        // Should not contain timestamp, tool_calls, or thinking when None
         assert!(!json.contains("timestamp"));
         assert!(!json.contains("tool_calls"));
+        assert!(!json.contains("thinking"));
+    }
+
+    #[test]
+    fn test_message_with_thinking() {
+        let msg = Message::assistant("Here's the answer")
+            .with_thinking("Let me reason about this...");
+
+        assert_eq!(msg.thinking, Some("Let me reason about this...".to_string()));
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"thinking\":\"Let me reason about this...\""));
     }
 
     // ============================================================================
