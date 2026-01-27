@@ -1,51 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ProjectInfo, SessionInfo } from '../types/generated'
 
-export interface SessionInfo {
-  id: string
-  project: string
-  projectPath: string
-  filePath: string
-  modifiedAt: number  // Unix timestamp in seconds
-  sizeBytes: number
-  preview: string
-  lastMessage: string
-  filesTouched: string[]
-  skillsUsed: string[]
-  toolCounts: {
-    edit: number
-    read: number
-    bash: number
-    write: number
-  }
-  messageCount: number   // Total messages in session
-  turnCount: number      // Human→assistant exchange pairs
-}
-
-export interface ProjectInfo {
-  name: string
-  displayName: string  // Just the project folder name (e.g., "claude-view")
-  path: string
-  sessions: SessionInfo[]
-  activeCount: number  // Number of sessions active in the last hour
-}
+// Re-export for backward compatibility with existing imports
+export type { ProjectInfo, SessionInfo } from '../types/generated'
 
 async function fetchProjects(): Promise<ProjectInfo[]> {
   const response = await fetch('/api/projects')
   if (!response.ok) {
     throw new Error('Failed to fetch projects')
   }
-  const data = await response.json()
-
-  // API returns modifiedAt as ISO 8601 strings; convert to Unix seconds
-  for (const project of data) {
-    for (const session of project.sessions) {
-      if (typeof session.modifiedAt === 'string') {
-        session.modifiedAt = Math.floor(new Date(session.modifiedAt).getTime() / 1000)
-      }
-    }
-  }
-
-  return data
+  return response.json()
 }
 
 export function useProjects() {
