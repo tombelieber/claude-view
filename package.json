@@ -22,6 +22,7 @@
     "test": "cargo test --workspace",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "clean:db": "rm -f ~/Library/Caches/vibe-recall/vibe-recall.db*",
     "check": "bun run typecheck && bun run lint && bun run test"
   },
   "keywords": [
@@ -40,10 +41,12 @@
     "lucide-react": "^0.562.0",
     "prism-react-renderer": "^2.3.1",
     "react": "^19.2.0",
+    "react-day-picker": "^9.13.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^9.0.1",
     "react-router-dom": "^7.13.0",
     "react-virtuoso": "^4.18.1",
+    "recharts": "^3.7.0",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.5",
