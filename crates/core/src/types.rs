@@ -1,6 +1,44 @@
 // crates/core/src/types.rs
 use serde::{Deserialize, Serialize};
 
+/// Custom serializer to convert Unix timestamp (seconds) to ISO 8601 string.
+/// This matches the old Node.js behavior where Date objects serialize to ISO strings.
+mod unix_to_iso {
+    use chrono::{DateTime, Utc};
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(timestamp: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let dt = DateTime::<Utc>::from_timestamp(*timestamp, 0)
+            .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap());
+        serializer.serialize_str(&dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Accept either ISO string or number for flexibility
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StringOrNumber {
+            String(String),
+            Number(i64),
+        }
+
+        match StringOrNumber::deserialize(deserializer)? {
+            StringOrNumber::Number(n) => Ok(n),
+            StringOrNumber::String(s) => {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.timestamp())
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+    }
+}
+
 /// Tool usage statistics for a session
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCounts {
@@ -121,6 +159,7 @@ pub struct SessionInfo {
     pub project: String,
     pub project_path: String,
     pub file_path: String,
+    #[serde(with = "unix_to_iso")]
     pub modified_at: i64,
     pub size_bytes: u64,
     pub preview: String,
@@ -373,5 +412,91 @@ mod tests {
         // Should not contain timestamp or tool_calls when None
         assert!(!json.contains("timestamp"));
         assert!(!json.contains("tool_calls"));
+    }
+
+    // ============================================================================
+    // Issue 1: modifiedAt should serialize as ISO 8601 string
+    // ============================================================================
+
+    #[test]
+    fn test_session_info_modified_at_serializes_as_iso_string() {
+        let session = SessionInfo {
+            id: "test-123".to_string(),
+            project: "test-project".to_string(),
+            project_path: "/path/to/project".to_string(),
+            file_path: "/path/to/session.jsonl".to_string(),
+            modified_at: 1769482232, // 2026-01-27T02:50:32Z
+            size_bytes: 1024,
+            preview: "Test".to_string(),
+            last_message: "Test".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+        };
+        let json = serde_json::to_string(&session).unwrap();
+
+        // Should serialize as ISO string, not number
+        assert!(
+            json.contains("\"modifiedAt\":\"2026-"),
+            "modifiedAt should be ISO string, got: {}",
+            json
+        );
+        assert!(
+            !json.contains("\"modifiedAt\":1769"),
+            "modifiedAt should NOT be a number"
+        );
+    }
+
+    #[test]
+    fn test_session_info_iso_format_with_utc_timezone() {
+        let session = SessionInfo {
+            id: "test-123".to_string(),
+            project: "test-project".to_string(),
+            project_path: "/path/to/project".to_string(),
+            file_path: "/path/to/session.jsonl".to_string(),
+            modified_at: 1769482232,
+            size_bytes: 1024,
+            preview: "Test".to_string(),
+            last_message: "Test".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+        };
+        let json = serde_json::to_string(&session).unwrap();
+
+        // Should contain T separator and Z suffix for UTC
+        assert!(json.contains("T"), "ISO string should have T separator");
+        assert!(json.contains("Z"), "ISO string should end with Z for UTC");
+    }
+
+    #[test]
+    fn test_session_info_modified_at_correct_date() {
+        let session = SessionInfo {
+            id: "test-123".to_string(),
+            project: "test-project".to_string(),
+            project_path: "/path/to/project".to_string(),
+            file_path: "/path/to/session.jsonl".to_string(),
+            modified_at: 1769482232, // 2026-01-27T02:50:32Z
+            size_bytes: 1024,
+            preview: "Test".to_string(),
+            last_message: "Test".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+        };
+        let json = serde_json::to_string(&session).unwrap();
+
+        // Should contain correct date components
+        assert!(
+            json.contains("2026-01-27"),
+            "Should contain correct date: {}",
+            json
+        );
     }
 }
