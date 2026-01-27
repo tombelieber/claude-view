@@ -4,7 +4,8 @@
 use crate::{Database, DbResult};
 use chrono::Utc;
 use std::collections::HashMap;
-use vibe_recall_core::{ProjectInfo, SessionInfo, ToolCounts};
+use ts_rs::TS;
+use vibe_recall_core::{parse_model_id, ProjectInfo, RawTurn, SessionInfo, ToolCounts};
 
 /// Indexer state entry returned from the database.
 #[derive(Debug, Clone)]
@@ -13,6 +14,89 @@ pub struct IndexerEntry {
     pub file_size: i64,
     pub modified_at: i64,
     pub indexed_at: i64,
+}
+
+/// An invocable (tool/skill/MCP) with its aggregated invocation count.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct InvocableWithCount {
+    pub id: String,
+    pub plugin_name: Option<String>,
+    pub name: String,
+    pub kind: String,
+    pub description: String,
+    pub invocation_count: i64,
+    pub last_used_at: Option<i64>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for InvocableWithCount {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            id: row.try_get("id")?,
+            plugin_name: row.try_get("plugin_name")?,
+            name: row.try_get("name")?,
+            kind: row.try_get("kind")?,
+            description: row.try_get("description")?,
+            invocation_count: row.try_get("invocation_count")?,
+            last_used_at: row.try_get("last_used_at")?,
+        })
+    }
+}
+
+/// A model record with aggregated usage stats (for GET /api/models).
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ModelWithStats {
+    pub id: String,
+    pub provider: Option<String>,
+    pub family: Option<String>,
+    pub first_seen: Option<i64>,
+    pub last_seen: Option<i64>,
+    pub total_turns: i64,
+    pub total_sessions: i64,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            id: row.try_get("id")?,
+            provider: row.try_get("provider")?,
+            family: row.try_get("family")?,
+            first_seen: row.try_get("first_seen")?,
+            last_seen: row.try_get("last_seen")?,
+            total_turns: row.try_get("total_turns")?,
+            total_sessions: row.try_get("total_sessions")?,
+        })
+    }
+}
+
+/// Aggregate token usage statistics (for GET /api/stats/tokens).
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct TokenStats {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cache_read_tokens: u64,
+    pub total_cache_creation_tokens: u64,
+    pub cache_hit_ratio: f64,
+    pub turns_count: u64,
+    pub sessions_count: u64,
+}
+
+/// Aggregate statistics overview for the API.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct StatsOverview {
+    pub total_sessions: i64,
+    pub total_invocations: i64,
+    pub unique_invocables_used: i64,
+    pub top_invocables: Vec<InvocableWithCount>,
 }
 
 impl Database {
@@ -388,6 +472,325 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
         Ok(rows)
+    }
+
+    // ========================================================================
+    // Invocable + Invocation CRUD
+    // ========================================================================
+
+    /// Insert or update a single invocable.
+    ///
+    /// Uses `INSERT ... ON CONFLICT(id) DO UPDATE SET` to upsert.
+    pub async fn upsert_invocable(
+        &self,
+        id: &str,
+        plugin_name: Option<&str>,
+        name: &str,
+        kind: &str,
+        description: &str,
+    ) -> DbResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO invocables (id, plugin_name, name, kind, description, status)
+            VALUES (?1, ?2, ?3, ?4, ?5, 'enabled')
+            ON CONFLICT(id) DO UPDATE SET
+                plugin_name = excluded.plugin_name,
+                name = excluded.name,
+                kind = excluded.kind,
+                description = excluded.description
+            "#,
+        )
+        .bind(id)
+        .bind(plugin_name)
+        .bind(name)
+        .bind(kind)
+        .bind(description)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Batch insert invocations in a single transaction.
+    ///
+    /// Each tuple is `(source_file, byte_offset, invocable_id, session_id, project, timestamp)`.
+    /// Uses `INSERT OR IGNORE` so re-indexing skips duplicates (PK is source_file + byte_offset).
+    /// Returns the number of rows actually inserted.
+    pub async fn batch_insert_invocations(
+        &self,
+        invocations: &[(String, i64, String, String, String, i64)],
+    ) -> DbResult<u64> {
+        let mut tx = self.pool().begin().await?;
+        let mut inserted: u64 = 0;
+
+        for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in invocations
+        {
+            let result = sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO invocations
+                    (source_file, byte_offset, invocable_id, session_id, project, timestamp)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+            )
+            .bind(source_file)
+            .bind(byte_offset)
+            .bind(invocable_id)
+            .bind(session_id)
+            .bind(project)
+            .bind(timestamp)
+            .execute(&mut *tx)
+            .await?;
+
+            inserted += result.rows_affected();
+        }
+
+        tx.commit().await?;
+        Ok(inserted)
+    }
+
+    /// List all invocables with their invocation counts.
+    ///
+    /// Results are ordered by invocation_count DESC, then name ASC.
+    pub async fn list_invocables_with_counts(&self) -> DbResult<Vec<InvocableWithCount>> {
+        let rows: Vec<InvocableWithCount> = sqlx::query_as(
+            r#"
+            SELECT
+                i.id, i.plugin_name, i.name, i.kind, i.description,
+                COALESCE(COUNT(inv.invocable_id), 0) as invocation_count,
+                MAX(inv.timestamp) as last_used_at
+            FROM invocables i
+            LEFT JOIN invocations inv ON i.id = inv.invocable_id
+            GROUP BY i.id
+            ORDER BY invocation_count DESC, i.name ASC
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Batch insert/update invocables from a registry snapshot.
+    ///
+    /// Each tuple is `(id, plugin_name, name, kind, description)`.
+    /// Uses `INSERT ... ON CONFLICT(id) DO UPDATE SET` for upsert semantics.
+    /// Returns the number of rows affected.
+    pub async fn batch_upsert_invocables(
+        &self,
+        invocables: &[(String, Option<String>, String, String, String)],
+    ) -> DbResult<u64> {
+        let mut tx = self.pool().begin().await?;
+        let mut affected: u64 = 0;
+
+        for (id, plugin_name, name, kind, description) in invocables {
+            let result = sqlx::query(
+                r#"
+                INSERT INTO invocables (id, plugin_name, name, kind, description, status)
+                VALUES (?1, ?2, ?3, ?4, ?5, 'enabled')
+                ON CONFLICT(id) DO UPDATE SET
+                    plugin_name = excluded.plugin_name,
+                    name = excluded.name,
+                    kind = excluded.kind,
+                    description = excluded.description
+                "#,
+            )
+            .bind(id)
+            .bind(plugin_name)
+            .bind(name)
+            .bind(kind)
+            .bind(description)
+            .execute(&mut *tx)
+            .await?;
+
+            affected += result.rows_affected();
+        }
+
+        tx.commit().await?;
+        Ok(affected)
+    }
+
+    /// Get aggregate statistics overview.
+    ///
+    /// Returns total sessions, total invocations, unique invocables used,
+    /// and the top 10 invocables by usage count.
+    pub async fn get_stats_overview(&self) -> DbResult<StatsOverview> {
+        let (total_sessions,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions")
+                .fetch_one(self.pool())
+                .await?;
+
+        let (total_invocations,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM invocations")
+                .fetch_one(self.pool())
+                .await?;
+
+        let (unique_invocables_used,): (i64,) =
+            sqlx::query_as("SELECT COUNT(DISTINCT invocable_id) FROM invocations")
+                .fetch_one(self.pool())
+                .await?;
+
+        let all = self.list_invocables_with_counts().await?;
+        let top_invocables: Vec<InvocableWithCount> = all.into_iter().take(10).collect();
+
+        Ok(StatsOverview {
+            total_sessions,
+            total_invocations,
+            unique_invocables_used,
+            top_invocables,
+        })
+    }
+
+    // ========================================================================
+    // Model + Turn CRUD (Phase 2B)
+    // ========================================================================
+
+    /// Batch upsert models: INSERT OR IGNORE + UPDATE last_seen.
+    ///
+    /// Each `model_id` is parsed via `parse_model_id()` to derive provider/family.
+    /// `seen_at` is the unix timestamp when the model was observed.
+    pub async fn batch_upsert_models(
+        &self,
+        model_ids: &[String],
+        seen_at: i64,
+    ) -> DbResult<u64> {
+        if model_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut tx = self.pool().begin().await?;
+        let mut affected: u64 = 0;
+
+        for model_id in model_ids {
+            let (provider, family) = parse_model_id(model_id);
+            let result = sqlx::query(
+                r#"
+                INSERT INTO models (id, provider, family, first_seen, last_seen)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ON CONFLICT(id) DO UPDATE SET
+                    last_seen = MAX(models.last_seen, excluded.last_seen)
+                "#,
+            )
+            .bind(model_id)
+            .bind(provider)
+            .bind(family)
+            .bind(seen_at)
+            .bind(seen_at)
+            .execute(&mut *tx)
+            .await?;
+
+            affected += result.rows_affected();
+        }
+
+        tx.commit().await?;
+        Ok(affected)
+    }
+
+    /// Batch insert turns using INSERT OR IGNORE (UUID PK = free dedup on re-index).
+    ///
+    /// Returns the number of rows actually inserted.
+    pub async fn batch_insert_turns(
+        &self,
+        session_id: &str,
+        turns: &[RawTurn],
+    ) -> DbResult<u64> {
+        if turns.is_empty() {
+            return Ok(0);
+        }
+        let mut tx = self.pool().begin().await?;
+        let mut inserted: u64 = 0;
+
+        for turn in turns {
+            let result = sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO turns (
+                    session_id, uuid, seq, model_id, parent_uuid,
+                    content_type, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens,
+                    service_tier, timestamp
+                ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5,
+                    ?6, ?7, ?8,
+                    ?9, ?10,
+                    ?11, ?12
+                )
+                "#,
+            )
+            .bind(session_id)
+            .bind(&turn.uuid)
+            .bind(turn.seq)
+            .bind(&turn.model_id)
+            .bind(&turn.parent_uuid)
+            .bind(&turn.content_type)
+            .bind(turn.input_tokens.map(|v| v as i64))
+            .bind(turn.output_tokens.map(|v| v as i64))
+            .bind(turn.cache_read_tokens.map(|v| v as i64))
+            .bind(turn.cache_creation_tokens.map(|v| v as i64))
+            .bind(&turn.service_tier)
+            .bind(turn.timestamp)
+            .execute(&mut *tx)
+            .await?;
+
+            inserted += result.rows_affected();
+        }
+
+        tx.commit().await?;
+        Ok(inserted)
+    }
+
+    /// Get all models with usage counts (for GET /api/models).
+    pub async fn get_all_models(&self) -> DbResult<Vec<ModelWithStats>> {
+        let rows: Vec<ModelWithStats> = sqlx::query_as(
+            r#"
+            SELECT m.id, m.provider, m.family, m.first_seen, m.last_seen,
+                   COUNT(t.uuid) as total_turns,
+                   COUNT(DISTINCT t.session_id) as total_sessions
+            FROM models m
+            LEFT JOIN turns t ON t.model_id = m.id
+            GROUP BY m.id
+            ORDER BY total_turns DESC
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Get aggregate token statistics (for GET /api/stats/tokens).
+    pub async fn get_token_stats(&self) -> DbResult<TokenStats> {
+        let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(SUM(input_tokens), 0),
+                COALESCE(SUM(output_tokens), 0),
+                COALESCE(SUM(cache_read_tokens), 0),
+                COALESCE(SUM(cache_creation_tokens), 0),
+                COUNT(*),
+                COUNT(DISTINCT session_id)
+            FROM turns
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        let total_input = row.0 as u64;
+        let total_cache_read = row.2 as u64;
+        let total_cache_creation = row.3 as u64;
+        let denominator = total_input + total_cache_creation;
+        let cache_hit_ratio = if denominator > 0 {
+            total_cache_read as f64 / denominator as f64
+        } else {
+            0.0
+        };
+
+        Ok(TokenStats {
+            total_input_tokens: total_input,
+            total_output_tokens: row.1 as u64,
+            total_cache_read_tokens: total_cache_read,
+            total_cache_creation_tokens: total_cache_creation,
+            cache_hit_ratio,
+            turns_count: row.4 as u64,
+            sessions_count: row.5 as u64,
+        })
     }
 
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
@@ -798,5 +1201,170 @@ mod tests {
             "modifiedAt should be ISO string: {}",
             json
         );
+    }
+
+    // ========================================================================
+    // Invocable + Invocation CRUD tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_upsert_invocable() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a new invocable
+        db.upsert_invocable("tool::Read", Some("core"), "Read", "tool", "Read files")
+            .await
+            .unwrap();
+
+        let items = db.list_invocables_with_counts().await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "tool::Read");
+        assert_eq!(items[0].plugin_name, Some("core".to_string()));
+        assert_eq!(items[0].description, "Read files");
+
+        // Upsert same id with a different description
+        db.upsert_invocable("tool::Read", Some("core"), "Read", "tool", "Read files from disk")
+            .await
+            .unwrap();
+
+        let items = db.list_invocables_with_counts().await.unwrap();
+        assert_eq!(items.len(), 1, "Should still be 1 invocable after upsert");
+        assert_eq!(items[0].description, "Read files from disk");
+    }
+
+    #[tokio::test]
+    async fn test_batch_insert_invocations() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Must insert invocables first (FK constraint)
+        db.upsert_invocable("tool::Read", None, "Read", "tool", "")
+            .await
+            .unwrap();
+        db.upsert_invocable("tool::Edit", None, "Edit", "tool", "")
+            .await
+            .unwrap();
+
+        let invocations = vec![
+            ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
+            ("file1.jsonl".to_string(), 200, "tool::Edit".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1001),
+            ("file2.jsonl".to_string(), 50, "tool::Read".to_string(), "sess-2".to_string(), "proj-a".to_string(), 2000),
+        ];
+
+        let inserted = db.batch_insert_invocations(&invocations).await.unwrap();
+        assert_eq!(inserted, 3, "Should insert 3 rows");
+    }
+
+    #[tokio::test]
+    async fn test_batch_insert_invocations_ignores_duplicates() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        db.upsert_invocable("tool::Read", None, "Read", "tool", "")
+            .await
+            .unwrap();
+
+        let invocations = vec![
+            ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
+        ];
+
+        let inserted = db.batch_insert_invocations(&invocations).await.unwrap();
+        assert_eq!(inserted, 1);
+
+        // Insert same (source_file, byte_offset) again — should be ignored
+        let inserted2 = db.batch_insert_invocations(&invocations).await.unwrap();
+        assert_eq!(inserted2, 0, "Duplicate should be ignored (INSERT OR IGNORE)");
+    }
+
+    #[tokio::test]
+    async fn test_list_invocables_with_counts() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        db.upsert_invocable("tool::Read", None, "Read", "tool", "Read files")
+            .await
+            .unwrap();
+        db.upsert_invocable("tool::Edit", None, "Edit", "tool", "Edit files")
+            .await
+            .unwrap();
+        db.upsert_invocable("tool::Bash", None, "Bash", "tool", "Run commands")
+            .await
+            .unwrap();
+
+        // Add invocations: Read x3, Edit x1, Bash x0
+        let invocations = vec![
+            ("f1.jsonl".to_string(), 10, "tool::Read".to_string(), "s1".to_string(), "p".to_string(), 1000),
+            ("f1.jsonl".to_string(), 20, "tool::Read".to_string(), "s1".to_string(), "p".to_string(), 2000),
+            ("f2.jsonl".to_string(), 10, "tool::Read".to_string(), "s2".to_string(), "p".to_string(), 3000),
+            ("f2.jsonl".to_string(), 20, "tool::Edit".to_string(), "s2".to_string(), "p".to_string(), 3001),
+        ];
+        db.batch_insert_invocations(&invocations).await.unwrap();
+
+        let items = db.list_invocables_with_counts().await.unwrap();
+        assert_eq!(items.len(), 3);
+
+        // Ordered by invocation_count DESC, then name ASC
+        assert_eq!(items[0].id, "tool::Read");
+        assert_eq!(items[0].invocation_count, 3);
+        assert_eq!(items[0].last_used_at, Some(3000));
+
+        assert_eq!(items[1].id, "tool::Edit");
+        assert_eq!(items[1].invocation_count, 1);
+
+        assert_eq!(items[2].id, "tool::Bash");
+        assert_eq!(items[2].invocation_count, 0);
+        assert_eq!(items[2].last_used_at, None);
+    }
+
+    #[tokio::test]
+    async fn test_batch_upsert_invocables() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let batch = vec![
+            ("tool::Read".to_string(), Some("core".to_string()), "Read".to_string(), "tool".to_string(), "Read files".to_string()),
+            ("tool::Edit".to_string(), None, "Edit".to_string(), "tool".to_string(), "Edit files".to_string()),
+            ("skill::commit".to_string(), Some("git".to_string()), "commit".to_string(), "skill".to_string(), "Git commit".to_string()),
+        ];
+
+        let affected = db.batch_upsert_invocables(&batch).await.unwrap();
+        assert_eq!(affected, 3);
+
+        let items = db.list_invocables_with_counts().await.unwrap();
+        assert_eq!(items.len(), 3, "All 3 invocables should be present");
+
+        // Verify one of them
+        let commit = items.iter().find(|i| i.id == "skill::commit").unwrap();
+        assert_eq!(commit.plugin_name, Some("git".to_string()));
+        assert_eq!(commit.kind, "skill");
+    }
+
+    #[tokio::test]
+    async fn test_get_stats_overview() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a session so total_sessions > 0
+        let s1 = make_session("sess-1", "project-a", 1000);
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+
+        // Insert invocables
+        db.upsert_invocable("tool::Read", None, "Read", "tool", "")
+            .await
+            .unwrap();
+        db.upsert_invocable("tool::Edit", None, "Edit", "tool", "")
+            .await
+            .unwrap();
+
+        // Insert invocations
+        let invocations = vec![
+            ("f1.jsonl".to_string(), 10, "tool::Read".to_string(), "sess-1".to_string(), "p".to_string(), 1000),
+            ("f1.jsonl".to_string(), 20, "tool::Read".to_string(), "sess-1".to_string(), "p".to_string(), 1001),
+            ("f1.jsonl".to_string(), 30, "tool::Edit".to_string(), "sess-1".to_string(), "p".to_string(), 1002),
+        ];
+        db.batch_insert_invocations(&invocations).await.unwrap();
+
+        let stats = db.get_stats_overview().await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+        assert_eq!(stats.total_invocations, 3);
+        assert_eq!(stats.unique_invocables_used, 2);
+        assert!(stats.top_invocables.len() <= 10);
+        assert_eq!(stats.top_invocables[0].id, "tool::Read");
+        assert_eq!(stats.top_invocables[0].invocation_count, 2);
     }
 }

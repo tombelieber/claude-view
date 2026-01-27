@@ -5,6 +5,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
+import { ExpandProvider } from '../contexts/ExpandContext'
 import type { ProjectInfo } from '../hooks/use-projects'
 
 export function ConversationView() {
@@ -129,30 +130,32 @@ export function ConversationView() {
       </div>
 
       {/* Messages */}
-      <Virtuoso
-        data={session.messages}
-        itemContent={(index, message) => (
-          <div className="max-w-4xl mx-auto px-6 pb-4">
-            <Message key={message.id || index} message={message} />
-          </div>
-        )}
-        components={{
-          Header: () => <div className="h-6" />,
-          Footer: () => (
-            session.messages.length > 0 ? (
-              <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
-                {session.metadata.totalMessages} messages
-                {session.metadata.toolCallCount > 0 && (
-                  <> &bull; {session.metadata.toolCallCount} tool calls</>
-                )}
-              </div>
-            ) : null
-          )
-        }}
-        increaseViewportBy={{ top: 400, bottom: 400 }}
-        initialTopMostItemIndex={0}
-        className="flex-1 overflow-auto"
-      />
+      <ExpandProvider>
+        <Virtuoso
+          data={session.messages}
+          itemContent={(index, message) => (
+            <div className="max-w-4xl mx-auto px-6 pb-4">
+              <Message key={message.id || index} message={message} messageIndex={index} />
+            </div>
+          )}
+          components={{
+            Header: () => <div className="h-6" />,
+            Footer: () => (
+              session.messages.length > 0 ? (
+                <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
+                  {session.metadata.totalMessages} messages
+                  {session.metadata.toolCallCount > 0 && (
+                    <> &bull; {session.metadata.toolCallCount} tool calls</>
+                  )}
+                </div>
+              ) : null
+            )
+          }}
+          increaseViewportBy={{ top: 400, bottom: 400 }}
+          initialTopMostItemIndex={0}
+          className="flex-1 overflow-auto"
+        />
+      </ExpandProvider>
     </div>
   )
 }

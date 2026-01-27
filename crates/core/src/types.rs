@@ -1,43 +1,6 @@
 // crates/core/src/types.rs
 use serde::{Deserialize, Serialize};
-
-/// Custom serializer to convert Unix timestamp (seconds) to ISO 8601 string.
-/// This matches the old Node.js behavior where Date objects serialize to ISO strings.
-mod unix_to_iso {
-    use chrono::{DateTime, Utc};
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(timestamp: &i64, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let dt = DateTime::<Utc>::from_timestamp(*timestamp, 0)
-            .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap());
-        serializer.serialize_str(&dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Accept either ISO string or number for flexibility
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum StringOrNumber {
-            String(String),
-            Number(i64),
-        }
-
-        match StringOrNumber::deserialize(deserializer)? {
-            StringOrNumber::Number(n) => Ok(n),
-            StringOrNumber::String(s) => {
-                DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.timestamp())
-                    .map_err(serde::de::Error::custom)
-            }
-        }
-    }
-}
+use ts_rs::TS;
 
 /// Tool usage statistics for a session
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -237,6 +200,38 @@ pub struct ModelRecord {
     pub family: String,
     pub first_seen: i64,
     pub last_seen: i64,
+}
+
+/// Parse a model ID string into (provider, family) slices.
+///
+/// Known patterns:
+/// - `claude-opus-*`   → `("anthropic", "opus")`
+/// - `claude-sonnet-*` → `("anthropic", "sonnet")`
+/// - `claude-haiku-*`  → `("anthropic", "haiku")`
+/// - `gpt-4*` / `gpt-3*` → `("openai", "gpt-4")` / `("openai", "gpt-3")`
+/// - `o1*` / `o3*`     → `("openai", "o1")` / `("openai", "o3")`
+/// - `gemini-*`        → `("google", "gemini")`
+/// - Anything else     → `("unknown", model_str)`
+pub fn parse_model_id(model_str: &str) -> (&str, &str) {
+    if model_str.starts_with("claude-opus") {
+        ("anthropic", "opus")
+    } else if model_str.starts_with("claude-sonnet") {
+        ("anthropic", "sonnet")
+    } else if model_str.starts_with("claude-haiku") {
+        ("anthropic", "haiku")
+    } else if model_str.starts_with("gpt-4") {
+        ("openai", "gpt-4")
+    } else if model_str.starts_with("gpt-3") {
+        ("openai", "gpt-3")
+    } else if model_str.starts_with("o1") {
+        ("openai", "o1")
+    } else if model_str.starts_with("o3") {
+        ("openai", "o3")
+    } else if model_str.starts_with("gemini") {
+        ("google", "gemini")
+    } else {
+        ("unknown", model_str)
+    }
 }
 
 // ============================================================================
@@ -571,5 +566,53 @@ mod tests {
             "Should contain correct date: {}",
             json
         );
+    }
+
+    // ============================================================================
+    // parse_model_id tests
+    // ============================================================================
+
+    #[test]
+    fn test_parse_model_id_anthropic_opus() {
+        assert_eq!(parse_model_id("claude-opus-4-5-20251101"), ("anthropic", "opus"));
+        assert_eq!(parse_model_id("claude-opus-4-20250514"), ("anthropic", "opus"));
+    }
+
+    #[test]
+    fn test_parse_model_id_anthropic_sonnet() {
+        assert_eq!(parse_model_id("claude-sonnet-4-20250514"), ("anthropic", "sonnet"));
+        assert_eq!(parse_model_id("claude-sonnet-4-5-20260130"), ("anthropic", "sonnet"));
+    }
+
+    #[test]
+    fn test_parse_model_id_anthropic_haiku() {
+        assert_eq!(parse_model_id("claude-haiku-4-20250514"), ("anthropic", "haiku"));
+    }
+
+    #[test]
+    fn test_parse_model_id_openai_gpt() {
+        assert_eq!(parse_model_id("gpt-4o-2024-08-06"), ("openai", "gpt-4"));
+        assert_eq!(parse_model_id("gpt-4-turbo"), ("openai", "gpt-4"));
+        assert_eq!(parse_model_id("gpt-3.5-turbo"), ("openai", "gpt-3"));
+    }
+
+    #[test]
+    fn test_parse_model_id_openai_reasoning() {
+        assert_eq!(parse_model_id("o1-preview"), ("openai", "o1"));
+        assert_eq!(parse_model_id("o1-mini"), ("openai", "o1"));
+        assert_eq!(parse_model_id("o3-mini"), ("openai", "o3"));
+    }
+
+    #[test]
+    fn test_parse_model_id_google_gemini() {
+        assert_eq!(parse_model_id("gemini-1.5-pro"), ("google", "gemini"));
+        assert_eq!(parse_model_id("gemini-2.0-flash"), ("google", "gemini"));
+    }
+
+    #[test]
+    fn test_parse_model_id_unknown() {
+        assert_eq!(parse_model_id("llama-3-70b"), ("unknown", "llama-3-70b"));
+        assert_eq!(parse_model_id("mistral-large"), ("unknown", "mistral-large"));
+        assert_eq!(parse_model_id(""), ("unknown", ""));
     }
 }
