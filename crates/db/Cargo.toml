@@ -12,11 +12,17 @@ tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 memmap2 = { workspace = true }
 memchr = { workspace = true }
+ts-rs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
+serde_json = { workspace = true }
+vibe-recall-server = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }

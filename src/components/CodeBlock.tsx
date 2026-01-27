@@ -1,16 +1,19 @@
 import { useState, useCallback } from 'react'
 import { Highlight, themes } from 'prism-react-renderer'
 import { Check, Copy } from 'lucide-react'
+import { useExpandContext } from '../contexts/ExpandContext'
 
 interface CodeBlockProps {
   code: string
   language?: string
+  blockId?: string
 }
 
-const COLLAPSE_THRESHOLD = 5
+const COLLAPSE_THRESHOLD = 25
 
-export function CodeBlock({ code, language = '' }: CodeBlockProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+export function CodeBlock({ code, language = '', blockId }: CodeBlockProps) {
+  const { expandedBlocks, toggleBlock } = useExpandContext()
+  const isExpanded = blockId ? expandedBlocks.has(blockId) : false
   const [copied, setCopied] = useState(false)
 
   const lines = code.split('\n')
@@ -95,7 +98,7 @@ export function CodeBlock({ code, language = '' }: CodeBlockProps) {
       {shouldCollapse && (
         <div className="border-t border-gray-200">
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => blockId && toggleBlock(blockId)}
             className="w-full px-3 py-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors text-center"
           >
             {isExpanded ? '[ Collapse ]' : `[ Show ${remainingLines} more lines ]`}

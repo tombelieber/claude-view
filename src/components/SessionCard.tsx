@@ -9,6 +9,29 @@ interface SessionCardProps {
   projectDisplayName?: string
 }
 
+/** Strip XML tags, system prompt noise, and quotes from preview text */
+function cleanPreviewText(text: string): string {
+  // Remove XML-like tags
+  let cleaned = text.replace(/<[^>]+>/g, '')
+  // Remove leading/trailing quotes
+  cleaned = cleaned.replace(/^["']|["']$/g, '')
+  // Remove slash-command prefixes like "/superpowers:brainstorm"
+  cleaned = cleaned.replace(/\/[\w-]+:[\w-]+\s*/g, '')
+  // Remove "superpowers:" prefixed words
+  cleaned = cleaned.replace(/superpowers:\S+\s*/g, '')
+  // Collapse whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  // If it starts with common system prompt patterns, show a clean label
+  if (cleaned.startsWith('You are a ') || cleaned.startsWith('You are Claude')) {
+    return 'System prompt session'
+  }
+  // If it looks like ls output or file listing
+  if (cleaned.match(/^"?\s*total \d+/)) {
+    return cleaned.slice(0, 100) + (cleaned.length > 100 ? '...' : '')
+  }
+  return cleaned || 'Untitled session'
+}
+
 function formatRelativeTime(timestamp: number): string {
   // timestamp is Unix seconds, convert to milliseconds for JavaScript Date
   const date = new Date(timestamp * 1000)
@@ -42,41 +65,48 @@ export function SessionCard({ session, isSelected, onClick, projectDisplayName }
   const editCount = toolCounts.edit + toolCounts.write // Combined edit + write
   const totalTools = editCount + toolCounts.bash + toolCounts.read
 
+  // Clean up preview text: strip XML tags and system prompt noise
+  const cleanPreview = cleanPreviewText(session.preview)
+  const cleanLast = session.lastMessage ? cleanPreviewText(session.lastMessage) : ''
+
+  const projectLabel = projectDisplayName || undefined
+
   return (
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left p-4 rounded-lg border transition-all',
+        'w-full text-left p-3.5 rounded-lg border transition-all',
         isSelected
           ? 'bg-blue-50 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
           : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
       )}
     >
-      {projectDisplayName && (
-        <span className="inline-block px-1.5 py-0.5 text-[11px] font-medium bg-blue-50 text-blue-600 rounded mb-1.5">
-          {projectDisplayName}
-        </span>
-      )}
-
-      {/* Header: First message with timestamp */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 line-clamp-2">
-            "{session.preview}"
-          </p>
-
-          {/* Last message if different from first */}
-          {session.lastMessage && session.lastMessage !== session.preview && (
-            <p className="text-sm text-gray-600 line-clamp-1 mt-1">
-              <span className="text-gray-400">→</span> "{session.lastMessage}"
-            </p>
+      {/* Header: Project badge + timestamp */}
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {projectLabel && (
+            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 rounded flex-shrink-0">
+              {projectLabel}
+            </span>
           )}
         </div>
-
-        {/* Timestamp in top-right */}
-        <p className="text-xs text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
+        <p className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
           {formatRelativeTime(session.modifiedAt)}
         </p>
+      </div>
+
+      {/* Preview text */}
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-900 line-clamp-2">
+          {cleanPreview}
+        </p>
+
+        {/* Last message if different from first */}
+        {cleanLast && cleanLast !== cleanPreview && (
+          <p className="text-[13px] text-gray-500 line-clamp-1 mt-0.5">
+            <span className="text-gray-300 mr-1">→</span>{cleanLast}
+          </p>
+        )}
       </div>
 
       {/* Files touched */}

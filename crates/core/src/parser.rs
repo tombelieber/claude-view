@@ -48,9 +48,13 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
     let mut total_tool_calls: usize = 0;
     let mut line_number: usize = 0;
 
-    // Regex for cleaning command tags from user messages
-    let command_tag_regex = Regex::new(r"<command-name>[^<]*</command-name>\s*").unwrap();
-    let command_args_regex = Regex::new(r"<command-args>[^<]*</command-args>\s*").unwrap();
+    // Regex for cleaning command tags from user messages (dotall for multi-line content)
+    let command_name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+    let command_args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+    let command_message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+
+    // Track pending thinking text from thinking-only assistant messages
+    let mut pending_thinking: Option<String> = None;
 
     while let Some(line_result) = lines.next_line().await.map_err(|e| ParseError::io(file_path, e))? {
         line_number += 1;
@@ -90,7 +94,14 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 if let Some(msg) = message {
                     let content = extract_text_content(&msg.content);
                     // Clean command tags from user messages
-                    let cleaned_content = clean_command_tags(&content, &command_tag_regex, &command_args_regex);
+                    let cleaned_content = clean_command_tags(
+                        &content,
+                        &command_name_regex,
+                        &command_args_regex,
+                        &command_message_regex,
+                    );
+                    // D5: Normalize backslash-newline sequences
+                    let cleaned_content = cleaned_content.replace("\\\n", "\n");
 
                     // Only add non-empty messages
                     if !cleaned_content.trim().is_empty() {
@@ -104,16 +115,40 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             }
             JsonlEntry::Assistant { message, timestamp } => {
                 if let Some(msg) = message {
-                    let (content, tool_calls) = extract_assistant_content(&msg.content);
+                    let (content, tool_calls, thinking_text) =
+                        extract_assistant_content(&msg.content);
                     let tool_call_count = tool_calls.iter().map(|tc| tc.count).sum::<usize>();
                     total_tool_calls += tool_call_count;
+
+                    let has_content = !content.trim().is_empty();
+                    let has_tools = !tool_calls.is_empty();
+                    let has_thinking = thinking_text.is_some();
+
+                    // If this message has ONLY thinking (no content, no tools),
+                    // store the thinking for the next assistant message
+                    if !has_content && !has_tools && has_thinking {
+                        pending_thinking = thinking_text;
+                        continue;
+                    }
+
+                    // Skip completely empty assistant messages
+                    if !has_content && !has_tools && !has_thinking && pending_thinking.is_none() {
+                        continue;
+                    }
 
                     let mut message = Message::assistant(content);
                     if let Some(ts) = timestamp {
                         message = message.with_timestamp(ts);
                     }
-                    if !tool_calls.is_empty() {
+                    if has_tools {
                         message = message.with_tools(tool_calls);
+                    }
+                    // Attach thinking: prefer pending (from previous thinking-only message),
+                    // fall back to this message's own thinking
+                    if let Some(thinking) = pending_thinking.take() {
+                        message = message.with_thinking(thinking);
+                    } else if let Some(thinking) = thinking_text {
+                        message = message.with_thinking(thinking);
                     }
                     messages.push(message);
                 }
@@ -145,18 +180,25 @@ fn extract_text_content(content: &JsonlContent) -> String {
     }
 }
 
-/// Extract text content and tool calls from assistant message content.
-fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>) {
+/// Extract text content, tool calls, and thinking text from assistant message content.
+///
+/// Returns `(text, tool_calls, thinking)` where thinking is the concatenated
+/// content of any `Thinking` blocks in the message.
+fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, Option<String>) {
     match content {
-        JsonlContent::Text(text) => (text.clone(), vec![]),
+        JsonlContent::Text(text) => (text.clone(), vec![], None),
         JsonlContent::Blocks(blocks) => {
             let mut text_parts: Vec<&str> = Vec::new();
+            let mut thinking_parts: Vec<&str> = Vec::new();
             let mut tool_counts: HashMap<String, usize> = HashMap::new();
 
             for block in blocks {
                 match block {
                     ContentBlock::Text { text } => {
                         text_parts.push(text);
+                    }
+                    ContentBlock::Thinking { thinking } => {
+                        thinking_parts.push(thinking);
                     }
                     ContentBlock::ToolUse { name, .. } => {
                         *tool_counts.entry(name.clone()).or_insert(0) += 1;
@@ -171,15 +213,42 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>) 
                 .map(|(name, count)| ToolCall { name, count })
                 .collect();
 
-            (text, tool_calls)
+            let thinking = if thinking_parts.is_empty() {
+                None
+            } else {
+                Some(thinking_parts.join("\n"))
+            };
+
+            (text, tool_calls, thinking)
         }
     }
 }
 
 /// Clean command tags from user messages.
-fn clean_command_tags(content: &str, tag_regex: &Regex, args_regex: &Regex) -> String {
-    let cleaned = tag_regex.replace_all(content, "");
-    let cleaned = args_regex.replace_all(&cleaned, "");
+///
+/// Extracts content from `<command-args>` (the actual user input for slash commands),
+/// strips `<command-name>` and `<command-message>` tags. If `<command-args>` is present,
+/// its inner content becomes the message; otherwise the remaining text after stripping
+/// the other tags is used.
+fn clean_command_tags(
+    content: &str,
+    name_regex: &Regex,
+    args_regex: &Regex,
+    message_regex: &Regex,
+) -> String {
+    // Try to extract command-args content first
+    if let Some(caps) = args_regex.captures(content) {
+        if let Some(args_content) = caps.get(1) {
+            let extracted = args_content.as_str().trim();
+            if !extracted.is_empty() {
+                return extracted.to_string();
+            }
+        }
+    }
+
+    // No command-args found (or empty), strip command-name and command-message tags
+    let cleaned = name_regex.replace_all(content, "");
+    let cleaned = message_regex.replace_all(&cleaned, "");
     cleaned.trim().to_string()
 }
 
@@ -326,11 +395,12 @@ mod tests {
         let path = fixtures_path().join("with_commands.jsonl");
         let session = parse_session(&path).await.unwrap();
 
-        // Second user message should have both command-name and command-args cleaned
+        // Second user message should extract command-args content as the message
         let second_user = &session.messages[2];
         assert!(!second_user.content.contains("<command-args>"));
         assert!(!second_user.content.contains("</command-args>"));
-        assert!(second_user.content.contains("Review this PR"));
+        assert!(!second_user.content.contains("<command-name>"));
+        assert_eq!(second_user.content, "Review this PR #123");
     }
 
     #[tokio::test]
@@ -515,9 +585,10 @@ mod tests {
             },
         ]);
 
-        let (text, tools) = extract_assistant_content(&content);
+        let (text, tools, thinking) = extract_assistant_content(&content);
         assert_eq!(text, "Let me help");
         assert_eq!(tools.len(), 2); // Read and Edit
+        assert!(thinking.is_none());
 
         let read_tool = tools.iter().find(|t| t.name == "Read").unwrap();
         assert_eq!(read_tool.count, 2);
@@ -527,33 +598,91 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_assistant_content_with_thinking() {
+        let content = JsonlContent::Blocks(vec![
+            ContentBlock::Thinking {
+                thinking: "Let me reason about this...".to_string(),
+            },
+            ContentBlock::Text {
+                text: "Here is the answer".to_string(),
+            },
+        ]);
+
+        let (text, tools, thinking) = extract_assistant_content(&content);
+        assert_eq!(text, "Here is the answer");
+        assert!(tools.is_empty());
+        assert_eq!(thinking, Some("Let me reason about this...".to_string()));
+    }
+
+    #[test]
+    fn test_extract_assistant_content_thinking_only() {
+        let content = JsonlContent::Blocks(vec![
+            ContentBlock::Thinking {
+                thinking: "Just thinking...".to_string(),
+            },
+        ]);
+
+        let (text, tools, thinking) = extract_assistant_content(&content);
+        assert_eq!(text, "");
+        assert!(tools.is_empty());
+        assert_eq!(thinking, Some("Just thinking...".to_string()));
+    }
+
+    #[test]
     fn test_clean_command_tags_basic() {
-        let tag_regex = Regex::new(r"<command-name>[^<]*</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"<command-args>[^<]*</command-args>\s*").unwrap();
+        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
 
         let input = "<command-name>/commit</command-name>\nPlease commit";
-        let result = clean_command_tags(input, &tag_regex, &args_regex);
+        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
         assert_eq!(result, "Please commit");
     }
 
     #[test]
     fn test_clean_command_tags_with_args() {
-        let tag_regex = Regex::new(r"<command-name>[^<]*</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"<command-args>[^<]*</command-args>\s*").unwrap();
+        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
 
+        // When command-args is present, its content becomes the message
         let input = "<command-name>/review</command-name>\n<command-args>123</command-args>\nReview PR";
-        let result = clean_command_tags(input, &tag_regex, &args_regex);
-        assert_eq!(result, "Review PR");
+        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        assert_eq!(result, "123");
+    }
+
+    #[test]
+    fn test_clean_command_tags_with_multiline_args() {
+        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+
+        // command-args can contain < characters and span multiple lines
+        let input = "<command-name>/review</command-name>\n<command-args>Fix the <T> generic\nacross files</command-args>";
+        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        assert_eq!(result, "Fix the <T> generic\nacross files");
     }
 
     #[test]
     fn test_clean_command_tags_no_tags() {
-        let tag_regex = Regex::new(r"<command-name>[^<]*</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"<command-args>[^<]*</command-args>\s*").unwrap();
+        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
 
         let input = "Normal message without tags";
-        let result = clean_command_tags(input, &tag_regex, &args_regex);
+        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
         assert_eq!(result, "Normal message without tags");
+    }
+
+    #[test]
+    fn test_clean_command_message_tags() {
+        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
+        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
+        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+
+        let input = "<command-name>/commit</command-name>\n<command-message>System prompt text</command-message>\nPlease commit";
+        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        assert_eq!(result, "Please commit");
     }
 
     // ============================================================================
