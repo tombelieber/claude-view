@@ -1,6 +1,6 @@
-import { useParams, useOutletContext, Link } from 'react-router-dom'
+import { useParams, useOutletContext } from 'react-router-dom'
 import type { ProjectInfo } from '../hooks/use-projects'
-import { SessionCard } from './SessionCard'
+import { DateGroupedList } from './DateGroupedList'
 
 interface OutletContext {
   projects: ProjectInfo[]
@@ -33,26 +33,7 @@ export function ProjectView() {
         </p>
       </div>
 
-      <div className="space-y-3">
-        {project.sessions.map((session) => (
-          <Link
-            key={session.id}
-            to={`/session/${encodeURIComponent(session.project)}/${session.id}`}
-          >
-            <SessionCard
-              session={session}
-              isSelected={false}
-              onClick={() => {}}
-            />
-          </Link>
-        ))}
-      </div>
-
-      {project.sessions.length >= 20 && (
-        <button className="w-full mt-4 py-3 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          Load more sessions...
-        </button>
-      )}
+      <DateGroupedList sessions={project.sessions} />
       </div>
     </div>
   )
