@@ -6,11 +6,13 @@ use axum::{
 };
 use serde::Serialize;
 use thiserror::Error;
+use ts_rs::TS;
 use vibe_recall_core::{DiscoveryError, ParseError};
 use vibe_recall_db::DbError;
 
 /// Structured JSON error response for API errors
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ErrorResponse {
     pub error: String,

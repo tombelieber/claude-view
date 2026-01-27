@@ -28,6 +28,7 @@ indicatif = { workspace = true }
 dirs = { workspace = true }
 tokio-stream = { workspace = true }
 async-stream = { workspace = true }
+ts-rs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
