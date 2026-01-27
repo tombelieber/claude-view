@@ -1,6 +1,7 @@
 ---
-status: pending
+status: done
 date: 2026-01-27
+completed: 2026-01-27
 ---
 
 # Rust Backend Parity Fix Plan
@@ -13,12 +14,12 @@ This document audits all gaps between the old Node.js/Express/TypeScript backend
 
 | Issue | Severity | Category | Status |
 |-------|----------|----------|--------|
-| 1. `modifiedAt` date format | 🔴 Critical | Data Format | Frontend broken |
-| 2. `activeCount` calculation | 🟠 High | Business Logic | Wrong value |
-| 3. Path resolution algorithm | 🟠 High | Business Logic | Missing features |
-| 4. Skills extraction | 🔴 Critical | Business Logic | Completely broken |
-| 5. Skills format (missing `/`) | 🟡 Medium | Data Format | Inconsistent |
-| 6. `filesTouched` truncation | 🟡 Medium | Business Logic | Missing limit |
+| 1. `modifiedAt` date format | 🔴 Critical | Data Format | ✅ Fixed |
+| 2. `activeCount` calculation | 🟠 High | Business Logic | ✅ Fixed |
+| 3. Path resolution algorithm | 🟠 High | Business Logic | ✅ Fixed |
+| 4. Skills extraction | 🔴 Critical | Business Logic | ✅ Fixed |
+| 5. Skills format (missing `/`) | 🟡 Medium | Data Format | ✅ Fixed |
+| 6. `filesTouched` truncation | 🟡 Medium | Business Logic | ✅ Fixed |
 
 ---
 
