@@ -2821,6 +2821,9 @@ dependencies = [
 name = "vibe-recall-db"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "dirs",
+ "serde_json",
  "sqlx",
  "tempfile",
  "thiserror 2.0.18",
@@ -2851,6 +2854,7 @@ dependencies = [
  "assert-json-diff",
  "axum 0.8.8",
  "axum-test",
+ "dirs",
  "indicatif",
  "pretty_assertions",
  "serde",
