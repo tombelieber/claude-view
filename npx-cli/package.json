@@ -1,0 +1,27 @@
+{
+  "name": "claude-view",
+  "version": "0.1.0",
+  "description": "Browse and search your Claude Code sessions in a beautiful local web UI",
+  "bin": {
+    "claude-view": "./index.js"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/myorg/claude-view"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "sessions",
+    "viewer",
+    "browser"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ]
+}
