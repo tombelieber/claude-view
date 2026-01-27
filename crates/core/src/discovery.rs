@@ -98,6 +98,10 @@ pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
 /// - `/Users/foo/my/project` (more separators)
 /// - etc.
 ///
+/// Special handling:
+/// - `--` (double dash) converts to `/@` for scoped packages like `@vicky-ai`
+/// - `.` is tried as a separator for domain-like names like `famatch.io`
+///
 /// The function uses a heuristic: leading hyphen becomes `/`, internal hyphens
 /// could be path separators or literal hyphens.
 pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
@@ -108,30 +112,31 @@ pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
         return vec!["/".to_string()];
     }
 
-    // Split by hyphens
-    let parts: Vec<&str> = name.split('-').collect();
+    // Step 1: Handle double-dash -> @ conversion (for scoped packages like @vicky-ai)
+    // Before splitting, replace -- with a placeholder, then restore as /@
+    let name_with_at = name.replace("--", "\x00@");
+
+    // Split by single hyphens (the \x00@ sequences won't be split)
+    let parts: Vec<&str> = name_with_at.split('-').collect();
 
     if parts.is_empty() {
         return vec![format!("/{}", name)];
     }
 
-    // Generate variants by trying different groupings
-    // For simplicity, we generate the most common patterns:
-    // 1. All hyphens as path separators
-    // 2. Keep hyphens in the last component (most common for project names)
-    // 3. Keep hyphens in the last two components
+    // Restore @ symbols and fix path separators
+    let restore_at = |s: &str| s.replace("\x00@", "/@");
 
     let mut variants = Vec::new();
 
     // Variant 1: All hyphens as path separators
-    let all_sep = format!("/{}", parts.join("/"));
+    let all_sep = restore_at(&format!("/{}", parts.join("/")));
     variants.push(all_sep);
 
     // Variant 2: Last component keeps its hyphens
     if parts.len() >= 2 {
         let last = parts.last().unwrap();
         let rest = &parts[..parts.len() - 1];
-        let v = format!("/{}/{}", rest.join("/"), last);
+        let v = restore_at(&format!("/{}/{}", rest.join("/"), last));
         if !variants.contains(&v) {
             variants.push(v);
         }
@@ -141,7 +146,7 @@ pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
     if parts.len() >= 3 {
         let last_two = parts[parts.len() - 2..].join("-");
         let rest = &parts[..parts.len() - 2];
-        let v = format!("/{}/{}", rest.join("/"), last_two);
+        let v = restore_at(&format!("/{}/{}", rest.join("/"), last_two));
         if !variants.contains(&v) {
             variants.push(v);
         }
@@ -151,13 +156,45 @@ pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
     if parts.len() >= 4 {
         let last_three = parts[parts.len() - 3..].join("-");
         let rest = &parts[..parts.len() - 3];
-        let v = format!("/{}/{}", rest.join("/"), last_three);
+        let v = restore_at(&format!("/{}/{}", rest.join("/"), last_three));
+        if !variants.contains(&v) {
+            variants.push(v);
+        }
+    }
+
+    // Variant 5: Try dot separator for last two parts (domain-like names: famatch.io)
+    if parts.len() >= 2 {
+        let last_with_dot = format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1]);
+        let rest = &parts[..parts.len() - 2];
+        let v = if rest.is_empty() {
+            restore_at(&format!("/{}", last_with_dot))
+        } else {
+            restore_at(&format!("/{}/{}", rest.join("/"), last_with_dot))
+        };
         if !variants.contains(&v) {
             variants.push(v);
         }
     }
 
     variants
+}
+
+/// Count sessions that are "active" (modified within the last 5 minutes).
+/// This matches the Node.js behavior for the activeCount field.
+pub fn count_active_sessions(sessions: &[SessionInfo]) -> usize {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let five_minutes_ago = now - 5 * 60;
+
+    sessions
+        .iter()
+        .filter(|s| s.modified_at > five_minutes_ago)
+        .count()
 }
 
 /// Truncate a string to a maximum length, adding ellipsis if needed.
@@ -257,11 +294,13 @@ pub async fn get_projects() -> Result<Vec<ProjectInfo>, DiscoveryError> {
             continue;
         }
 
+        let active_count = count_active_sessions(&sessions);
+
         projects.push(ProjectInfo {
             name: encoded_name,
             display_name: resolved.display_name,
             path: resolved.full_path,
-            active_count: sessions.len(),
+            active_count,
             sessions,
         });
     }
@@ -354,8 +393,11 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
     let mut user_count = 0;
     let mut assistant_count = 0;
 
-    // Regex for detecting skills (slash commands)
-    let skill_regex = Regex::new(r"/([a-zA-Z][a-zA-Z0-9_-]*)").ok();
+    // Regex for detecting skills (slash commands like /commit, /review-pr, /superpowers:brainstorm)
+    // Must NOT be followed by another / (to exclude file paths like /Users/test)
+    // Captures the full skill including the leading /
+    // Pattern: /word with optional :word or -word segments, not followed by /
+    let skill_regex = Regex::new(r"(?:^|[^/\w])(/[a-zA-Z][\w:-]*)(?:[^/]|$)").ok();
 
     // Regex for file paths in tool inputs
     let file_path_regex = Regex::new(r#""file_path"\s*:\s*"([^"]+)""#).ok();
@@ -374,12 +416,14 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
 
             // Extract content for preview
             if let Some(content) = extract_content_quick(line) {
-                // Check for skills
+                // Check for skills (slash commands)
                 if let Some(ref re) = skill_regex {
                     for cap in re.captures_iter(&content) {
                         if let Some(skill) = cap.get(1) {
                             let skill_name = skill.as_str().to_string();
-                            if !metadata.skills_used.contains(&skill_name) {
+                            // Double-check: skill must start with / and not look like a file path
+                            // File paths typically have multiple / like /Users/foo/bar
+                            if skill_name.starts_with('/') && !metadata.skills_used.contains(&skill_name) {
                                 metadata.skills_used.push(skill_name);
                             }
                         }
@@ -402,13 +446,24 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
             // Count tool uses
             count_tools_quick(line, &mut metadata.tool_counts);
 
-            // Extract file paths
-            if let Some(ref re) = file_path_regex {
-                for cap in re.captures_iter(line) {
-                    if let Some(path) = cap.get(1) {
-                        let path_str = path.as_str().to_string();
-                        if !metadata.files_touched.contains(&path_str) {
-                            metadata.files_touched.push(path_str);
+            // Extract file paths (filename only, limit to 5)
+            if metadata.files_touched.len() < 5 {
+                if let Some(ref re) = file_path_regex {
+                    for cap in re.captures_iter(line) {
+                        if metadata.files_touched.len() >= 5 {
+                            break;
+                        }
+                        if let Some(path) = cap.get(1) {
+                            // Extract just the filename from the path
+                            let path_str = path.as_str();
+                            let filename = path_str
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or(path_str)
+                                .to_string();
+                            if !filename.is_empty() && !metadata.files_touched.contains(&filename) {
+                                metadata.files_touched.push(filename);
+                            }
                         }
                     }
                 }
@@ -658,6 +713,110 @@ mod tests {
     }
 
     // ============================================================================
+    // Issue 3: Path Resolution - Double Dash and Dot Support
+    // ============================================================================
+
+    #[test]
+    fn test_double_dash_converts_to_at_symbol() {
+        // --vicky-ai should become /@vicky-ai (scoped packages)
+        let variants = get_join_variants("-Users-TBGor-dev--vicky-ai-project");
+
+        assert!(
+            variants.iter().any(|v| v.contains("/@vicky-ai")),
+            "Should convert -- to /@ for scoped packages. Got: {:?}",
+            variants
+        );
+    }
+
+    #[test]
+    fn test_double_dash_at_start() {
+        // Double dash at start of component
+        let variants = get_join_variants("-Users-dev--scope-package");
+
+        assert!(
+            variants.iter().any(|v| v.contains("/@scope")),
+            "Should handle -- at component boundary. Got: {:?}",
+            variants
+        );
+    }
+
+    #[test]
+    fn test_dot_separator_for_domains() {
+        // famatch-io should try famatch.io
+        let variants = get_join_variants("-Users-test-famatch-io");
+
+        assert!(
+            variants.iter().any(|v| v.ends_with("famatch.io")),
+            "Should try dot separator for domain-like names. Got: {:?}",
+            variants
+        );
+    }
+
+    #[test]
+    fn test_dot_separator_three_parts() {
+        // my-app-io should try my-app.io and my.app.io
+        let variants = get_join_variants("-home-user-my-app-io");
+
+        assert!(
+            variants.iter().any(|v| v.contains(".io")),
+            "Should try .io domain pattern. Got: {:?}",
+            variants
+        );
+    }
+
+    // ============================================================================
+    // Issue 6: filesTouched - Limit to 5, Filename Only
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_files_touched_limited_to_5() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        // Create session with 10 file edits
+        let content = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file1.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file2.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file3.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file4.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file5.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file6.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/b/file7.rs"}}]}}"#;
+
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.files_touched.len() <= 5,
+            "Should limit to 5 files, got: {}",
+            metadata.files_touched.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_files_touched_shows_filename_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/Users/test/project/src/main.rs"}}]}}"#;
+
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.files_touched.contains(&"main.rs".to_string()),
+            "Should contain filename only, got: {:?}",
+            metadata.files_touched
+        );
+        assert!(
+            !metadata.files_touched.iter().any(|f| f.contains('/')),
+            "Should NOT contain paths with slashes, got: {:?}",
+            metadata.files_touched
+        );
+    }
+
+    // ============================================================================
     // truncate_preview Tests
     // ============================================================================
 
@@ -724,8 +883,9 @@ mod tests {
         assert_eq!(metadata.turn_count, 2);
         assert_eq!(metadata.tool_counts.read, 1);
         assert_eq!(metadata.tool_counts.edit, 1);
-        assert!(metadata.skills_used.contains(&"commit".to_string()));
-        assert!(metadata.files_touched.contains(&"/test/file.rs".to_string()));
+        assert!(metadata.skills_used.contains(&"/commit".to_string()));
+        // Note: files_touched now contains only filenames, not full paths
+        assert!(metadata.files_touched.contains(&"file.rs".to_string()));
     }
 
     #[tokio::test]
@@ -883,6 +1043,84 @@ mod tests {
         assert_eq!(sessions[0].preview, "Test");
     }
 
+    // ============================================================================
+    // Issue 2: activeCount Calculation Tests
+    // ============================================================================
+
+    #[test]
+    fn test_count_active_sessions_within_5_minutes() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let sessions = vec![
+            create_test_session_with_time(now - 60),     // 1 min ago (active)
+            create_test_session_with_time(now - 240),    // 4 min ago (active)
+            create_test_session_with_time(now - 600),    // 10 min ago (not active)
+            create_test_session_with_time(now - 3600),   // 1 hour ago (not active)
+        ];
+
+        let active = count_active_sessions(&sessions);
+        assert_eq!(active, 2, "Should count 2 sessions within 5 minutes");
+    }
+
+    #[test]
+    fn test_count_active_sessions_none_recent() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let sessions = vec![
+            create_test_session_with_time(now - 600),    // 10 min ago
+            create_test_session_with_time(now - 1800),   // 30 min ago
+        ];
+
+        let active = count_active_sessions(&sessions);
+        assert_eq!(active, 0, "Should count 0 when no sessions within 5 minutes");
+    }
+
+    #[test]
+    fn test_count_active_sessions_boundary() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let sessions = vec![
+            create_test_session_with_time(now - 299),    // Just under 5 min (active)
+            create_test_session_with_time(now - 301),    // Just over 5 min (not active)
+        ];
+
+        let active = count_active_sessions(&sessions);
+        assert_eq!(active, 1, "Should count session at 4:59 as active, 5:01 as not");
+    }
+
+    fn create_test_session_with_time(modified_at: i64) -> crate::types::SessionInfo {
+        crate::types::SessionInfo {
+            id: "test".to_string(),
+            project: "test".to_string(),
+            project_path: "/test".to_string(),
+            file_path: "/test/session.jsonl".to_string(),
+            modified_at,
+            size_bytes: 100,
+            preview: "Test".to_string(),
+            last_message: "Test".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: crate::types::ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+        }
+    }
+
     #[tokio::test]
     async fn test_get_project_sessions_ignores_non_jsonl() {
         let temp_dir = TempDir::new().unwrap();
@@ -902,5 +1140,98 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, "session");
+    }
+
+    // ============================================================================
+    // Issue 4: Skills Extraction Tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_skills_extraction_captures_slash_commands() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"user","message":{"content":"Please /commit my changes"}}"#;
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.skills_used.contains(&"/commit".to_string()),
+            "Should contain /commit, got: {:?}",
+            metadata.skills_used
+        );
+    }
+
+    #[tokio::test]
+    async fn test_skills_extraction_with_colon_separator() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"user","message":{"content":"Run /superpowers:brainstorm please"}}"#;
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.skills_used.contains(&"/superpowers:brainstorm".to_string()),
+            "Should contain /superpowers:brainstorm, got: {:?}",
+            metadata.skills_used
+        );
+    }
+
+    #[tokio::test]
+    async fn test_skills_extraction_with_hyphen() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"user","message":{"content":"Please /review-pr this"}}"#;
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.skills_used.contains(&"/review-pr".to_string()),
+            "Should contain /review-pr, got: {:?}",
+            metadata.skills_used
+        );
+    }
+
+    #[tokio::test]
+    async fn test_skills_extraction_ignores_file_paths() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"user","message":{"content":"Check file at /Users/test/path/file.rs"}}"#;
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        // /Users is a path, not a skill - should be excluded
+        assert!(
+            !metadata.skills_used.iter().any(|s| s.contains("Users")),
+            "Should NOT contain /Users, got: {:?}",
+            metadata.skills_used
+        );
+    }
+
+    #[tokio::test]
+    async fn test_skills_extraction_multiple_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.jsonl");
+
+        let content = r#"{"type":"user","message":{"content":"/commit then /push please"}}"#;
+        tokio::fs::write(&file_path, content).await.unwrap();
+
+        let metadata = extract_session_metadata(&file_path).await;
+
+        assert!(
+            metadata.skills_used.contains(&"/commit".to_string()),
+            "Should contain /commit"
+        );
+        assert!(
+            metadata.skills_used.contains(&"/push".to_string()),
+            "Should contain /push"
+        );
     }
 }
