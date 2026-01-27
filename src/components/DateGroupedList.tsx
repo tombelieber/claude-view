@@ -12,22 +12,22 @@ export function DateGroupedList({ sessions, showProjectBadge }: DateGroupedListP
   const groups = groupSessionsByDate(sessions)
 
   return (
-    <div className="space-y-2">
-      {groups.map((group) => (
+    <div>
+      {groups.map((group, i) => (
         <div key={group.label}>
           {/* Sticky date header */}
-          <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 py-3 flex items-center">
-            <span className="font-medium text-gray-900 text-sm">
+          <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm py-2.5 flex items-center gap-3">
+            <span className="text-[13px] font-semibold text-gray-700 tracking-tight whitespace-nowrap">
               {group.label}
             </span>
-            <div className="flex-1 border-b border-gray-200 mx-3" />
-            <span className="text-gray-400 tabular-nums text-xs">
-              {group.sessions.length}
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">
+              {group.sessions.length} {group.sessions.length === 1 ? 'session' : 'sessions'}
             </span>
           </div>
 
           {/* Session cards */}
-          <div className="space-y-2">
+          <div className="space-y-2 pb-4">
             {group.sessions.map((session) => (
               <Link
                 key={session.id}
