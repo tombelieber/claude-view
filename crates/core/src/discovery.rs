@@ -48,12 +48,13 @@ pub struct ExtractedMetadata {
 /// Claude encodes paths like `/Users/foo/my-project` as `-Users-foo-my-project`.
 /// The challenge is that hyphens in real directory names look like path separators.
 ///
-/// Strategy:
-/// 1. Try increasingly shorter prefix paths until we find one that exists
-/// 2. For ambiguous cases, prefer longer existing paths
-/// 3. Fall back to basic decode if no path exists
+/// Strategy: DFS segment walk with backtracking.
+/// 1. Tokenize the encoded name (handling `--` → `@` conversion)
+/// 2. Walk left-to-right, probing the filesystem at each decision point
+/// 3. At each segment, try it as a new directory; if not found, join with `-` or `.`
+/// 4. Backtrack if a path leads to a dead end
+/// 5. Derive display name from nearest git root
 pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
-    // Handle empty or single-character names
     if encoded_name.is_empty() {
         return ResolvedProject {
             full_path: String::new(),
@@ -61,115 +62,219 @@ pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
         };
     }
 
-    // Get all possible join variants
-    let variants = get_join_variants(encoded_name);
+    let segments = tokenize_encoded_name(encoded_name);
 
-    // Try each variant, prefer the one that exists on filesystem
-    for variant in &variants {
-        if Path::new(variant).exists() {
-            let display_name = Path::new(variant)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| variant.clone());
-            return ResolvedProject {
-                full_path: variant.clone(),
-                display_name,
-            };
-        }
+    if segments.is_empty() {
+        return ResolvedProject {
+            full_path: "/".to_string(),
+            display_name: "/".to_string(),
+        };
     }
 
-    // Fallback: use the first (most likely) variant
-    let fallback = variants.into_iter().next().unwrap_or_default();
-    let display_name = Path::new(&fallback)
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| fallback.clone());
+    // DFS resolve
+    let resolved_path = if let Some(path) = dfs_resolve(&PathBuf::from("/"), &segments, 0) {
+        path.to_string_lossy().to_string()
+    } else {
+        // Fallback: join all segments with / (all-separators interpretation)
+        format!("/{}", segments.join("/"))
+    };
+
+    let display_name = derive_display_name(&resolved_path);
 
     ResolvedProject {
-        full_path: fallback,
+        full_path: resolved_path,
         display_name,
     }
 }
 
+/// Tokenize an encoded project name into path segments.
+///
+/// Handles `--` → `/@` conversion for scoped packages.
+/// The `--` represents a path separator `/` followed by `@`.
+///
+/// Example: `-Users-TBGor-dev--vicky-ai-claude-view`
+///   → `["Users", "TBGor", "dev", "@vicky", "ai", "claude", "view"]`
+fn tokenize_encoded_name(encoded_name: &str) -> Vec<String> {
+    let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
+    if name.is_empty() {
+        return vec![];
+    }
+
+    // Replace -- with a path-separator + @ marker
+    // `--` means `/@` which is path_sep + @_prefix
+    // Use \x00/ as separator so it splits correctly
+    let normalized = name.replace("--", "\x00/\x00@");
+
+    // Split on - and \x00/
+    let mut segments = Vec::new();
+    for part in normalized.split('-') {
+        for sub in part.split("\x00/") {
+            let restored = sub.replace('\x00', "");
+            if !restored.is_empty() {
+                segments.push(restored);
+            }
+        }
+    }
+
+    segments
+}
+
+/// DFS walk to resolve path segments against the filesystem.
+///
+/// At each position, tries:
+/// 1. Current segment as a new directory component (path separator)
+/// 2. Joining current + next segments with `-` (hyphenated name, up to 4 segments)
+/// 3. Joining with `.` (domain-like names such as `Famatch.io`)
+///
+/// Returns the first complete path that exists on the filesystem.
+fn dfs_resolve(base: &Path, segments: &[String], start: usize) -> Option<PathBuf> {
+    // All segments consumed — check if the path exists
+    if start >= segments.len() {
+        return if base.exists() { Some(base.to_path_buf()) } else { None };
+    }
+
+    // Cap: try joining up to 4 consecutive segments with `-`
+    let max_join = (segments.len() - start).min(4);
+
+    for join_count in 1..=max_join {
+        let joined = segments[start..start + join_count].join("-");
+        let candidate = base.join(&joined);
+
+        let next_start = start + join_count;
+
+        if next_start >= segments.len() {
+            // Last segment(s) — check if final path exists
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        } else {
+            // Not the last — candidate must be a directory to continue
+            if candidate.is_dir() {
+                if let Some(result) = dfs_resolve(&candidate, segments, next_start) {
+                    return Some(result);
+                }
+            }
+        }
+
+        // Also try `.` join for domain-like names (e.g., Famatch.io)
+        if join_count == 2 {
+            let dot_joined = format!("{}.{}", segments[start], segments[start + 1]);
+            let dot_candidate = base.join(&dot_joined);
+
+            if next_start >= segments.len() {
+                if dot_candidate.exists() {
+                    return Some(dot_candidate);
+                }
+            } else if dot_candidate.is_dir() {
+                if let Some(result) = dfs_resolve(&dot_candidate, segments, next_start) {
+                    return Some(result);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Derive a human-friendly display name from a resolved filesystem path.
+///
+/// Strategy:
+/// 1. Walk up from the resolved path to find the nearest `.git` directory
+/// 2. Then walk further up to find the **topmost** `.git` within 5 levels
+///    (handles worktrees/nested repos like `fluffy/web` inside `fluffy`)
+/// 3. Display name = topmost git root name + relative path
+///
+/// Examples:
+/// - `/Users/foo/dev/@org/my-project` (git at my-project) → `my-project`
+/// - `/Users/foo/dev/@org/repo/web`   (git at both repo and web) → `repo/web`
+/// - `/Users/foo`                     (no git root)             → `foo`
+fn derive_display_name(resolved_path: &str) -> String {
+    let path = Path::new(resolved_path);
+
+    // Find the topmost git root within 5 levels above the resolved path
+    let mut topmost_git_root: Option<&Path> = None;
+    let mut current = path;
+
+    for _ in 0..5 {
+        if current.join(".git").exists() {
+            topmost_git_root = Some(current);
+        }
+
+        match current.parent() {
+            Some(parent) if parent != current => current = parent,
+            _ => break,
+        }
+    }
+
+    if let Some(git_root) = topmost_git_root {
+        let git_root_name = git_root
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if git_root == path {
+            return git_root_name;
+        }
+
+        // path is deeper than git root — include relative suffix
+        if let Ok(relative) = path.strip_prefix(git_root) {
+            return format!("{}/{}", git_root_name, relative.display());
+        }
+
+        return git_root_name;
+    }
+
+    // No git root found — fall back to last path component
+    path.file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| resolved_path.to_string())
+}
+
 /// Generate all possible path interpretations of an encoded name.
 ///
-/// For `-Users-foo-my-project`, this generates:
-/// - `/Users/foo/my-project` (all hyphens as separators)
-/// - `/Users/foo/my/project` (more separators)
-/// - etc.
+/// This is the legacy API preserved for backward compatibility.
+/// Internally delegates to `tokenize_encoded_name` and generates fixed variants.
 ///
-/// Special handling:
-/// - `--` (double dash) converts to `/@` for scoped packages like `@vicky-ai`
-/// - `.` is tried as a separator for domain-like names like `famatch.io`
-///
-/// The function uses a heuristic: leading hyphen becomes `/`, internal hyphens
-/// could be path separators or literal hyphens.
+/// Prefer using `resolve_project_path` which uses DFS for correct resolution.
 pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
-    // Remove leading hyphen if present
-    let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
-
-    if name.is_empty() {
+    let segments = tokenize_encoded_name(encoded_name);
+    if segments.is_empty() {
         return vec!["/".to_string()];
     }
 
-    // Step 1: Handle double-dash -> @ conversion (for scoped packages like @vicky-ai)
-    // Before splitting, replace -- with a placeholder, then restore as /@
-    let name_with_at = name.replace("--", "\x00@");
-
-    // Split by single hyphens (the \x00@ sequences won't be split)
-    let parts: Vec<&str> = name_with_at.split('-').collect();
-
-    if parts.is_empty() {
-        return vec![format!("/{}", name)];
-    }
-
-    // Restore @ symbols and fix path separators
-    let restore_at = |s: &str| s.replace("\x00@", "/@");
-
     let mut variants = Vec::new();
 
-    // Variant 1: All hyphens as path separators
-    let all_sep = restore_at(&format!("/{}", parts.join("/")));
-    variants.push(all_sep);
+    // Variant 1: All segments as path separators
+    variants.push(format!("/{}", segments.join("/")));
 
-    // Variant 2: Last component keeps its hyphens
-    if parts.len() >= 2 {
-        let last = parts.last().unwrap();
-        let rest = &parts[..parts.len() - 1];
-        let v = restore_at(&format!("/{}/{}", rest.join("/"), last));
+    // Variant 2: Last two segments joined with -
+    if segments.len() >= 3 {
+        let last_two = segments[segments.len() - 2..].join("-");
+        let rest = &segments[..segments.len() - 2];
+        let v = format!("/{}/{}", rest.join("/"), last_two);
         if !variants.contains(&v) {
             variants.push(v);
         }
     }
 
-    // Variant 3: Last two components might be hyphenated project name
-    if parts.len() >= 3 {
-        let last_two = parts[parts.len() - 2..].join("-");
-        let rest = &parts[..parts.len() - 2];
-        let v = restore_at(&format!("/{}/{}", rest.join("/"), last_two));
+    // Variant 3: Last three segments joined with -
+    if segments.len() >= 4 {
+        let last_three = segments[segments.len() - 3..].join("-");
+        let rest = &segments[..segments.len() - 3];
+        let v = format!("/{}/{}", rest.join("/"), last_three);
         if !variants.contains(&v) {
             variants.push(v);
         }
     }
 
-    // Variant 4: Last three components might be hyphenated project name
-    if parts.len() >= 4 {
-        let last_three = parts[parts.len() - 3..].join("-");
-        let rest = &parts[..parts.len() - 3];
-        let v = restore_at(&format!("/{}/{}", rest.join("/"), last_three));
-        if !variants.contains(&v) {
-            variants.push(v);
-        }
-    }
-
-    // Variant 5: Try dot separator for last two parts (domain-like names: famatch.io)
-    if parts.len() >= 2 {
-        let last_with_dot = format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1]);
-        let rest = &parts[..parts.len() - 2];
+    // Variant 4: Dot join for domain-like names
+    if segments.len() >= 2 {
+        let dot_joined = format!("{}.{}", segments[segments.len() - 2], segments[segments.len() - 1]);
+        let rest = &segments[..segments.len() - 2];
         let v = if rest.is_empty() {
-            restore_at(&format!("/{}", last_with_dot))
+            format!("/{}", dot_joined)
         } else {
-            restore_at(&format!("/{}/{}", rest.join("/"), last_with_dot))
+            format!("/{}/{}", rest.join("/"), dot_joined)
         };
         if !variants.contains(&v) {
             variants.push(v);
@@ -367,6 +472,10 @@ async fn get_project_sessions(
             tool_counts: extracted.tool_counts,
             message_count: extracted.message_count,
             turn_count: extracted.turn_count,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         });
     }
 
@@ -1118,6 +1227,10 @@ mod tests {
             tool_counts: crate::types::ToolCounts::default(),
             message_count: 1,
             turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         }
     }
 
@@ -1233,5 +1346,191 @@ mod tests {
             metadata.skills_used.contains(&"/push".to_string()),
             "Should contain /push"
         );
+    }
+
+    // ============================================================================
+    // DFS Path Resolution Tests
+    // ============================================================================
+
+    #[test]
+    fn test_tokenize_simple() {
+        let segments = tokenize_encoded_name("-Users-foo-bar");
+        assert_eq!(segments, vec!["Users", "foo", "bar"]);
+    }
+
+    #[test]
+    fn test_tokenize_double_dash_at_prefix() {
+        // -- means /@ for scoped packages
+        let segments = tokenize_encoded_name("-Users-dev--vicky-ai-project");
+        assert_eq!(
+            segments,
+            vec!["Users", "dev", "@vicky", "ai", "project"]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_empty() {
+        assert!(tokenize_encoded_name("").is_empty());
+        assert!(tokenize_encoded_name("-").is_empty());
+    }
+
+    #[test]
+    fn test_dfs_resolve_with_tempdir() {
+        // Create a directory structure that mimics the real scenario
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create: base/dev/@vicky-ai/claude-view/
+        std::fs::create_dir_all(base.join("dev/@vicky-ai/claude-view")).unwrap();
+
+        let segments: Vec<String> = vec![
+            "dev", "@vicky", "ai", "claude", "view",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let result = dfs_resolve(base, &segments, 0);
+        assert!(result.is_some(), "DFS should find the path");
+        let resolved = result.unwrap();
+        assert!(
+            resolved.ends_with("dev/@vicky-ai/claude-view"),
+            "Should resolve to @vicky-ai/claude-view, got: {:?}",
+            resolved
+        );
+    }
+
+    #[test]
+    fn test_dfs_resolve_hyphenated_project_name() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create: base/dev/my-cool-project/
+        std::fs::create_dir_all(base.join("dev/my-cool-project")).unwrap();
+
+        let segments: Vec<String> = vec!["dev", "my", "cool", "project"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        let result = dfs_resolve(base, &segments, 0);
+        assert!(result.is_some());
+        assert!(
+            result.unwrap().ends_with("dev/my-cool-project"),
+            "Should join hyphens for project name"
+        );
+    }
+
+    #[test]
+    fn test_dfs_resolve_dot_domain() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create: base/dev/famatch.io/
+        std::fs::create_dir_all(base.join("dev/famatch.io")).unwrap();
+
+        let segments: Vec<String> = vec!["dev", "famatch", "io"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        let result = dfs_resolve(base, &segments, 0);
+        assert!(result.is_some());
+        assert!(
+            result.unwrap().ends_with("dev/famatch.io"),
+            "Should try dot join for domain-like names"
+        );
+    }
+
+    #[test]
+    fn test_dfs_resolve_backtracking() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create BOTH: base/a/ and base/a-b/c/
+        // DFS should try base/a/ first, fail to find b/c, then backtrack to base/a-b/c
+        std::fs::create_dir_all(base.join("a")).unwrap();
+        std::fs::create_dir_all(base.join("a-b/c")).unwrap();
+
+        let segments: Vec<String> = vec!["a", "b", "c"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        let result = dfs_resolve(base, &segments, 0);
+        assert!(result.is_some());
+        assert!(
+            result.unwrap().ends_with("a-b/c"),
+            "Should backtrack from a/ to a-b/c"
+        );
+    }
+
+    #[test]
+    fn test_dfs_resolve_nonexistent() {
+        let temp = TempDir::new().unwrap();
+        let segments: Vec<String> = vec!["no", "such", "path"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        let result = dfs_resolve(temp.path(), &segments, 0);
+        assert!(result.is_none(), "Should return None for nonexistent paths");
+    }
+
+    // ============================================================================
+    // Display Name Tests
+    //
+    // Note: TempDir may be created inside a git repo (the workspace), so tests
+    // use a deep path structure to ensure the 5-level cap doesn't reach the
+    // workspace .git, OR test relative expectations.
+    // ============================================================================
+
+    #[test]
+    fn test_display_name_git_root_at_resolved_path() {
+        let temp = TempDir::new().unwrap();
+        // Create enough depth that the 5-level walk won't reach the workspace .git
+        let deep = temp.path().join("a/b/c/d/e/f/my-project");
+        std::fs::create_dir_all(deep.join(".git")).unwrap();
+
+        let name = derive_display_name(&deep.to_string_lossy());
+        assert_eq!(name, "my-project");
+    }
+
+    #[test]
+    fn test_display_name_subdirectory_of_git_root() {
+        let temp = TempDir::new().unwrap();
+        let deep = temp.path().join("a/b/c/d/e/f/repo");
+        std::fs::create_dir_all(deep.join(".git")).unwrap();
+        let subdir = deep.join("web");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let name = derive_display_name(&subdir.to_string_lossy());
+        assert_eq!(name, "repo/web");
+    }
+
+    #[test]
+    fn test_display_name_nested_git_uses_topmost() {
+        let temp = TempDir::new().unwrap();
+        let deep = temp.path().join("a/b/c/d/e/f");
+        // Parent repo has .git
+        let parent = deep.join("parent");
+        std::fs::create_dir_all(parent.join(".git")).unwrap();
+        // Child also has .git (worktree or nested repo)
+        let child = parent.join("child");
+        std::fs::create_dir_all(child.join(".git")).unwrap();
+
+        let name = derive_display_name(&child.to_string_lossy());
+        assert_eq!(name, "parent/child");
+    }
+
+    #[test]
+    fn test_display_name_no_git_root_fallback() {
+        let temp = TempDir::new().unwrap();
+        let deep = temp.path().join("a/b/c/d/e/f/some-dir");
+        std::fs::create_dir_all(&deep).unwrap();
+
+        let name = derive_display_name(&deep.to_string_lossy());
+        // No .git within 5 levels → falls back to last component
+        assert_eq!(name, "some-dir");
     }
 }
