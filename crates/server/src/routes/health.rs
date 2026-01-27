@@ -5,11 +5,13 @@ use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::state::AppState;
 
 /// Response for the health check endpoint.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../../src/types/generated/")]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct HealthResponse {
     pub status: String,

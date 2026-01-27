@@ -123,11 +123,11 @@ mod tests {
         assert!(json.contains("\"name\": \"test-project\""));
         assert!(json.contains("\"displayName\": \"Test Project\""));
         assert!(json.contains("\"activeCount\": 1"));
-        // Verify modifiedAt is serialized as ISO 8601 string (not number)
+        // Verify modifiedAt is a Unix timestamp number (not ISO string)
         println!("Serialized JSON:\n{}", json);
         assert!(
-            json.contains("\"modifiedAt\": \"2024-"),
-            "modifiedAt should be ISO string, got: {}",
+            json.contains("\"modifiedAt\":") && !json.contains("\"modifiedAt\": \""),
+            "modifiedAt should be a number, got: {}",
             json
         );
         // Verify toolCounts structure
@@ -183,13 +183,11 @@ mod tests {
         assert!(session.get("messageCount").is_some());
         assert!(session.get("turnCount").is_some());
 
-        // Verify modifiedAt is an ISO string, not a number
-        let modified_at = session["modifiedAt"].as_str()
-            .expect("modifiedAt should be a string (ISO 8601)");
+        // Verify modifiedAt is a Unix timestamp number
         assert!(
-            modified_at.starts_with("19") || modified_at.starts_with("20"),
-            "modifiedAt should be an ISO date string, got: {}",
-            modified_at
+            session["modifiedAt"].is_number(),
+            "modifiedAt should be a number, got: {}",
+            session["modifiedAt"]
         );
 
         // Verify toolCounts structure
