@@ -88,8 +88,12 @@ pub async fn scan_files(base_dir: &Path) -> ScanResult {
     while let Ok(Some(project_entry)) = entries.next_entry().await {
         let project_path = project_entry.path();
 
-        // Skip non-directories
-        if !project_path.is_dir() {
+        // Skip non-directories (use async file_type to avoid blocking)
+        let file_type = match project_entry.file_type().await {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !file_type.is_dir() {
             continue;
         }
 
@@ -170,22 +174,23 @@ pub async fn diff_against_db(files: &[FileInfo], db: &Database) -> DbResult<Diff
     let mut modified_files = Vec::new();
     let mut unchanged_count: usize = 0;
 
-    // Collect all valid paths for stale detection
-    let valid_paths: Vec<String> = files
+    // Batch-load all indexer states in one query (avoids N+1 pattern)
+    let all_states = db.get_all_indexer_states().await?;
+
+    // Collect valid paths for stale detection
+    let valid_paths: std::collections::HashSet<String> = files
         .iter()
         .map(|f| f.path.to_string_lossy().to_string())
         .collect();
 
     for file in files {
         let path_str = file.path.to_string_lossy().to_string();
-        match db.get_indexer_state(&path_str).await? {
+        match all_states.get(&path_str) {
             None => {
-                // Not in DB — new file
                 new_files.push(file.clone());
             }
             Some(entry) => {
                 if entry.file_size != file.size as i64 || entry.modified_at != file.modified_at {
-                    // Size or mtime changed — modified
                     modified_files.push(file.clone());
                 } else {
                     unchanged_count += 1;
@@ -194,9 +199,12 @@ pub async fn diff_against_db(files: &[FileInfo], db: &Database) -> DbResult<Diff
         }
     }
 
-    // Find deleted paths: entries in indexer_state whose path is not in valid_paths.
-    // We query all indexer_state entries and check against our valid set.
-    let deleted_paths = find_deleted_paths(db, &valid_paths).await?;
+    // Find deleted paths: entries in DB whose path is not in the scanned file set
+    let deleted_paths: Vec<String> = all_states
+        .keys()
+        .filter(|path| !valid_paths.contains(path.as_str()))
+        .cloned()
+        .collect();
 
     Ok(DiffResult {
         new_files,
@@ -204,24 +212,6 @@ pub async fn diff_against_db(files: &[FileInfo], db: &Database) -> DbResult<Diff
         unchanged_count,
         deleted_paths,
     })
-}
-
-/// Find paths in `indexer_state` that are NOT in the given valid_paths set.
-async fn find_deleted_paths(db: &Database, valid_paths: &[String]) -> DbResult<Vec<String>> {
-    // Query all indexed file paths
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT file_path FROM indexer_state")
-            .fetch_all(db.pool())
-            .await?;
-
-    let valid_set: std::collections::HashSet<&str> =
-        valid_paths.iter().map(|s| s.as_str()).collect();
-
-    Ok(rows
-        .into_iter()
-        .filter(|(path,)| !valid_set.contains(path.as_str()))
-        .map(|(path,)| path)
-        .collect())
 }
 
 // ============================================================================
