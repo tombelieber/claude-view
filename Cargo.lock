@@ -2843,18 +2843,22 @@ dependencies = [
 name = "vibe-recall-db"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.8",
  "chrono",
  "dirs",
  "memchr",
  "memmap2",
+ "serde",
  "serde_json",
  "sqlx",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "tower",
  "tracing",
  "vibe-recall-core",
+ "vibe-recall-server",
 ]
 
 [[package]]
