@@ -12,6 +12,7 @@ repository = "https://github.com/user/vibe-recall"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full", "test-util"] }
+tokio-stream = "0.1"
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
@@ -47,6 +48,8 @@ dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 regex-lite = "0.1"
 urlencoding = "2"
+memmap2 = "0.9"
+memchr = "2"
 
 # Testing
 tempfile = "3"
