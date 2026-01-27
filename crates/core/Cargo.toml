@@ -14,6 +14,7 @@ regex-lite = { workspace = true }
 dirs = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+ts-rs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
