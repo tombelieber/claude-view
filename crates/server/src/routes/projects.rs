@@ -60,6 +60,10 @@ mod tests {
             },
             message_count: 20,
             turn_count: 8,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         }
     }
 
@@ -106,6 +110,10 @@ mod tests {
                 },
                 message_count: 20,
                 turn_count: 10,
+                summary: None,
+                git_branch: None,
+                is_sidechain: false,
+                deep_indexed: false,
             }],
             active_count: 1,
         };
