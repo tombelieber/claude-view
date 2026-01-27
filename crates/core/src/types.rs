@@ -169,6 +169,14 @@ pub struct SessionInfo {
     pub tool_counts: ToolCounts,
     pub message_count: usize,
     pub turn_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(default)]
+    pub is_sidechain: bool,
+    #[serde(default)]
+    pub deep_indexed: bool,
 }
 
 /// Project info with sessions
@@ -434,6 +442,10 @@ mod tests {
             tool_counts: ToolCounts::default(),
             message_count: 1,
             turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -465,6 +477,10 @@ mod tests {
             tool_counts: ToolCounts::default(),
             message_count: 1,
             turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -489,6 +505,10 @@ mod tests {
             tool_counts: ToolCounts::default(),
             message_count: 1,
             turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         };
         let json = serde_json::to_string(&session).unwrap();
 
