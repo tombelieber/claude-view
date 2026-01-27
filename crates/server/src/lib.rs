@@ -12,7 +12,7 @@ pub mod state;
 pub use error::*;
 pub use indexing_state::{IndexingState, IndexingStatus};
 pub use routes::api_routes;
-pub use state::AppState;
+pub use state::{AppState, RegistryHolder};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,11 +55,39 @@ pub fn create_app_with_indexing(db: Database, indexing: Arc<IndexingState>) -> R
     create_app_with_indexing_and_static(db, indexing, None)
 }
 
-/// Create the Axum application with an external `IndexingState` and optional
-/// static file serving.
+/// Create the full Axum application with external `IndexingState`, shared
+/// registry holder, and optional static file serving.
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
 /// delegate to this one.
+pub fn create_app_full(
+    db: Database,
+    indexing: Arc<IndexingState>,
+    registry: RegistryHolder,
+    static_dir: Option<PathBuf>,
+) -> Router {
+    let state = AppState::new_with_indexing_and_registry(db, indexing, registry);
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let mut app = Router::new()
+        .merge(api_routes(state))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
+
+    if let Some(dir) = static_dir {
+        let index = dir.join("index.html");
+        app = app.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(&index)));
+    }
+
+    app
+}
+
+/// Create the Axum application with an external `IndexingState` and optional
+/// static file serving.
 ///
 /// # Arguments
 ///
