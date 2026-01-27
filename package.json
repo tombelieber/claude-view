@@ -23,7 +23,12 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "clean:db": "rm -f ~/Library/Caches/vibe-recall/vibe-recall.db*",
-    "check": "bun run typecheck && bun run lint && bun run test"
+    "check": "bun run typecheck && bun run lint && bun run test",
+    "dist:pack": "mkdir -p /tmp/claude-view-staging && cp target/release/vibe-recall /tmp/claude-view-staging/ && cp -r dist /tmp/claude-view-staging/ && tar -czf /tmp/claude-view-darwin-arm64.tar.gz -C /tmp/claude-view-staging . && echo 'Packed: /tmp/claude-view-darwin-arm64.tar.gz'",
+    "dist:install": "rm -rf ~/.cache/claude-view && mkdir -p ~/.cache/claude-view/bin && tar -xzf /tmp/claude-view-darwin-arm64.tar.gz -C ~/.cache/claude-view/bin && echo '0.1.0' > ~/.cache/claude-view/version && echo 'Installed to ~/.cache/claude-view/'",
+    "dist:run": "node npx-cli/index.js",
+    "dist:test": "bun run build && cargo build --release -p vibe-recall-server && bun run dist:pack && bun run dist:install && bun run dist:run",
+    "dist:clean": "rm -rf ~/.cache/claude-view /tmp/claude-view-staging /tmp/claude-view-darwin-arm64.tar.gz && echo 'Cleaned dist cache'"
   },
   "keywords": [
     "claude",
