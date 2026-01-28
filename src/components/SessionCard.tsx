@@ -6,6 +6,7 @@ interface SessionCardProps {
   session: SessionInfo
   isSelected: boolean
   onClick: () => void
+  projectDisplayName?: string
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -36,7 +37,7 @@ function formatRelativeTime(timestamp: number): string {
   }
 }
 
-export function SessionCard({ session, isSelected, onClick }: SessionCardProps) {
+export function SessionCard({ session, isSelected, onClick, projectDisplayName }: SessionCardProps) {
   const toolCounts = session.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
   const editCount = toolCounts.edit + toolCounts.write // Combined edit + write
   const totalTools = editCount + toolCounts.bash + toolCounts.read
@@ -51,6 +52,12 @@ export function SessionCard({ session, isSelected, onClick }: SessionCardProps) 
           : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
       )}
     >
+      {projectDisplayName && (
+        <span className="inline-block px-1.5 py-0.5 text-[11px] font-medium bg-blue-50 text-blue-600 rounded mb-1.5">
+          {projectDisplayName}
+        </span>
+      )}
+
       {/* Header: First message with timestamp */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
