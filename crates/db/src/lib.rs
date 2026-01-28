@@ -5,6 +5,7 @@ mod migrations;
 mod queries;
 pub mod indexer;
 pub mod indexer_parallel;
+pub mod git_correlation;
 
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
