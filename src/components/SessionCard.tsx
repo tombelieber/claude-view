@@ -1,5 +1,6 @@
-import { FileText, Terminal, Pencil, Eye, MessageSquare } from 'lucide-react'
+import { Terminal, Pencil, Eye, MessageSquare, GitCommit } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 
 interface SessionCardProps {
@@ -31,6 +32,79 @@ function cleanPreviewText(text: string): string {
   return cleaned || 'Untitled session'
 }
 
+/**
+ * Format time for session card display.
+ * Returns format like "2:30 PM" for use in time ranges.
+ */
+function formatTimeOnly(timestamp: number): string {
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+/**
+ * Format the time range prefix based on date.
+ * - Today: "Today"
+ * - Yesterday: "Yesterday"
+ * - Older: "Jan 26"
+ */
+function formatDatePrefix(timestamp: number): string {
+  const date = new Date(timestamp * 1000)
+  const now = new Date()
+
+  // Reset to start of day for comparison
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.floor((today.getTime() - targetDay.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) {
+    return 'Today'
+  } else if (diffDays === 1) {
+    return 'Yesterday'
+  } else {
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+}
+
+/**
+ * Format session time range with start and end times.
+ * Examples:
+ * - Today 2:30 PM -> 3:15 PM
+ * - Yesterday 4:00 PM -> 4:18 PM
+ * - Jan 26 9:30 AM -> 12:48 PM
+ */
+function formatTimeRange(startTimestamp: number, endTimestamp: number): string {
+  const prefix = formatDatePrefix(startTimestamp)
+  const startTime = formatTimeOnly(startTimestamp)
+  const endTime = formatTimeOnly(endTimestamp)
+  return `${prefix} ${startTime} -> ${endTime}`
+}
+
+/**
+ * Format duration in human-readable form.
+ * Examples: "45 min", "2.1 hr", "15 min"
+ */
+function formatDuration(durationSeconds: number): string {
+  if (durationSeconds < 60) {
+    return `${durationSeconds}s`
+  }
+  const minutes = Math.round(durationSeconds / 60)
+  if (minutes < 60) {
+    return `${minutes} min`
+  }
+  const hours = durationSeconds / 3600
+  return `${hours.toFixed(1)} hr`
+}
+
+/**
+ * Legacy format for backward compatibility with existing components.
+ */
 function formatRelativeTime(timestamp: number): string {
   // timestamp is Unix seconds, convert to milliseconds for JavaScript Date
   const date = new Date(timestamp * 1000)
@@ -70,6 +144,21 @@ export function SessionCard({ session, isSelected, projectDisplayName }: Session
 
   const projectLabel = projectDisplayName || undefined
 
+  // Calculate total tokens (input + output)
+  const totalTokens = (session.totalInputTokens ?? 0n) + (session.totalOutputTokens ?? 0n)
+  const hasTokens = totalTokens > 0n
+
+  // New atomic unit metrics
+  const prompts = session.userPromptCount ?? 0
+  const filesEdited = session.filesEditedCount ?? 0
+  const reeditedFiles = session.reeditedFilesCount ?? 0
+  const commitCount = session.commitCount ?? 0
+  const durationSeconds = session.durationSeconds ?? 0
+
+  // Calculate start timestamp from modifiedAt - durationSeconds
+  const endTimestamp = Number(session.modifiedAt)
+  const startTimestamp = endTimestamp - durationSeconds
+
   return (
     <article
       className={cn(
@@ -79,7 +168,7 @@ export function SessionCard({ session, isSelected, projectDisplayName }: Session
           : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
       )}
     >
-      {/* Header: Project badge + timestamp */}
+      {/* Header: Project badge + Time range + Duration */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           {projectLabel && (
@@ -88,9 +177,17 @@ export function SessionCard({ session, isSelected, projectDisplayName }: Session
             </span>
           )}
         </div>
-        <p className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
-          {formatRelativeTime(session.modifiedAt)}
-        </p>
+        <div className="flex items-center gap-2 text-[11px] text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
+          {durationSeconds > 0 ? (
+            <>
+              <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
+              <span className="text-gray-300">|</span>
+              <span className="font-medium text-gray-500">{formatDuration(durationSeconds)}</span>
+            </>
+          ) : (
+            <span>{formatRelativeTime(Number(session.modifiedAt))}</span>
+          )}
+        </div>
       </div>
 
       {/* Preview text */}
@@ -102,75 +199,97 @@ export function SessionCard({ session, isSelected, projectDisplayName }: Session
         {/* Last message if different from first */}
         {cleanLast && cleanLast !== cleanPreview && (
           <p className="text-[13px] text-gray-500 line-clamp-1 mt-0.5">
-            <span className="text-gray-300 mr-1">→</span>{cleanLast}
+            <span className="text-gray-300 mr-1">{'->'}</span>{cleanLast}
           </p>
         )}
       </div>
 
-      {/* Files touched */}
-      {(session.filesTouched?.length ?? 0) > 0 && (
-        <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-500">
-          <FileText className="w-3.5 h-3.5 text-gray-400" />
-          <span className="truncate">
-            {session.filesTouched?.join(', ')}
-          </span>
-        </div>
-      )}
-
-      {/* Footer: Tool counts + Message stats + Skills */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-        <div className="flex items-center gap-3">
-          {/* Tool counts */}
-          {totalTools > 0 && (
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              {editCount > 0 && (
-                <span className="flex items-center gap-0.5" title="Edits">
-                  <Pencil className="w-3 h-3" />
-                  {editCount}
-                </span>
-              )}
-              {toolCounts.bash > 0 && (
-                <span className="flex items-center gap-0.5" title="Bash commands">
-                  <Terminal className="w-3 h-3" />
-                  {toolCounts.bash}
-                </span>
-              )}
-              {toolCounts.read > 0 && (
-                <span className="flex items-center gap-0.5" title="File reads">
-                  <Eye className="w-3 h-3" />
-                  {toolCounts.read}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Message count and turns */}
-          {(session.messageCount ?? 0) > 0 && (
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <MessageSquare className="w-3 h-3" />
-              <span>
-                {session.messageCount} msgs · {session.turnCount} turns
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Skills used */}
-        {(session.skillsUsed?.length ?? 0) > 0 && (
-          <div className="flex items-center gap-1">
-            {session.skillsUsed?.slice(0, 2).map(skill => (
-              <span
-                key={skill}
-                className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded font-mono"
-              >
-                {skill}
-              </span>
-            ))}
-            {(session.skillsUsed?.length ?? 0) > 2 && (
-              <span className="text-xs text-gray-400">
-                +{(session.skillsUsed?.length ?? 0) - 2}
+      {/* Metrics row: prompts, tokens, files, re-edits */}
+      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500">
+        {prompts > 0 && (
+          <>
+            <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
+            <span className="text-gray-300">·</span>
+          </>
+        )}
+        {hasTokens && (
+          <>
+            <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
+            <span className="text-gray-300">·</span>
+          </>
+        )}
+        {filesEdited > 0 && (
+          <>
+            <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
+            <span className="text-gray-300">·</span>
+          </>
+        )}
+        {reeditedFiles > 0 && (
+          <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+        )}
+        {/* Fallback to legacy display if no new metrics */}
+        {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
+          <div className="flex items-center gap-2 text-gray-400">
+            {editCount > 0 && (
+              <span className="flex items-center gap-0.5" title="Edits">
+                <Pencil className="w-3 h-3" />
+                {editCount}
               </span>
             )}
+            {toolCounts.bash > 0 && (
+              <span className="flex items-center gap-0.5" title="Bash commands">
+                <Terminal className="w-3 h-3" />
+                {toolCounts.bash}
+              </span>
+            )}
+            {toolCounts.read > 0 && (
+              <span className="flex items-center gap-0.5" title="File reads">
+                <Eye className="w-3 h-3" />
+                {toolCounts.read}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer: Commits badge + Skills */}
+      <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100">
+        <div className="flex items-center gap-2">
+          {/* Commit badge */}
+          {commitCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-green-50 text-green-700 rounded border border-green-200">
+              <GitCommit className="w-3 h-3" />
+              {commitCount} commit{commitCount !== 1 ? 's' : ''}
+            </span>
+          )}
+
+          {/* Skills used */}
+          {(session.skillsUsed?.length ?? 0) > 0 && (
+            <div className="flex items-center gap-1">
+              {session.skillsUsed?.slice(0, 2).map(skill => (
+                <span
+                  key={skill}
+                  className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded font-mono"
+                >
+                  {skill}
+                </span>
+              ))}
+              {(session.skillsUsed?.length ?? 0) > 2 && (
+                <span className="text-xs text-gray-400">
+                  +{(session.skillsUsed?.length ?? 0) - 2}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Message/turn count (if available and useful) */}
+        {(session.messageCount ?? 0) > 0 && prompts === 0 && (
+          <div className="flex items-center gap-1 text-xs text-gray-400">
+            <MessageSquare className="w-3 h-3" />
+            <span>
+              {session.messageCount} msgs
+            </span>
           </div>
         )}
       </div>
