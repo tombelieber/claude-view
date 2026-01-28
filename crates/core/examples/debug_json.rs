@@ -19,6 +19,12 @@ fn main() {
         git_branch: None,
         is_sidechain: false,
         deep_indexed: false,
+        total_input_tokens: None,
+        total_output_tokens: None,
+        total_cache_read_tokens: None,
+        total_cache_creation_tokens: None,
+        turn_count_api: None,
+        primary_model: None,
     };
     
     let json = serde_json::to_string_pretty(&session).unwrap();

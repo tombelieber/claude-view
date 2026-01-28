@@ -1,21 +1,21 @@
 // src/components/HistoryView.tsx
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
-import { Search, X, FolderOpen } from 'lucide-react'
-import type { ProjectInfo } from '../hooks/use-projects'
+import { Link } from 'react-router-dom'
+import { Search, X, FolderOpen, Loader2 } from 'lucide-react'
+import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { ActivitySparkline } from './ActivitySparkline'
 import { groupSessionsByDate } from '../lib/date-groups'
-
-interface OutletContext {
-  projects: ProjectInfo[]
-}
+import { sessionSlug } from '../lib/url-slugs'
 
 type TimeFilter = 'all' | 'today' | '7d' | '30d'
 
 export function HistoryView() {
-  const { projects } = useOutletContext<OutletContext>()
+  const { data: summaries } = useProjectSummaries()
+  const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
+  const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
+
   const [searchText, setSearchText] = useState('')
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
@@ -42,23 +42,15 @@ export function HistoryView() {
     }
   }, [showProjectFilter])
 
-  // Map project names to display names
+  // Map session IDs to project display names
   const projectDisplayNames = useMemo(() => {
+    if (!summaries) return new Map<string, string>()
     const map = new Map<string, string>()
-    for (const p of projects) {
-      for (const s of p.sessions) {
-        map.set(s.id, p.displayName)
-      }
+    for (const s of summaries) {
+      map.set(s.name, s.displayName)
     }
     return map
-  }, [projects])
-
-  // Flatten all sessions
-  const allSessions = useMemo(() => {
-    return projects
-      .flatMap(p => p.sessions)
-      .sort((a, b) => b.modifiedAt - a.modifiedAt)
-  }, [projects])
+  }, [summaries])
 
   // Apply filters
   const filteredSessions = useMemo(() => {
@@ -74,14 +66,14 @@ export function HistoryView() {
 
     return allSessions.filter(s => {
       // Time filter
-      if (cutoff > 0 && s.modifiedAt < cutoff) return false
+      if (cutoff > 0 && Number(s.modifiedAt) < cutoff) return false
 
       // Project filter
       if (selectedProjects.size > 0 && !selectedProjects.has(s.project)) return false
 
       // Date filter (from sparkline click)
       if (selectedDate) {
-        const d = new Date(s.modifiedAt * 1000)
+        const d = new Date(Number(s.modifiedAt) * 1000)
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         if (key !== selectedDate) return false
       }
@@ -107,8 +99,8 @@ export function HistoryView() {
 
   // Project list sorted by session count
   const sortedProjects = useMemo(() => {
-    return [...projects].sort((a, b) => b.sessions.length - a.sessions.length)
-  }, [projects])
+    return [...(summaries ?? [])].sort((a, b) => b.sessionCount - a.sessionCount)
+  }, [summaries])
 
   function toggleProject(name: string) {
     setSelectedProjects(prev => {
@@ -136,18 +128,29 @@ export function HistoryView() {
     { value: '30d', label: '30 days' },
   ]
 
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Loading sessions...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-5">
 
-        {/* ── Activity sparkline chart ── */}
+        {/* Activity sparkline chart */}
         <ActivitySparkline
           sessions={allSessions}
           selectedDate={selectedDate}
           onDateSelect={setSelectedDate}
         />
 
-        {/* ── Search + Filters bar ── */}
+        {/* Search + Filters bar */}
         <div className="mt-5 space-y-3">
           {/* Search input */}
           <div className="relative">
@@ -233,7 +236,7 @@ export function HistoryView() {
                           )}
                         </div>
                         <span className="text-sm text-gray-700 truncate flex-1">{p.displayName}</span>
-                        <span className="text-xs text-gray-400 tabular-nums">{p.sessions.length}</span>
+                        <span className="text-xs text-gray-400 tabular-nums">{p.sessionCount}</span>
                       </button>
                     )
                   })}
@@ -259,7 +262,7 @@ export function HistoryView() {
           </div>
         </div>
 
-        {/* ── Session List ── */}
+        {/* Session List */}
         <div className="mt-5">
           {filteredSessions.length > 0 ? (
             <div>
@@ -281,14 +284,13 @@ export function HistoryView() {
                     {group.sessions.map(session => (
                       <Link
                         key={session.id}
-                        to={`/session/${encodeURIComponent(session.project)}/${session.id}`}
+                        to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
                         className="block"
                       >
                         <SessionCard
                           session={session}
                           isSelected={false}
-                          onClick={() => {}}
-                          projectDisplayName={projectDisplayNames.get(session.id)}
+                          projectDisplayName={projectDisplayNames.get(session.project)}
                         />
                       </Link>
                     ))}

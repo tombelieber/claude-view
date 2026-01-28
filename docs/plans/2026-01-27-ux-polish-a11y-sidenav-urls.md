@@ -1,5 +1,5 @@
 ---
-status: pending
+status: superseded
 date: 2026-01-27
 depends_on:
   - 2026-01-27-api-schema-bonus-fields-design.md
