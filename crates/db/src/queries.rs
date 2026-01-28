@@ -118,6 +118,10 @@ impl Database {
             .unwrap_or_else(|_| "[]".to_string());
         let skills_used = serde_json::to_string(&session.skills_used)
             .unwrap_or_else(|_| "[]".to_string());
+        let files_read = serde_json::to_string(&session.files_read)
+            .unwrap_or_else(|_| "[]".to_string());
+        let files_edited = serde_json::to_string(&session.files_edited)
+            .unwrap_or_else(|_| "[]".to_string());
         let indexed_at = Utc::now().timestamp();
         let size_bytes = session.size_bytes as i64;
         let message_count = session.message_count as i32;
@@ -136,7 +140,11 @@ impl Database {
                 size_bytes, last_message, files_touched, skills_used,
                 tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
                 message_count,
-                summary, git_branch, is_sidechain
+                summary, git_branch, is_sidechain,
+                user_prompt_count, api_call_count, tool_call_count,
+                files_read, files_edited,
+                files_read_count, files_edited_count, reedited_files_count,
+                duration_seconds, commit_count
             ) VALUES (
                 ?1, ?2, ?3, ?4,
                 ?5, ?6,
@@ -144,7 +152,11 @@ impl Database {
                 ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17,
                 ?18,
-                ?19, ?20, ?21
+                ?19, ?20, ?21,
+                ?22, ?23, ?24,
+                ?25, ?26,
+                ?27, ?28, ?29,
+                ?30, ?31
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
@@ -166,7 +178,17 @@ impl Database {
                 message_count = excluded.message_count,
                 summary = excluded.summary,
                 git_branch = excluded.git_branch,
-                is_sidechain = excluded.is_sidechain
+                is_sidechain = excluded.is_sidechain,
+                user_prompt_count = excluded.user_prompt_count,
+                api_call_count = excluded.api_call_count,
+                tool_call_count = excluded.tool_call_count,
+                files_read = excluded.files_read,
+                files_edited = excluded.files_edited,
+                files_read_count = excluded.files_read_count,
+                files_edited_count = excluded.files_edited_count,
+                reedited_files_count = excluded.reedited_files_count,
+                duration_seconds = excluded.duration_seconds,
+                commit_count = excluded.commit_count
             "#,
         )
         .bind(&session.id)
@@ -190,6 +212,16 @@ impl Database {
         .bind(&session.summary)
         .bind(&session.git_branch)
         .bind(session.is_sidechain)
+        .bind(session.user_prompt_count as i32)
+        .bind(session.api_call_count as i32)
+        .bind(session.tool_call_count as i32)
+        .bind(&files_read)
+        .bind(&files_edited)
+        .bind(session.files_read_count as i32)
+        .bind(session.files_edited_count as i32)
+        .bind(session.reedited_files_count as i32)
+        .bind(session.duration_seconds as i32)
+        .bind(session.commit_count as i32)
         .execute(self.pool())
         .await?;
 
