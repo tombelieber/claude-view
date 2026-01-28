@@ -18,7 +18,7 @@ pub struct IndexerEntry {
 
 /// An invocable (tool/skill/MCP) with its aggregated invocation count.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct InvocableWithCount {
     pub id: String,
@@ -47,7 +47,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for InvocableWithCount {
 
 /// A model record with aggregated usage stats (for GET /api/models).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ModelWithStats {
     pub id: String,
@@ -76,7 +76,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 
 /// Aggregate token usage statistics (for GET /api/stats/tokens).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
     pub total_input_tokens: u64,
@@ -90,7 +90,7 @@ pub struct TokenStats {
 
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
     pub total_sessions: i64,
@@ -1195,10 +1195,10 @@ mod tests {
         assert!(!json.contains("\"summary\""), "summary=None should be omitted");
         assert!(!json.contains("\"gitBranch\""), "gitBranch=None should be omitted");
 
-        // modifiedAt should be an ISO string, not a number
+        // modifiedAt should be a Unix timestamp number (not an ISO string)
         assert!(
-            json.contains("\"modifiedAt\":\"20"),
-            "modifiedAt should be ISO string: {}",
+            json.contains("\"modifiedAt\":1769"),
+            "modifiedAt should be a number: {}",
             json
         );
     }
