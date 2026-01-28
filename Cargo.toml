@@ -51,6 +51,7 @@ regex-lite = "0.1"
 urlencoding = "2"
 memmap2 = "0.9"
 memchr = "2"
+ts-rs = { version = "10", features = ["serde-compat"] }
 
 # Testing
 tempfile = "3"
@@ -63,6 +64,7 @@ pretty_assertions = "1"
 vibe-recall-core = { path = "crates/core" }
 vibe-recall-db = { path = "crates/db" }
 vibe-recall-search = { path = "crates/search" }
+vibe-recall-server = { path = "crates/server" }
 
 [profile.release]
 lto = true

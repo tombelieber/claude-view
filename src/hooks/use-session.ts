@@ -1,24 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ParsedSession } from '../types/generated'
 
-export interface ToolCall {
-  name: string
-  count: number
-}
+// Re-export for backward compatibility with existing imports
+export type { ToolCall, Message } from '../types/generated'
 
-export interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp?: string
-  toolCalls?: ToolCall[]
-}
-
-export interface SessionData {
-  messages: Message[]
-  metadata: {
-    totalMessages: number
-    toolCallCount: number
-  }
-}
+// Alias ParsedSession to SessionData for backward compatibility
+export type SessionData = ParsedSession
 
 async function fetchSession(projectDir: string, sessionId: string): Promise<SessionData> {
   const response = await fetch(`/api/session/${encodeURIComponent(projectDir)}/${encodeURIComponent(sessionId)}`)
