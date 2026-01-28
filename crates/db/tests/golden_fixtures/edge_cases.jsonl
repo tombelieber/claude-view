@@ -1,0 +1,7 @@
+{"type":"assistant","uuid":"e1","timestamp":"2026-01-28T10:00:00Z","sessionId":"sess-edge","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":"Just a string, not an array","usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"assistant","uuid":"e2","timestamp":"2026-01-28T10:01:00Z","sessionId":"sess-edge","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"tool_use","input":{"file_path":"/foo"}},{"type":"tool_use","name":"Read","input":{"file_path":"/bar"}}],"usage":{"input_tokens":200,"output_tokens":100}}}
+{"type":"system","uuid":"e3","timestamp":"2026-01-28T10:02:00Z","sessionId":"sess-edge","subtype":"api_error","error":{"message":"overloaded"},"retryAttempt":1,"maxRetries":3,"retryInMs":1500.0,"isMeta":true,"isSidechain":false}
+{"type":"system","uuid":"e4","timestamp":"2026-01-28T10:03:00Z","sessionId":"sess-edge","subtype":"compact_boundary","content":"Conversation compacted","compactMetadata":{"trigger":"auto","preTokens":150000},"isMeta":true,"isSidechain":false}
+{"type":"progress","uuid":"e5","timestamp":"2026-01-28T10:04:00Z","sessionId":"sess-edge","toolUseID":"tu-agent","data":{"type":"agent_progress","agentId":"agent-1","prompt":"Explore the codebase","message":{"message":{"model":"claude-haiku-4-20250514","usage":{"input_tokens":500,"output_tokens":50}}}}}
+{"type":"totally_new_type","uuid":"e6","timestamp":"2026-01-28T10:05:00Z","sessionId":"sess-edge"}
+this is not valid JSON at all
