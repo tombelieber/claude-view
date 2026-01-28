@@ -29,9 +29,10 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_api_routes_creation() {
-        let state = AppState::new();
+    #[tokio::test]
+    async fn test_api_routes_creation() {
+        let db = vibe_recall_db::Database::new_in_memory().await.expect("in-memory DB");
+        let state = AppState::new(db);
         let _router = api_routes(state);
         // Router creation should not panic
     }
