@@ -5,4 +5,4 @@ import type { ToolCall } from "./ToolCall";
 /**
  * A message in a conversation
  */
-export type Message = { role: Role, content: string, timestamp: string | null, tool_calls: Array<ToolCall> | null, thinking: string | null, };
+export type Message = { role: Role, content: string, timestamp?: string | null, tool_calls?: Array<ToolCall> | null, thinking?: string | null, };

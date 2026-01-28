@@ -3,6 +3,7 @@ import type { CurrentWeekMetrics } from "./CurrentWeekMetrics";
 import type { DashboardTrends } from "./DashboardTrends";
 import type { DayActivity } from "./DayActivity";
 import type { ProjectStat } from "./ProjectStat";
+import type { SessionDurationStat } from "./SessionDurationStat";
 import type { SkillStat } from "./SkillStat";
 import type { ToolCounts } from "./ToolCounts";
 
@@ -17,4 +18,4 @@ currentWeek: CurrentWeekMetrics,
 /**
  * Week-over-week trends
  */
-trends: DashboardTrends, totalSessions: number, totalProjects: number, heatmap: Array<DayActivity>, topSkills: Array<SkillStat>, topProjects: Array<ProjectStat>, toolTotals: ToolCounts, };
+trends: DashboardTrends, totalSessions: number, totalProjects: number, heatmap: Array<DayActivity>, topSkills: Array<SkillStat>, topCommands: Array<SkillStat>, topMcpTools: Array<SkillStat>, topAgents: Array<SkillStat>, topProjects: Array<ProjectStat>, toolTotals: ToolCounts, longestSessions: Array<SessionDurationStat>, };

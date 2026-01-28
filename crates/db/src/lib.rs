@@ -22,7 +22,7 @@ pub use trends::TrendMetric;
 pub use trends::WeekTrends;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::SqlitePool;
+use sqlx::{ConnectOptions, SqlitePool};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
@@ -60,7 +60,12 @@ impl Database {
             .map_err(sqlx::Error::from)?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal);
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(std::time::Duration::from_secs(30))
+            .log_slow_statements(
+                tracing::log::LevelFilter::Warn,
+                std::time::Duration::from_secs(5),
+            );
 
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
