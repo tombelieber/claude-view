@@ -76,10 +76,10 @@ pub struct SessionDetail {
 pub struct CommitWithTier {
     pub hash: String,
     pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     pub timestamp: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     /// Tier 1 = high confidence (commit skill), Tier 2 = medium (during session)
     pub tier: i32,
@@ -104,19 +104,19 @@ impl From<(GitCommit, i32, String)> for CommitWithTier {
 #[serde(rename_all = "camelCase")]
 pub struct DerivedMetrics {
     /// Tokens per prompt: (total_input + total_output) / user_prompt_count
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens_per_prompt: Option<f64>,
     /// Re-edit rate: reedited_files_count / files_edited_count
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reedit_rate: Option<f64>,
     /// Tool density: tool_call_count / api_call_count
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_density: Option<f64>,
     /// Edit velocity: files_edited_count / (duration_seconds / 60)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edit_velocity: Option<f64>,
     /// Read-to-edit ratio: files_read_count / files_edited_count
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_to_edit_ratio: Option<f64>,
 }
 

@@ -16,7 +16,7 @@ use vibe_recall_db::DbError;
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ErrorResponse {
     pub error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
 }
 

@@ -3,4 +3,4 @@
 /**
  * Structured JSON error response for API errors
  */
-export type ErrorResponse = { error: string, details: string | null, };
+export type ErrorResponse = { error: string, details?: string | null, };
