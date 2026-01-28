@@ -195,9 +195,16 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                     .and_then(|p| p.description.as_deref())
                     .unwrap_or("");
 
+                // Track IDs we've seen for this plugin to avoid duplicates
+                // (some plugins register the same name as both skill and command)
+                let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
                 // Scan for skills: direct subdirectories containing SKILL.md
                 let skills = scan_skills(&install_path, display_name, plugin_description);
-                entries.extend(skills);
+                for s in skills {
+                    seen_ids.insert(s.id.clone());
+                    entries.push(s);
+                }
 
                 // Scan for commands: commands/*.md
                 let commands = scan_md_dir(
@@ -205,7 +212,13 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                     display_name,
                     InvocableKind::Command,
                 );
-                entries.extend(commands);
+                for c in commands {
+                    if !seen_ids.insert(c.id.clone()) {
+                        debug!("Skipping duplicate invocable from commands: {}", c.id);
+                        continue;
+                    }
+                    entries.push(c);
+                }
 
                 // Scan for agents: agents/*.md
                 let agents = scan_md_dir(
@@ -213,7 +226,13 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                     display_name,
                     InvocableKind::Agent,
                 );
-                entries.extend(agents);
+                for a in agents {
+                    if !seen_ids.insert(a.id.clone()) {
+                        debug!("Skipping duplicate invocable from agents: {}", a.id);
+                        continue;
+                    }
+                    entries.push(a);
+                }
 
                 // Read .mcp.json for MCP tools
                 let mcp_tools = scan_mcp_json(&install_path, display_name);
@@ -233,7 +252,24 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
         });
     }
 
-    // 4. Build lookup maps
+    // 4. Register built-in agents (Task subagent types that classify_tool_use
+    //    maps to "builtin:{name}" — must exist in invocables for FK constraint)
+    for &agent_name in crate::invocation::BUILTIN_AGENT_NAMES {
+        let id = format!("builtin:{agent_name}");
+        // Skip if already registered (e.g. "Bash" is both a tool and an agent)
+        if entries.iter().any(|e| e.id == id) {
+            continue;
+        }
+        entries.push(InvocableInfo {
+            id,
+            plugin_name: None,
+            name: agent_name.to_string(),
+            kind: InvocableKind::BuiltinTool,
+            description: String::new(),
+        });
+    }
+
+    // 5. Build lookup maps
     build_maps(entries)
 }
 
@@ -447,6 +483,18 @@ mod tests {
         build_maps(entries)
     }
 
+    /// Count unique builtins (tools + agents, deduplicating "Bash" which appears in both).
+    fn num_builtins() -> usize {
+        let mut ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for &t in BUILTIN_TOOLS {
+            ids.insert(format!("builtin:{t}"));
+        }
+        for &a in crate::invocation::BUILTIN_AGENT_NAMES {
+            ids.insert(format!("builtin:{a}"));
+        }
+        ids.len()
+    }
+
     // -----------------------------------------------------------------------
     // Registry::lookup() tests
     // -----------------------------------------------------------------------
@@ -562,8 +610,9 @@ mod tests {
             assert!(result.unwrap().plugin_name.is_none());
         }
 
-        // Should have exactly BUILTIN_TOOLS.len() entries
-        assert_eq!(registry.len(), BUILTIN_TOOLS.len());
+        // Should have all builtin tools + unique builtin agents
+        // (20 tools + 5 unique agents = 25; "Bash" is in both lists)
+        assert_eq!(registry.len(), num_builtins());
     }
 
     // -----------------------------------------------------------------------
@@ -662,8 +711,8 @@ mod tests {
         let bare = registry.lookup("my-skill");
         assert!(bare.is_some(), "Bare name 'my-skill' not found");
 
-        // Total: 1 skill + 1 command + 1 agent + 1 MCP + 20 builtins = 24
-        assert_eq!(registry.len(), 4 + BUILTIN_TOOLS.len());
+        // Total: 1 skill + 1 command + 1 agent + 1 MCP + 25 builtins = 29
+        assert_eq!(registry.len(), 4 + num_builtins());
     }
 
     // -----------------------------------------------------------------------
@@ -731,8 +780,8 @@ mod tests {
 
         let registry = build_registry(claude_dir).await;
 
-        // Should have only built-in tools
-        assert_eq!(registry.len(), BUILTIN_TOOLS.len());
+        // Should have only builtins (tools + unique agents)
+        assert_eq!(registry.len(), num_builtins());
         assert!(!registry.is_empty());
     }
 
@@ -743,8 +792,8 @@ mod tests {
 
         let registry = build_registry(&nonexistent).await;
 
-        // Should still have built-in tools, no crash
-        assert_eq!(registry.len(), BUILTIN_TOOLS.len());
+        // Should still have builtins, no crash
+        assert_eq!(registry.len(), num_builtins());
     }
 
     // -----------------------------------------------------------------------
