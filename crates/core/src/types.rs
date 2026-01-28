@@ -45,11 +45,11 @@ pub struct ToolCall {
 pub struct Message {
     pub role: Role,
     pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
 }
 
@@ -147,25 +147,25 @@ pub struct SessionInfo {
     pub tool_counts: ToolCounts,
     pub message_count: usize,
     pub turn_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_branch: Option<String>,
     #[serde(default)]
     pub is_sidechain: bool,
     #[serde(default)]
     pub deep_indexed: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_input_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_output_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cache_read_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cache_creation_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_count_api: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_model: Option<String>,
     // Phase 3: Atomic unit metrics
     #[serde(default)]
@@ -261,7 +261,7 @@ pub struct ProjectSummary {
     pub path: String,
     pub session_count: usize,
     pub active_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_activity_at: Option<i64>,
 }
 
@@ -283,8 +283,12 @@ pub struct DashboardStats {
     pub total_projects: usize,
     pub heatmap: Vec<DayActivity>,
     pub top_skills: Vec<SkillStat>,
+    pub top_commands: Vec<SkillStat>,
+    pub top_mcp_tools: Vec<SkillStat>,
+    pub top_agents: Vec<SkillStat>,
     pub top_projects: Vec<ProjectStat>,
     pub tool_totals: ToolCounts,
+    pub longest_sessions: Vec<SessionDurationStat>,
 }
 
 /// A single day in the activity heatmap.
@@ -313,6 +317,18 @@ pub struct ProjectStat {
     pub name: String,
     pub display_name: String,
     pub session_count: usize,
+}
+
+/// A session entry for the "Longest Sessions" dashboard card.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDurationStat {
+    pub id: String,
+    pub preview: String,
+    pub project_name: String,
+    pub project_display_name: String,
+    pub duration_seconds: u32,
 }
 
 // ============================================================================

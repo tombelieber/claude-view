@@ -51,7 +51,7 @@ regex-lite = "0.1"
 urlencoding = "2"
 memmap2 = "0.9"
 memchr = "2"
-ts-rs = { version = "10", features = ["serde-compat"] }
+ts-rs = { version = "11", features = ["serde-compat"] }
 
 # Testing
 tempfile = "3"
