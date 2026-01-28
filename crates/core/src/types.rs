@@ -155,6 +155,18 @@ pub struct SessionInfo {
     pub is_sidechain: bool,
     #[serde(default)]
     pub deep_indexed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_count_api: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_model: Option<String>,
 }
 
 /// Project info with sessions
@@ -177,6 +189,70 @@ impl ProjectInfo {
     pub fn is_empty(&self) -> bool {
         self.sessions.is_empty()
     }
+}
+
+/// Lightweight project summary for sidebar — no sessions array.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSummary {
+    pub name: String,
+    pub display_name: String,
+    pub path: String,
+    pub session_count: usize,
+    pub active_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity_at: Option<i64>,
+}
+
+/// Paginated sessions response.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct SessionsPage {
+    pub sessions: Vec<SessionInfo>,
+    pub total: usize,
+}
+
+/// Pre-computed dashboard statistics.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardStats {
+    pub total_sessions: usize,
+    pub total_projects: usize,
+    pub heatmap: Vec<DayActivity>,
+    pub top_skills: Vec<SkillStat>,
+    pub top_projects: Vec<ProjectStat>,
+    pub tool_totals: ToolCounts,
+}
+
+/// A single day in the activity heatmap.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct DayActivity {
+    pub date: String,
+    pub count: usize,
+}
+
+/// A skill with its usage count.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillStat {
+    pub name: String,
+    pub count: usize,
+}
+
+/// A project with its session count (for dashboard top projects).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStat {
+    pub name: String,
+    pub display_name: String,
+    pub session_count: usize,
 }
 
 // ============================================================================
@@ -501,6 +577,12 @@ mod tests {
             git_branch: None,
             is_sidechain: false,
             deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 

@@ -1,15 +1,18 @@
-import type { ProjectInfo } from '../hooks/use-projects'
+import type { ProjectSummary } from '../hooks/use-projects'
 
 interface StatusBarProps {
-  projects: ProjectInfo[]
+  projects: ProjectSummary[]
 }
 
 export function StatusBar({ projects }: StatusBarProps) {
-  const totalSessions = projects.reduce((sum, p) => sum + p.sessions.length, 0)
-  const latestActivity = projects[0]?.sessions[0]?.modifiedAt
+  const totalSessions = projects.reduce((sum, p) => sum + p.sessionCount, 0)
+  const latestTimestamp = projects.reduce((max, p) => {
+    const t = p.lastActivityAt ? Number(p.lastActivityAt) : 0
+    return t > max ? t : max
+  }, 0)
 
-  const formatLastActivity = (dateString: string) => {
-    const date = new Date(dateString)
+  const formatLastActivity = (ts: number) => {
+    const date = new Date(ts * 1000)
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -23,9 +26,9 @@ export function StatusBar({ projects }: StatusBarProps) {
       <span>
         {projects.length} projects · {totalSessions} sessions
       </span>
-      {latestActivity && (
+      {latestTimestamp > 0 && (
         <span>
-          Last activity: {formatLastActivity(latestActivity)}
+          Last activity: {formatLastActivity(latestTimestamp)}
         </span>
       )}
     </footer>

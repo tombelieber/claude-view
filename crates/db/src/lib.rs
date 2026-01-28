@@ -8,7 +8,9 @@ pub mod indexer_parallel;
 
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
+pub use queries::ModelWithStats;
 pub use queries::StatsOverview;
+pub use queries::TokenStats;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
