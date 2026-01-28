@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, GitCommitHorizontal } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useStatus, formatRelativeTime } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
@@ -14,13 +14,15 @@ export function StatusBar({ projects }: StatusBarProps) {
   const queryClient = useQueryClient()
   const totalSessions = projects.reduce((sum, p) => sum + p.sessionCount, 0)
 
-  // Format sessions count from status (index metadata) or fallback to project count
   const sessionsIndexed = status?.sessionsIndexed ? Number(status.sessionsIndexed) : totalSessions
 
-  // Format last synced time — show "Not yet synced" when null instead of hiding
-  const lastSyncedText = status?.lastIndexedAt
-    ? formatRelativeTime(status.lastIndexedAt)
-    : null
+  // Use lastGitSyncAt for the "last updated" display (more recent than lastIndexedAt)
+  const lastSyncTs = status?.lastGitSyncAt ?? status?.lastIndexedAt ?? null
+  const lastUpdatedText = lastSyncTs ? formatRelativeTime(lastSyncTs) : null
+
+  // Git sync stats
+  const commitsFound = status?.commitsFound ? Number(status.commitsFound) : 0
+  const linksCreated = status?.linksCreated ? Number(status.linksCreated) : 0
 
   const isSpinning = isStatusLoading || isSyncing
 
@@ -29,8 +31,7 @@ export function StatusBar({ projects }: StatusBarProps) {
 
     const started = await triggerSync()
     if (started) {
-      // Sync was accepted (202) — the background task is running.
-      // Poll status after a delay to allow sync to complete, then refresh data queries.
+      // Sync accepted (202) — poll for completion then refresh data queries
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['status'] })
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
@@ -50,13 +51,20 @@ export function StatusBar({ projects }: StatusBarProps) {
           <span className="animate-pulse">Loading status...</span>
         ) : isSyncing ? (
           <span className="animate-pulse">Syncing...</span>
-        ) : lastSyncedText ? (
+        ) : lastUpdatedText ? (
           <>
-            <span>Last synced: {lastSyncedText}</span>
+            <span>Last update: {lastUpdatedText}</span>
             <span aria-hidden="true">&middot;</span>
-            <span aria-label={`${sessionsIndexed} sessions indexed`}>
-              {sessionsIndexed.toLocaleString()} sessions
-            </span>
+            <span>{sessionsIndexed.toLocaleString()} sessions</span>
+            {commitsFound > 0 && (
+              <>
+                <span aria-hidden="true">&middot;</span>
+                <span className="inline-flex items-center gap-0.5" title={`${linksCreated} session-commit links`}>
+                  <GitCommitHorizontal className="w-3 h-3" aria-hidden="true" />
+                  {commitsFound.toLocaleString()}
+                </span>
+              </>
+            )}
           </>
         ) : (
           <span>Not yet synced &middot; {projects.length} projects &middot; {totalSessions} sessions</span>
