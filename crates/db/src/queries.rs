@@ -48,14 +48,16 @@ impl Database {
                 indexed_at, project_path, project_display_name,
                 size_bytes, last_message, files_touched, skills_used,
                 tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
-                message_count
+                message_count,
+                summary, git_branch, is_sidechain
             ) VALUES (
                 ?1, ?2, ?3, ?4,
                 ?5, ?6,
                 ?7, ?8, ?9,
                 ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17,
-                ?18
+                ?18,
+                ?19, ?20, ?21
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
@@ -74,7 +76,10 @@ impl Database {
                 tool_counts_read = excluded.tool_counts_read,
                 tool_counts_bash = excluded.tool_counts_bash,
                 tool_counts_write = excluded.tool_counts_write,
-                message_count = excluded.message_count
+                message_count = excluded.message_count,
+                summary = excluded.summary,
+                git_branch = excluded.git_branch,
+                is_sidechain = excluded.is_sidechain
             "#,
         )
         .bind(&session.id)
@@ -95,6 +100,9 @@ impl Database {
         .bind(tool_bash)
         .bind(tool_write)
         .bind(message_count)
+        .bind(&session.summary)
+        .bind(&session.git_branch)
+        .bind(session.is_sidechain)
         .execute(self.pool())
         .await?;
 
@@ -118,7 +126,8 @@ impl Database {
                 project_path, project_display_name,
                 size_bytes, last_message, files_touched, skills_used,
                 tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
-                message_count
+                message_count,
+                summary, git_branch, is_sidechain, deep_indexed_at
             FROM sessions
             ORDER BY last_message_at DESC
             "#,
@@ -245,6 +254,131 @@ impl Database {
         Ok(())
     }
 
+    /// Insert a lightweight session from sessions-index.json (Pass 1).
+    ///
+    /// Inserts Pass 1 fields. On conflict, updates only the Pass 1 fields
+    /// and does NOT overwrite Pass 2 fields (tool_counts, files_touched, etc.)
+    /// if they already have data.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_session_from_index(
+        &self,
+        id: &str,
+        project_encoded: &str,
+        project_display_name: &str,
+        project_path: &str,
+        file_path: &str,
+        preview: &str,
+        summary: Option<&str>,
+        message_count: i32,
+        modified_at: i64,
+        git_branch: Option<&str>,
+        is_sidechain: bool,
+        size_bytes: i64,
+    ) -> DbResult<()> {
+        let indexed_at = Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, project_display_name, project_path,
+                file_path, preview, summary, message_count,
+                last_message_at, git_branch, is_sidechain,
+                size_bytes, indexed_at,
+                last_message, files_touched, skills_used,
+                tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
+                turn_count
+            ) VALUES (
+                ?1, ?2, ?3, ?4,
+                ?5, ?6, ?7, ?8,
+                ?9, ?10, ?11,
+                ?12, ?13,
+                '', '[]', '[]',
+                0, 0, 0, 0,
+                0
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                project_id = excluded.project_id,
+                project_display_name = excluded.project_display_name,
+                project_path = excluded.project_path,
+                file_path = excluded.file_path,
+                preview = excluded.preview,
+                summary = excluded.summary,
+                message_count = excluded.message_count,
+                last_message_at = excluded.last_message_at,
+                git_branch = excluded.git_branch,
+                is_sidechain = excluded.is_sidechain,
+                size_bytes = excluded.size_bytes,
+                indexed_at = excluded.indexed_at
+            "#,
+        )
+        .bind(id)
+        .bind(project_encoded)
+        .bind(project_display_name)
+        .bind(project_path)
+        .bind(file_path)
+        .bind(preview)
+        .bind(summary)
+        .bind(message_count)
+        .bind(modified_at)
+        .bind(git_branch)
+        .bind(is_sidechain)
+        .bind(size_bytes)
+        .bind(indexed_at)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update extended metadata fields from Pass 2 deep indexing.
+    ///
+    /// Sets `deep_indexed_at` to the current timestamp to mark the session
+    /// as having been fully indexed.
+    pub async fn update_session_deep_fields(
+        &self,
+        id: &str,
+        last_message: &str,
+        turn_count: i32,
+        tool_edit: i32,
+        tool_read: i32,
+        tool_bash: i32,
+        tool_write: i32,
+        files_touched: &str,
+        skills_used: &str,
+    ) -> DbResult<()> {
+        let deep_indexed_at = Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            UPDATE sessions SET
+                last_message = ?2,
+                turn_count = ?3,
+                tool_counts_edit = ?4,
+                tool_counts_read = ?5,
+                tool_counts_bash = ?6,
+                tool_counts_write = ?7,
+                files_touched = ?8,
+                skills_used = ?9,
+                deep_indexed_at = ?10
+            WHERE id = ?1
+            "#,
+        )
+        .bind(id)
+        .bind(last_message)
+        .bind(turn_count)
+        .bind(tool_edit)
+        .bind(tool_read)
+        .bind(tool_bash)
+        .bind(tool_write)
+        .bind(files_touched)
+        .bind(skills_used)
+        .bind(deep_indexed_at)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
     /// Also cleans up corresponding indexer_state entries.
     /// Both deletes run in a transaction for consistency.
@@ -312,6 +446,10 @@ struct SessionRow {
     tool_counts_bash: i32,
     tool_counts_write: i32,
     message_count: i32,
+    summary: Option<String>,
+    git_branch: Option<String>,
+    is_sidechain: bool,
+    deep_indexed_at: Option<i64>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -335,6 +473,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             tool_counts_bash: row.try_get("tool_counts_bash")?,
             tool_counts_write: row.try_get("tool_counts_write")?,
             message_count: row.try_get("message_count")?,
+            summary: row.try_get("summary")?,
+            git_branch: row.try_get("git_branch")?,
+            is_sidechain: row.try_get("is_sidechain")?,
+            deep_indexed_at: row.try_get("deep_indexed_at")?,
         })
     }
 }
@@ -365,6 +507,10 @@ impl SessionRow {
             },
             message_count: self.message_count as usize,
             turn_count: self.turn_count as usize,
+            summary: self.summary,
+            git_branch: self.git_branch,
+            is_sidechain: self.is_sidechain,
+            deep_indexed: self.deep_indexed_at.is_some(),
         }
     }
 }
@@ -401,6 +547,10 @@ mod tests {
             },
             message_count: 20,
             turn_count: 8,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         }
     }
 
@@ -623,6 +773,13 @@ mod tests {
         assert!(json.contains("\"toolCounts\""), "Should use camelCase: toolCounts");
         assert!(json.contains("\"messageCount\""), "Should use camelCase: messageCount");
         assert!(json.contains("\"turnCount\""), "Should use camelCase: turnCount");
+
+        // Verify new fields use camelCase
+        assert!(json.contains("\"isSidechain\""), "Should use camelCase: isSidechain");
+        assert!(json.contains("\"deepIndexed\""), "Should use camelCase: deepIndexed");
+        // summary and git_branch are None, so they should be omitted (skip_serializing_if)
+        assert!(!json.contains("\"summary\""), "summary=None should be omitted");
+        assert!(!json.contains("\"gitBranch\""), "gitBranch=None should be omitted");
 
         // modifiedAt should be an ISO string, not a number
         assert!(
