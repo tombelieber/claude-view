@@ -138,7 +138,8 @@ export function Sidebar({ projects }: SidebarProps) {
                 onClick={() => handleRowClick(project)}
                 onFocus={() => setFocusedIndex(i)}
                 className={cn(
-                  'w-full flex items-center gap-1 px-2 py-1 h-7 cursor-pointer select-none transition-colors',
+                  'w-full flex items-center gap-1 px-2 py-1 h-7 cursor-pointer select-none',
+                  'transition-colors duration-150',
                   'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
                   isSelected
                     ? 'bg-blue-500 text-white'
