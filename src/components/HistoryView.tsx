@@ -1,11 +1,12 @@
 // src/components/HistoryView.tsx
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Search, X, FolderOpen, Loader2 } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { ActivitySparkline } from './ActivitySparkline'
+import { FilterSortBar, useFilterSort } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { sessionSlug } from '../lib/url-slugs'
 
@@ -15,6 +16,10 @@ export function HistoryView() {
   const { data: summaries } = useProjectSummaries()
   const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
   const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
+
+  // URL-persisted filter/sort state
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { filter, sort, setFilter, setSort } = useFilterSort(searchParams, setSearchParams)
 
   const [searchText, setSearchText] = useState('')
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
@@ -52,7 +57,7 @@ export function HistoryView() {
     return map
   }, [summaries])
 
-  // Apply filters
+  // Apply filters and sorting
   const filteredSessions = useMemo(() => {
     const now = Math.floor(Date.now() / 1000)
     const cutoffs: Record<TimeFilter, number> = {
@@ -64,7 +69,7 @@ export function HistoryView() {
     const cutoff = cutoffs[timeFilter]
     const query = searchText.toLowerCase().trim()
 
-    return allSessions.filter(s => {
+    let filtered = allSessions.filter(s => {
       // Time filter
       if (cutoff > 0 && Number(s.modifiedAt) < cutoff) return false
 
@@ -77,6 +82,16 @@ export function HistoryView() {
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         if (key !== selectedDate) return false
       }
+
+      // Session filter (from dropdown)
+      if (filter === 'has_commits' && (s.commitCount ?? 0) === 0) return false
+      if (filter === 'high_reedit') {
+        const filesEdited = s.filesEditedCount ?? 0
+        const reeditedFiles = s.reeditedFilesCount ?? 0
+        const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
+        if (reeditRate <= 0.2) return false
+      }
+      if (filter === 'long_session' && (s.durationSeconds ?? 0) <= 1800) return false
 
       // Text search
       if (query) {
@@ -92,10 +107,33 @@ export function HistoryView() {
 
       return true
     })
-  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate])
 
-  const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate
-  const groups = groupSessionsByDate(filteredSessions)
+    // Apply sorting
+    if (sort !== 'recent') {
+      filtered = [...filtered].sort((a, b) => {
+        switch (sort) {
+          case 'tokens': {
+            const aTokens = Number((a.totalInputTokens ?? 0n) + (a.totalOutputTokens ?? 0n))
+            const bTokens = Number((b.totalInputTokens ?? 0n) + (b.totalOutputTokens ?? 0n))
+            return bTokens - aTokens
+          }
+          case 'prompts':
+            return (b.userPromptCount ?? 0) - (a.userPromptCount ?? 0)
+          case 'files_edited':
+            return (b.filesEditedCount ?? 0) - (a.filesEditedCount ?? 0)
+          case 'duration':
+            return (b.durationSeconds ?? 0) - (a.durationSeconds ?? 0)
+          default:
+            return 0
+        }
+      })
+    }
+
+    return filtered
+  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filter, sort])
+
+  const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filter !== 'all' || sort !== 'recent'
+  const groups = sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: 'Results', sessions: filteredSessions }]
 
   // Project list sorted by session count
   const sortedProjects = useMemo(() => {
@@ -119,6 +157,8 @@ export function HistoryView() {
     setSelectedProjects(new Set())
     setTimeFilter('all')
     setSelectedDate(null)
+    setFilter('all')
+    setSort('recent')
   }
 
   const timeOptions: { value: TimeFilter; label: string }[] = [
@@ -173,8 +213,18 @@ export function HistoryView() {
             )}
           </div>
 
-          {/* Filter row: time + project */}
+          {/* Filter row: session filter/sort + time + project */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Session filter and sort dropdowns */}
+            <FilterSortBar
+              filter={filter}
+              sort={sort}
+              onFilterChange={setFilter}
+              onSortChange={setSort}
+            />
+
+            <div className="w-px h-5 bg-gray-200" />
+
             {/* Time filters */}
             <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 rounded-md">
               {timeOptions.map(opt => (
