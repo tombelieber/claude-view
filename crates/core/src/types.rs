@@ -190,6 +190,45 @@ pub struct SessionInfo {
     pub commit_count: u32,
 }
 
+impl SessionInfo {
+    /// A2.1 Tokens Per Prompt: (total_input + total_output) / user_prompt_count
+    ///
+    /// Returns `None` if token data is unavailable or user_prompt_count is 0.
+    pub fn tokens_per_prompt(&self) -> Option<f64> {
+        let total_input = self.total_input_tokens?;
+        let total_output = self.total_output_tokens?;
+        crate::metrics::tokens_per_prompt(total_input, total_output, self.user_prompt_count)
+    }
+
+    /// A2.2 Re-edit Rate: reedited_files_count / files_edited_count
+    ///
+    /// Returns `None` if files_edited_count is 0.
+    pub fn reedit_rate(&self) -> Option<f64> {
+        crate::metrics::reedit_rate(self.reedited_files_count, self.files_edited_count)
+    }
+
+    /// A2.3 Tool Density: tool_call_count / api_call_count
+    ///
+    /// Returns `None` if api_call_count is 0.
+    pub fn tool_density(&self) -> Option<f64> {
+        crate::metrics::tool_density(self.tool_call_count, self.api_call_count)
+    }
+
+    /// A2.4 Edit Velocity: files_edited_count / (duration_seconds / 60)
+    ///
+    /// Returns `None` if duration_seconds is 0.
+    pub fn edit_velocity(&self) -> Option<f64> {
+        crate::metrics::edit_velocity(self.files_edited_count, self.duration_seconds)
+    }
+
+    /// A2.5 Read-to-Edit Ratio: files_read_count / files_edited_count
+    ///
+    /// Returns `None` if files_edited_count is 0.
+    pub fn read_to_edit_ratio(&self) -> Option<f64> {
+        crate::metrics::read_to_edit_ratio(self.files_read_count, self.files_edited_count)
+    }
+}
+
 /// Project info with sessions
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -672,5 +711,133 @@ mod tests {
         assert_eq!(parse_model_id("llama-3-70b"), ("unknown", "llama-3-70b"));
         assert_eq!(parse_model_id("mistral-large"), ("unknown", "mistral-large"));
         assert_eq!(parse_model_id(""), ("unknown", ""));
+    }
+
+    // ============================================================================
+    // SessionInfo derived metric methods tests
+    // ============================================================================
+
+    fn make_test_session() -> SessionInfo {
+        SessionInfo {
+            id: "test-session".to_string(),
+            project: "test-project".to_string(),
+            project_path: "/path/to/project".to_string(),
+            file_path: "/path/to/session.jsonl".to_string(),
+            modified_at: 1700000000,
+            size_bytes: 1024,
+            preview: "Test preview".to_string(),
+            last_message: "Test message".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 10,
+            turn_count: 5,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: true,
+            total_input_tokens: Some(10000),
+            total_output_tokens: Some(5000),
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: Some(10),
+            primary_model: Some("claude-sonnet-4".to_string()),
+            user_prompt_count: 10,
+            api_call_count: 20,
+            tool_call_count: 50,
+            files_read: vec!["a.rs".to_string(), "b.rs".to_string()],
+            files_edited: vec!["c.rs".to_string()],
+            files_read_count: 20,
+            files_edited_count: 5,
+            reedited_files_count: 2,
+            duration_seconds: 600, // 10 minutes
+            commit_count: 3,
+        }
+    }
+
+    #[test]
+    fn test_session_tokens_per_prompt() {
+        let session = make_test_session();
+        // (10000 + 5000) / 10 = 1500.0
+        let result = session.tokens_per_prompt();
+        assert_eq!(result, Some(1500.0));
+    }
+
+    #[test]
+    fn test_session_tokens_per_prompt_missing_tokens() {
+        let mut session = make_test_session();
+        session.total_input_tokens = None;
+        assert_eq!(session.tokens_per_prompt(), None);
+
+        session.total_input_tokens = Some(1000);
+        session.total_output_tokens = None;
+        assert_eq!(session.tokens_per_prompt(), None);
+    }
+
+    #[test]
+    fn test_session_tokens_per_prompt_zero_prompts() {
+        let mut session = make_test_session();
+        session.user_prompt_count = 0;
+        assert_eq!(session.tokens_per_prompt(), None);
+    }
+
+    #[test]
+    fn test_session_reedit_rate() {
+        let session = make_test_session();
+        // 2 / 5 = 0.4
+        let result = session.reedit_rate();
+        assert_eq!(result, Some(0.4));
+    }
+
+    #[test]
+    fn test_session_reedit_rate_zero_edits() {
+        let mut session = make_test_session();
+        session.files_edited_count = 0;
+        assert_eq!(session.reedit_rate(), None);
+    }
+
+    #[test]
+    fn test_session_tool_density() {
+        let session = make_test_session();
+        // 50 / 20 = 2.5
+        let result = session.tool_density();
+        assert_eq!(result, Some(2.5));
+    }
+
+    #[test]
+    fn test_session_tool_density_zero_api_calls() {
+        let mut session = make_test_session();
+        session.api_call_count = 0;
+        assert_eq!(session.tool_density(), None);
+    }
+
+    #[test]
+    fn test_session_edit_velocity() {
+        let session = make_test_session();
+        // 5 files / (600 / 60) = 5 / 10 = 0.5 files/min
+        let result = session.edit_velocity();
+        assert_eq!(result, Some(0.5));
+    }
+
+    #[test]
+    fn test_session_edit_velocity_zero_duration() {
+        let mut session = make_test_session();
+        session.duration_seconds = 0;
+        assert_eq!(session.edit_velocity(), None);
+    }
+
+    #[test]
+    fn test_session_read_to_edit_ratio() {
+        let session = make_test_session();
+        // 20 / 5 = 4.0
+        let result = session.read_to_edit_ratio();
+        assert_eq!(result, Some(4.0));
+    }
+
+    #[test]
+    fn test_session_read_to_edit_ratio_zero_edits() {
+        let mut session = make_test_session();
+        session.files_edited_count = 0;
+        assert_eq!(session.read_to_edit_ratio(), None);
     }
 }
