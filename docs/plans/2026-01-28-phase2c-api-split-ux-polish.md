@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 date: 2026-01-28
 supersedes:
   - 2026-01-27-api-schema-bonus-fields-design.md
