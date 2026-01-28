@@ -6,19 +6,21 @@ import { useSession } from '../hooks/use-session'
 import { Message } from './Message'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
 import { ExpandProvider } from '../contexts/ExpandContext'
-import type { ProjectInfo } from '../hooks/use-projects'
+import { sessionIdFromSlug } from '../lib/url-slugs'
+import type { ProjectSummary } from '../hooks/use-projects'
 
 export function ConversationView() {
-  const { projectId, sessionId } = useParams()
+  const { projectId, slug } = useParams()
   const navigate = useNavigate()
-  const { projects } = useOutletContext<{ projects: ProjectInfo[] }>()
+  const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
 
   const projectDir = projectId ? decodeURIComponent(projectId) : ''
-  const project = projects.find(p => p.name === projectDir)
+  const project = summaries.find(p => p.name === projectDir)
   const projectName = project?.displayName || projectDir
+  const sessionId = slug ? sessionIdFromSlug(slug) : ''
 
   const handleBack = () => navigate(-1)
-  const { data: session, isLoading, error } = useSession(projectDir, sessionId || '')
+  const { data: session, isLoading, error } = useSession(projectDir, sessionId)
 
   const handleExportHtml = useCallback(() => {
     if (!session) return
@@ -102,7 +104,8 @@ export function ConversationView() {
         <div className="flex items-center gap-4">
           <button
             onClick={handleBack}
-            className="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
+            aria-label="Go back"
+            className="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">Back to sessions</span>
@@ -114,14 +117,16 @@ export function ConversationView() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportHtml}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors"
+            aria-label="Export as HTML"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>HTML</span>
             <Download className="w-4 h-4" />
           </button>
           <button
             onClick={handleExportPdf}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors"
+            aria-label="Export as PDF"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>PDF</span>
             <Download className="w-4 h-4" />

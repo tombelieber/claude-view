@@ -1,18 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, X, Zap, FolderOpen, FileText, Clock } from 'lucide-react'
-import type { ProjectInfo } from '../hooks/use-projects'
-import { parseQuery, filterSessions } from '../lib/search'
+import { Search, X, FolderOpen, Clock } from 'lucide-react'
+import type { ProjectSummary } from '../hooks/use-projects'
 import { useAppStore } from '../store/app-store'
 import { cn } from '../lib/utils'
 
 interface CommandPaletteProps {
   isOpen: boolean
   onClose: () => void
-  projects: ProjectInfo[]
+  projects: ProjectSummary[]
 }
 
-type SuggestionType = 'project' | 'skill' | 'file' | 'recent' | 'session'
+type SuggestionType = 'project' | 'recent'
 
 interface Suggestion {
   type: SuggestionType
@@ -43,7 +42,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
     const q = query.toLowerCase().trim()
 
     if (!q) {
-      // Show recent searches and quick filters
+      // Show recent searches
       for (const recent of recentSearches.slice(0, 3)) {
         results.push({ type: 'recent', label: recent, query: recent })
       }
@@ -59,50 +58,10 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
             type: 'project',
             label: project.displayName,
             query: `project:${project.displayName}`,
-            count: project.sessions.length,
+            count: project.sessionCount,
           })
         }
-        if (results.length >= 3) break
-      }
-    }
-
-    // Autocomplete skills
-    if (q.startsWith('skill:') || !q.includes(':')) {
-      const searchTerm = q.startsWith('skill:') ? q.slice(6) : q
-      const skillCounts = new Map<string, number>()
-      for (const project of projects) {
-        for (const session of project.sessions) {
-          for (const skill of session.skillsUsed ?? []) {
-            if (skill.toLowerCase().includes(searchTerm)) {
-              skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1)
-            }
-          }
-        }
-      }
-      const topSkills = Array.from(skillCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-      for (const [skill, count] of topSkills) {
-        results.push({
-          type: 'skill',
-          label: skill,
-          query: `skill:${skill.replace('/', '')}`,
-          count,
-        })
-      }
-    }
-
-    // Show matching sessions (preview)
-    if (q.length >= 2) {
-      const allSessions = projects.flatMap(p => p.sessions)
-      const parsed = parseQuery(q)
-      const matches = filterSessions(allSessions, projects, parsed).slice(0, 3)
-      for (const session of matches) {
-        results.push({
-          type: 'session',
-          label: session.preview.slice(0, 60) + (session.preview.length > 60 ? '...' : ''),
-          query: q, // Full search
-        })
+        if (results.length >= 5) break
       }
     }
 
@@ -160,10 +119,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
   const getIcon = (type: SuggestionType) => {
     switch (type) {
       case 'project': return FolderOpen
-      case 'skill': return Zap
-      case 'file': return FileText
       case 'recent': return Clock
-      case 'session': return Search
     }
   }
 

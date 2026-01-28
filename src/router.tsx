@@ -1,10 +1,16 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import App from './App'
 import { StatsDashboard } from './components/StatsDashboard'
 import { ProjectView } from './components/ProjectView'
 import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
+
+/** Redirect legacy /session/:projectId/:sessionId to /project/:projectId/session/:sessionId */
+function LegacySessionRedirect() {
+  const { projectId, sessionId } = useParams()
+  return <Navigate to={`/project/${projectId}/session/${sessionId}`} replace />
+}
 
 export const router = createBrowserRouter([
   {
@@ -14,8 +20,10 @@ export const router = createBrowserRouter([
       { index: true, element: <StatsDashboard /> },
       { path: 'history', element: <HistoryView /> },
       { path: 'project/:projectId', element: <ProjectView /> },
+      { path: 'project/:projectId/session/:slug', element: <ConversationView /> },
       { path: 'search', element: <SearchResults /> },
-      { path: 'session/:projectId/:sessionId', element: <ConversationView /> },
+      // Legacy redirect
+      { path: 'session/:projectId/:sessionId', element: <LegacySessionRedirect /> },
     ],
   },
 ])

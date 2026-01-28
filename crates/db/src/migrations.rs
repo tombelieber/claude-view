@@ -106,4 +106,7 @@ CREATE TABLE IF NOT EXISTS turns (
 "#,
     r#"CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_turns_model   ON turns(model_id);"#,
+    // Migration 7: Phase 2C indexes for branch/sidechain filtering
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project_id, git_branch);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_sidechain ON sessions(is_sidechain);"#,
 ];

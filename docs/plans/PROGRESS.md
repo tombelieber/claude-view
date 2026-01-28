@@ -13,15 +13,16 @@
 | **Phase 1: Foundation** | **DONE** | 8/8 tasks |
 | **Phase 2A-1: Parallel Indexing** | **DONE** | 11/11 steps — pipeline works in production |
 | **Phase 2A-2: Invocable Registry** | **DONE** | 12/12 steps — skill/tool tracking + perf fixes |
-| Phase 2B: Token & Model Tracking | **Planned** | 0/12 steps — design approved |
-| Phase 2C: Session Health | Deferred | — |
+| **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps — turns, models, token APIs |
+| **Phase 2C: API Split + UX Polish** | **Approved** | 0/24 steps |
+| Phase 2D: Session Health | Deferred | — |
 | Phase 3: Metrics & Analytics | Not started | — |
 | Phase 4: Search (Tantivy) | Not started | — |
 | Phase 5: Distribution (npx) | Not started | — |
 
-**Current focus:** Phase 2B design approved — ready for implementation
+**Current focus:** Phase 2C approved — API split + UX polish
 
-**Code compiles:** Yes (cargo check passes, 0 warnings, 284 tests green)
+**Code compiles:** Yes (cargo check passes, 308 tests green)
 
 ---
 
@@ -69,14 +70,36 @@ All 12 steps complete. 284 tests pass across workspace.
 
 ---
 
-## Queued Work (After Phase 2A)
+## Phase 2B: Token & Model Tracking — DONE
 
-**Dependency chain:** `api-schema-bonus-fields-design` must ship before `ux-polish-a11y-sidenav-urls`.
+Tracks per-API-call token usage and model identity. 2 new endpoints, extended session responses.
 
-| Plan | Type | Effort | Dependencies |
-|------|------|--------|--------------|
-| `api-schema-bonus-fields-design` | Backend | Small | None — but still draft status |
-| `ux-polish-a11y-sidenav-urls` | Frontend | Medium | Blocked by `api-schema-bonus-fields-design` |
+| # | Step | Status | Notes |
+|---|------|--------|-------|
+| 1 | `RawTurn` type + extend `ParseResult` | **DONE** | `types.rs` |
+| 2 | Migration 6: `models` + `turns` tables | **DONE** | Schema + indexes |
+| 3 | `batch_upsert_models` + `batch_insert_turns` | **DONE** | Transaction-batched writes |
+| 4 | `parse_model_id()` helper | **DONE** | Provider/family extraction |
+| 5 | SIMD turn extraction in `parse_bytes()` | **DONE** | `usage_finder` pre-filter |
+| 6 | Integrate into `pass_2_deep_index()` | **DONE** | Models + turns batch insert |
+| 7 | `get_all_models()` + `get_token_stats()` | **DONE** | Aggregate queries |
+| 8 | `GET /api/models` route | **DONE** | Models with usage counts |
+| 9 | `GET /api/stats/tokens` route | **DONE** | Token economics |
+| 10 | Session queries with token LEFT JOIN | **DONE** | 6 new fields on SessionInfo |
+| 11 | Golden parse test fixtures | **DONE** | Turn data in fixtures |
+| 12 | Acceptance test: full pipeline | **DONE** | AC-13 token verification |
+
+---
+
+## Phase 2C: API Split + UX Polish — Approved
+
+Split over-fetching API into focused endpoints + frontend accessibility and polish.
+
+**Part A — Backend (10 steps):** Split `/api/projects` into `ProjectSummary[]`, add paginated `/api/projects/:id/sessions`, add `/api/stats/dashboard`.
+
+**Part B — Frontend (14 steps):** Accessibility fixes (a11y), wire new API hooks, VSCode sidebar redesign, human-readable URLs.
+
+See `docs/plans/2026-01-28-phase2c-api-split-ux-polish.md` for full plan.
 
 ---
 
@@ -90,10 +113,11 @@ Quick reference so you never have to scan the folder again.
 | `phase2-parallel-indexing-and-registry.md` | approved | **Active work** — Phase 2A-2 registry + perf fixes |
 | `sqlite-indexer-startup-ux.md` | done | All 6 tasks delivered by Phase 2 work |
 | `vibe-recall-phase1-implementation.md` | done | All 7 tasks complete (workspace, types, parser, discovery, server) |
-| `ux-polish-a11y-sidenav-urls.md` | pending | Frontend polish, queued |
-| `api-schema-bonus-fields-design.md` | draft | API enhancements, queued |
+| `ux-polish-a11y-sidenav-urls.md` | superseded | Merged into Phase 2C |
+| `api-schema-bonus-fields-design.md` | superseded | Merged into Phase 2C |
+| `phase2c-api-split-ux-polish.md` | approved | Phase 2C — API split + UX polish, 24 steps |
 | `skills-usage-analytics-prd.md` | draft | PRD spanning Phase 2A-2 (registry) + 2B (tokens) + Phase 3 |
-| `phase2b-token-model-tracking.md` | approved | Phase 2B design — 12-step implementation plan |
+| `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
 | `vibe-recall-analytics-design.md` | draft | Design doc for Phase 3 (analytics) |
 | `path-resolution-dfs-design.md` | done | Archived — shipped |
 | `phase2-backend-integration.md` | done | Archived — shipped |
