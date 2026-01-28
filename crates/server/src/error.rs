@@ -56,6 +56,12 @@ pub enum ApiError {
 
     #[error("Internal server error: {0}")]
     Internal(String),
+
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 impl IntoResponse for ApiError {
@@ -143,6 +149,20 @@ impl IntoResponse for ApiError {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     ErrorResponse::new("Internal server error"),
+                )
+            }
+            ApiError::BadRequest(msg) => {
+                tracing::warn!(message = %msg, "Bad request");
+                (
+                    StatusCode::BAD_REQUEST,
+                    ErrorResponse::with_details("Bad request", msg.clone()),
+                )
+            }
+            ApiError::Conflict(msg) => {
+                tracing::warn!(message = %msg, "Conflict");
+                (
+                    StatusCode::CONFLICT,
+                    ErrorResponse::with_details("Conflict", msg.clone()),
                 )
             }
         };
