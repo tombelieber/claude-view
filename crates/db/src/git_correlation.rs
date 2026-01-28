@@ -631,6 +631,54 @@ impl Database {
 }
 
 // ============================================================================
+// Git Sync Session Query
+// ============================================================================
+
+/// Lightweight session data for git correlation.
+/// Contains only the 4 fields needed — no JOINs, no JSON arrays, no token sums.
+#[derive(Debug, Clone)]
+pub struct SessionSyncInfo {
+    pub session_id: String,
+    pub project_path: String,
+    pub first_message_at: Option<i64>,
+    pub last_message_at: Option<i64>,
+}
+
+impl Database {
+    /// Fetch all sessions eligible for git correlation.
+    ///
+    /// Filters:
+    /// - `project_path` must be non-empty (sessions without a project can't have a repo)
+    /// - `last_message_at` must be non-NULL (need at least one timestamp for time window)
+    ///
+    /// This is deliberately lightweight: a single-table SELECT with no JOINs.
+    pub async fn get_sessions_for_git_sync(&self) -> DbResult<Vec<SessionSyncInfo>> {
+        let rows: Vec<(String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+            r#"
+            SELECT id, project_path, first_message_at, last_message_at
+            FROM sessions
+            WHERE project_path != '' AND last_message_at IS NOT NULL
+            ORDER BY last_message_at DESC
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(session_id, project_path, first_message_at, last_message_at)| {
+                SessionSyncInfo {
+                    session_id,
+                    project_path,
+                    first_message_at,
+                    last_message_at,
+                }
+            })
+            .collect())
+    }
+}
+
+// ============================================================================
 // Full Correlation Pipeline
 // ============================================================================
 
@@ -703,6 +751,141 @@ pub async fn correlate_session(
         .await?;
 
     Ok(inserted)
+}
+
+// ============================================================================
+// Git Sync Orchestrator
+// ============================================================================
+
+/// Result of a full git sync run.
+#[derive(Debug, Clone, Default)]
+pub struct GitSyncResult {
+    /// Number of unique repositories scanned.
+    pub repos_scanned: u32,
+    /// Total commits found across all repos.
+    pub commits_found: u32,
+    /// Total session-commit links created or updated.
+    pub links_created: u32,
+    /// Non-fatal errors encountered (one per failed repo).
+    pub errors: Vec<String>,
+}
+
+/// Run the full git sync pipeline: scan repos, correlate sessions, update metadata.
+///
+/// Auto-sync produces Tier 2 only (no skill data available at this stage).
+/// Tier 1 links from pass_2 deep indexing are never overwritten.
+/// Per-repo error isolation ensures one bad repo doesn't abort the sync.
+/// Idempotent: safe to run multiple times.
+pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
+    let mut result = GitSyncResult::default();
+
+    // Step 1: Fetch all eligible sessions
+    let sessions = db.get_sessions_for_git_sync().await?;
+    if sessions.is_empty() {
+        tracing::debug!("Git sync: no eligible sessions found");
+        db.update_git_sync_metadata_on_success(0, 0).await?;
+        return Ok(result);
+    }
+
+    tracing::info!("Git sync: {} eligible sessions", sessions.len());
+
+    // Step 2: Group sessions by project_path to deduplicate repo scans
+    let mut sessions_by_repo: std::collections::HashMap<String, Vec<&SessionSyncInfo>> =
+        std::collections::HashMap::new();
+    for session in &sessions {
+        sessions_by_repo
+            .entry(session.project_path.clone())
+            .or_default()
+            .push(session);
+    }
+
+    tracing::info!(
+        "Git sync: {} unique project paths to scan",
+        sessions_by_repo.len()
+    );
+
+    // Step 3: Scan each unique repo and upsert commits
+    let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
+        std::collections::HashMap::new();
+
+    for (project_path, _sessions) in &sessions_by_repo {
+        let path = std::path::Path::new(project_path.as_str());
+        let scan = scan_repo_commits(path, None, None).await;
+
+        if scan.not_a_repo {
+            continue;
+        }
+
+        if let Some(err) = &scan.error {
+            tracing::warn!("Git sync: error scanning {}: {}", project_path, err);
+            result.errors.push(format!("{}: {}", project_path, err));
+            continue;
+        }
+
+        if scan.commits.is_empty() {
+            continue;
+        }
+
+        result.repos_scanned += 1;
+        result.commits_found += scan.commits.len() as u32;
+
+        db.batch_upsert_commits(&scan.commits).await?;
+
+        commits_by_repo.insert(project_path.clone(), scan.commits);
+    }
+
+    tracing::info!(
+        "Git sync: scanned {} repos, found {} commits",
+        result.repos_scanned,
+        result.commits_found
+    );
+
+    // Step 4: Correlate each session with its repo's commits
+    for session in &sessions {
+        let commits = match commits_by_repo.get(&session.project_path) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        let info = SessionCorrelationInfo {
+            session_id: session.session_id.clone(),
+            project_path: session.project_path.clone(),
+            first_timestamp: session.first_message_at,
+            last_timestamp: session.last_message_at,
+            commit_skills: Vec::new(), // No skill data in auto-sync → Tier 2 only
+        };
+
+        match correlate_session(db, &info, commits).await {
+            Ok(links) => {
+                result.links_created += links as u32;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Git sync: correlation failed for session {}: {}",
+                    session.session_id,
+                    e
+                );
+                result.errors.push(format!("session {}: {}", session.session_id, e));
+            }
+        }
+    }
+
+    // Step 5: Update metadata to record successful sync
+    db.update_git_sync_metadata_on_success(
+        result.commits_found as i64,
+        result.links_created as i64,
+    )
+    .await?;
+
+    tracing::info!(
+        "Git sync complete: {} repos, {} commits, {} links, {} errors",
+        result.repos_scanned,
+        result.commits_found,
+        result.links_created,
+        result.errors.len()
+    );
+
+    Ok(result)
 }
 
 // ============================================================================
@@ -1609,5 +1792,357 @@ mod tests {
         // None fields should be skipped
         assert!(!json.contains("skill_ts"));
         assert!(!json.contains("skill_name"));
+    }
+
+    // ========================================================================
+    // get_sessions_for_git_sync tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_sessions_for_git_sync_empty_db() {
+        let db = Database::new_in_memory().await.unwrap();
+        let sessions = db.get_sessions_for_git_sync().await.unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_sessions_for_git_sync_filters_correctly() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Session 1: eligible (has project_path and last_message_at)
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', '/home/user/project-a', 1000, 2000, '/tmp/s1.jsonl')"
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Session 2: ineligible (empty project_path)
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
+             VALUES ('s2', 'p2', '', 3000, '/tmp/s2.jsonl')"
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Session 3: ineligible (NULL last_message_at)
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, file_path)
+             VALUES ('s3', 'p3', '/home/user/project-b', '/tmp/s3.jsonl')"
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Session 4: eligible (has project_path and last_message_at, no first_message_at)
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
+             VALUES ('s4', 'p4', '/home/user/project-a', 4000, '/tmp/s4.jsonl')"
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let sessions = db.get_sessions_for_git_sync().await.unwrap();
+        assert_eq!(sessions.len(), 2);
+
+        // Ordered by last_message_at DESC
+        assert_eq!(sessions[0].session_id, "s4");
+        assert_eq!(sessions[0].project_path, "/home/user/project-a");
+        assert_eq!(sessions[0].first_message_at, None);
+        assert_eq!(sessions[0].last_message_at, Some(4000));
+
+        assert_eq!(sessions[1].session_id, "s1");
+        assert_eq!(sessions[1].project_path, "/home/user/project-a");
+        assert_eq!(sessions[1].first_message_at, Some(1000));
+        assert_eq!(sessions[1].last_message_at, Some(2000));
+    }
+
+    // ========================================================================
+    // run_git_sync tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_run_git_sync_empty_db() {
+        let db = Database::new_in_memory().await.unwrap();
+        let result = run_git_sync(&db).await.unwrap();
+
+        assert_eq!(result.repos_scanned, 0);
+        assert_eq!(result.commits_found, 0);
+        assert_eq!(result.links_created, 0);
+        assert!(result.errors.is_empty());
+
+        // Metadata should still be updated (records that sync ran)
+        let meta = db.get_index_metadata().await.unwrap();
+        assert!(meta.last_git_sync_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_run_git_sync_non_git_dirs() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Use /tmp to ensure we're outside any git repository hierarchy
+        let tmp = TempDir::new_in("/tmp").unwrap();
+        let dir = tmp.path().to_str().unwrap();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', ?1, 1000, 2000, '/tmp/s1.jsonl')"
+        )
+        .bind(dir)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let result = run_git_sync(&db).await.unwrap();
+
+        assert_eq!(result.repos_scanned, 0);
+        assert_eq!(result.commits_found, 0);
+        assert_eq!(result.links_created, 0);
+        assert!(result.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_run_git_sync_with_real_repo() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config email");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config name");
+
+        std::fs::write(repo_path.join("file.txt"), "hello").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "test commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        // Get the commit timestamp
+        let output = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%at"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git log timestamp");
+        let commit_ts: i64 = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap();
+
+        let dir_str = repo_path.to_str().unwrap();
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')"
+        )
+        .bind(dir_str)
+        .bind(commit_ts - 600)
+        .bind(commit_ts + 600)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let result = run_git_sync(&db).await.unwrap();
+
+        assert_eq!(result.repos_scanned, 1);
+        assert_eq!(result.commits_found, 1);
+        assert_eq!(result.links_created, 1);
+        assert!(result.errors.is_empty());
+
+        // Verify the link was created in the DB
+        let commits = db.get_commits_for_session("s1").await.unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].1, 2); // Tier 2
+
+        // Verify session commit_count was updated
+        let count = db.count_commits_for_session("s1").await.unwrap();
+        assert_eq!(count, 1);
+
+        // Verify metadata was updated
+        let meta = db.get_index_metadata().await.unwrap();
+        assert!(meta.last_git_sync_at.is_some());
+        assert_eq!(meta.commits_found, 1);
+        assert_eq!(meta.links_created, 1);
+    }
+
+    #[tokio::test]
+    async fn test_run_git_sync_deduplicates_repos() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config email");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config name");
+
+        std::fs::write(repo_path.join("file.txt"), "hello").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "test commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let dir_str = repo_path.to_str().unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')"
+        )
+        .bind(dir_str)
+        .bind(now - 7200)
+        .bind(now + 7200)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s2', 'p1', ?1, ?2, ?3, '/tmp/s2.jsonl')"
+        )
+        .bind(dir_str)
+        .bind(now - 3600)
+        .bind(now + 3600)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let result = run_git_sync(&db).await.unwrap();
+
+        // Only 1 repo scanned despite 2 sessions
+        assert_eq!(result.repos_scanned, 1);
+        // Both sessions should get linked
+        assert_eq!(result.links_created, 2);
+    }
+
+    #[tokio::test]
+    async fn test_run_git_sync_nonexistent_dir() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', '/nonexistent/path/abc123', 1000, 2000, '/tmp/s1.jsonl')"
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let result = run_git_sync(&db).await.unwrap();
+
+        assert_eq!(result.repos_scanned, 0);
+        assert_eq!(result.links_created, 0);
+        assert!(result.errors.is_empty()); // not_a_repo is silent skip
+    }
+
+    #[tokio::test]
+    async fn test_run_git_sync_idempotent() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config email");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config name");
+
+        std::fs::write(repo_path.join("file.txt"), "hello").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "test commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let dir_str = repo_path.to_str().unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')"
+        )
+        .bind(dir_str)
+        .bind(now - 7200)
+        .bind(now + 7200)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Run sync TWICE
+        let result1 = run_git_sync(&db).await.unwrap();
+        let result2 = run_git_sync(&db).await.unwrap();
+
+        assert_eq!(result1.links_created, 1);
+        // Second run: link already exists at same tier, so 0 new links
+        assert_eq!(result2.links_created, 0);
+
+        // Only 1 link total in DB
+        let count = db.count_commits_for_session("s1").await.unwrap();
+        assert_eq!(count, 1);
     }
 }

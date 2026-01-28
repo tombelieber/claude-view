@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-01-28
+> **Last updated:** 2026-01-29
 
 ---
 
@@ -40,14 +40,14 @@
 | **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps | Personal |
 | **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps | Personal |
 | Phase 2D: Session Health | Merged into Phase 3 | — | — |
-| **Phase 3: Metrics Engine** | **Pending** | 0/42 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
+| **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
 | Phase 4: Distribution (npx) | Not started | — | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
-**Current focus:** Phase 3 Metrics Engine — pure facts, no judgment, enterprise-grade quality
+**Current focus:** Phase 4 Distribution (npx) — next up
 
-**Code compiles:** Yes (cargo check passes, 308 tests green)
+**Code compiles:** Yes (cargo check passes, 224+ backend tests green, TypeScript compiles cleanly)
 
 ---
 
@@ -126,13 +126,15 @@ All 24 steps complete. Shipped in commit `4c12be4`.
 
 ---
 
-## Phase 3: Metrics Engine — Pending (Personal Tier, Enterprise-Grade)
+## Phase 3: Metrics Engine — DONE (Personal Tier, Enterprise-Grade)
 
 Pure facts, no judgment. Collect atomic units, compute derived metrics, let users interpret.
 
-**Part A — Backend (24 steps):** Migration 8 (new columns + tables), atomic unit extraction (user prompts, files read/edited, re-edits, duration), derived metrics (tokens/prompt, re-edit rate, tool density), ultra-conservative git correlation (Tier 1-2 only), trends (week-over-week), export (JSON/CSV), data freshness.
+**Part A — Backend (28 steps):** Migration 8, atomic unit extraction (user prompts, API calls, tool calls, files read/edited, re-edits, duration), skill invocation detection, pipeline integration, derived metrics (tokens/prompt, re-edit rate, tool density, edit velocity, read-to-edit ratio), git correlation (Tier 1-2), trends (week-over-week), index metadata, 7 new API routes (filter/sort, export, status, git sync), golden tests, edge case tests.
 
-**Part B — Frontend (18 steps):** Dashboard with 6 metric cards + trends, recent commits section, session detail with metrics bar + files touched + commits panel, session list with metrics row + filter/sort, data freshness footer, full accessibility pass.
+**Part B — Frontend (20 steps):** TypeScript type exports, 5 new hooks (useTrends, useExport, useStatus, useGitSync, extended useDashboardStats), MetricCard + DashboardMetricsGrid (6 cards with trends), RecentCommits, SessionMetricsBar, FilesTouchedPanel, CommitsPanel, SessionCard metrics row + time range, FilterSortBar with URL persistence, Settings page, StatusBar data freshness footer, loading states (Skeleton/ErrorState/EmptyState), accessibility audit (WCAG, Lucide icons, aria-labels, focus-visible), 6 E2E test files.
+
+**15 commits, 224 backend tests passing, TypeScript compiles cleanly.**
 
 **Key design decisions:**
 - **No health labels** — Show metrics, not judgment (Smooth/Turbulent removed)
@@ -182,7 +184,8 @@ Quick reference so you never have to scan the folder again.
 | `phase2c-api-split-ux-polish.md` | done | Phase 2C — API split + UX polish, 24/24 steps |
 | `skills-usage-analytics-prd.md` | superseded | PRD merged into Phase 3 plan |
 | `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
-| `phase3-metrics-engine.md` | pending | **Phase 3** — atomic units, derived metrics, git correlation, 42 steps |
+| `phase3-metrics-engine.md` | done | **Phase 3** — atomic units, derived metrics, git correlation, 48 steps |
+| `2026-01-29-phase3b-git-sync-orchestrator.md` | done | **Phase 3B** — wire git sync orchestrator, fix sync route, auto-sync on startup, fix frontend refresh |
 | `vibe-recall-analytics-design.md` | superseded | Merged into Phase 3 plan |
 | `path-resolution-dfs-design.md` | done | Archived — shipped |
 | `phase2-backend-integration.md` | done | Archived — shipped |
