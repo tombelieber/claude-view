@@ -14,13 +14,13 @@
 | **Phase 2A-1: Parallel Indexing** | **DONE** | 11/11 steps — pipeline works in production |
 | **Phase 2A-2: Invocable Registry** | **DONE** | 12/12 steps — skill/tool tracking + perf fixes |
 | **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps — turns, models, token APIs |
-| **Phase 2C: API Split + UX Polish** | **Approved** | 0/24 steps |
+| **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps — API split, dashboard stats, a11y, sidebar redesign, slug URLs |
 | Phase 2D: Session Health | Deferred | — |
 | Phase 3: Metrics & Analytics | Not started | — |
 | Phase 4: Search (Tantivy) | Not started | — |
 | Phase 5: Distribution (npx) | Not started | — |
 
-**Current focus:** Phase 2C approved — API split + UX polish
+**Current focus:** Phase 2C done. Next: Phase 3 (Metrics & Analytics) or Phase 5 (Distribution)
 
 **Code compiles:** Yes (cargo check passes, 308 tests green)
 
@@ -91,15 +91,13 @@ Tracks per-API-call token usage and model identity. 2 new endpoints, extended se
 
 ---
 
-## Phase 2C: API Split + UX Polish — Approved
+## Phase 2C: API Split + UX Polish — DONE
 
-Split over-fetching API into focused endpoints + frontend accessibility and polish.
+All 24 steps complete. Shipped in commit `4c12be4`.
 
-**Part A — Backend (10 steps):** Split `/api/projects` into `ProjectSummary[]`, add paginated `/api/projects/:id/sessions`, add `/api/stats/dashboard`.
+**Part A — Backend (10 steps):** `ProjectSummary[]` API, paginated `/api/projects/:id/sessions`, `/api/stats/dashboard`, Migration 7 indexes, 30+ tests.
 
-**Part B — Frontend (14 steps):** Accessibility fixes (a11y), wire new API hooks, VSCode sidebar redesign, human-readable URLs.
-
-See `docs/plans/2026-01-28-phase2c-api-split-ux-polish.md` for full plan.
+**Part B — Frontend (14 steps):** Full a11y pass (focus-visible, aria-labels, skip link, reduced motion), new API hooks, VSCode-style sidebar with tree roles + arrow-key nav, human-readable session URLs via slug utility.
 
 ---
 
@@ -115,7 +113,7 @@ Quick reference so you never have to scan the folder again.
 | `vibe-recall-phase1-implementation.md` | done | All 7 tasks complete (workspace, types, parser, discovery, server) |
 | `ux-polish-a11y-sidenav-urls.md` | superseded | Merged into Phase 2C |
 | `api-schema-bonus-fields-design.md` | superseded | Merged into Phase 2C |
-| `phase2c-api-split-ux-polish.md` | approved | Phase 2C — API split + UX polish, 24 steps |
+| `phase2c-api-split-ux-polish.md` | done | Phase 2C — API split + UX polish, 24/24 steps |
 | `skills-usage-analytics-prd.md` | draft | PRD spanning Phase 2A-2 (registry) + 2B (tokens) + Phase 3 |
 | `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
 | `vibe-recall-analytics-design.md` | draft | Design doc for Phase 3 (analytics) |
