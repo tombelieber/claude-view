@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
-use vibe_recall_db::{InvocableWithCount, StatsOverview};
+use vibe_recall_db::{InvocableWithCount, StatsOverview, TokenStats};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -31,11 +31,20 @@ pub async fn stats_overview(
     Ok(Json(stats))
 }
 
+/// GET /api/stats/tokens - Aggregate token usage statistics.
+pub async fn stats_tokens(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<TokenStats>> {
+    let stats = state.db.get_token_stats().await?;
+    Ok(Json(stats))
+}
+
 /// Create the invocables/stats routes router.
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/invocables", get(list_invocables))
         .route("/stats/overview", get(stats_overview))
+        .route("/stats/tokens", get(stats_tokens))
 }
 
 #[cfg(test)]
@@ -131,6 +140,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_stats_tokens_endpoint_empty_db() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = get(app, "/api/stats/tokens").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        assert_eq!(json["totalInputTokens"], 0);
+        assert_eq!(json["totalOutputTokens"], 0);
+        assert_eq!(json["totalCacheReadTokens"], 0);
+        assert_eq!(json["totalCacheCreationTokens"], 0);
+        assert_eq!(json["cacheHitRatio"], 0.0);
+        assert_eq!(json["turnsCount"], 0);
+        assert_eq!(json["sessionsCount"], 0);
+    }
+
+    #[tokio::test]
     async fn test_stats_overview_endpoint_with_data() {
         let db = test_db().await;
 
@@ -159,6 +186,12 @@ mod tests {
             git_branch: None,
             is_sidechain: false,
             deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await

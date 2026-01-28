@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 date: 2026-01-28
 phase: 2B
 depends_on: Phase 2A-2 (Invocable Registry)
