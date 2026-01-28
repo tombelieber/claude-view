@@ -26,6 +26,7 @@ tracing-subscriber = { workspace = true }
 urlencoding = { workspace = true }
 indicatif = { workspace = true }
 dirs = { workspace = true }
+tokio-stream = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
