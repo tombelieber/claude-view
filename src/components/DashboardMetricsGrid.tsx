@@ -33,7 +33,10 @@ function extractTrend(metric: TrendMetric): { delta: number; deltaPercent: numbe
  */
 export function DashboardMetricsGrid({ trends }: DashboardMetricsGridProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <section
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      aria-label="Week-over-week metrics"
+    >
       <MetricCard
         label="Sessions"
         value={formatNumber(trends.sessionCount.current)}
@@ -68,6 +71,6 @@ export function DashboardMetricsGrid({ trends }: DashboardMetricsGridProps) {
         value={formatNumber(trends.commitLinkCount.current)}
         trend={extractTrend(trends.commitLinkCount)}
       />
-    </div>
+    </section>
   )
 }
