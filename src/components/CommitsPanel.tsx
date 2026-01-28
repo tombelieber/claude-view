@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { GitCommit, Copy, Check, Clock } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { truncateMessage, formatRelativeTime } from '../lib/format-utils'
+import { TierBadge } from './TierBadge'
 import type { CommitWithTier } from '../types/generated'
 
 export interface CommitsPanelProps {
@@ -8,46 +10,6 @@ export interface CommitsPanelProps {
   commits: CommitWithTier[]
   /** Optional className for additional styling */
   className?: string
-}
-
-/** Truncate commit message to specified length */
-function truncateMessage(message: string, maxLength: number = 50): string {
-  const firstLine = message.split('\n')[0]
-  if (firstLine.length <= maxLength) return firstLine
-  return firstLine.slice(0, maxLength - 3) + '...'
-}
-
-/** Format timestamp as relative time */
-function formatRelativeTime(timestamp: bigint): string {
-  const date = new Date(Number(timestamp) * 1000)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-/** Tier badge component */
-function TierBadge({ tier }: { tier: number }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded',
-        tier === 1
-          ? 'bg-blue-100 text-blue-700'
-          : 'bg-gray-100 text-gray-600'
-      )}
-      title={tier === 1 ? 'High confidence (commit skill)' : 'Medium confidence (during session)'}
-    >
-      T{tier}
-    </span>
-  )
 }
 
 interface CommitRowProps {
@@ -91,7 +53,7 @@ function CommitRow({ commit }: CommitRowProps) {
       {/* Message */}
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-900 truncate" title={commit.message}>
-          {truncateMessage(commit.message)}
+          {truncateMessage(commit.message, 50)}
         </p>
         {commit.branch && (
           <p className="text-xs text-gray-400 truncate">
