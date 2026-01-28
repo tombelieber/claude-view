@@ -41,20 +41,33 @@ pub struct SyncAcceptedResponse {
 ///
 /// The sync runs in the background. Poll /api/status for completion.
 pub async fn trigger_git_sync(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> ApiResult<Response> {
     let mutex = get_sync_mutex();
 
-    // Try to acquire the mutex without blocking
     match mutex.try_lock() {
-        Ok(_guard) => {
-            // We got the lock - no sync in progress
-            // In a full implementation, we would spawn a background task here
-            // For now, we just return 202 to indicate acceptance
+        Ok(guard) => {
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                // Hold the mutex guard for the entire duration of the sync.
+                let _guard = guard;
 
-            // Note: The guard is dropped immediately after this match arm,
-            // allowing subsequent requests to also get 202. In a real implementation,
-            // the guard would be held by the background task.
+                tracing::info!("Git sync triggered via API");
+                match vibe_recall_db::git_correlation::run_git_sync(&db).await {
+                    Ok(result) => {
+                        tracing::info!(
+                            "Git sync complete: {} repos, {} commits, {} links, {} errors",
+                            result.repos_scanned,
+                            result.commits_found,
+                            result.links_created,
+                            result.errors.len(),
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Git sync failed: {}", e);
+                    }
+                }
+            });
 
             let response = SyncAcceptedResponse {
                 message: "Git sync initiated".to_string(),
@@ -64,7 +77,6 @@ pub async fn trigger_git_sync(
             Ok((StatusCode::ACCEPTED, Json(response)).into_response())
         }
         Err(_) => {
-            // Mutex is locked - sync already in progress
             Err(ApiError::Conflict(
                 "Git sync already in progress. Please wait for it to complete.".to_string(),
             ))
