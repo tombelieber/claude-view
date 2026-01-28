@@ -3,17 +3,95 @@
 use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
+use serde::Serialize;
+use ts_rs::TS;
 use vibe_recall_core::DashboardStats;
+use vibe_recall_db::trends::{TrendMetric, WeekTrends};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
 
-/// GET /api/stats/dashboard - Pre-computed dashboard statistics.
+/// Current week metrics for dashboard (Step 22).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentWeekMetrics {
+    pub session_count: u64,
+    pub total_tokens: u64,
+    pub total_files_edited: u64,
+    pub commit_count: u64,
+}
+
+/// Extended dashboard stats with current week and trends.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ExtendedDashboardStats {
+    /// Base dashboard stats
+    #[serde(flatten)]
+    pub base: DashboardStats,
+    /// Current week metrics
+    pub current_week: CurrentWeekMetrics,
+    /// Week-over-week trends
+    pub trends: DashboardTrends,
+}
+
+/// Simplified trends for dashboard display.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardTrends {
+    /// Session count trend
+    pub sessions: TrendMetric,
+    /// Token usage trend
+    pub tokens: TrendMetric,
+    /// Files edited trend
+    pub files_edited: TrendMetric,
+    /// Commits linked trend
+    pub commits: TrendMetric,
+}
+
+impl From<WeekTrends> for DashboardTrends {
+    fn from(t: WeekTrends) -> Self {
+        Self {
+            sessions: t.session_count,
+            tokens: t.total_tokens,
+            files_edited: t.total_files_edited,
+            commits: t.commit_link_count,
+        }
+    }
+}
+
+/// GET /api/stats/dashboard - Pre-computed dashboard statistics (Step 22 extended).
+///
+/// Returns:
+/// - Base stats: total_sessions, total_projects, heatmap, top_skills, top_projects, tool_totals
+/// - Current week: session_count, total_tokens, total_files_edited, commit_count
+/// - Trends: week-over-week changes for key metrics
 pub async fn dashboard_stats(
     State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<DashboardStats>> {
-    let stats = state.db.get_dashboard_stats().await?;
-    Ok(Json(stats))
+) -> ApiResult<Json<ExtendedDashboardStats>> {
+    // Get base dashboard stats
+    let base = state.db.get_dashboard_stats().await?;
+
+    // Get week trends
+    let week_trends = state.db.get_week_trends().await?;
+
+    // Build current week metrics from trends
+    let current_week = CurrentWeekMetrics {
+        session_count: week_trends.session_count.current as u64,
+        total_tokens: week_trends.total_tokens.current as u64,
+        total_files_edited: week_trends.total_files_edited.current as u64,
+        commit_count: week_trends.commit_link_count.current as u64,
+    };
+
+    let trends = DashboardTrends::from(week_trends);
+
+    Ok(Json(ExtendedDashboardStats {
+        base,
+        current_week,
+        trends,
+    }))
 }
 
 /// Create the stats routes router.
@@ -65,6 +143,12 @@ mod tests {
         assert!(json["topSkills"].is_array());
         assert!(json["topProjects"].is_array());
         assert!(json["toolTotals"].is_object());
+
+        // Check extended fields
+        assert!(json["currentWeek"].is_object());
+        assert_eq!(json["currentWeek"]["sessionCount"], 0);
+        assert!(json["trends"].is_object());
+        assert!(json["trends"]["sessions"].is_object());
     }
 
     #[tokio::test]
@@ -93,23 +177,22 @@ mod tests {
             git_branch: None,
             is_sidechain: false,
             deep_indexed: false,
-            total_input_tokens: None,
-            total_output_tokens: None,
+            total_input_tokens: Some(10000),
+            total_output_tokens: Some(5000),
             total_cache_read_tokens: None,
             total_cache_creation_tokens: None,
             turn_count_api: None,
             primary_model: None,
-            // Phase 3: Atomic unit metrics
-            user_prompt_count: 0,
-            api_call_count: 0,
-            tool_call_count: 0,
+            user_prompt_count: 10,
+            api_call_count: 20,
+            tool_call_count: 50,
             files_read: vec![],
             files_edited: vec![],
-            files_read_count: 0,
-            files_edited_count: 0,
-            reedited_files_count: 0,
-            duration_seconds: 0,
-            commit_count: 0,
+            files_read_count: 20,
+            files_edited_count: 5,
+            reedited_files_count: 2,
+            duration_seconds: 600,
+            commit_count: 3,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -121,5 +204,13 @@ mod tests {
         assert_eq!(json["totalSessions"], 1);
         assert_eq!(json["totalProjects"], 1);
         assert!(!json["heatmap"].as_array().unwrap().is_empty());
+
+        // Check current week metrics
+        assert!(json["currentWeek"]["sessionCount"].as_u64().unwrap() >= 0);
+
+        // Check trends structure
+        assert!(json["trends"]["sessions"]["current"].is_number());
+        assert!(json["trends"]["sessions"]["previous"].is_number());
+        assert!(json["trends"]["sessions"]["delta"].is_number());
     }
 }
