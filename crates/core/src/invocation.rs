@@ -38,7 +38,9 @@ pub struct RawToolUse {
 // ---------------------------------------------------------------------------
 
 /// Known built-in agent types used by the Task tool in Claude Code.
-const BUILTIN_AGENTS: &[&str] = &[
+/// Built-in agent types that get classified as `builtin:{name}`.
+/// Public so the registry can seed these into the invocables table.
+pub const BUILTIN_AGENT_NAMES: &[&str] = &[
     "Bash",
     "general-purpose",
     "Explore",
@@ -51,7 +53,7 @@ const BUILTIN_AGENTS: &[&str] = &[
 /// Built-in agents are either in the allowlist or do NOT contain ":"
 /// (plugin agents always use the "plugin:agent" format).
 pub(crate) fn is_builtin_agent(agent_type: &str) -> bool {
-    BUILTIN_AGENTS.contains(&agent_type)
+    BUILTIN_AGENT_NAMES.contains(&agent_type)
 }
 
 // ---------------------------------------------------------------------------

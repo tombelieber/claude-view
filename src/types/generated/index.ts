@@ -20,6 +20,7 @@ export type { DashboardStats } from './DashboardStats'
 export type { DayActivity } from './DayActivity'
 export type { SkillStat } from './SkillStat'
 export type { ProjectStat } from './ProjectStat'
+export type { SessionDurationStat } from './SessionDurationStat'
 
 // Extended dashboard (Phase 3)
 export type { CurrentWeekMetrics } from './CurrentWeekMetrics'
