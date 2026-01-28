@@ -3,7 +3,9 @@ import { ArrowLeft, Download, MessageSquare } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
+import { useProjectSessions } from '../hooks/use-projects'
 import { Message } from './Message'
+import { SessionMetricsBar } from './SessionMetricsBar'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
@@ -22,6 +24,8 @@ export function ConversationView() {
 
   const handleBack = () => navigate(-1)
   const { data: session, isLoading, error } = useSession(projectDir, sessionId)
+  const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
+  const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
 
   const handleExportHtml = useCallback(() => {
     if (!session) return
@@ -134,6 +138,28 @@ export function ConversationView() {
           </button>
         </div>
       </div>
+
+      {/* Session Metrics Bar */}
+      {sessionInfo && sessionInfo.userPromptCount > 0 && (
+        <div className="px-6 py-2 bg-white border-b border-gray-200">
+          <SessionMetricsBar
+            prompts={sessionInfo.userPromptCount}
+            tokens={
+              sessionInfo.totalInputTokens != null && sessionInfo.totalOutputTokens != null
+                ? BigInt(sessionInfo.totalInputTokens) + BigInt(sessionInfo.totalOutputTokens)
+                : null
+            }
+            filesRead={sessionInfo.filesReadCount}
+            filesEdited={sessionInfo.filesEditedCount}
+            reeditRate={
+              sessionInfo.filesEditedCount > 0
+                ? sessionInfo.reeditedFilesCount / sessionInfo.filesEditedCount
+                : null
+            }
+            commits={sessionInfo.commitCount}
+          />
+        </div>
+      )}
 
       {/* Messages */}
       <ExpandProvider>
