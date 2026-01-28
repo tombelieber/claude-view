@@ -162,11 +162,13 @@ export function SessionCard({ session, isSelected, projectDisplayName }: Session
   return (
     <article
       className={cn(
-        'w-full text-left p-3.5 rounded-lg border transition-all',
+        'w-full text-left p-3.5 rounded-lg border cursor-pointer',
+        'transition-all duration-200 ease-out',
         isSelected
           ? 'bg-blue-50 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
           : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
       )}
+      aria-label={`Session: ${cleanPreview}`}
     >
       {/* Header: Project badge + Time range + Duration */}
       <div className="flex items-center justify-between gap-2 mb-1">
