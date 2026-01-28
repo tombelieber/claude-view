@@ -1,30 +1,10 @@
 import { MetricCard } from './MetricCard'
+import { formatNumber, formatPercent } from '../lib/format-utils'
 import type { WeekTrends, TrendMetric } from '../types/generated'
 
 export interface DashboardMetricsGridProps {
   /** Week-over-week trends data */
   trends: WeekTrends
-}
-
-/** Helper to format large numbers with K/M suffixes */
-function formatNumber(value: bigint | number): string {
-  const num = typeof value === 'bigint' ? Number(value) : value
-  if (num >= 1_000_000) {
-    return `${(num / 1_000_000).toFixed(1)}M`
-  }
-  if (num >= 1_000) {
-    return `${(num / 1_000).toFixed(1)}K`
-  }
-  return num.toLocaleString()
-}
-
-/**
- * Helper to format percentage values.
- * Values are expected to already be in percentage form (e.g., 25 for 25%).
- */
-function formatPercent(value: number | null): string {
-  if (value === null) return '--'
-  return `${value.toFixed(1)}%`
 }
 
 /** Helper to extract trend data from TrendMetric */
