@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use ts_rs::TS;
 use vibe_recall_core::{
     parse_model_id, DashboardStats, DayActivity, ProjectInfo, ProjectStat, ProjectSummary,
-    RawTurn, SessionInfo, SessionsPage, SkillStat, ToolCounts,
+    RawTurn, SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
 
 /// Indexer state entry returned from the database.
@@ -256,7 +256,7 @@ impl Database {
                 s.user_prompt_count, s.api_call_count, s.tool_call_count,
                 s.files_read, s.files_edited,
                 s.files_read_count, s.files_edited_count, s.reedited_files_count,
-                s.duration_seconds, s.commit_count
+                s.duration_seconds, s.first_message_at, s.commit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -992,7 +992,7 @@ impl Database {
                 s.user_prompt_count, s.api_call_count, s.tool_call_count,
                 s.files_read, s.files_edited,
                 s.files_read_count, s.files_edited_count, s.reedited_files_count,
-                s.duration_seconds, s.commit_count
+                s.duration_seconds, s.first_message_at, s.commit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1039,9 +1039,35 @@ impl Database {
         })
     }
 
+    /// Fetch top 10 invocables by kind from the invocations table.
+    async fn top_invocables_by_kind(&self, kind: &str) -> DbResult<Vec<SkillStat>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT inv.name, COUNT(*) as cnt
+            FROM invocations i
+            JOIN invocables inv ON i.invocable_id = inv.id
+            WHERE inv.kind = ?1
+            GROUP BY inv.name
+            ORDER BY cnt DESC
+            LIMIT 10
+            "#,
+        )
+        .bind(kind)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(name, count)| SkillStat {
+                name,
+                count: count as usize,
+            })
+            .collect())
+    }
+
     /// Get pre-computed dashboard statistics.
     ///
-    /// Returns heatmap (90 days), top 10 skills, top 5 projects, tool totals.
+    /// Returns heatmap (90 days), top 10 invocables per kind, top 5 projects, tool totals.
     pub async fn get_dashboard_stats(&self) -> DbResult<DashboardStats> {
         // Total sessions and projects
         let (total_sessions,): (i64,) =
@@ -1078,27 +1104,11 @@ impl Database {
             })
             .collect();
 
-        // Top 10 skills
-        let skill_rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"
-            SELECT j.value as skill_name, COUNT(*) as cnt
-            FROM sessions, json_each(sessions.skills_used) as j
-            WHERE sessions.is_sidechain = 0
-            GROUP BY skill_name
-            ORDER BY cnt DESC
-            LIMIT 10
-            "#,
-        )
-        .fetch_all(self.pool())
-        .await?;
-
-        let top_skills: Vec<SkillStat> = skill_rows
-            .into_iter()
-            .map(|(name, count)| SkillStat {
-                name,
-                count: count as usize,
-            })
-            .collect();
+        // Top invocables by kind (from Phase 2A-2 invocations table)
+        let top_skills = self.top_invocables_by_kind("skill").await?;
+        let top_commands = self.top_invocables_by_kind("command").await?;
+        let top_mcp_tools = self.top_invocables_by_kind("mcp_tool").await?;
+        let top_agents = self.top_invocables_by_kind("agent").await?;
 
         // Top 5 projects by session count
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1123,6 +1133,32 @@ impl Database {
             })
             .collect();
 
+        // Top 5 longest sessions by duration
+        let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
+            r#"
+            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
+            FROM sessions
+            WHERE is_sidechain = 0 AND duration_seconds > 0
+            ORDER BY duration_seconds DESC
+            LIMIT 5
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let longest_sessions: Vec<SessionDurationStat> = longest_rows
+            .into_iter()
+            .map(|(id, preview, project_name, project_display_name, duration_seconds)| {
+                SessionDurationStat {
+                    id,
+                    preview,
+                    project_name,
+                    project_display_name,
+                    duration_seconds: duration_seconds as u32,
+                }
+            })
+            .collect();
+
         // Tool totals (aggregate across all non-sidechain sessions)
         let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
             r#"
@@ -1143,6 +1179,9 @@ impl Database {
             total_projects: total_projects as usize,
             heatmap,
             top_skills,
+            top_commands,
+            top_mcp_tools,
+            top_agents,
             top_projects,
             tool_totals: ToolCounts {
                 edit: edit as usize,
@@ -1150,6 +1189,7 @@ impl Database {
                 bash: bash as usize,
                 write: write as usize,
             },
+            longest_sessions,
         })
     }
 
@@ -1240,6 +1280,8 @@ struct SessionRow {
     files_edited_count: i32,
     reedited_files_count: i32,
     duration_seconds: i32,
+    #[allow(dead_code)] // Used internally by git sync queries, not by into_session_info()
+    first_message_at: Option<i64>,
     commit_count: i32,
 }
 
@@ -1284,6 +1326,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             files_edited_count: row.try_get("files_edited_count")?,
             reedited_files_count: row.try_get("reedited_files_count")?,
             duration_seconds: row.try_get("duration_seconds")?,
+            first_message_at: row.try_get("first_message_at")?,
             commit_count: row.try_get("commit_count")?,
         })
     }
