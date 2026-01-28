@@ -168,6 +168,58 @@ CREATE TABLE IF NOT EXISTS index_metadata (
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_commit_count ON sessions(commit_count) WHERE commit_count > 0;"#,
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_reedit ON sessions(reedited_files_count) WHERE reedited_files_count > 0;"#,
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration_seconds);"#,
+    // Migration 9: Add user-configurable git sync interval to settings
+    r#"ALTER TABLE index_metadata ADD COLUMN git_sync_interval_secs INTEGER NOT NULL DEFAULT 60;"#,
+    // Migration 10: Full JSONL parser schema (Phase 3.5)
+    // 10a: Token aggregates on sessions
+    r#"ALTER TABLE sessions ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN total_output_tokens INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN thinking_block_count INTEGER NOT NULL DEFAULT 0;"#,
+    // 10b: System line aggregates on sessions
+    r#"ALTER TABLE sessions ADD COLUMN turn_duration_avg_ms INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN turn_duration_max_ms INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN turn_duration_total_ms INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN api_error_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN api_retry_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN compaction_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN hook_blocked_count INTEGER NOT NULL DEFAULT 0;"#,
+    // 10c: Progress line aggregates on sessions
+    r#"ALTER TABLE sessions ADD COLUMN agent_spawn_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN bash_progress_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN hook_progress_count INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN mcp_progress_count INTEGER NOT NULL DEFAULT 0;"#,
+    // 10d: Summary + parse_version
+    r#"ALTER TABLE sessions ADD COLUMN summary_text TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN parse_version INTEGER NOT NULL DEFAULT 0;"#,
+    // 10e: Detail tables
+    r#"
+CREATE TABLE IF NOT EXISTS turn_metrics (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    turn_seq INTEGER NOT NULL,
+    duration_ms INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_creation_tokens INTEGER,
+    model TEXT,
+    PRIMARY KEY (session_id, turn_seq)
+);
+"#,
+    r#"
+CREATE TABLE IF NOT EXISTS api_errors (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    timestamp_unix INTEGER NOT NULL,
+    retry_attempt INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 0,
+    retry_in_ms REAL NOT NULL DEFAULT 0.0
+);
+"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_api_errors_session_id ON api_errors(session_id);"#,
+    // 10f: Partial index for re-indexing
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_needs_reindex ON sessions(id, file_path) WHERE parse_version < 1;"#,
 ];
 
 // ============================================================================
@@ -431,6 +483,72 @@ mod tests {
         assert_eq!(row.7, 0, "reedited_files_count default should be 0");
         assert_eq!(row.8, 0, "duration_seconds default should be 0");
         assert_eq!(row.9, 0, "commit_count default should be 0");
+    }
+
+    #[tokio::test]
+    async fn test_migration9_full_parser_columns_exist() {
+        let pool = setup_db().await;
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        ).fetch_all(&pool).await.unwrap();
+        let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(names.contains(&"parse_version"), "Missing parse_version");
+        assert!(names.contains(&"turn_duration_avg_ms"), "Missing turn_duration_avg_ms");
+        assert!(names.contains(&"turn_duration_max_ms"), "Missing turn_duration_max_ms");
+        assert!(names.contains(&"turn_duration_total_ms"), "Missing turn_duration_total_ms");
+        assert!(names.contains(&"api_error_count"), "Missing api_error_count");
+        assert!(names.contains(&"api_retry_count"), "Missing api_retry_count");
+        assert!(names.contains(&"compaction_count"), "Missing compaction_count");
+        assert!(names.contains(&"hook_blocked_count"), "Missing hook_blocked_count");
+        assert!(names.contains(&"agent_spawn_count"), "Missing agent_spawn_count");
+        assert!(names.contains(&"bash_progress_count"), "Missing bash_progress_count");
+        assert!(names.contains(&"hook_progress_count"), "Missing hook_progress_count");
+        assert!(names.contains(&"mcp_progress_count"), "Missing mcp_progress_count");
+        assert!(names.contains(&"summary_text"), "Missing summary_text");
+        assert!(names.contains(&"total_input_tokens"), "Missing total_input_tokens");
+        assert!(names.contains(&"total_output_tokens"), "Missing total_output_tokens");
+        assert!(names.contains(&"cache_read_tokens"), "Missing cache_read_tokens");
+        assert!(names.contains(&"cache_creation_tokens"), "Missing cache_creation_tokens");
+        assert!(names.contains(&"thinking_block_count"), "Missing thinking_block_count");
+    }
+
+    #[tokio::test]
+    async fn test_migration9_detail_tables_exist() {
+        let pool = setup_db().await;
+
+        // Verify turn_metrics table
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('turn_metrics')"
+        ).fetch_all(&pool).await.unwrap();
+        let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+        assert!(names.contains(&"session_id"));
+        assert!(names.contains(&"turn_seq"));
+        assert!(names.contains(&"duration_ms"));
+        assert!(names.contains(&"input_tokens"));
+        assert!(names.contains(&"model"));
+
+        // Verify api_errors table
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('api_errors')"
+        ).fetch_all(&pool).await.unwrap();
+        let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+        assert!(names.contains(&"session_id"));
+        assert!(names.contains(&"timestamp_unix"));
+        assert!(names.contains(&"retry_attempt"));
+    }
+
+    #[tokio::test]
+    async fn test_migration9_parse_version_default() {
+        let pool = setup_db().await;
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('pv-test', 'proj', '/tmp/pv.jsonl', 'Test')"
+        ).execute(&pool).await.unwrap();
+
+        let row: (i64,) = sqlx::query_as(
+            "SELECT parse_version FROM sessions WHERE id = 'pv-test'"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0, 0, "parse_version default should be 0");
     }
 
     #[tokio::test]
