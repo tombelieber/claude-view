@@ -1,5 +1,6 @@
 import { MessageSquare, Coins, FileText, RefreshCw, GitCommit } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { formatNumber, formatPercent } from '../lib/format-utils'
 
 export interface SessionMetricsBarProps {
   /** Number of user prompts */
@@ -16,25 +17,6 @@ export interface SessionMetricsBarProps {
   commits: number
   /** Optional className for additional styling */
   className?: string
-}
-
-/** Format large numbers with K/M suffixes */
-function formatNumber(value: bigint | number | null): string {
-  if (value === null) return '--'
-  const num = typeof value === 'bigint' ? Number(value) : value
-  if (num >= 1_000_000) {
-    return `${(num / 1_000_000).toFixed(1)}M`
-  }
-  if (num >= 1_000) {
-    return `${(num / 1_000).toFixed(1)}K`
-  }
-  return num.toLocaleString()
-}
-
-/** Format percentage */
-function formatPercent(value: number | null): string {
-  if (value === null) return '--'
-  return `${(value * 100).toFixed(0)}%`
 }
 
 interface MetricItemProps {
@@ -113,7 +95,7 @@ export function SessionMetricsBar({
       <MetricItem
         icon={<RefreshCw className="w-3.5 h-3.5" />}
         label="Re-edit"
-        value={formatPercent(reeditRate)}
+        value={formatPercent(reeditRate, true)}
         title="Percentage of edited files that were re-edited"
       />
       <div className="w-px h-8 bg-gray-200" />
