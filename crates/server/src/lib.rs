@@ -5,10 +5,12 @@
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
 pub mod error;
+pub mod indexing_state;
 pub mod routes;
 pub mod state;
 
 pub use error::*;
+pub use indexing_state::{IndexingState, IndexingStatus};
 pub use routes::api_routes;
 pub use state::AppState;
 
