@@ -117,18 +117,36 @@ bun dev            # Start full-stack dev (Rust + Vite with hot reload)
 | `bun test` | Run Rust test suite |
 | `bun run test:e2e` | Run Playwright end-to-end tests |
 
+### Testing Production Distribution
+
+These commands simulate the full `npx claude-view` experience locally:
+
+```bash
+bun run dist:test    # One command: build → pack → install → run
+```
+
+Or step by step:
+
+| Command | Description |
+|---------|-------------|
+| `bun run dist:pack` | Package binary + frontend into tarball at `/tmp/` |
+| `bun run dist:install` | Extract tarball to `~/.cache/claude-view/` (simulates first-run download) |
+| `bun run dist:run` | Run the npx wrapper using the cached binary |
+| `bun run dist:test` | All of the above in one shot |
+| `bun run dist:clean` | Remove all dist cache and temp files |
+
 ---
 
 ## 🗺️ Platform Roadmap
 
-| Platform | Status | ETA |
-|----------|--------|-----|
-| macOS (Apple Silicon) | ✅ Available | Now |
-| macOS (Intel) | ✅ Available | Now |
-| Linux (x64) | 🔜 Coming | v2.1 |
-| Linux (ARM64) | 🔜 Coming | v2.1 |
-| Windows (x64) | 🔜 Coming | v2.2 |
-| Windows (ARM64) | 🔜 Coming | v2.2 |
+| Platform | Status |
+|----------|--------|
+| macOS (Apple Silicon) | ✅ Available |
+| macOS (Intel) | ✅ Available |
+| Linux (x64) | ✅ Available |
+| Windows (x64) | ✅ Available |
+| Linux (ARM64) | 🔜 Coming |
+| Windows (ARM64) | 🔜 Coming |
 
 ---
 
