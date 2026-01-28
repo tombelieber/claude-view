@@ -20,4 +20,12 @@ filesEdited: TrendMetric,
 /**
  * Commits linked trend
  */
-commits: TrendMetric, };
+commits: TrendMetric, 
+/**
+ * Avg tokens per prompt trend
+ */
+avgTokensPerPrompt: TrendMetric, 
+/**
+ * Avg re-edit rate trend (percentage 0-100)
+ */
+avgReeditRate: TrendMetric, };

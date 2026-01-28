@@ -1,8 +1,10 @@
 import { useNavigate, Link } from 'react-router-dom'
-import { BarChart3, Zap, FolderOpen, Calendar, Pencil, Eye, Terminal } from 'lucide-react'
+import { BarChart3, Sparkles, TerminalSquare, Plug, Bot, FolderOpen, Calendar, Pencil, Eye, Terminal, Clock, ArrowRight, Search } from 'lucide-react'
 import { useDashboardStats } from '../hooks/use-dashboard'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
+import { DashboardMetricsGrid } from './DashboardMetricsGrid'
+import { RecentCommits } from './RecentCommits'
 
 export function StatsDashboard() {
   const navigate = useNavigate()
@@ -38,12 +40,18 @@ export function StatsDashboard() {
     )
   }
 
-  const maxSkillCount = stats.topSkills[0]?.count || 1
   const maxProjectSessions = stats.topProjects[0]?.sessionCount || 1
 
-  const handleSkillClick = (skill: string) => {
-    navigate(`/search?q=${encodeURIComponent(`skill:${skill.replace('/', '')}`)}`)
+  const handleInvocableClick = (name: string) => {
+    navigate(`/search?q=${encodeURIComponent(`skill:${name.replace('/', '')}`)}`)
   }
+
+  const invocableCategories = [
+    { title: 'Top Skills', icon: Sparkles, data: stats.topSkills, color: 'bg-[#7c9885]' },
+    { title: 'Top Commands', icon: TerminalSquare, data: stats.topCommands, color: 'bg-blue-500' },
+    { title: 'Top MCP Tools', icon: Plug, data: stats.topMcpTools, color: 'bg-purple-500' },
+    { title: 'Top Agents', icon: Bot, data: stats.topAgents, color: 'bg-amber-500' },
+  ].filter(cat => cat.data.length > 0)
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -68,41 +76,53 @@ export function StatsDashboard() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Top Skills */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-            <Zap className="w-4 h-4" />
-            Top Skills
-          </h2>
-          <div className="space-y-3">
-            {stats.topSkills.map((skill) => (
-              <button
-                key={skill.name}
-                onClick={() => handleSkillClick(skill.name)}
-                className="w-full group text-left focus-visible:ring-2 focus-visible:ring-blue-400"
-              >
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="font-mono text-gray-700 group-hover:text-blue-600 transition-colors">
-                    {skill.name}
-                  </span>
-                  <span className="tabular-nums text-gray-400">{skill.count}</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#7c9885] group-hover:bg-blue-500 transition-colors rounded-full"
-                    style={{ width: `${(skill.count / maxSkillCount) * 100}%` }}
-                  />
-                </div>
-              </button>
-            ))}
-            {stats.topSkills.length === 0 && (
-              <p className="text-sm text-gray-400 italic">No skills used yet</p>
-            )}
-          </div>
-        </div>
+      {/* Phase 3: Week-over-week metrics grid */}
+      {stats.trends && (
+        <DashboardMetricsGrid trends={stats.trends} />
+      )}
 
-        {/* Most Active Projects */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Invocable category cards — self-contained leaderboards, items are clickable */}
+        {invocableCategories.map(({ title, icon: Icon, data, color }) => {
+          const maxCount = data[0]?.count || 1
+          return (
+            <div key={title} className="bg-white rounded-xl border border-gray-200 p-6">
+              <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <Icon className="w-4 h-4" />
+                {title}
+              </h2>
+              <div className="space-y-3">
+                {data.map((item) => (
+                  <button
+                    key={item.name}
+                    onClick={() => handleInvocableClick(item.name)}
+                    className="w-full group text-left focus-visible:ring-2 focus-visible:ring-blue-400"
+                  >
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="font-mono text-gray-700 group-hover:text-blue-600 transition-colors">
+                        {item.name}
+                      </span>
+                      <span className="tabular-nums text-gray-400">{item.count}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn('h-full group-hover:bg-blue-500 transition-colors rounded-full', color)}
+                        style={{ width: `${(item.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Hint: items are interactive */}
+              <p className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400 flex items-center gap-1">
+                <Search className="w-3 h-3" />
+                Click any item to find matching sessions
+              </p>
+            </div>
+          )
+        })}
+
+        {/* Most Active Projects — items link to project pages */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
             <FolderOpen className="w-4 h-4" />
@@ -131,14 +151,70 @@ export function StatsDashboard() {
             ))}
           </div>
         </div>
+
+        {/* Longest Sessions — "See all" links to sorted history */}
+        {stats.longestSessions.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-4 h-4" />
+                Longest Sessions
+              </h2>
+              <Link
+                to="/history?sort=duration"
+                className="text-xs text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-0.5"
+              >
+                See all <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {stats.longestSessions.map((session) => {
+                const maxDuration = stats.longestSessions[0]?.durationSeconds || 1
+                return (
+                  <Link
+                    key={session.id}
+                    to={`/session/${encodeURIComponent(session.id)}`}
+                    className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
+                  >
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-gray-700 group-hover:text-blue-600 transition-colors truncate mr-2">
+                        {session.preview || session.projectDisplayName}
+                      </span>
+                      <span className="tabular-nums text-gray-400 whitespace-nowrap">
+                        {formatDuration(session.durationSeconds)}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-colors bg-orange-300 group-hover:bg-orange-500"
+                        style={{ width: `${(session.durationSeconds / maxDuration) * 100}%` }}
+                      />
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Recent Commits */}
+      <RecentCommits commits={[]} />
 
       {/* Activity Heatmap */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-          <Calendar className="w-4 h-4" />
-          Activity (Last 30 Days)
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Calendar className="w-4 h-4" />
+            Activity (Last 30 Days)
+          </h2>
+          <Link
+            to="/history"
+            className="text-xs text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-0.5"
+          >
+            All sessions <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
         <ActivityHeatmap data={stats.heatmap} navigate={navigate} />
       </div>
 
@@ -164,6 +240,14 @@ export function StatsDashboard() {
       </div>
     </div>
   )
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = seconds / 3600
+  return `${hours.toFixed(1)}h`
 }
 
 // Activity Heatmap Component
