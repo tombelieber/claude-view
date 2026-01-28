@@ -35,6 +35,7 @@ use crate::state::AppState;
 /// - GET /api/status - Index metadata and data freshness
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
+/// - PUT /api/settings/git-sync-interval - Update git sync interval
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())

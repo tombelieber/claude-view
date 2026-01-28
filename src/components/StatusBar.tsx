@@ -1,6 +1,6 @@
 import { RefreshCw, GitCommitHorizontal } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
-import { useStatus, formatRelativeTime } from '../hooks/use-status'
+import { useStatus, formatRelativeTime, useTick } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -12,6 +12,7 @@ export function StatusBar({ projects }: StatusBarProps) {
   const { data: status, isLoading: isStatusLoading } = useStatus()
   const { triggerSync, isLoading: isSyncing } = useGitSync()
   const queryClient = useQueryClient()
+  useTick(30_000) // Force re-render every 30s to keep relative time fresh
   const totalSessions = projects.reduce((sum, p) => sum + p.sessionCount, 0)
 
   const sessionsIndexed = status?.sessionsIndexed ? Number(status.sessionsIndexed) : totalSessions
