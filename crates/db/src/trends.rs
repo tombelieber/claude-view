@@ -143,6 +143,8 @@ pub struct IndexMetadata {
     pub links_created: i64,
     /// Unix timestamp of last metadata update.
     pub updated_at: i64,
+    /// User-configurable git sync interval in seconds (default 60).
+    pub git_sync_interval_secs: i64,
 }
 
 // ============================================================================
@@ -394,6 +396,7 @@ impl Database {
             i64,
             i64,
             i64,
+            i64,
         ) = sqlx::query_as(
             r#"
             SELECT
@@ -404,7 +407,8 @@ impl Database {
                 last_git_sync_at,
                 commits_found,
                 links_created,
-                updated_at
+                updated_at,
+                git_sync_interval_secs
             FROM index_metadata
             WHERE id = 1
             "#,
@@ -421,7 +425,29 @@ impl Database {
             commits_found: row.5,
             links_created: row.6,
             updated_at: row.7,
+            git_sync_interval_secs: row.8,
         })
+    }
+
+    /// Get the git sync interval in seconds.
+    pub async fn get_git_sync_interval(&self) -> DbResult<u64> {
+        let (interval,): (i64,) = sqlx::query_as(
+            "SELECT git_sync_interval_secs FROM index_metadata WHERE id = 1",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(interval as u64)
+    }
+
+    /// Set the git sync interval in seconds.
+    pub async fn set_git_sync_interval(&self, seconds: u64) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE index_metadata SET git_sync_interval_secs = ?1 WHERE id = 1",
+        )
+        .bind(seconds as i64)
+        .execute(self.pool())
+        .await?;
+        Ok(())
     }
 }
 
@@ -644,6 +670,7 @@ mod tests {
             0,  // reedited_files_count
             600,
             1,
+            None, // first_message_at
         )
         .await
         .unwrap();

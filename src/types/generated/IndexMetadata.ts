@@ -35,4 +35,8 @@ linksCreated: bigint,
 /**
  * Unix timestamp of last metadata update.
  */
-updatedAt: bigint, };
+updatedAt: bigint, 
+/**
+ * User-configurable git sync interval in seconds (default 60).
+ */
+gitSyncIntervalSecs: bigint, };
