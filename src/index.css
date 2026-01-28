@@ -1,7 +1,22 @@
 @import 'tailwindcss';
 
+/* Design System Fonts */
+:root {
+  --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Utility classes for metric typography */
+.font-metric-value {
+  font-family: var(--font-mono);
+}
+
+.font-metric-label {
+  font-family: var(--font-sans);
 }
 
 /* ── ActivityCalendar: react-day-picker heatmap ── */
