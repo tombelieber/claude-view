@@ -6,21 +6,46 @@
 
 ---
 
+## Business Model: Open-Core
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Personal Tier (Open Source)                            │
+│  - Browse, search, export sessions                      │
+│  - Full metrics: atomic units, derived stats, trends    │
+│  - Git correlation (ultra-conservative, provable only)  │
+│  - `npx claude-view` — zero friction install            │
+│                                                         │
+│  ══════════════════════════════════════════════════════ │
+│                                                         │
+│  Enterprise Tier (Paid License)                         │
+│  - Team aggregation (multi-user data)                   │
+│  - Manager dashboards & admin controls                  │
+│  - AI fluency scoring across employees                  │
+│  - Export for HR/compliance/audits                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Strategy:** Build all analytics features (enterprise-grade quality) in Personal tier first. Enterprise tier adds the **team aggregation layer** on top — same features, but across multiple users.
+
+---
+
 ## At a Glance
 
-| Phase | Status | Progress |
-|-------|--------|----------|
-| **Phase 1: Foundation** | **DONE** | 8/8 tasks |
-| **Phase 2A-1: Parallel Indexing** | **DONE** | 11/11 steps — pipeline works in production |
-| **Phase 2A-2: Invocable Registry** | **DONE** | 12/12 steps — skill/tool tracking + perf fixes |
-| **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps — turns, models, token APIs |
-| **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps — API split, dashboard stats, a11y, sidebar redesign, slug URLs |
-| Phase 2D: Session Health | Deferred | — |
-| Phase 3: Metrics & Analytics | Not started | — |
-| Phase 4: Search (Tantivy) | Not started | — |
-| Phase 5: Distribution (npx) | Not started | — |
+| Phase | Status | Progress | Tier |
+|-------|--------|----------|------|
+| **Phase 1: Foundation** | **DONE** | 8/8 tasks | Personal |
+| **Phase 2A-1: Parallel Indexing** | **DONE** | 11/11 steps | Personal |
+| **Phase 2A-2: Invocable Registry** | **DONE** | 12/12 steps | Personal |
+| **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps | Personal |
+| **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps | Personal |
+| Phase 2D: Session Health | Merged into Phase 3 | — | — |
+| **Phase 3: Metrics Engine** | **Pending** | 0/42 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
+| Phase 4: Distribution (npx) | Not started | — | Personal |
+| Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
+| Phase 6: Search (Tantivy) | Deferred | — | Both |
 
-**Current focus:** Phase 2C done. Next: Phase 3 (Metrics & Analytics) or Phase 5 (Distribution)
+**Current focus:** Phase 3 Metrics Engine — pure facts, no judgment, enterprise-grade quality
 
 **Code compiles:** Yes (cargo check passes, 308 tests green)
 
@@ -101,6 +126,47 @@ All 24 steps complete. Shipped in commit `4c12be4`.
 
 ---
 
+## Phase 3: Metrics Engine — Pending (Personal Tier, Enterprise-Grade)
+
+Pure facts, no judgment. Collect atomic units, compute derived metrics, let users interpret.
+
+**Part A — Backend (24 steps):** Migration 8 (new columns + tables), atomic unit extraction (user prompts, files read/edited, re-edits, duration), derived metrics (tokens/prompt, re-edit rate, tool density), ultra-conservative git correlation (Tier 1-2 only), trends (week-over-week), export (JSON/CSV), data freshness.
+
+**Part B — Frontend (18 steps):** Dashboard with 6 metric cards + trends, recent commits section, session detail with metrics bar + files touched + commits panel, session list with metrics row + filter/sort, data freshness footer, full accessibility pass.
+
+**Key design decisions:**
+- **No health labels** — Show metrics, not judgment (Smooth/Turbulent removed)
+- **Atomic units** — Measure smallest provable units (prompts, files, tokens)
+- **Derived on read** — Store atomic units, compute metrics in API layer
+- **Ultra-conservative git** — Only Tier 1-2 (provable evidence), no fuzzy matching
+- **UI/UX Pro Max** — Data-dense dashboard style, Fira fonts, Lucide icons
+
+See `docs/plans/2026-01-28-phase3-metrics-engine.md` for full plan.
+
+---
+
+## Phase 5: Enterprise Team Layer — Not Started
+
+Multi-user aggregation and admin features. Transforms single-user analytics into team-wide insights.
+
+**Scope:**
+- Team/organization model (users belong to teams)
+- Aggregated dashboards (team-wide health, commits, skills)
+- Admin controls (who can see what)
+- Manager views (employee AI fluency scoring)
+- Compliance exports (CSV/PDF for HR audits)
+- License validation (paid tier enforcement)
+
+**Enterprise use cases:**
+- "How is my team using Claude Code?"
+- "Who are the most effective AI-assisted developers?"
+- "What's the ROI on our Claude Pro seats?"
+- "Export usage data for quarterly reviews"
+
+Plan file: TBD (will be created when Phase 5 begins)
+
+---
+
 ## Plan File Index
 
 Quick reference so you never have to scan the folder again.
@@ -114,9 +180,10 @@ Quick reference so you never have to scan the folder again.
 | `ux-polish-a11y-sidenav-urls.md` | superseded | Merged into Phase 2C |
 | `api-schema-bonus-fields-design.md` | superseded | Merged into Phase 2C |
 | `phase2c-api-split-ux-polish.md` | done | Phase 2C — API split + UX polish, 24/24 steps |
-| `skills-usage-analytics-prd.md` | draft | PRD spanning Phase 2A-2 (registry) + 2B (tokens) + Phase 3 |
+| `skills-usage-analytics-prd.md` | superseded | PRD merged into Phase 3 plan |
 | `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
-| `vibe-recall-analytics-design.md` | draft | Design doc for Phase 3 (analytics) |
+| `phase3-metrics-engine.md` | pending | **Phase 3** — atomic units, derived metrics, git correlation, 42 steps |
+| `vibe-recall-analytics-design.md` | superseded | Merged into Phase 3 plan |
 | `path-resolution-dfs-design.md` | done | Archived — shipped |
 | `phase2-backend-integration.md` | done | Archived — shipped |
 | `rust-backend-parity-fix.md` | done | Archived — shipped |
