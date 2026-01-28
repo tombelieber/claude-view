@@ -275,6 +275,17 @@ where
             total_cache_creation_tokens: None,
             turn_count_api: None,
             primary_model: None,
+            // Phase 3: Atomic unit metrics (initialized to defaults, populated by deep indexing)
+            user_prompt_count: 0,
+            api_call_count: 0,
+            tool_call_count: 0,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 0,
+            commit_count: 0,
         };
 
         // Store in DB
