@@ -45,6 +45,36 @@ pub struct ExtendedMetadata {
     pub first_timestamp: Option<i64>,
     /// Last message timestamp (Unix seconds)
     pub last_timestamp: Option<i64>,
+
+    // Token aggregates (from assistant lines)
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub thinking_block_count: u32,
+
+    // System line metrics
+    pub turn_durations_ms: Vec<u64>,
+    pub api_error_count: u32,
+    pub api_retry_count: u32,
+    pub compaction_count: u32,
+    pub hook_blocked_count: u32,
+
+    // Progress line metrics
+    pub agent_spawn_count: u32,
+    pub bash_progress_count: u32,
+    pub hook_progress_count: u32,
+    pub mcp_progress_count: u32,
+
+    // Summary text (from summary lines)
+    pub summary_text: Option<String>,
+
+    // Queue operations
+    pub queue_enqueue_count: u32,
+    pub queue_dequeue_count: u32,
+
+    // File history snapshots
+    pub file_snapshot_count: u32,
 }
 
 /// A raw tool_use extracted from JSONL, before classification.
@@ -122,6 +152,40 @@ pub struct ParseResult {
     pub raw_invocations: Vec<RawInvocation>,
     pub turns: Vec<vibe_recall_core::RawTurn>,
     pub models_seen: Vec<String>,
+    pub diagnostics: ParseDiagnostics,
+}
+
+/// Parse diagnostic counters — per session, not per line.
+/// Zero per-line overhead: stack-allocated integers incremented in existing branches.
+#[derive(Debug, Clone, Default)]
+pub struct ParseDiagnostics {
+    // Line classification
+    pub lines_total: u32,
+    pub lines_empty: u32,
+    pub lines_user: u32,
+    pub lines_assistant: u32,
+    pub lines_system: u32,
+    pub lines_progress: u32,
+    pub lines_queue_op: u32,
+    pub lines_summary: u32,
+    pub lines_file_snapshot: u32,
+    pub lines_unknown_type: u32,
+
+    // Parse outcomes
+    pub json_parse_attempts: u32,
+    pub json_parse_failures: u32,
+    pub content_not_array: u32,
+    pub tool_use_missing_name: u32,
+
+    // Extraction outcomes
+    pub tool_use_blocks_found: u32,
+    pub file_paths_extracted: u32,
+    pub timestamps_extracted: u32,
+    pub timestamps_unparseable: u32,
+    pub turns_extracted: u32,
+
+    // Bytes
+    pub bytes_total: u64,
 }
 
 /// Read a file using memory-mapped I/O with fallback to regular read.
@@ -2013,6 +2077,44 @@ mod tests {
         let raw: Vec<RawInvocation> = vec![];
         let result = extract_commit_skill_invocations(&raw);
         assert!(result.is_empty(), "Should return empty for empty input");
+    }
+
+    // ============================================================================
+    // ParseDiagnostics and ExtendedMetadata new fields tests
+    // ============================================================================
+
+    #[test]
+    fn test_parse_diagnostics_default_zeroes() {
+        let diag = ParseDiagnostics::default();
+        assert_eq!(diag.lines_total, 0);
+        assert_eq!(diag.lines_user, 0);
+        assert_eq!(diag.lines_assistant, 0);
+        assert_eq!(diag.lines_system, 0);
+        assert_eq!(diag.lines_progress, 0);
+        assert_eq!(diag.lines_queue_op, 0);
+        assert_eq!(diag.lines_summary, 0);
+        assert_eq!(diag.lines_file_snapshot, 0);
+        assert_eq!(diag.lines_unknown_type, 0);
+        assert_eq!(diag.json_parse_failures, 0);
+        assert_eq!(diag.content_not_array, 0);
+    }
+
+    #[test]
+    fn test_extended_metadata_new_fields_default() {
+        let meta = ExtendedMetadata::default();
+        assert_eq!(meta.total_input_tokens, 0);
+        assert_eq!(meta.total_output_tokens, 0);
+        assert_eq!(meta.cache_read_tokens, 0);
+        assert_eq!(meta.cache_creation_tokens, 0);
+        assert_eq!(meta.thinking_block_count, 0);
+        assert_eq!(meta.api_error_count, 0);
+        assert_eq!(meta.compaction_count, 0);
+        assert_eq!(meta.agent_spawn_count, 0);
+        assert!(meta.summary_text.is_none());
+        assert!(meta.turn_durations_ms.is_empty());
+        assert_eq!(meta.queue_enqueue_count, 0);
+        assert_eq!(meta.queue_dequeue_count, 0);
+        assert_eq!(meta.file_snapshot_count, 0);
     }
 
     #[test]
