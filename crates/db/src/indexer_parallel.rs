@@ -22,6 +22,29 @@ pub struct ExtendedMetadata {
     pub files_touched: Vec<String>,
     pub last_message: String,
     pub turn_count: usize,
+    // Phase 3: Atomic unit metrics
+    /// Count of JSONL lines where `.type == "user"`
+    pub user_prompt_count: u32,
+    /// Count of JSONL lines where `.type == "assistant"`
+    pub api_call_count: u32,
+    /// Count of all `tool_use` blocks across all assistant messages
+    pub tool_call_count: u32,
+    /// Unique file paths from Read tool invocations (deduplicated)
+    pub files_read: Vec<String>,
+    /// All file paths from Edit/Write tool invocations (NOT deduplicated - needed for re-edit calc)
+    pub files_edited: Vec<String>,
+    /// Count of unique files read
+    pub files_read_count: u32,
+    /// Count of unique files edited
+    pub files_edited_count: u32,
+    /// Count of files that were edited 2+ times
+    pub reedited_files_count: u32,
+    /// Duration in seconds (last timestamp - first timestamp)
+    pub duration_seconds: u32,
+    /// First message timestamp (Unix seconds)
+    pub first_timestamp: Option<i64>,
+    /// Last message timestamp (Unix seconds)
+    pub last_timestamp: Option<i64>,
 }
 
 /// A raw tool_use extracted from JSONL, before classification.
@@ -31,6 +54,65 @@ pub struct RawInvocation {
     pub input: Option<serde_json::Value>,
     pub byte_offset: usize,
     pub timestamp: i64,
+}
+
+/// A commit-related skill invocation detected for git correlation (Tier 1).
+///
+/// Detected when:
+/// - Tool name is "Skill"
+/// - Input contains `skill` field with one of:
+///   - "commit"
+///   - "commit-commands:commit"
+///   - "commit-commands:commit-push-pr"
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitSkillInvocation {
+    /// The skill name (e.g., "commit", "commit-commands:commit")
+    pub skill_name: String,
+    /// Unix timestamp in seconds when the skill was invoked
+    pub timestamp_unix: i64,
+}
+
+/// Skill names that indicate a commit-related action.
+pub const COMMIT_SKILL_NAMES: &[&str] = &[
+    "commit",
+    "commit-commands:commit",
+    "commit-commands:commit-push-pr",
+];
+
+/// Extract commit skill invocations from raw tool_use invocations.
+///
+/// Filters for invocations where:
+/// - `name == "Skill"`
+/// - `input.skill` is one of the commit-related skill names
+///
+/// Returns a list of `CommitSkillInvocation` with skill name and timestamp.
+pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Vec<CommitSkillInvocation> {
+    raw_invocations
+        .iter()
+        .filter_map(|inv| {
+            // Only process Skill tool invocations
+            if inv.name != "Skill" {
+                return None;
+            }
+
+            // Extract the skill name from input.skill
+            let skill_name = inv
+                .input
+                .as_ref()?
+                .get("skill")?
+                .as_str()?;
+
+            // Check if it's a commit-related skill
+            if COMMIT_SKILL_NAMES.contains(&skill_name) {
+                Some(CommitSkillInvocation {
+                    skill_name: skill_name.to_string(),
+                    timestamp_unix: inv.timestamp,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Result of parse_bytes(): deep metadata plus raw tool invocations.
@@ -80,6 +162,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut assistant_count = 0usize;
     let mut last_user_content: Option<String> = None;
 
+    // Phase 3: Tracking for atomic units
+    let mut tool_call_count = 0u32;
+    let mut files_read_all: Vec<String> = Vec::new();
+    let mut files_edited_all: Vec<String> = Vec::new();
+    let mut first_timestamp: Option<i64> = None;
+    let mut last_timestamp: Option<i64> = None;
+
     let user_finder = memmem::Finder::new(b"\"type\":\"user\"");
     let asst_finder = memmem::Finder::new(b"\"type\":\"assistant\"");
 
@@ -104,9 +193,22 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let skill_name_finder = memmem::Finder::new(b"\"skill\":\"");
     let file_path_value_finder = memmem::Finder::new(b"\"file_path\":\"");
 
+    // Timestamp finder for duration calculation
+    let timestamp_finder = memmem::Finder::new(b"\"timestamp\":");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             continue;
+        }
+
+        // Extract timestamp from any line that has one (for duration calculation)
+        if timestamp_finder.find(line).is_some() {
+            if let Some(ts) = extract_timestamp_from_line(line) {
+                if first_timestamp.is_none() {
+                    first_timestamp = Some(ts);
+                }
+                last_timestamp = Some(ts);
+            }
         }
 
         if user_finder.find(line).is_some() {
@@ -144,7 +246,17 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             // Extract raw tool_use invocations (SIMD pre-filter: only parse JSON if "tool_use" present)
             if tool_use_finder.find(line).is_some() {
+                let invocation_count_before = result.raw_invocations.len();
                 extract_raw_invocations(line, byte_offset, &mut result.raw_invocations);
+                let invocations_added = result.raw_invocations.len() - invocation_count_before;
+                tool_call_count += invocations_added as u32;
+
+                // Phase 3: Extract file paths for files_read and files_edited
+                extract_files_read_edited(
+                    &result.raw_invocations[invocation_count_before..],
+                    &mut files_read_all,
+                    &mut files_edited_all,
+                );
             }
             // Extract turn data (model + token usage) if usage data is present
             if usage_finder.find(line).is_some() {
@@ -158,6 +270,37 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         .map(|c| truncate(&c, 200))
         .unwrap_or_default();
 
+    // Phase 3: Populate atomic unit metrics
+    result.deep.user_prompt_count = user_count as u32;
+    result.deep.api_call_count = assistant_count as u32;
+    result.deep.tool_call_count = tool_call_count;
+
+    // files_read: deduplicated unique paths
+    let mut files_read_unique = files_read_all.clone();
+    files_read_unique.sort();
+    files_read_unique.dedup();
+    result.deep.files_read_count = files_read_unique.len() as u32;
+    result.deep.files_read = files_read_unique;
+
+    // files_edited: store ALL occurrences (for re-edit calculation)
+    result.deep.files_edited = files_edited_all.clone();
+    // files_edited_count: unique paths only
+    let mut files_edited_unique = files_edited_all.clone();
+    files_edited_unique.sort();
+    files_edited_unique.dedup();
+    result.deep.files_edited_count = files_edited_unique.len() as u32;
+
+    // reedited_files_count: count files appearing 2+ times in files_edited
+    result.deep.reedited_files_count = count_reedited_files(&files_edited_all);
+
+    // duration_seconds: last - first timestamp
+    result.deep.first_timestamp = first_timestamp;
+    result.deep.last_timestamp = last_timestamp;
+    result.deep.duration_seconds = match (first_timestamp, last_timestamp) {
+        (Some(first), Some(last)) if last >= first => (last - first) as u32,
+        _ => 0,
+    };
+
     // Deduplicate
     result.deep.skills_used.sort();
     result.deep.skills_used.dedup();
@@ -167,6 +310,63 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result.models_seen.dedup();
 
     result
+}
+
+/// Extract timestamp from a JSONL line. Handles both ISO8601 strings and Unix integers.
+fn extract_timestamp_from_line(line: &[u8]) -> Option<i64> {
+    // Try to find timestamp value after "timestamp":
+    let value: serde_json::Value = serde_json::from_slice(line).ok()?;
+    value.get("timestamp").and_then(|v| {
+        // Try integer first
+        v.as_i64().or_else(|| {
+            // Try ISO8601 string
+            v.as_str()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.timestamp())
+        })
+    })
+}
+
+/// Extract file paths from raw invocations for files_read and files_edited tracking.
+///
+/// - Read tool: adds to files_read
+/// - Edit/Write tools: adds to files_edited
+fn extract_files_read_edited(
+    invocations: &[RawInvocation],
+    files_read: &mut Vec<String>,
+    files_edited: &mut Vec<String>,
+) {
+    for inv in invocations {
+        let file_path = inv
+            .input
+            .as_ref()
+            .and_then(|v| v.get("file_path"))
+            .and_then(|v| v.as_str());
+
+        // Skip if no file_path or empty
+        let path = match file_path {
+            Some(p) if !p.is_empty() => p.to_string(),
+            _ => continue,
+        };
+
+        match inv.name.as_str() {
+            "Read" => files_read.push(path),
+            "Edit" | "Write" => files_edited.push(path),
+            _ => {}
+        }
+    }
+}
+
+/// Count files that appear 2+ times in the files_edited list.
+fn count_reedited_files(files_edited: &[String]) -> u32 {
+    use std::collections::HashMap;
+
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for path in files_edited {
+        *counts.entry(path.as_str()).or_insert(0) += 1;
+    }
+
+    counts.values().filter(|&&count| count >= 2).count() as u32
 }
 
 /// Split data into lines using SIMD-accelerated newline search.
@@ -977,6 +1177,458 @@ mod tests {
     }
 
     // ============================================================================
+    // Phase 3: Atomic Unit Extraction Tests (Steps 3-9)
+    // ============================================================================
+
+    // --- Step 3: user_prompt_count (A1.1) ---
+
+    #[test]
+    fn test_user_prompt_count_basic() {
+        // Test case 1: 5 user messages, 10 assistant → 5
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"a1"}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":"a2"}}
+{"type":"user","message":{"content":"q3"}}
+{"type":"assistant","message":{"content":"a3"}}
+{"type":"user","message":{"content":"q4"}}
+{"type":"assistant","message":{"content":"a4"}}
+{"type":"user","message":{"content":"q5"}}
+{"type":"assistant","message":{"content":"a5"}}
+{"type":"assistant","message":{"content":"a6"}}
+{"type":"assistant","message":{"content":"a7"}}
+{"type":"assistant","message":{"content":"a8"}}
+{"type":"assistant","message":{"content":"a9"}}
+{"type":"assistant","message":{"content":"a10"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.user_prompt_count, 5, "Should count 5 user messages");
+    }
+
+    #[test]
+    fn test_user_prompt_count_zero() {
+        // Test case 2: 0 user messages → 0
+        let data = br#"{"type":"assistant","message":{"content":"a1"}}
+{"type":"assistant","message":{"content":"a2"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.user_prompt_count, 0, "Should be 0 with no user messages");
+    }
+
+    #[test]
+    fn test_user_prompt_count_unicode() {
+        // Test case 3: Unicode/emoji content doesn't affect type detection
+        let data = br#"{"type":"user","message":{"content":"Hello \u4e16\u754c"}}
+{"type":"assistant","message":{"content":"Response"}}
+{"type":"user","message":{"content":"\u2764\ufe0f emoji test"}}
+{"type":"assistant","message":{"content":"Done"}}
+{"type":"user","message":{"content":"Third with unicode: \u00e9\u00e8\u00ea"}}
+{"type":"assistant","message":{"content":"Final"}}
+{"type":"user","message":{"content":"Fourth"}}
+{"type":"assistant","message":{"content":"Last"}}
+{"type":"user","message":{"content":"Fifth"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.user_prompt_count, 5, "Unicode content should not affect counting");
+    }
+
+    #[test]
+    fn test_user_prompt_count_empty_file() {
+        // Test case 5: Empty JSONL file → 0
+        let result = parse_bytes(b"");
+        assert_eq!(result.deep.user_prompt_count, 0, "Empty file should have 0 user prompts");
+    }
+
+    // --- Step 4: api_call_count (A1.6) ---
+
+    #[test]
+    fn test_api_call_count_basic() {
+        // Test case 1: 5 user, 8 assistant → 8
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"a1"}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":"a2"}}
+{"type":"user","message":{"content":"q3"}}
+{"type":"assistant","message":{"content":"a3"}}
+{"type":"user","message":{"content":"q4"}}
+{"type":"assistant","message":{"content":"a4"}}
+{"type":"user","message":{"content":"q5"}}
+{"type":"assistant","message":{"content":"a5"}}
+{"type":"assistant","message":{"content":"a6"}}
+{"type":"assistant","message":{"content":"a7"}}
+{"type":"assistant","message":{"content":"a8"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.api_call_count, 8, "Should count 8 assistant messages");
+    }
+
+    #[test]
+    fn test_api_call_count_zero() {
+        // Test case 2: 0 assistant messages → 0
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"user","message":{"content":"q2"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.api_call_count, 0, "Should be 0 with no assistant messages");
+    }
+
+    // --- Step 5: tool_call_count (A1.7) ---
+
+    #[test]
+    fn test_tool_call_count_multiple_per_message() {
+        // Test case 1: 3 assistant messages, each with 2 tools → 6
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Edit","input":{}}]}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{}},{"type":"tool_use","name":"Write","input":{}}]}}
+{"type":"user","message":{"content":"q3"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.tool_call_count, 6, "Should count 6 tool calls (2 per message x 3)");
+    }
+
+    #[test]
+    fn test_tool_call_count_zero() {
+        // Test case 2: Assistant message with no tool_use → 0
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"Just text, no tools."}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":"More text."}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.tool_call_count, 0, "Should be 0 with no tool calls");
+    }
+
+    #[test]
+    fn test_tool_call_count_parallel_tools() {
+        // Test case 3: Assistant message with 5 parallel tool calls → 5
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.tool_call_count, 5, "Should count 5 parallel tool calls");
+    }
+
+    // --- Step 6: files_read (A1.2) ---
+
+    #[test]
+    fn test_files_read_basic() {
+        // Test case 1: Read /a/foo.rs, /a/bar.rs → ["/a/foo.rs", "/a/bar.rs"], count=2
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"/a/bar.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_read_count, 2, "Should have 2 unique files read");
+        assert!(result.deep.files_read.contains(&"/a/foo.rs".to_string()));
+        assert!(result.deep.files_read.contains(&"/a/bar.rs".to_string()));
+    }
+
+    #[test]
+    fn test_files_read_dedup() {
+        // Test case 2: Read /a/foo.rs twice → ["/a/foo.rs"], count=1
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}}]}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_read_count, 1, "Should dedup to 1 unique file");
+        assert_eq!(result.deep.files_read.len(), 1);
+        assert_eq!(result.deep.files_read[0], "/a/foo.rs");
+    }
+
+    #[test]
+    fn test_files_read_empty() {
+        // Test case 3: No Read tool calls → [], count=0
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/a/foo.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_read_count, 0, "Should have 0 files read");
+        assert!(result.deep.files_read.is_empty());
+    }
+
+    #[test]
+    fn test_files_read_missing_file_path() {
+        // Test case 4: Read tool with missing file_path → skip
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"other":"value"}},{"type":"tool_use","name":"Read","input":{"file_path":"/valid/path.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_read_count, 1, "Should only count valid file_path");
+        assert_eq!(result.deep.files_read[0], "/valid/path.rs");
+    }
+
+    #[test]
+    fn test_files_read_with_spaces() {
+        // Test case 5: Path with spaces → stored as-is
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/my file.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_read_count, 1);
+        assert_eq!(result.deep.files_read[0], "/a/my file.rs", "Path with spaces should be preserved");
+    }
+
+    // --- Step 7: files_edited (A1.3) ---
+
+    #[test]
+    fn test_files_edited_basic() {
+        // Test case 1: Edit foo.rs, Write bar.rs → ["foo.rs", "bar.rs"], count=2
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"bar.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_edited_count, 2, "Should have 2 unique files edited");
+        assert!(result.deep.files_edited.contains(&"foo.rs".to_string()));
+        assert!(result.deep.files_edited.contains(&"bar.rs".to_string()));
+    }
+
+    #[test]
+    fn test_files_edited_all_occurrences_stored() {
+        // Test case 2: Edit foo.rs 3 times → ["foo.rs", "foo.rs", "foo.rs"], count=1
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
+{"type":"user","message":{"content":"q3"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_edited.len(), 3, "Should store ALL occurrences (3)");
+        assert_eq!(result.deep.files_edited_count, 1, "Unique count should be 1");
+    }
+
+    #[test]
+    fn test_files_edited_missing_file_path() {
+        // Test case 3: Edit tool with missing file_path → skip
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{}},{"type":"tool_use","name":"Edit","input":{"file_path":"valid.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_edited.len(), 1);
+        assert_eq!(result.deep.files_edited_count, 1);
+    }
+
+    #[test]
+    fn test_files_edited_write_tool() {
+        // Test case 4: Write tool also counts as edited
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"new_file.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.files_edited.len(), 1);
+        assert_eq!(result.deep.files_edited_count, 1);
+        assert_eq!(result.deep.files_edited[0], "new_file.rs");
+    }
+
+    // --- Step 8: reedited_files_count (A1.4) ---
+
+    #[test]
+    fn test_reedited_files_count_one_reedited() {
+        // Test case 1: [foo.rs, foo.rs, foo.rs, bar.rs] → 1 (only foo.rs was re-edited)
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
+{"type":"user","message":{"content":"q3"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"bar.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.reedited_files_count, 1, "Only foo.rs was re-edited (3 times)");
+    }
+
+    #[test]
+    fn test_reedited_files_count_all_unique() {
+        // Test case 2: [a.rs, b.rs, c.rs] → 0 (all unique, no re-edits)
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"b.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"c.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.reedited_files_count, 0, "No re-edits when all files are unique");
+    }
+
+    #[test]
+    fn test_reedited_files_count_empty() {
+        // Test case 3: [] → 0
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"No edits"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.reedited_files_count, 0);
+    }
+
+    #[test]
+    fn test_reedited_files_count_two_reedited() {
+        // Test case 4: [x.rs, x.rs, y.rs, y.rs] → 2 (both files were re-edited)
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"x.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"y.rs"}}]}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"x.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"y.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.reedited_files_count, 2, "Both x.rs and y.rs were re-edited");
+    }
+
+    // --- Step 9: duration_seconds (A1.5) ---
+
+    #[test]
+    fn test_duration_seconds_basic() {
+        // Test case 1: 10:00:00 to 10:15:30 → 930 seconds (15m 30s)
+        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+{"type":"assistant","timestamp":"2026-01-27T10:05:00Z","message":{"content":"a1"}}
+{"type":"user","timestamp":"2026-01-27T10:10:00Z","message":{"content":"q2"}}
+{"type":"assistant","timestamp":"2026-01-27T10:15:30Z","message":{"content":"a2"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.duration_seconds, 930, "Duration should be 930 seconds");
+        assert_eq!(result.deep.first_timestamp, Some(1769508000));  // 2026-01-27T10:00:00Z
+        assert_eq!(result.deep.last_timestamp, Some(1769508930));   // 2026-01-27T10:15:30Z
+    }
+
+    #[test]
+    fn test_duration_seconds_single_message() {
+        // Test case 2: Single message → 0
+        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.duration_seconds, 0, "Single message should have 0 duration");
+    }
+
+    #[test]
+    fn test_duration_seconds_empty_file() {
+        // Test case 3: Empty file → 0
+        let result = parse_bytes(b"");
+        assert_eq!(result.deep.duration_seconds, 0);
+        assert!(result.deep.first_timestamp.is_none());
+        assert!(result.deep.last_timestamp.is_none());
+    }
+
+    #[test]
+    fn test_duration_seconds_no_timestamps() {
+        // Test case 4: Messages with no timestamps → 0
+        let data = br#"{"type":"user","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"a1"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.duration_seconds, 0, "No timestamps means 0 duration");
+    }
+
+    #[test]
+    fn test_duration_seconds_unix_timestamp() {
+        // Test with Unix integer timestamps instead of ISO strings
+        let data = br#"{"type":"user","timestamp":1706400000,"message":{"content":"q1"}}
+{"type":"assistant","timestamp":1706400500,"message":{"content":"a1"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.duration_seconds, 500, "Should handle Unix integer timestamps");
+    }
+
+    #[test]
+    fn test_duration_seconds_mixed_messages() {
+        // Only some messages have timestamps - should still compute from first/last
+        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+{"type":"assistant","message":{"content":"a1"}}
+{"type":"user","message":{"content":"q2"}}
+{"type":"assistant","timestamp":"2026-01-27T10:10:00Z","message":{"content":"a2"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.duration_seconds, 600, "Should compute from first and last available timestamps");
+    }
+
+    // --- Unit test for count_reedited_files ---
+
+    #[test]
+    fn test_count_reedited_files_helper() {
+        // Empty
+        assert_eq!(count_reedited_files(&[]), 0);
+
+        // All unique
+        let unique = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(count_reedited_files(&unique), 0);
+
+        // One re-edited
+        let one_reedit = vec!["a".to_string(), "a".to_string(), "b".to_string()];
+        assert_eq!(count_reedited_files(&one_reedit), 1);
+
+        // Multiple re-edited
+        let multi_reedit = vec![
+            "a".to_string(), "a".to_string(),
+            "b".to_string(), "b".to_string(), "b".to_string(),
+            "c".to_string(),
+        ];
+        assert_eq!(count_reedited_files(&multi_reedit), 2); // a and b were re-edited
+    }
+
+    // --- Unit test for extract_timestamp_from_line ---
+
+    #[test]
+    fn test_extract_timestamp_from_line_iso8601() {
+        let line = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{}}"#;
+        let ts = extract_timestamp_from_line(line);
+        assert_eq!(ts, Some(1769508000));  // 2026-01-27T10:00:00Z
+    }
+
+    #[test]
+    fn test_extract_timestamp_from_line_unix() {
+        let line = br#"{"type":"user","timestamp":1706400000,"message":{}}"#;
+        let ts = extract_timestamp_from_line(line);
+        assert_eq!(ts, Some(1706400000));
+    }
+
+    #[test]
+    fn test_extract_timestamp_from_line_missing() {
+        let line = br#"{"type":"user","message":{}}"#;
+        let ts = extract_timestamp_from_line(line);
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn test_extract_timestamp_from_line_invalid() {
+        let line = br#"{"type":"user","timestamp":"not-a-timestamp","message":{}}"#;
+        let ts = extract_timestamp_from_line(line);
+        assert!(ts.is_none());
+    }
+
+    // --- Integration: All metrics together ---
+
+    #[test]
+    fn test_all_metrics_together() {
+        // Comprehensive test with all metrics
+        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"Read and edit files"}}
+{"type":"assistant","timestamp":"2026-01-27T10:05:00Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"/src/lib.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs"}}]}}
+{"type":"user","timestamp":"2026-01-27T10:10:00Z","message":{"content":"Edit again"}}
+{"type":"assistant","timestamp":"2026-01-27T10:15:00Z","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/main.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"/src/new.rs"}}]}}
+{"type":"user","timestamp":"2026-01-27T10:20:00Z","message":{"content":"Done"}}
+{"type":"assistant","timestamp":"2026-01-27T10:25:00Z","message":{"content":"All done!"}}
+"#;
+        let result = parse_bytes(data);
+
+        // user_prompt_count: 3
+        assert_eq!(result.deep.user_prompt_count, 3);
+
+        // api_call_count: 3
+        assert_eq!(result.deep.api_call_count, 3);
+
+        // tool_call_count: 5 (Read x 2, Edit x 2, Write x 1)
+        assert_eq!(result.deep.tool_call_count, 5);
+
+        // files_read: ["/src/lib.rs", "/src/main.rs"], count=2 (deduplicated)
+        assert_eq!(result.deep.files_read_count, 2);
+
+        // files_edited: ["/src/main.rs", "/src/main.rs", "/src/new.rs"], count=2 (unique)
+        assert_eq!(result.deep.files_edited.len(), 3, "Should store all occurrences");
+        assert_eq!(result.deep.files_edited_count, 2, "Unique count should be 2");
+
+        // reedited_files_count: 1 (/src/main.rs was edited twice)
+        assert_eq!(result.deep.reedited_files_count, 1);
+
+        // duration_seconds: 10:00 to 10:25 = 25 minutes = 1500 seconds
+        assert_eq!(result.deep.duration_seconds, 1500);
+    }
+
+    // ============================================================================
     // Pass 1 / Pass 2 / run_background_index Integration Tests
     // ============================================================================
 
@@ -1147,5 +1799,227 @@ mod tests {
         assert_eq!(session.turn_count, 2);
         assert_eq!(session.tool_counts.read, 1);
         assert_eq!(session.tool_counts.edit, 1);
+    }
+
+    // ============================================================================
+    // Commit Skill Detection Tests (A3.1 acceptance tests)
+    // ============================================================================
+
+    #[test]
+    fn test_extract_commit_skill_invocations_commit() {
+        // Scenario 1: skill="commit" invoked -> Detected, timestamp extracted
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"skill": "commit"})),
+            byte_offset: 0,
+            timestamp: 1706400120,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert_eq!(result.len(), 1, "Should detect 1 commit skill invocation");
+        assert_eq!(result[0].skill_name, "commit");
+        assert_eq!(result[0].timestamp_unix, 1706400120);
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_commit_commands_commit() {
+        // Scenario 2: skill="commit-commands:commit" invoked -> Detected
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"skill": "commit-commands:commit"})),
+            byte_offset: 100,
+            timestamp: 1706400200,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert_eq!(result.len(), 1, "Should detect commit-commands:commit");
+        assert_eq!(result[0].skill_name, "commit-commands:commit");
+        assert_eq!(result[0].timestamp_unix, 1706400200);
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_commit_push_pr() {
+        // Scenario 3: skill="commit-commands:commit-push-pr" invoked -> Detected
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"skill": "commit-commands:commit-push-pr"})),
+            byte_offset: 200,
+            timestamp: 1706400300,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert_eq!(result.len(), 1, "Should detect commit-commands:commit-push-pr");
+        assert_eq!(result[0].skill_name, "commit-commands:commit-push-pr");
+        assert_eq!(result[0].timestamp_unix, 1706400300);
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_debug_not_detected() {
+        // Scenario 4: skill="debug" invoked -> NOT detected (not commit-related)
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"skill": "debug"})),
+            byte_offset: 0,
+            timestamp: 1706400000,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert!(
+            result.is_empty(),
+            "Should NOT detect non-commit skill invocations"
+        );
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_no_skill_tool_use() {
+        // Scenario 5: No Skill tool_use -> No skill invocations returned
+        let raw = vec![
+            RawInvocation {
+                name: "Read".to_string(),
+                input: Some(serde_json::json!({"file_path": "/src/main.rs"})),
+                byte_offset: 0,
+                timestamp: 1706400000,
+            },
+            RawInvocation {
+                name: "Bash".to_string(),
+                input: Some(serde_json::json!({"command": "cargo test"})),
+                byte_offset: 100,
+                timestamp: 1706400100,
+            },
+        ];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert!(result.is_empty(), "Should return empty for non-Skill tools");
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_mixed() {
+        // Mixed: multiple invocations, some commit-related, some not
+        let raw = vec![
+            RawInvocation {
+                name: "Skill".to_string(),
+                input: Some(serde_json::json!({"skill": "brainstorm"})),
+                byte_offset: 0,
+                timestamp: 1706400000,
+            },
+            RawInvocation {
+                name: "Skill".to_string(),
+                input: Some(serde_json::json!({"skill": "commit"})),
+                byte_offset: 100,
+                timestamp: 1706400100,
+            },
+            RawInvocation {
+                name: "Read".to_string(),
+                input: Some(serde_json::json!({"file_path": "/foo"})),
+                byte_offset: 200,
+                timestamp: 1706400200,
+            },
+            RawInvocation {
+                name: "Skill".to_string(),
+                input: Some(serde_json::json!({"skill": "commit-commands:commit-push-pr"})),
+                byte_offset: 300,
+                timestamp: 1706400300,
+            },
+        ];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert_eq!(result.len(), 2, "Should detect exactly 2 commit skills");
+        assert_eq!(result[0].skill_name, "commit");
+        assert_eq!(result[0].timestamp_unix, 1706400100);
+        assert_eq!(result[1].skill_name, "commit-commands:commit-push-pr");
+        assert_eq!(result[1].timestamp_unix, 1706400300);
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_empty_input() {
+        // Edge case: Skill tool with no input
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: None,
+            byte_offset: 0,
+            timestamp: 1706400000,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert!(result.is_empty(), "Should handle missing input gracefully");
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_missing_skill_field() {
+        // Edge case: Skill tool with input but no skill field
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"other_field": "value"})),
+            byte_offset: 0,
+            timestamp: 1706400000,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert!(
+            result.is_empty(),
+            "Should handle missing skill field gracefully"
+        );
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_skill_field_not_string() {
+        // Edge case: skill field is not a string
+        let raw = vec![RawInvocation {
+            name: "Skill".to_string(),
+            input: Some(serde_json::json!({"skill": 123})),
+            byte_offset: 0,
+            timestamp: 1706400000,
+        }];
+
+        let result = extract_commit_skill_invocations(&raw);
+
+        assert!(
+            result.is_empty(),
+            "Should handle non-string skill field gracefully"
+        );
+    }
+
+    #[test]
+    fn test_extract_commit_skill_invocations_empty_list() {
+        // Edge case: empty invocations list
+        let raw: Vec<RawInvocation> = vec![];
+        let result = extract_commit_skill_invocations(&raw);
+        assert!(result.is_empty(), "Should return empty for empty input");
+    }
+
+    #[test]
+    fn test_parse_bytes_extracts_skill_invocations_for_commit() {
+        // Integration test: verify parse_bytes extracts Skill tool_use that can be filtered for commits
+        let data = br#"{"type":"user","message":{"content":"commit this"}}
+{"type":"assistant","timestamp":1706400100,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"commit"}}]}}
+"#;
+        let result = parse_bytes(data);
+
+        // Should extract the Skill invocation
+        assert_eq!(result.raw_invocations.len(), 1);
+        assert_eq!(result.raw_invocations[0].name, "Skill");
+        assert_eq!(
+            result.raw_invocations[0]
+                .input
+                .as_ref()
+                .and_then(|v| v.get("skill"))
+                .and_then(|v| v.as_str()),
+            Some("commit")
+        );
+        assert_eq!(result.raw_invocations[0].timestamp, 1706400100);
+
+        // Now filter for commit skills
+        let commit_skills = extract_commit_skill_invocations(&result.raw_invocations);
+        assert_eq!(commit_skills.len(), 1);
+        assert_eq!(commit_skills[0].skill_name, "commit");
+        assert_eq!(commit_skills[0].timestamp_unix, 1706400100);
     }
 }
