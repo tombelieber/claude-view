@@ -12,7 +12,17 @@ export function Header() {
   const getBreadcrumbs = () => {
     const crumbs: { label: string; path: string }[] = []
 
-    if (location.pathname.startsWith('/project/')) {
+    if (location.pathname.startsWith('/project/') && params.slug) {
+      // Session page: /project/:projectId/session/:slug
+      crumbs.push({
+        label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
+        path: `/project/${params.projectId}`
+      })
+      crumbs.push({
+        label: 'Session',
+        path: location.pathname
+      })
+    } else if (location.pathname.startsWith('/project/')) {
       crumbs.push({
         label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
         path: location.pathname
@@ -20,6 +30,7 @@ export function Header() {
     }
 
     if (location.pathname.startsWith('/session/')) {
+      // Legacy URL — redirect will handle it, but show breadcrumbs in the meantime
       crumbs.push({
         label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
         path: `/project/${params.projectId}`
@@ -79,7 +90,7 @@ export function Header() {
       <div className="flex items-center gap-2">
         <button
           onClick={openCommandPalette}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
         >
           <Search className="w-4 h-4" />
           <span className="hidden sm:inline">Search</span>
@@ -88,11 +99,11 @@ export function Header() {
           </kbd>
         </button>
 
-        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+        <button aria-label="Help" className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md">
           <HelpCircle className="w-5 h-5" />
         </button>
 
-        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+        <button aria-label="Settings" className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md">
           <Settings className="w-5 h-5" />
         </button>
       </div>

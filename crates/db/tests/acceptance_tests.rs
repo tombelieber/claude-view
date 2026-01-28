@@ -16,7 +16,7 @@ use vibe_recall_db::Database;
 
 /// Realistic JSONL content for a session with 2 user + 2 assistant turns.
 const REALISTIC_JSONL: &str = r#"{"parentUuid":null,"isFinal":false,"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"text","text":"Hello world"}]}}
-{"parentUuid":"u1","isFinal":false,"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"text","text":"Hi there!"},{"type":"tool_use","name":"Read","id":"t1","input":{"file_path":"/tmp/test.rs"}}]}}
+{"parentUuid":"u1","isFinal":false,"type":"assistant","uuid":"a1","timestamp":1706200000,"message":{"model":"claude-opus-4-5-20251101","role":"assistant","content":[{"type":"text","text":"Hi there!"},{"type":"tool_use","name":"Read","id":"t1","input":{"file_path":"/tmp/test.rs"}}],"usage":{"input_tokens":50,"output_tokens":200,"cache_read_input_tokens":5000,"cache_creation_input_tokens":1000,"service_tier":"standard"}}}
 {"parentUuid":"a1","isFinal":true,"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"text","text":"Thanks for reading that file"}]}}
 "#;
 
@@ -410,4 +410,37 @@ async fn multiple_projects_indexed_correctly() {
     for project in &db_projects {
         assert_eq!(project.sessions.len(), 2, "Project {} should have 2 sessions", project.name);
     }
+}
+
+// ---------------------------------------------------------------------------
+// AC-13: Token tracking end-to-end
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn ac13_turns_and_models_populated_after_pipeline() {
+    let (_tmp, claude_dir) = setup_single_session();
+    let db = Database::new_in_memory().await.unwrap();
+
+    // Run full pipeline
+    run_background_index(&claude_dir, &db, None, |_, _| {}, |_, _| {}, |_| {})
+        .await
+        .unwrap();
+
+    // Verify models table has data
+    let models = db.get_all_models().await.unwrap();
+    assert!(
+        !models.is_empty(),
+        "Models table should have at least 1 model after indexing"
+    );
+    assert_eq!(models[0].id, "claude-opus-4-5-20251101");
+    assert_eq!(models[0].provider.as_deref(), Some("anthropic"));
+    assert_eq!(models[0].family.as_deref(), Some("opus"));
+    assert!(models[0].total_turns > 0, "Model should have turn count > 0");
+
+    // Verify token stats
+    let token_stats = db.get_token_stats().await.unwrap();
+    assert!(token_stats.turns_count > 0, "Should have at least 1 turn");
+    assert!(token_stats.total_input_tokens > 0, "Should have input tokens");
+    assert!(token_stats.total_output_tokens > 0, "Should have output tokens");
+    assert!(token_stats.total_cache_read_tokens > 0, "Should have cache read tokens");
 }
