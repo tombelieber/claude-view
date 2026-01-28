@@ -4,4 +4,4 @@ import type { ToolCounts } from "./ToolCounts";
 /**
  * Session info for listing (without full message content)
  */
-export type SessionInfo = { id: string, project: string, projectPath: string, filePath: string, modifiedAt: bigint, sizeBytes: bigint, preview: string, lastMessage: string, filesTouched: Array<string>, skillsUsed: Array<string>, toolCounts: ToolCounts, messageCount: number, turnCount: number, summary: string | null, gitBranch: string | null, isSidechain: boolean, deepIndexed: boolean, };
+export type SessionInfo = { id: string, project: string, projectPath: string, filePath: string, modifiedAt: bigint, sizeBytes: bigint, preview: string, lastMessage: string, filesTouched: Array<string>, skillsUsed: Array<string>, toolCounts: ToolCounts, messageCount: number, turnCount: number, summary: string | null, gitBranch: string | null, isSidechain: boolean, deepIndexed: boolean, totalInputTokens: bigint | null, totalOutputTokens: bigint | null, totalCacheReadTokens: bigint | null, totalCacheCreationTokens: bigint | null, turnCountApi: bigint | null, primaryModel: string | null, };
