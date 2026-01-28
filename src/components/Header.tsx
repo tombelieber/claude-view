@@ -49,6 +49,10 @@ export function Header() {
       crumbs.push({ label: 'History', path: '/history' })
     }
 
+    if (location.pathname === '/settings') {
+      crumbs.push({ label: 'Settings', path: '/settings' })
+    }
+
     return crumbs
   }
 
@@ -103,9 +107,13 @@ export function Header() {
           <HelpCircle className="w-5 h-5" />
         </button>
 
-        <button aria-label="Settings" className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md">
+        <Link
+          to="/settings"
+          aria-label="Settings"
+          className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+        >
           <Settings className="w-5 h-5" />
-        </button>
+        </Link>
       </div>
     </header>
   )
