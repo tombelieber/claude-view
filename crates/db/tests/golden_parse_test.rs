@@ -89,3 +89,51 @@ fn golden_realistic_session() {
             .contains(&"/tests/app.test.ts".to_string())
     );
 }
+
+#[test]
+fn golden_turns_extracted_from_assistant_with_usage() {
+    // JSONL with assistant messages containing model + usage data
+    let data = br#"{"type":"user","uuid":"u1","message":{"content":"Hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-28T10:00:00Z","message":{"model":"claude-opus-4-5-20251101","role":"assistant","content":[{"type":"text","text":"Hi!"}],"usage":{"input_tokens":3,"output_tokens":9,"cache_read_input_tokens":24206,"cache_creation_input_tokens":12454,"service_tier":"standard"}}}
+{"type":"user","uuid":"u2","message":{"content":"Thanks"}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":"2026-01-28T10:01:00Z","message":{"model":"claude-sonnet-4-20250514","role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}],"usage":{"input_tokens":100,"output_tokens":500,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"service_tier":"standard"}}}
+"#;
+    let result = parse_bytes(data);
+
+    // Verify turns were extracted
+    assert_eq!(result.turns.len(), 2, "Should extract 2 turns");
+    assert_eq!(result.models_seen.len(), 2, "Should see 2 unique models");
+
+    // First turn
+    assert_eq!(result.turns[0].uuid, "a1");
+    assert_eq!(result.turns[0].model_id, "claude-opus-4-5-20251101");
+    assert_eq!(result.turns[0].seq, 0);
+    assert_eq!(result.turns[0].input_tokens, Some(3));
+    assert_eq!(result.turns[0].output_tokens, Some(9));
+    assert_eq!(result.turns[0].cache_read_tokens, Some(24206));
+    assert_eq!(result.turns[0].cache_creation_tokens, Some(12454));
+    assert_eq!(result.turns[0].service_tier.as_deref(), Some("standard"));
+    assert_eq!(result.turns[0].content_type, "text");
+
+    // Second turn
+    assert_eq!(result.turns[1].uuid, "a2");
+    assert_eq!(result.turns[1].model_id, "claude-sonnet-4-20250514");
+    assert_eq!(result.turns[1].seq, 1);
+    assert_eq!(result.turns[1].input_tokens, Some(100));
+    assert_eq!(result.turns[1].content_type, "tool_use");
+
+    // Models seen
+    assert!(result.models_seen.contains(&"claude-opus-4-5-20251101".to_string()));
+    assert!(result.models_seen.contains(&"claude-sonnet-4-20250514".to_string()));
+}
+
+#[test]
+fn golden_no_turns_without_usage_data() {
+    // Assistant messages without usage data should not produce turns
+    let data = br#"{"type":"user","message":{"content":"Hello"}}
+{"type":"assistant","message":{"content":"Hi there!"}}
+"#;
+    let result = parse_bytes(data);
+    assert!(result.turns.is_empty(), "No usage data = no turns");
+    assert!(result.models_seen.is_empty(), "No model data = no models");
+}

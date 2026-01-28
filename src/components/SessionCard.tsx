@@ -5,7 +5,6 @@ import type { SessionInfo } from '../hooks/use-projects'
 interface SessionCardProps {
   session: SessionInfo
   isSelected: boolean
-  onClick: () => void
   projectDisplayName?: string
 }
 
@@ -60,7 +59,7 @@ function formatRelativeTime(timestamp: number): string {
   }
 }
 
-export function SessionCard({ session, isSelected, onClick, projectDisplayName }: SessionCardProps) {
+export function SessionCard({ session, isSelected, projectDisplayName }: SessionCardProps) {
   const toolCounts = session.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
   const editCount = toolCounts.edit + toolCounts.write // Combined edit + write
   const totalTools = editCount + toolCounts.bash + toolCounts.read
@@ -72,8 +71,7 @@ export function SessionCard({ session, isSelected, onClick, projectDisplayName }
   const projectLabel = projectDisplayName || undefined
 
   return (
-    <button
-      onClick={onClick}
+    <article
       className={cn(
         'w-full text-left p-3.5 rounded-lg border transition-all',
         isSelected
@@ -176,6 +174,6 @@ export function SessionCard({ session, isSelected, onClick, projectDisplayName }
           </div>
         )}
       </div>
-    </button>
+    </article>
   )
 }
