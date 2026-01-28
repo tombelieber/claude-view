@@ -150,17 +150,13 @@ async fn main() -> Result<()> {
                 // Auto git-sync: correlate commits with sessions after indexing completes.
                 run_git_sync_logged(&idx_db, "initial").await;
 
-                // Periodic git-sync: re-scan every 60s to pick up new commits.
+                // Periodic git-sync: re-scan to pick up new commits.
+                // Interval is user-configurable via Settings UI (stored in DB).
                 // At 10x scale (~100 repos, ~5000 sessions), each run takes ~4-6s.
-                // 60s interval means <10% duty cycle — minimal resource usage.
-                let sync_interval = Duration::from_secs(
-                    std::env::var("GIT_SYNC_INTERVAL_SECS")
-                        .ok()
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(60),
-                );
-                tracing::info!("Periodic git sync every {}s", sync_interval.as_secs());
+                // Re-read interval from DB each cycle so changes take effect without restart.
                 loop {
+                    let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(60);
+                    let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
                     run_git_sync_logged(&idx_db, "periodic").await;
                 }

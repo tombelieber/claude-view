@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import {
   Database,
   GitBranch,
@@ -13,6 +13,7 @@ import {
 import { useStatus, formatRelativeTime } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useExport, type ExportFormat } from '../hooks/use-export'
+import { useQueryClient } from '@tanstack/react-query'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 
@@ -72,8 +73,35 @@ export function SettingsPage() {
   const { triggerSync, status: syncStatus, isLoading: isSyncing, error: syncError, reset: resetSync } = useGitSync()
   const { exportSessions, isExporting, error: exportError, clearError: clearExportError } = useExport()
 
+  const queryClient = useQueryClient()
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
+  const [isSavingInterval, setIsSavingInterval] = useState(false)
+  const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+
+  const handleIntervalChange = useCallback(async (value: string) => {
+    const secs = parseInt(value, 10)
+    if (isNaN(secs)) return
+
+    setIsSavingInterval(true)
+    setIntervalSaveStatus('idle')
+    try {
+      const res = await fetch('/api/settings/git-sync-interval', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intervalSecs: secs }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      setIntervalSaveStatus('success')
+      queryClient.invalidateQueries({ queryKey: ['status'] })
+      setTimeout(() => setIntervalSaveStatus('idle'), 2000)
+    } catch {
+      setIntervalSaveStatus('error')
+      setTimeout(() => setIntervalSaveStatus('idle'), 3000)
+    } finally {
+      setIsSavingInterval(false)
+    }
+  }, [queryClient])
 
   const handleSync = async () => {
     resetSync()
@@ -153,6 +181,36 @@ export function SettingsPage() {
                 />
               </div>
             )}
+
+            {/* Sync interval setting */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between">
+                <label htmlFor="sync-interval" className="text-sm text-gray-500">
+                  Auto-sync interval
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    id="sync-interval"
+                    value={status?.gitSyncIntervalSecs != null ? Number(status.gitSyncIntervalSecs) : 60}
+                    onChange={(e) => handleIntervalChange(e.target.value)}
+                    disabled={isSavingInterval}
+                    className="text-sm border border-gray-200 rounded px-2 py-1 bg-white text-gray-900 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="10">10 seconds</option>
+                    <option value="30">30 seconds</option>
+                    <option value="60">1 minute</option>
+                    <option value="120">2 minutes</option>
+                    <option value="300">5 minutes</option>
+                    <option value="600">10 minutes</option>
+                    <option value="1800">30 minutes</option>
+                    <option value="3600">1 hour</option>
+                  </select>
+                  {isSavingInterval && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
+                  {intervalSaveStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
+                  {intervalSaveStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                </div>
+              </div>
+            </div>
 
             {/* Sync status message */}
             {syncStatus === 'success' && (
