@@ -35,8 +35,8 @@ export function useStatus() {
   return useQuery({
     queryKey: ['status'],
     queryFn: fetchStatus,
-    staleTime: 10_000, // Refresh status every 10 seconds when visible
-    refetchInterval: 30_000, // Auto-refetch every 30 seconds
+    staleTime: 5_000, // Consider stale after 5 seconds
+    refetchInterval: 10_000, // Auto-refetch every 10 seconds (matches periodic git-sync cadence)
   })
 }
 
