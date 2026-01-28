@@ -848,6 +848,15 @@ where
                 serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
             let skills_used =
                 serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
+            // Phase 3: Serialize files_read and files_edited as JSON arrays
+            let files_read =
+                serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
+            let files_edited =
+                serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
+
+            // Phase 3: Count commit skills for commit_count
+            let commit_invocations = extract_commit_skill_invocations(&parse_result.raw_invocations);
+            let commit_count = commit_invocations.len() as i32;
 
             db.update_session_deep_fields(
                 &id,
@@ -859,6 +868,17 @@ where
                 meta.tool_counts.write as i32,
                 &files_touched,
                 &skills_used,
+                // Phase 3: Atomic unit metrics
+                meta.user_prompt_count as i32,
+                meta.api_call_count as i32,
+                meta.tool_call_count as i32,
+                &files_read,
+                &files_edited,
+                meta.files_read_count as i32,
+                meta.files_edited_count as i32,
+                meta.reedited_files_count as i32,
+                meta.duration_seconds as i32,
+                commit_count,
             )
             .await
             .map_err(|e| format!("Failed to update deep fields for {}: {}", id, e))?;

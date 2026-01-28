@@ -220,7 +220,11 @@ impl Database {
                 tok.total_cache_read_tokens,
                 tok.total_cache_creation_tokens,
                 tok.turn_count_api,
-                tok.primary_model
+                tok.primary_model,
+                s.user_prompt_count, s.api_call_count, s.tool_call_count,
+                s.files_read, s.files_edited,
+                s.files_read_count, s.files_edited_count, s.reedited_files_count,
+                s.duration_seconds, s.commit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -440,7 +444,8 @@ impl Database {
     /// Update extended metadata fields from Pass 2 deep indexing.
     ///
     /// Sets `deep_indexed_at` to the current timestamp to mark the session
-    /// as having been fully indexed.
+    /// as having been fully indexed. Includes all Phase 3 atomic unit metrics.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_session_deep_fields(
         &self,
         id: &str,
@@ -452,6 +457,17 @@ impl Database {
         tool_write: i32,
         files_touched: &str,
         skills_used: &str,
+        // Phase 3: Atomic unit metrics
+        user_prompt_count: i32,
+        api_call_count: i32,
+        tool_call_count: i32,
+        files_read: &str,
+        files_edited: &str,
+        files_read_count: i32,
+        files_edited_count: i32,
+        reedited_files_count: i32,
+        duration_seconds: i32,
+        commit_count: i32,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -466,7 +482,17 @@ impl Database {
                 tool_counts_write = ?7,
                 files_touched = ?8,
                 skills_used = ?9,
-                deep_indexed_at = ?10
+                deep_indexed_at = ?10,
+                user_prompt_count = ?11,
+                api_call_count = ?12,
+                tool_call_count = ?13,
+                files_read = ?14,
+                files_edited = ?15,
+                files_read_count = ?16,
+                files_edited_count = ?17,
+                reedited_files_count = ?18,
+                duration_seconds = ?19,
+                commit_count = ?20
             WHERE id = ?1
             "#,
         )
@@ -480,6 +506,16 @@ impl Database {
         .bind(files_touched)
         .bind(skills_used)
         .bind(deep_indexed_at)
+        .bind(user_prompt_count)
+        .bind(api_call_count)
+        .bind(tool_call_count)
+        .bind(files_read)
+        .bind(files_edited)
+        .bind(files_read_count)
+        .bind(files_edited_count)
+        .bind(reedited_files_count)
+        .bind(duration_seconds)
+        .bind(commit_count)
         .execute(self.pool())
         .await?;
 
@@ -920,7 +956,11 @@ impl Database {
                 tok.total_cache_read_tokens,
                 tok.total_cache_creation_tokens,
                 tok.turn_count_api,
-                tok.primary_model
+                tok.primary_model,
+                s.user_prompt_count, s.api_call_count, s.tool_call_count,
+                s.files_read, s.files_edited,
+                s.files_read_count, s.files_edited_count, s.reedited_files_count,
+                s.duration_seconds, s.commit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1158,6 +1198,17 @@ struct SessionRow {
     total_cache_creation_tokens: Option<i64>,
     turn_count_api: Option<i64>,
     primary_model: Option<String>,
+    // Phase 3: Atomic unit metrics
+    user_prompt_count: i32,
+    api_call_count: i32,
+    tool_call_count: i32,
+    files_read: String,
+    files_edited: String,
+    files_read_count: i32,
+    files_edited_count: i32,
+    reedited_files_count: i32,
+    duration_seconds: i32,
+    commit_count: i32,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -1191,6 +1242,17 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             total_cache_creation_tokens: row.try_get("total_cache_creation_tokens").ok().flatten(),
             turn_count_api: row.try_get("turn_count_api").ok().flatten(),
             primary_model: row.try_get("primary_model").ok().flatten(),
+            // Phase 3: Atomic unit metrics
+            user_prompt_count: row.try_get("user_prompt_count")?,
+            api_call_count: row.try_get("api_call_count")?,
+            tool_call_count: row.try_get("tool_call_count")?,
+            files_read: row.try_get("files_read")?,
+            files_edited: row.try_get("files_edited")?,
+            files_read_count: row.try_get("files_read_count")?,
+            files_edited_count: row.try_get("files_edited_count")?,
+            reedited_files_count: row.try_get("reedited_files_count")?,
+            duration_seconds: row.try_get("duration_seconds")?,
+            commit_count: row.try_get("commit_count")?,
         })
     }
 }
@@ -1201,6 +1263,11 @@ impl SessionRow {
             serde_json::from_str(&self.files_touched).unwrap_or_default();
         let skills_used: Vec<String> =
             serde_json::from_str(&self.skills_used).unwrap_or_default();
+        // Phase 3: Deserialize files_read and files_edited from JSON
+        let files_read: Vec<String> =
+            serde_json::from_str(&self.files_read).unwrap_or_default();
+        let files_edited: Vec<String> =
+            serde_json::from_str(&self.files_edited).unwrap_or_default();
 
         SessionInfo {
             id: self.id,
@@ -1231,17 +1298,17 @@ impl SessionRow {
             total_cache_creation_tokens: self.total_cache_creation_tokens.map(|v| v as u64),
             turn_count_api: self.turn_count_api.map(|v| v as u64),
             primary_model: self.primary_model.clone(),
-            // Phase 3: Atomic unit metrics (TODO: load from DB when columns are populated)
-            user_prompt_count: 0,
-            api_call_count: 0,
-            tool_call_count: 0,
-            files_read: vec![],
-            files_edited: vec![],
-            files_read_count: 0,
-            files_edited_count: 0,
-            reedited_files_count: 0,
-            duration_seconds: 0,
-            commit_count: 0,
+            // Phase 3: Atomic unit metrics loaded from DB
+            user_prompt_count: self.user_prompt_count as u32,
+            api_call_count: self.api_call_count as u32,
+            tool_call_count: self.tool_call_count as u32,
+            files_read,
+            files_edited,
+            files_read_count: self.files_read_count as u32,
+            files_edited_count: self.files_edited_count as u32,
+            reedited_files_count: self.reedited_files_count as u32,
+            duration_seconds: self.duration_seconds as u32,
+            commit_count: self.commit_count as u32,
         }
     }
 }
@@ -1834,5 +1901,175 @@ mod tests {
         let summaries = db.list_project_summaries().await.unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].session_count, 1, "Sidechain should be excluded from count");
+    }
+
+    // ========================================================================
+    // Phase 3: Deep fields integration tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_update_session_deep_fields_phase3() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // First insert a session via Pass 1 (from index)
+        db.insert_session_from_index(
+            "test-sess-deep",
+            "project-deep",
+            "Project Deep",
+            "/tmp/project-deep",
+            "/tmp/test-deep.jsonl",
+            "Test preview",
+            None,
+            10,
+            1000,
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        // Update with Pass 2 deep fields including Phase 3 metrics
+        let files_read = r#"["/path/to/file1.rs", "/path/to/file2.rs"]"#;
+        let files_edited = r#"["/path/to/file1.rs", "/path/to/file1.rs", "/path/to/file3.rs"]"#;
+
+        db.update_session_deep_fields(
+            "test-sess-deep",
+            "Last message content",
+            5,   // turn_count
+            10,  // tool_edit
+            15,  // tool_read
+            3,   // tool_bash
+            2,   // tool_write
+            r#"["/path/to/file1.rs", "/path/to/file2.rs", "/path/to/file3.rs"]"#, // files_touched
+            r#"["/commit", "/review"]"#, // skills_used
+            // Phase 3: Atomic unit metrics
+            8,   // user_prompt_count
+            12,  // api_call_count
+            25,  // tool_call_count
+            files_read,
+            files_edited,
+            2,   // files_read_count
+            2,   // files_edited_count (unique: file1.rs, file3.rs)
+            1,   // reedited_files_count (file1.rs edited twice)
+            600, // duration_seconds (10 minutes)
+            3,   // commit_count
+        )
+        .await
+        .unwrap();
+
+        // Retrieve session and verify all Phase 3 fields
+        let projects = db.list_projects().await.unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].sessions.len(), 1);
+
+        let session = &projects[0].sessions[0];
+        assert_eq!(session.id, "test-sess-deep");
+        assert_eq!(session.last_message, "Last message content");
+        assert_eq!(session.turn_count, 5);
+        assert!(session.deep_indexed, "Session should be marked as deep_indexed");
+
+        // Verify Phase 3 atomic unit metrics
+        assert_eq!(session.user_prompt_count, 8, "user_prompt_count mismatch");
+        assert_eq!(session.api_call_count, 12, "api_call_count mismatch");
+        assert_eq!(session.tool_call_count, 25, "tool_call_count mismatch");
+        assert_eq!(session.files_read.len(), 2, "files_read count mismatch");
+        assert_eq!(session.files_read, vec!["/path/to/file1.rs", "/path/to/file2.rs"]);
+        assert_eq!(session.files_edited.len(), 3, "files_edited count mismatch (includes duplicates)");
+        assert_eq!(session.files_read_count, 2, "files_read_count mismatch");
+        assert_eq!(session.files_edited_count, 2, "files_edited_count mismatch");
+        assert_eq!(session.reedited_files_count, 1, "reedited_files_count mismatch");
+        assert_eq!(session.duration_seconds, 600, "duration_seconds mismatch");
+        assert_eq!(session.commit_count, 3, "commit_count mismatch");
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_for_project_includes_phase3_fields() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert via Pass 1
+        db.insert_session_from_index(
+            "phase3-paginated",
+            "proj-paginated",
+            "Project Paginated",
+            "/tmp/proj-paginated",
+            "/tmp/paginated.jsonl",
+            "Preview",
+            None,
+            5,
+            2000,
+            None,
+            false,
+            1000,
+        )
+        .await
+        .unwrap();
+
+        // Update via Pass 2 with Phase 3 fields
+        db.update_session_deep_fields(
+            "phase3-paginated",
+            "Last msg",
+            3,   // turn_count
+            2, 4, 1, 0,  // tool counts
+            "[]", "[]", // files_touched, skills_used
+            15, 20, 30, // user_prompt_count, api_call_count, tool_call_count
+            r#"["/a.rs"]"#, r#"["/b.rs"]"#, // files_read, files_edited
+            1, 1, 0,    // counts
+            120, 2,     // duration_seconds, commit_count
+        )
+        .await
+        .unwrap();
+
+        // Test paginated retrieval includes Phase 3 fields
+        let page = db.list_sessions_for_project("proj-paginated", 10, 0, "recent", None, false).await.unwrap();
+        assert_eq!(page.sessions.len(), 1);
+
+        let session = &page.sessions[0];
+        assert_eq!(session.user_prompt_count, 15);
+        assert_eq!(session.api_call_count, 20);
+        assert_eq!(session.tool_call_count, 30);
+        assert_eq!(session.files_read, vec!["/a.rs"]);
+        assert_eq!(session.files_edited, vec!["/b.rs"]);
+        assert_eq!(session.duration_seconds, 120);
+        assert_eq!(session.commit_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_phase3_fields_default_to_zero() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a session but don't run Pass 2
+        db.insert_session_from_index(
+            "no-deep-index",
+            "proj-no-deep",
+            "Project No Deep",
+            "/tmp/proj",
+            "/tmp/no-deep.jsonl",
+            "Preview",
+            None,
+            5,
+            1000,
+            None,
+            false,
+            500,
+        )
+        .await
+        .unwrap();
+
+        // Retrieve and verify Phase 3 fields default to 0/empty
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+
+        assert!(!session.deep_indexed, "Session should not be deep_indexed yet");
+        assert_eq!(session.user_prompt_count, 0);
+        assert_eq!(session.api_call_count, 0);
+        assert_eq!(session.tool_call_count, 0);
+        assert!(session.files_read.is_empty());
+        assert!(session.files_edited.is_empty());
+        assert_eq!(session.files_read_count, 0);
+        assert_eq!(session.files_edited_count, 0);
+        assert_eq!(session.reedited_files_count, 0);
+        assert_eq!(session.duration_seconds, 0);
+        assert_eq!(session.commit_count, 0);
     }
 }
