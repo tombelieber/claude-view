@@ -178,8 +178,10 @@ export function SettingsPage() {
               type="button"
               onClick={handleSync}
               disabled={isSyncing}
+              aria-busy={isSyncing}
               className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors',
+                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                'transition-colors duration-150',
                 'bg-gray-900 text-white hover:bg-gray-800',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
@@ -277,8 +279,10 @@ export function SettingsPage() {
               type="button"
               onClick={handleExport}
               disabled={isExporting}
+              aria-busy={isExporting}
               className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors',
+                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                'transition-colors duration-150',
                 'bg-gray-900 text-white hover:bg-gray-800',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'

@@ -31,14 +31,17 @@ function MetricItem({ icon, label, value, title }: MetricItemProps) {
     <div
       className="flex flex-col items-center gap-1"
       title={title}
+      role="group"
+      aria-label={`${label}: ${value}`}
     >
-      <div className="flex items-center gap-1.5 text-gray-400">
+      <div className="flex items-center gap-1.5 text-gray-400" aria-hidden="true">
         {icon}
         <span className="text-xs font-metric-label">{label}</span>
       </div>
-      <span className="text-sm font-semibold text-gray-900 font-metric-value tabular-nums">
+      <span className="text-sm font-semibold text-gray-900 font-metric-value tabular-nums" aria-hidden="true">
         {value}
       </span>
+      <span className="sr-only">{title}</span>
     </div>
   )
 }

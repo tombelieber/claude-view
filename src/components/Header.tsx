@@ -71,50 +71,59 @@ export function Header() {
           <HealthIndicator />
         </Link>
 
-        {breadcrumbs.map((crumb, i) => (
-          <div key={crumb.path} className="flex items-center gap-2">
-            <ChevronRight className="w-4 h-4 text-gray-300" />
-            {i === breadcrumbs.length - 1 ? (
-              <span className="text-sm text-gray-600 truncate max-w-[200px]">
-                {crumb.label}
-              </span>
-            ) : (
-              <Link
-                to={crumb.path}
-                className="text-sm text-gray-600 hover:text-gray-900 truncate max-w-[200px]"
-              >
-                {crumb.label}
-              </Link>
-            )}
-          </div>
-        ))}
+        {breadcrumbs.length > 0 && (
+          <nav aria-label="Breadcrumb" className="flex items-center">
+            {breadcrumbs.map((crumb, i) => (
+              <div key={crumb.path} className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-gray-300" aria-hidden="true" />
+                {i === breadcrumbs.length - 1 ? (
+                  <span className="text-sm text-gray-600 truncate max-w-[200px]" aria-current="page">
+                    {crumb.label}
+                  </span>
+                ) : (
+                  <Link
+                    to={crumb.path}
+                    className="text-sm text-gray-600 hover:text-gray-900 cursor-pointer truncate max-w-[200px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded-sm"
+                  >
+                    {crumb.label}
+                  </Link>
+                )}
+              </div>
+            ))}
+          </nav>
+        )}
       </div>
 
       {/* Right: Search + Actions */}
-      <div className="flex items-center gap-2">
+      <nav className="flex items-center gap-2" aria-label="Main actions">
         <button
           onClick={openCommandPalette}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          aria-label="Open search (Command K)"
         >
-          <Search className="w-4 h-4" />
+          <Search className="w-4 h-4" aria-hidden="true" />
           <span className="hidden sm:inline">Search</span>
-          <kbd className="hidden sm:inline text-xs text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-200">
-            ⌘K
+          <kbd className="hidden sm:inline text-xs text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-200" aria-hidden="true">
+            Cmd+K
           </kbd>
         </button>
 
-        <button aria-label="Help" className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md">
-          <HelpCircle className="w-5 h-5" />
+        <button
+          type="button"
+          aria-label="Help"
+          className="p-2 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+        >
+          <HelpCircle className="w-5 h-5" aria-hidden="true" />
         </button>
 
         <Link
           to="/settings"
           aria-label="Settings"
-          className="p-2 text-gray-400 hover:text-gray-600 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+          className="p-2 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
         >
-          <Settings className="w-5 h-5" />
+          <Settings className="w-5 h-5" aria-hidden="true" />
         </Link>
-      </div>
+      </nav>
     </header>
   )
 }

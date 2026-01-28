@@ -2,13 +2,14 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, X, FolderOpen, Loader2 } from 'lucide-react'
+import { Search, X, FolderOpen } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { ActivitySparkline } from './ActivitySparkline'
 import { FilterSortBar, useFilterSort } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { sessionSlug } from '../lib/url-slugs'
+import { Skeleton, SessionsEmptyState } from './LoadingStates'
 
 type TimeFilter = 'all' | 'today' | '7d' | '30d'
 
@@ -170,10 +171,9 @@ export function HistoryView() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-500">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading sessions...</span>
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-5">
+          <Skeleton label="sessions" rows={5} withHeader={true} />
         </div>
       </div>
     )
@@ -324,7 +324,7 @@ export function HistoryView() {
                       {group.label}
                     </span>
                     <div className="flex-1 h-px bg-gray-150" style={{ backgroundColor: '#e8e8e8' }} />
-                    <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">
+                    <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
                       {group.sessions.length}
                     </span>
                   </div>
@@ -335,7 +335,7 @@ export function HistoryView() {
                       <Link
                         key={session.id}
                         to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
-                        className="block"
+                        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
                       >
                         <SessionCard
                           session={session}
@@ -349,23 +349,7 @@ export function HistoryView() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-16">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-3">
-                <Search className="w-5 h-5 text-gray-400" />
-              </div>
-              <p className="text-sm font-medium text-gray-900">No sessions found</p>
-              <p className="text-sm text-gray-500 mt-1">
-                {isFiltered ? 'Try adjusting your filters' : 'No session history yet'}
-              </p>
-              {isFiltered && (
-                <button
-                  onClick={clearAll}
-                  className="mt-3 text-sm text-blue-600 hover:text-blue-700"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
+            <SessionsEmptyState isFiltered={isFiltered} onClearFilters={clearAll} />
           )}
         </div>
       </div>
