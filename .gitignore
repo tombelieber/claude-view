@@ -54,3 +54,4 @@ temp/
 
 # Auto-generated claude-mem files
 **/CLAUDE.md
+.playwright-mcp/
