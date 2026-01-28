@@ -1,19 +1,39 @@
 import { useNavigate, Link } from 'react-router-dom'
-import { BarChart3, Zap, FolderOpen, Calendar, Pencil, Eye, Terminal, Loader2 } from 'lucide-react'
+import { BarChart3, Zap, FolderOpen, Calendar, Pencil, Eye, Terminal } from 'lucide-react'
 import { useDashboardStats } from '../hooks/use-dashboard'
 import { cn } from '../lib/utils'
+import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 
 export function StatsDashboard() {
   const navigate = useNavigate()
-  const { data: stats, isLoading } = useDashboardStats()
+  const { data: stats, isLoading, error, refetch } = useDashboardStats()
 
-  if (isLoading || !stats) {
+  // Loading state with skeleton
+  if (isLoading) {
+    return <DashboardSkeleton />
+  }
+
+  // Error state with retry
+  if (error) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-500">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading stats...</span>
-        </div>
+        <ErrorState
+          message={error.message}
+          onRetry={() => refetch()}
+        />
+      </div>
+    )
+  }
+
+  // Empty state
+  if (!stats) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <EmptyState
+          icon={<BarChart3 className="w-6 h-6 text-gray-400" />}
+          title="No statistics available"
+          description="Stats will appear once you have some session data."
+        />
       </div>
     )
   }

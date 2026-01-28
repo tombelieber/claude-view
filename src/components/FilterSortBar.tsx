@@ -65,7 +65,9 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-all',
+          'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border cursor-pointer',
+          'transition-all duration-150 ease-out',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
           isActive
             ? 'bg-blue-50 border-blue-200 text-blue-700'
             : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
@@ -98,7 +100,9 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
                   setIsOpen(false)
                 }}
                 className={cn(
-                  'w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors',
+                  'w-full flex items-start gap-2.5 px-3 py-2 text-left cursor-pointer',
+                  'transition-colors duration-150 hover:bg-gray-50',
+                  'focus-visible:outline-none focus-visible:bg-gray-100',
                   isSelected && 'bg-blue-50'
                 )}
               >
