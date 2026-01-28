@@ -1,5 +1,6 @@
 //! API route handlers for the vibe-recall server.
 
+pub mod export;
 pub mod health;
 pub mod indexing;
 pub mod invocables;
@@ -7,6 +8,9 @@ pub mod models;
 pub mod projects;
 pub mod sessions;
 pub mod stats;
+pub mod status;
+pub mod sync;
+pub mod trends;
 
 use std::sync::Arc;
 
@@ -20,13 +24,17 @@ use crate::state::AppState;
 /// - GET /api/health - Health check
 /// - GET /api/projects - List all projects (summaries)
 /// - GET /api/projects/:id/sessions - Paginated sessions for a project
-/// - GET /api/session/:project_dir/:session_id - Get a specific session
+/// - GET /api/session/:project_dir/:session_id - Get a specific session (full JSONL parse)
+/// - GET /api/sessions - List all sessions with filter/sort
+/// - GET /api/sessions/:id - Get extended session detail with commits
 /// - GET /api/indexing/progress - SSE stream of indexing progress
 /// - GET /api/invocables - List all invocables with usage counts
-/// - GET /api/stats/overview - Aggregate usage statistics
-/// - GET /api/stats/tokens - Aggregate token usage statistics
-/// - GET /api/stats/dashboard - Pre-computed dashboard stats
+/// - GET /api/stats/dashboard - Pre-computed dashboard stats with trends
 /// - GET /api/models - List all observed models with usage counts
+/// - GET /api/trends - Week-over-week trend metrics
+/// - GET /api/status - Index metadata and data freshness
+/// - GET /api/export/sessions - Export sessions as JSON or CSV
+/// - POST /api/sync/git - Trigger git commit scanning
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -36,6 +44,10 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", invocables::router())
         .nest("/api", models::router())
         .nest("/api", stats::router())
+        .nest("/api", trends::router())
+        .nest("/api", status::router())
+        .nest("/api", export::router())
+        .nest("/api", sync::router())
         .with_state(state)
 }
 
