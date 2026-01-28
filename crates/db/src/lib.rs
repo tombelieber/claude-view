@@ -6,12 +6,20 @@ mod queries;
 pub mod indexer;
 pub mod indexer_parallel;
 pub mod git_correlation;
+pub mod trends;
 
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::StatsOverview;
 pub use queries::TokenStats;
+
+// Re-export trends types
+pub use trends::current_week_bounds;
+pub use trends::previous_week_bounds;
+pub use trends::IndexMetadata;
+pub use trends::TrendMetric;
+pub use trends::WeekTrends;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
