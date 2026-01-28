@@ -1,20 +1,22 @@
 // crates/server/src/main.rs
 //! Vibe-recall server binary.
 //!
-//! Starts an Axum HTTP server that serves the vibe-recall API.
-//! Optionally serves static files for the frontend (SPA mode).
+//! Starts an Axum HTTP server **immediately**, then spawns background indexing.
+//! Pass 1 (read sessions-index.json, <10ms) populates the "Ready" line,
+//! Pass 2 (deep JSONL parsing) runs in parallel with a TUI progress spinner.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use vibe_recall_db::indexer;
+use vibe_recall_db::indexer_parallel::run_background_index;
 use vibe_recall_db::Database;
-use vibe_recall_server::{create_app, create_app_with_static};
+use vibe_recall_server::{create_app_full, IndexingState, IndexingStatus};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -44,26 +46,9 @@ fn get_static_dir() -> Option<PathBuf> {
         })
 }
 
-/// Format byte size into a human-readable string (e.g., "828 MB").
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{} MB", bytes / MB)
-    } else if bytes >= KB {
-        format!("{} KB", bytes / KB)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing (quiet — startup UX uses println)
+    // Initialize tracing (quiet — startup UX uses eprintln)
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::WARN)
         .compact()
@@ -75,101 +60,139 @@ async fn main() -> Result<()> {
     // Print banner
     eprintln!("\n\u{1f50d} vibe-recall v{}\n", env!("CARGO_PKG_VERSION"));
 
-    // Step 1: Open the database
+    // Step 1: Open database
     let db = Database::open_default().await?;
 
-    // Step 2: Scan for .jsonl files
-    let base_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
-        .join(".claude/projects");
+    // Step 2: Create shared indexing state and registry holder
+    let indexing = Arc::new(IndexingState::new());
+    let registry_holder = Arc::new(RwLock::new(None));
 
-    let scan = indexer::scan_files(&base_dir).await;
-    let session_count = scan.files.len();
-
-    // Step 3: Diff against DB
-    let diff = indexer::diff_against_db(&scan.files, &db).await?;
-    let files_to_index: Vec<_> = diff
-        .new_files
-        .iter()
-        .chain(diff.modified_files.iter())
-        .cloned()
-        .collect();
-    let to_index_count = files_to_index.len();
-
-    let all_valid_paths: Vec<String> = scan
-        .files
-        .iter()
-        .map(|f| f.path.to_string_lossy().to_string())
-        .collect();
-
-    // Determine whether this is a first launch, incremental, or no-change scenario
-    let is_first_launch = diff.unchanged_count == 0 && to_index_count > 0;
-    let has_changes = to_index_count > 0;
-
-    if is_first_launch {
-        // First launch
-        eprintln!(
-            "  Scanning projects...          found {} projects, {} sessions ({})",
-            scan.project_count,
-            session_count,
-            format_size(scan.total_size),
-        );
-    } else if has_changes {
-        // Incremental
-        let new_count = diff.new_files.len();
-        let mod_count = diff.modified_files.len();
-        let mut parts = Vec::new();
-        if new_count > 0 {
-            parts.push(format!("{} new", new_count));
-        }
-        if mod_count > 0 {
-            parts.push(format!("{} modified", mod_count));
-        }
-        eprintln!(
-            "  Checking for changes...       {} sessions",
-            parts.join(", "),
-        );
-    } else {
-        // No changes
-        eprintln!(
-            "  Checking for changes...       up to date ({} sessions)",
-            diff.unchanged_count,
-        );
-    }
-
-    // Step 4: Index changed files with progress bar
-    if has_changes {
-        let pb = ProgressBar::new(to_index_count as u64);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("  Indexing sessions {bar:20} {pos}/{len} ({elapsed})")
-                .expect("valid progress bar template")
-                .progress_chars("\u{2501}\u{2501}\u{2500}"),
-        );
-
-        indexer::index_files(&files_to_index, &all_valid_paths, &db, |indexed, _total| {
-            pb.set_position(indexed as u64);
-        })
-        .await?;
-
-        pb.finish();
-    }
-
-    // Step 5: Start the server
+    // Step 3: Build the Axum app with indexing state and registry holder
     let static_dir = get_static_dir();
-    let app = match static_dir {
-        Some(ref dir) => create_app_with_static(db, Some(dir.clone())),
-        None => create_app(db),
-    };
+    let app = create_app_full(
+        db.clone(),
+        indexing.clone(),
+        registry_holder.clone(),
+        static_dir,
+    );
 
+    // Step 4: Bind and start the HTTP server IMMEDIATELY (before any indexing)
     let port = get_port();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    let total_elapsed = startup_start.elapsed();
-    eprintln!("\n  \u{2713} Ready in {:.1}s", total_elapsed.as_secs_f64());
-    eprintln!("  \u{2192} http://localhost:{}\n", port);
+    // Step 5: Resolve the claude dir for indexing
+    let claude_dir = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
+        .join(".claude");
 
+    // Step 6: Spawn background indexing task (with registry build in parallel)
+    let idx_state = indexing.clone();
+    let idx_db = db.clone();
+    let idx_registry = registry_holder.clone();
+    tokio::spawn(async move {
+        idx_state.set_status(IndexingStatus::ReadingIndexes);
+
+        let state_for_pass1 = idx_state.clone();
+        let state_for_progress = idx_state.clone();
+        let state_for_done = idx_state.clone();
+
+        let result = run_background_index(
+            &claude_dir,
+            &idx_db,
+            Some(idx_registry),
+            // on_pass1_done: Pass 1 finished — store project/session counts, transition to DeepIndexing
+            move |projects, sessions| {
+                state_for_pass1.set_projects_found(projects);
+                state_for_pass1.set_sessions_found(sessions);
+                state_for_pass1.set_status(IndexingStatus::DeepIndexing);
+            },
+            // on_file_done: each deep-indexed file reports progress
+            move |indexed, total| {
+                state_for_progress.set_total(total);
+                state_for_progress.set_indexed(indexed);
+            },
+            // on_complete: all done
+            move |_total_indexed| {
+                state_for_done.set_status(IndexingStatus::Done);
+            },
+        )
+        .await;
+
+        if let Err(e) = result {
+            idx_state.set_error(e);
+        }
+    });
+
+    // Step 7: Spawn TUI progress task (runs concurrently with the server)
+    let tui_state = indexing.clone();
+    tokio::spawn(async move {
+        // Wait for Pass 1 to complete (status transitions out of Idle/ReadingIndexes)
+        loop {
+            let status = tui_state.status();
+            if status != IndexingStatus::Idle && status != IndexingStatus::ReadingIndexes {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        // Print the "Ready" line with Pass 1 results
+        let elapsed = startup_start.elapsed();
+        let projects = tui_state.projects_found();
+        let sessions = tui_state.sessions_found();
+        eprintln!(
+            "  \u{2713} Ready in {:.1}s \u{2014} {} projects, {} sessions",
+            elapsed.as_secs_f64(),
+            projects,
+            sessions,
+        );
+        eprintln!("  \u{2192} http://localhost:{}\n", port);
+
+        // Show deep indexing spinner if Pass 2 is running
+        if tui_state.status() == IndexingStatus::DeepIndexing {
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("  {spinner} Deep indexing {msg}")
+                    .expect("valid spinner template"),
+            );
+            pb.enable_steady_tick(Duration::from_millis(100));
+
+            let deep_start = Instant::now();
+            loop {
+                let status = tui_state.status();
+                if status == IndexingStatus::Done || status == IndexingStatus::Error {
+                    break;
+                }
+                let indexed = tui_state.indexed();
+                let total = tui_state.total();
+                if total > 0 {
+                    pb.set_message(format!("{}/{} sessions...", indexed, total));
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+
+            pb.finish_and_clear();
+
+            if tui_state.status() == IndexingStatus::Done {
+                let deep_elapsed = deep_start.elapsed();
+                let total = tui_state.sessions_found();
+                eprintln!(
+                    "  \u{2713} Deep index complete \u{2014} {} sessions ({:.1}s)\n",
+                    total,
+                    deep_elapsed.as_secs_f64(),
+                );
+            } else if let Some(err) = tui_state.error() {
+                eprintln!("  \u{2717} Indexing error: {}\n", err);
+            }
+        } else if tui_state.status() == IndexingStatus::Error {
+            if let Some(err) = tui_state.error() {
+                eprintln!("  \u{2717} Indexing error: {}\n", err);
+            }
+        }
+    });
+
+    // Step 8: Serve forever
     axum::serve(listener, app).await?;
 
     Ok(())

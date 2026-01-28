@@ -7,6 +7,8 @@ pub mod indexer;
 pub mod indexer_parallel;
 
 pub use queries::IndexerEntry;
+pub use queries::InvocableWithCount;
+pub use queries::StatsOverview;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
@@ -100,7 +102,14 @@ impl Database {
         for (i, migration) in migrations::MIGRATIONS.iter().enumerate() {
             let version = i + 1; // 1-based
             if version > current_version {
-                sqlx::query(migration).execute(&self.pool).await?;
+                match sqlx::query(migration).execute(&self.pool).await {
+                    Ok(_) => {}
+                    Err(e) if e.to_string().contains("duplicate column name") => {
+                        // Column already exists from a previous run without tracking.
+                        // Safe to skip.
+                    }
+                    Err(e) => return Err(e.into()),
+                }
                 sqlx::query("INSERT INTO _migrations (version) VALUES (?)")
                     .bind(version as i64)
                     .execute(&self.pool)
