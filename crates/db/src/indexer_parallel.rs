@@ -95,6 +95,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // SIMD pre-filter for tool_use blocks (only parse JSON for lines containing this)
     let tool_use_finder = memmem::Finder::new(b"\"tool_use\"");
 
+    // SIMD pre-filter for turn extraction (only parse JSON if usage data present)
+    let usage_finder = memmem::Finder::new(b"\"input_tokens\":");
+
     // Hoisted finders for helper functions (avoid rebuilding SIMD tables per line)
     let content_finder = memmem::Finder::new(b"\"content\":\"");
     let text_finder = memmem::Finder::new(b"\"text\":\"");
@@ -143,6 +146,10 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             if tool_use_finder.find(line).is_some() {
                 extract_raw_invocations(line, byte_offset, &mut result.raw_invocations);
             }
+            // Extract turn data (model + token usage) if usage data is present
+            if usage_finder.find(line).is_some() {
+                extract_turn_data(line, byte_offset, (assistant_count - 1) as u32, &mut result.turns, &mut result.models_seen);
+            }
         }
     }
 
@@ -156,6 +163,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result.deep.skills_used.dedup();
     result.deep.files_touched.sort();
     result.deep.files_touched.dedup();
+    result.models_seen.sort();
+    result.models_seen.dedup();
 
     result
 }
@@ -243,6 +252,98 @@ fn extract_raw_invocations(line: &[u8], byte_offset: usize, out: &mut Vec<RawInv
             timestamp,
         });
     }
+}
+
+/// Extract turn data (model ID and token usage) from an assistant JSONL line.
+///
+/// Only called on lines that passed the SIMD `"input_tokens":` pre-filter.
+/// Builds a `RawTurn` and collects unique model IDs.
+fn extract_turn_data(
+    line: &[u8],
+    _byte_offset: usize,
+    seq: u32,
+    turns: &mut Vec<vibe_recall_core::RawTurn>,
+    models_seen: &mut Vec<String>,
+) {
+    let value: serde_json::Value = match serde_json::from_slice(line) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let message = match value.get("message") {
+        Some(m) => m,
+        None => return,
+    };
+
+    let model_id = match message.get("model").and_then(|m| m.as_str()) {
+        Some(m) => m.to_string(),
+        None => return,
+    };
+
+    // Collect unique models
+    if !models_seen.contains(&model_id) {
+        models_seen.push(model_id.clone());
+    }
+
+    let usage = message.get("usage");
+
+    let input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64());
+    let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64());
+    let cache_read_tokens = usage
+        .and_then(|u| u.get("cache_read_input_tokens"))
+        .and_then(|v| v.as_u64());
+    let cache_creation_tokens = usage
+        .and_then(|u| u.get("cache_creation_input_tokens"))
+        .and_then(|v| v.as_u64());
+    let service_tier = usage
+        .and_then(|u| u.get("service_tier"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let uuid = value
+        .get("uuid")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let parent_uuid = value
+        .get("parentUuid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Determine content_type from first content block
+    let content_type = message
+        .get("content")
+        .and_then(|c| c.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|block| block.get("type"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("text")
+        .to_string();
+
+    // Parse timestamp - could be string (ISO) or integer (unix)
+    let timestamp = value
+        .get("timestamp")
+        .and_then(|v| {
+            v.as_i64().or_else(|| {
+                v.as_str()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                    .map(|dt| dt.timestamp())
+            })
+        });
+
+    turns.push(vibe_recall_core::RawTurn {
+        uuid,
+        parent_uuid,
+        seq,
+        model_id,
+        content_type,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        service_tier,
+        timestamp,
+    });
 }
 
 /// Count occurrences of a pattern in a line.
@@ -593,6 +694,24 @@ where
                         .map_err(|e| {
                             format!("Failed to insert invocations for {}: {}", id, e)
                         })?;
+                }
+            }
+
+            // Batch upsert models and insert turns (Phase 2B)
+            if !parse_result.turns.is_empty() {
+                let seen_at = chrono::Utc::now().timestamp();
+                if let Err(e) = db
+                    .batch_upsert_models(&parse_result.models_seen, seen_at)
+                    .await
+                {
+                    tracing::warn!("Failed to upsert models for {}: {}", id, e);
+                }
+
+                if let Err(e) = db
+                    .batch_insert_turns(&id, &parse_result.turns)
+                    .await
+                {
+                    tracing::warn!("Failed to insert turns for {}: {}", id, e);
                 }
             }
 

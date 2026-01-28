@@ -1,42 +1,87 @@
-// crates/server/src/routes/projects.rs
-//! Projects listing endpoint.
+//! Projects listing and per-project session endpoints.
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::get, Json, Router};
-use vibe_recall_core::ProjectInfo;
+use axum::{
+    extract::{Path, Query, State},
+    routing::get,
+    Json, Router,
+};
+use serde::Deserialize;
+use vibe_recall_core::{ProjectSummary, SessionsPage};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
 
-/// GET /api/projects - List all Claude Code projects with their sessions.
+/// GET /api/projects - List all projects as lightweight summaries.
 ///
-/// Returns a list of all indexed projects from the database,
-/// with session metadata for each project.
-pub async fn list_projects(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<ProjectInfo>>> {
-    let projects = state.db.list_projects().await?;
-    Ok(Json(projects))
+/// Returns ProjectSummary[] (no sessions array). ~2 KB for 10 projects.
+pub async fn list_projects(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<Vec<ProjectSummary>>> {
+    let summaries = state.db.list_project_summaries().await?;
+    Ok(Json(summaries))
+}
+
+/// Query parameters for paginated sessions endpoint.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionsQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    pub branch: Option<String>,
+    #[serde(default, alias = "include_sidechains")]
+    pub include_sidechains: bool,
+}
+
+fn default_limit() -> i64 { 50 }
+fn default_sort() -> String { "recent".to_string() }
+
+/// GET /api/projects/:id/sessions - Paginated sessions for a project.
+pub async fn list_project_sessions(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Query(params): Query<SessionsQuery>,
+) -> ApiResult<Json<SessionsPage>> {
+    let page = state
+        .db
+        .list_sessions_for_project(
+            &project_id,
+            params.limit,
+            params.offset,
+            &params.sort,
+            params.branch.as_deref(),
+            params.include_sidechains,
+        )
+        .await?;
+    Ok(Json(page))
 }
 
 /// Create the projects routes router.
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/projects", get(list_projects))
+    Router::new()
+        .route("/projects", get(list_projects))
+        .route("/projects/{id}/sessions", get(list_project_sessions))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use axum::{body::Body, http::{Request, StatusCode}};
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use tower::ServiceExt;
     use vibe_recall_core::{SessionInfo, ToolCounts};
     use vibe_recall_db::Database;
 
-    /// Helper: create an in-memory database for tests.
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
     }
 
-    /// Helper: create a test session with sensible defaults.
     fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
         SessionInfo {
             id: id.to_string(),
@@ -64,16 +109,20 @@ mod tests {
             git_branch: None,
             is_sidechain: false,
             deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
         }
     }
 
-    /// Helper: build a full app Router with the given database.
-    fn build_app(db: Database) -> Router {
+    fn build_app(db: Database) -> axum::Router {
         crate::create_app(db)
     }
 
-    /// Helper: make a GET request and return status + body string.
-    async fn get(app: Router, uri: &str) -> (StatusCode, String) {
+    async fn do_get(app: axum::Router, uri: &str) -> (StatusCode, String) {
         let response = app
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
             .await
@@ -85,64 +134,10 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap())
     }
 
-    #[test]
-    fn test_project_info_serialization() {
-        let project = ProjectInfo {
-            name: "test-project".to_string(),
-            display_name: "Test Project".to_string(),
-            path: "/path/to/project".to_string(),
-            sessions: vec![SessionInfo {
-                id: "abc123".to_string(),
-                project: "test-project".to_string(),
-                project_path: "/path/to/project".to_string(),
-                file_path: "/path/to/session.jsonl".to_string(),
-                modified_at: 1706369000,
-                size_bytes: 1024,
-                preview: "Hello Claude".to_string(),
-                last_message: "Here is the result".to_string(),
-                files_touched: vec!["src/main.rs".to_string()],
-                skills_used: vec!["commit".to_string()],
-                tool_counts: ToolCounts {
-                    edit: 5,
-                    read: 10,
-                    bash: 3,
-                    write: 2,
-                },
-                message_count: 20,
-                turn_count: 10,
-                summary: None,
-                git_branch: None,
-                is_sidechain: false,
-                deep_indexed: false,
-            }],
-            active_count: 1,
-        };
-
-        let json = serde_json::to_string_pretty(&project).unwrap();
-        // Verify camelCase field names
-        assert!(json.contains("\"name\": \"test-project\""));
-        assert!(json.contains("\"displayName\": \"Test Project\""));
-        assert!(json.contains("\"activeCount\": 1"));
-        // Verify modifiedAt is a Unix timestamp number (not ISO string)
-        println!("Serialized JSON:\n{}", json);
-        assert!(
-            json.contains("\"modifiedAt\":") && !json.contains("\"modifiedAt\": \""),
-            "modifiedAt should be a number, got: {}",
-            json
-        );
-        // Verify toolCounts structure
-        assert!(json.contains("\"toolCounts\""));
-        assert!(json.contains("\"edit\": 5"));
-        assert!(json.contains("\"read\": 10"));
-        assert!(json.contains("\"bash\": 3"));
-        assert!(json.contains("\"write\": 2"));
-    }
-
     #[tokio::test]
-    async fn test_projects_endpoint_returns_from_db() {
+    async fn test_projects_returns_summaries() {
         let db = test_db().await;
 
-        // Insert known sessions into the in-memory DB
         let s1 = make_session("sess-1", "project-a", 1000);
         let s2 = make_session("sess-2", "project-a", 2000);
         let s3 = make_session("sess-3", "project-b", 3000);
@@ -152,62 +147,89 @@ mod tests {
         db.insert_session(&s3, "project-b", "Project B").await.unwrap();
 
         let app = build_app(db);
-        let (status, body) = get(app, "/api/projects").await;
+        let (status, body) = do_get(app, "/api/projects").await;
 
         assert_eq!(status, StatusCode::OK);
 
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let projects = json.as_array().expect("response should be an array");
-        assert_eq!(projects.len(), 2, "Should have 2 projects");
+        let projects = json.as_array().expect("should be array");
+        assert_eq!(projects.len(), 2);
 
-        // Projects should be sorted by most recent activity (project-b first)
-        assert_eq!(projects[0]["name"], "project-b");
-        assert_eq!(projects[0]["displayName"], "Project B");
-        assert_eq!(projects[0]["sessions"].as_array().unwrap().len(), 1);
-
-        assert_eq!(projects[1]["name"], "project-a");
-        assert_eq!(projects[1]["displayName"], "Project A");
-        assert_eq!(projects[1]["sessions"].as_array().unwrap().len(), 2);
-
-        // Verify camelCase field names in session objects
-        let session = &projects[1]["sessions"][0];
-        assert!(session.get("id").is_some());
-        assert!(session.get("projectPath").is_some());
-        assert!(session.get("filePath").is_some());
-        assert!(session.get("modifiedAt").is_some());
-        assert!(session.get("sizeBytes").is_some());
-        assert!(session.get("lastMessage").is_some());
-        assert!(session.get("filesTouched").is_some());
-        assert!(session.get("skillsUsed").is_some());
-        assert!(session.get("toolCounts").is_some());
-        assert!(session.get("messageCount").is_some());
-        assert!(session.get("turnCount").is_some());
-
-        // Verify modifiedAt is a Unix timestamp number
-        assert!(
-            session["modifiedAt"].is_number(),
-            "modifiedAt should be a number, got: {}",
-            session["modifiedAt"]
-        );
-
-        // Verify toolCounts structure
-        let tool_counts = &session["toolCounts"];
-        assert_eq!(tool_counts["edit"], 5);
-        assert_eq!(tool_counts["read"], 10);
-        assert_eq!(tool_counts["bash"], 3);
-        assert_eq!(tool_counts["write"], 2);
+        // No sessions key
+        assert!(projects[0].get("sessions").is_none(), "Should NOT have sessions array");
+        // Has sessionCount
+        assert!(projects[0].get("sessionCount").is_some(), "Should have sessionCount");
+        assert!(projects[0].get("activeCount").is_some());
+        assert!(projects[0].get("lastActivityAt").is_some());
     }
 
     #[tokio::test]
     async fn test_projects_empty_db() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) = get(app, "/api/projects").await;
+        let (status, body) = do_get(app, "/api/projects").await;
 
         assert_eq!(status, StatusCode::OK);
-
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let projects = json.as_array().expect("response should be an array");
-        assert_eq!(projects.len(), 0, "Empty DB should return empty array");
+        assert_eq!(json.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_project_sessions_pagination() {
+        let db = test_db().await;
+
+        for i in 1..=5 {
+            let s = make_session(&format!("sess-{}", i), "project-a", i as i64 * 1000);
+            db.insert_session(&s, "project-a", "Project A").await.unwrap();
+        }
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/projects/project-a/sessions?limit=2&offset=0").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["total"], 5);
+        assert_eq!(json["sessions"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_project_sessions_sort() {
+        let db = test_db().await;
+
+        let s1 = make_session("sess-1", "project-a", 1000);
+        let s2 = make_session("sess-2", "project-a", 3000);
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+
+        // Sort oldest first
+        let (_, body) = do_get(app, "/api/projects/project-a/sessions?sort=oldest").await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["sessions"][0]["id"], "sess-1");
+    }
+
+    #[tokio::test]
+    async fn test_project_sessions_excludes_sidechains() {
+        let db = test_db().await;
+
+        let s1 = make_session("sess-1", "project-a", 1000);
+        let s2 = SessionInfo { is_sidechain: true, ..make_session("sess-2", "project-a", 2000) };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+
+        // Default: exclude sidechains
+        let (_, body) = do_get(app.clone(), "/api/projects/project-a/sessions").await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["total"], 1);
+
+        // Include sidechains
+        let (_, body) = do_get(app, "/api/projects/project-a/sessions?includeSidechains=true").await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["total"], 2);
     }
 }

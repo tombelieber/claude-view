@@ -1,20 +1,20 @@
 import { useMemo, useEffect } from 'react'
-import { useSearchParams, useOutletContext, Link, useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
-import type { ProjectInfo } from '../hooks/use-projects'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
+import { X, Loader2 } from 'lucide-react'
+import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { parseQuery, filterSessions } from '../lib/search'
 import { SessionCard } from './SessionCard'
+import { sessionSlug } from '../lib/url-slugs'
 import { useAppStore } from '../store/app-store'
-
-interface OutletContext {
-  projects: ProjectInfo[]
-}
 
 export function SearchResults() {
   const [searchParams] = useSearchParams()
-  const { projects } = useOutletContext<OutletContext>()
   const navigate = useNavigate()
   const { addRecentSearch } = useAppStore()
+
+  const { data: summaries } = useProjectSummaries()
+  const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
+  const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
 
   const query = searchParams.get('q') || ''
 
@@ -25,20 +25,43 @@ export function SearchResults() {
     }
   }, [query, addRecentSearch])
 
+  // Build a ProjectInfo-compatible structure for filterSessions
+  const projectsForFilter = useMemo(() => {
+    if (!summaries) return []
+    // Group sessions by project to build a lookup structure
+    const sessionsByProject = new Map<string, typeof allSessions>()
+    for (const s of allSessions) {
+      const list = sessionsByProject.get(s.project) || []
+      list.push(s)
+      sessionsByProject.set(s.project, list)
+    }
+    return summaries.map(p => ({
+      name: p.name,
+      displayName: p.displayName,
+      path: p.path,
+      sessions: sessionsByProject.get(p.name) ?? [],
+    }))
+  }, [summaries, allSessions])
+
   const results = useMemo(() => {
-    if (!query) return []
-    const allSessions = projects.flatMap(p => p.sessions)
+    if (!query || allSessions.length === 0) return []
     const parsed = parseQuery(query)
-    return filterSessions(allSessions, projects, parsed)
-  }, [projects, query])
+    return filterSessions(allSessions, projectsForFilter, parsed)
+  }, [allSessions, projectsForFilter, query])
 
   const handleClearSearch = () => {
     navigate('/')
   }
 
-  // Find project for each session (for linking)
-  const getSessionProject = (sessionId: string) => {
-    return projects.find(p => p.sessions.some(s => s.id === sessionId))
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Searching...</span>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -62,21 +85,18 @@ export function SearchResults() {
 
       {results.length > 0 ? (
         <div className="space-y-3">
-          {results.map((session) => {
-            const project = getSessionProject(session.id)
-            return (
-              <Link
-                key={session.id}
-                to={`/session/${encodeURIComponent(session.project)}/${session.id}`}
-              >
-                <SessionCard
-                  session={session}
-                  isSelected={false}
-                  onClick={() => {}}
-                />
-              </Link>
-            )
-          })}
+          {results.map((session) => (
+            <Link
+              key={session.id}
+              to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+              className="block focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-lg"
+            >
+              <SessionCard
+                session={session}
+                isSelected={false}
+              />
+            </Link>
+          ))}
         </div>
       ) : (
         <div className="text-center py-12 text-gray-500">
