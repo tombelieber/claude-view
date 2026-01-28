@@ -4,8 +4,11 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
 import { useProjectSessions } from '../hooks/use-projects'
+import { useSessionDetail } from '../hooks/use-session-detail'
 import { Message } from './Message'
 import { SessionMetricsBar } from './SessionMetricsBar'
+import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
+import { CommitsPanel } from './CommitsPanel'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
@@ -26,6 +29,7 @@ export function ConversationView() {
   const { data: session, isLoading, error } = useSession(projectDir, sessionId)
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
+  const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
   const handleExportHtml = useCallback(() => {
     if (!session) return
@@ -139,55 +143,77 @@ export function ConversationView() {
         </div>
       </div>
 
-      {/* Session Metrics Bar */}
-      {sessionInfo && sessionInfo.userPromptCount > 0 && (
-        <div className="px-6 py-2 bg-white border-b border-gray-200">
-          <SessionMetricsBar
-            prompts={sessionInfo.userPromptCount}
-            tokens={
-              sessionInfo.totalInputTokens != null && sessionInfo.totalOutputTokens != null
-                ? BigInt(sessionInfo.totalInputTokens) + BigInt(sessionInfo.totalOutputTokens)
-                : null
-            }
-            filesRead={sessionInfo.filesReadCount}
-            filesEdited={sessionInfo.filesEditedCount}
-            reeditRate={
-              sessionInfo.filesEditedCount > 0
-                ? sessionInfo.reeditedFilesCount / sessionInfo.filesEditedCount
-                : null
-            }
-            commits={sessionInfo.commitCount}
-          />
-        </div>
-      )}
-
-      {/* Messages */}
-      <ExpandProvider>
-        <Virtuoso
-          data={session.messages}
-          itemContent={(index, message) => (
-            <div className="max-w-4xl mx-auto px-6 pb-4">
-              <Message key={message.id || index} message={message} messageIndex={index} />
-            </div>
-          )}
-          components={{
-            Header: () => <div className="h-6" />,
-            Footer: () => (
-              session.messages.length > 0 ? (
-                <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
-                  {session.metadata.totalMessages} messages
-                  {session.metadata.toolCallCount > 0 && (
-                    <> &bull; {session.metadata.toolCallCount} tool calls</>
-                  )}
+      {/* Two-column: Conversation + Sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Conversation messages */}
+        <div className="flex-1 min-w-0">
+          <ExpandProvider>
+            <Virtuoso
+              data={session.messages}
+              itemContent={(index, message) => (
+                <div className="max-w-4xl mx-auto px-6 pb-4">
+                  <Message key={message.id || index} message={message} messageIndex={index} />
                 </div>
-              ) : null
-            )
-          }}
-          increaseViewportBy={{ top: 400, bottom: 400 }}
-          initialTopMostItemIndex={0}
-          className="flex-1 overflow-auto"
-        />
-      </ExpandProvider>
+              )}
+              components={{
+                Header: () => <div className="h-6" />,
+                Footer: () => (
+                  session.messages.length > 0 ? (
+                    <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
+                      {session.metadata.totalMessages} messages
+                      {session.metadata.toolCallCount > 0 && (
+                        <> &bull; {session.metadata.toolCallCount} tool calls</>
+                      )}
+                    </div>
+                  ) : null
+                )
+              }}
+              increaseViewportBy={{ top: 400, bottom: 400 }}
+              initialTopMostItemIndex={0}
+              className="h-full overflow-auto"
+            />
+          </ExpandProvider>
+        </div>
+
+        {/* Right: Metrics Sidebar */}
+        <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 bg-white overflow-y-auto p-4 space-y-4 hidden lg:block">
+          {/* Metrics (vertical layout per plan B9.3) */}
+          {sessionInfo && sessionInfo.userPromptCount > 0 && (
+            <SessionMetricsBar
+              prompts={sessionInfo.userPromptCount}
+              tokens={
+                sessionInfo.totalInputTokens != null && sessionInfo.totalOutputTokens != null
+                  ? BigInt(sessionInfo.totalInputTokens) + BigInt(sessionInfo.totalOutputTokens)
+                  : null
+              }
+              filesRead={sessionInfo.filesReadCount}
+              filesEdited={sessionInfo.filesEditedCount}
+              reeditRate={
+                sessionInfo.filesEditedCount > 0
+                  ? sessionInfo.reeditedFilesCount / sessionInfo.filesEditedCount
+                  : null
+              }
+              commits={sessionInfo.commitCount}
+              variant="vertical"
+            />
+          )}
+
+          {/* Files Touched */}
+          {sessionDetail && (
+            <FilesTouchedPanel
+              files={buildFilesTouched(
+                sessionDetail.filesRead ?? [],
+                sessionDetail.filesEdited ?? []
+              )}
+            />
+          )}
+
+          {/* Linked Commits */}
+          {sessionDetail && (
+            <CommitsPanel commits={sessionDetail.commits ?? []} />
+          )}
+        </aside>
+      </div>
     </div>
   )
 }
