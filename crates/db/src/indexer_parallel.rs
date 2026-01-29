@@ -13,6 +13,10 @@ use vibe_recall_core::{
 
 use crate::Database;
 
+/// Current parse version. Bump when parser logic changes to trigger re-indexing.
+/// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
+pub const CURRENT_PARSE_VERSION: i32 = 1;
+
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
 #[derive(Debug, Clone, Default)]
@@ -1087,6 +1091,16 @@ where
             let commit_invocations = extract_commit_skill_invocations(&parse_result.raw_invocations);
             let commit_count = commit_invocations.len() as i32;
 
+            // Compute turn duration aggregates
+            let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
+                (None, None, None)
+            } else {
+                let total: u64 = meta.turn_durations_ms.iter().sum();
+                let max = *meta.turn_durations_ms.iter().max().unwrap();
+                let avg = total / meta.turn_durations_ms.len() as u64;
+                (Some(avg as i64), Some(max as i64), Some(total as i64))
+            };
+
             db.update_session_deep_fields(
                 &id,
                 &meta.last_message,
@@ -1109,6 +1123,25 @@ where
                 meta.duration_seconds as i32,
                 commit_count,
                 meta.first_timestamp,
+                // Phase 3.5: Full parser metrics
+                meta.total_input_tokens as i64,
+                meta.total_output_tokens as i64,
+                meta.cache_read_tokens as i64,
+                meta.cache_creation_tokens as i64,
+                meta.thinking_block_count as i32,
+                dur_avg,
+                dur_max,
+                dur_total,
+                meta.api_error_count as i32,
+                meta.api_retry_count as i32,
+                meta.compaction_count as i32,
+                meta.hook_blocked_count as i32,
+                meta.agent_spawn_count as i32,
+                meta.bash_progress_count as i32,
+                meta.hook_progress_count as i32,
+                meta.mcp_progress_count as i32,
+                meta.summary_text.as_deref(),
+                CURRENT_PARSE_VERSION,
             )
             .await
             .map_err(|e| format!("Failed to update deep fields for {}: {}", id, e))?;
