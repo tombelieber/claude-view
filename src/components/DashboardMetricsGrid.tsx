@@ -4,7 +4,7 @@ import type { DashboardTrends, TrendMetric } from '../types/generated'
 
 export interface DashboardMetricsGridProps {
   /** Week-over-week trends data from dashboard API */
-  trends: DashboardTrends
+  trends: DashboardTrends | null | undefined
 }
 
 /** Helper to extract trend data from TrendMetric */
@@ -30,8 +30,26 @@ function extractTrend(metric: TrendMetric): { delta: number; deltaPercent: numbe
  * - 3 columns on desktop (2 rows of 3)
  * - 2 columns on tablet
  * - 1 column on mobile
+ *
+ * Null safety:
+ * - Gracefully handles null/undefined trends data
+ * - Shows placeholder when data is unavailable
  */
 export function DashboardMetricsGrid({ trends }: DashboardMetricsGridProps) {
+  // Handle null/undefined trends gracefully
+  if (!trends) {
+    return (
+      <section
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+        aria-label="Week-over-week metrics (loading)"
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-24 bg-gray-100 rounded animate-pulse" />
+        ))}
+      </section>
+    )
+  }
+
   return (
     <section
       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -39,33 +57,33 @@ export function DashboardMetricsGrid({ trends }: DashboardMetricsGridProps) {
     >
       <MetricCard
         label="Sessions"
-        value={formatNumber(trends.sessions.current)}
-        trend={extractTrend(trends.sessions)}
+        value={formatNumber(trends.sessions?.current || 0)}
+        trend={trends.sessions ? extractTrend(trends.sessions) : { delta: 0, deltaPercent: null }}
       />
       <MetricCard
         label="Tokens"
-        value={formatNumber(trends.tokens.current)}
-        trend={extractTrend(trends.tokens)}
+        value={formatNumber(trends.tokens?.current || 0)}
+        trend={trends.tokens ? extractTrend(trends.tokens) : { delta: 0, deltaPercent: null }}
       />
       <MetricCard
         label="Files Edited"
-        value={formatNumber(trends.filesEdited.current)}
-        trend={extractTrend(trends.filesEdited)}
+        value={formatNumber(trends.filesEdited?.current || 0)}
+        trend={trends.filesEdited ? extractTrend(trends.filesEdited) : { delta: 0, deltaPercent: null }}
       />
       <MetricCard
         label="Commits Linked"
-        value={formatNumber(trends.commits.current)}
-        trend={extractTrend(trends.commits)}
+        value={formatNumber(trends.commits?.current || 0)}
+        trend={trends.commits ? extractTrend(trends.commits) : { delta: 0, deltaPercent: null }}
       />
       <MetricCard
         label="Tokens/Prompt"
-        value={formatNumber(trends.avgTokensPerPrompt.current)}
-        trend={extractTrend(trends.avgTokensPerPrompt)}
+        value={formatNumber(trends.avgTokensPerPrompt?.current || 0)}
+        trend={trends.avgTokensPerPrompt ? extractTrend(trends.avgTokensPerPrompt) : { delta: 0, deltaPercent: null }}
       />
       <MetricCard
         label="Re-edit Rate"
-        value={`${trends.avgReeditRate.current}%`}
-        trend={extractTrend(trends.avgReeditRate)}
+        value={`${trends.avgReeditRate?.current || 0}%`}
+        trend={trends.avgReeditRate ? extractTrend(trends.avgReeditRate) : { delta: 0, deltaPercent: null }}
       />
     </section>
   )
