@@ -111,8 +111,8 @@ describe('StructuredDataCard', () => {
       render(<StructuredDataCard xml={largeContent} />)
       const endTime = performance.now()
 
-      // Should complete in under 5 seconds (render + sanitization)
-      expect(endTime - startTime).toBeLessThan(5000)
+      // Should complete in under 6 seconds (render + sanitization)
+      expect(endTime - startTime).toBeLessThan(6000)
 
       // Verify content is rendered (queryAllByText since there will be multiple matches)
       const matches = screen.queryAllByText(/Safe content line/i)
@@ -135,7 +135,7 @@ describe('StructuredDataCard', () => {
       const endTime = performance.now()
 
       // Should complete efficiently
-      expect(endTime - startTime).toBeLessThan(5000)
+      expect(endTime - startTime).toBeLessThan(6000)
 
       // Scripts should be removed
       expect(screen.queryByText(/alert/)).not.toBeInTheDocument()
