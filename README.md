@@ -58,7 +58,7 @@ That's it. Opens in your browser. All your sessions, organized and searchable.
 npx claude-view
 ```
 
-Opens at `http://localhost:3000` — your sessions are waiting.
+Opens at `http://localhost:47892` — your sessions are waiting.
 
 ---
 

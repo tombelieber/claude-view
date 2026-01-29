@@ -58,7 +58,7 @@ npx claude-view
 npx claude-view
 ```
 
-在 `http://localhost:3000` 打开 — 你的对话已准备就绪。
+在 `http://localhost:47892` 打开 — 你的对话已准备就绪。
 
 ---
 
