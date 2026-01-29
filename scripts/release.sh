@@ -21,6 +21,4 @@ git tag "v${VERSION}"
 
 echo ""
 echo "Tagged v${VERSION}. Next steps:"
-echo "  git push origin main --tags    # triggers CI build"
-echo "  # wait for CI to finish, then:"
-echo "  cd npx-cli && npm publish      # publish to npm"
+echo "  git push origin main --tags    # triggers CI build + auto npm publish"
