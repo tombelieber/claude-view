@@ -1,5 +1,5 @@
 ---
-status: pending
+status: superseded
 date: 2026-01-28
 ---
 
