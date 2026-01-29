@@ -1,22 +1,6 @@
 import type { Message, ToolCall } from '../hooks/use-session'
 
 /**
- * Tool icons for display in HTML export
- */
-const TOOL_ICONS: Record<string, string> = {
-  Read: '&#128196;', // 📄
-  Write: '&#9999;', // ✏️
-  Edit: '&#128295;', // 🔧
-  Bash: '&#128187;', // 💻
-  Glob: '&#128269;', // 🔍
-  Grep: '&#128270;', // 🔎
-}
-
-function getToolIcon(toolName: string): string {
-  return TOOL_ICONS[toolName] || '&#128295;' // 🔧
-}
-
-/**
  * Escapes HTML special characters to prevent XSS
  */
 function escapeHtml(text: string): string {
@@ -111,24 +95,24 @@ function markdownToHtml(markdown: string): string {
 
 /**
  * Renders tool calls as a collapsible details element
+ * Matches ToolBadge UI component styling
  */
 function renderToolCalls(toolCalls: ToolCall[]): string {
   if (!toolCalls || toolCalls.length === 0) return ''
 
   const totalCount = toolCalls.reduce((sum, tc) => sum + tc.count, 0)
-  const summaryParts = toolCalls.map((tc) => `${getToolIcon(tc.name)} ${tc.name}`)
-  const summaryText = summaryParts.join(', ')
+  const badges = toolCalls.map((tc) => `<span class="tool-badge">${escapeHtml(tc.name)}</span>`).join('')
 
   const toolDetails = toolCalls
     .map(
       (tc) =>
-        `<div class="tool-item">${getToolIcon(tc.name)} ${escapeHtml(tc.name)} <span class="tool-count">x ${tc.count}</span></div>`
+        `<div class="tool-item"><span class="tool-badge">${escapeHtml(tc.name)}</span><span class="tool-count">x${tc.count}</span></div>`
     )
-    .join('\n')
+    .join('')
 
   return `
     <details class="tool-calls">
-      <summary>${summaryText} <span class="tool-count">(${totalCount} ${totalCount === 1 ? 'call' : 'calls'})</span></summary>
+      <summary class="tool-summary">${badges}<span class="tool-total">${totalCount} ${totalCount === 1 ? 'call' : 'calls'}</span></summary>
       <div class="tool-details">
         ${toolDetails}
       </div>
@@ -151,6 +135,7 @@ function formatTime(timestamp?: string): string {
 
 /**
  * Generates a standalone HTML document from conversation messages
+ * Styling matches the React UI exactly for consistency
  */
 export function generateStandaloneHtml(messages: Message[]): string {
   const exportTimestamp = new Date().toLocaleString()
@@ -160,14 +145,13 @@ export function generateStandaloneHtml(messages: Message[]): string {
       const isUser = message.role === 'user'
       const roleClass = isUser ? 'user' : 'assistant'
       const avatarClass = isUser ? 'avatar-user' : 'avatar-assistant'
-      const avatarLetter = isUser ? 'U' : 'C'
-      const displayName = isUser ? 'You' : 'Claude'
+      const displayName = isUser ? 'Human' : 'Claude'
       const time = formatTime(message.timestamp)
 
       return `
       <div class="message ${roleClass}">
         <div class="message-header">
-          <div class="${avatarClass}">${avatarLetter}</div>
+          <div class="${avatarClass}"></div>
           <div class="message-info">
             <div class="message-name-row">
               <span class="message-name">${displayName}</span>
@@ -197,30 +181,34 @@ export function generateStandaloneHtml(messages: Message[]): string {
       padding: 0;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
       line-height: 1.6;
-      color: #1f2937;
-      background-color: #f9fafb;
-      padding: 20px;
+      color: #111827;
+      background-color: #ffffff;
+      padding: 24px 16px;
     }
 
     .container {
-      max-width: 800px;
+      max-width: 768px;
       margin: 0 auto;
     }
 
     /* Header */
     .header {
       text-align: center;
-      padding: 20px 0;
+      padding: 0 0 24px 0;
       margin-bottom: 24px;
       border-bottom: 1px solid #e5e7eb;
     }
 
     .header h1 {
       font-size: 24px;
-      font-weight: 600;
+      font-weight: 700;
       color: #111827;
       margin-bottom: 8px;
     }
@@ -248,7 +236,7 @@ export function generateStandaloneHtml(messages: Message[]): string {
     }
 
     .message.assistant {
-      background-color: #f9fafb;
+      background-color: #fafafa;
     }
 
     .message-header {
@@ -258,6 +246,7 @@ export function generateStandaloneHtml(messages: Message[]): string {
       margin-bottom: 12px;
     }
 
+    /* Avatars - match UI component styling */
     .avatar-user,
     .avatar-assistant {
       width: 32px;
@@ -266,14 +255,11 @@ export function generateStandaloneHtml(messages: Message[]): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-weight: 600;
-      font-size: 14px;
       flex-shrink: 0;
     }
 
     .avatar-user {
-      background-color: #3b82f6;
+      background-color: #d1d5db;
     }
 
     .avatar-assistant {
@@ -295,6 +281,7 @@ export function generateStandaloneHtml(messages: Message[]): string {
     .message-name {
       font-weight: 500;
       color: #111827;
+      font-size: 14px;
     }
 
     .message-time {
@@ -306,9 +293,9 @@ export function generateStandaloneHtml(messages: Message[]): string {
       padding-left: 44px;
     }
 
-    /* Typography */
+    /* Typography - match prose styling */
     .message-content p {
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
 
     .message-content p:last-child {
@@ -318,25 +305,31 @@ export function generateStandaloneHtml(messages: Message[]): string {
     .message-content h1 {
       font-size: 20px;
       font-weight: 700;
-      margin: 16px 0 8px 0;
+      margin-top: 16px;
+      margin-bottom: 8px;
+      color: #111827;
     }
 
     .message-content h2 {
       font-size: 18px;
       font-weight: 700;
-      margin: 12px 0 8px 0;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      color: #111827;
     }
 
     .message-content h3 {
       font-size: 16px;
       font-weight: 700;
-      margin: 8px 0 4px 0;
+      margin-top: 8px;
+      margin-bottom: 4px;
+      color: #111827;
     }
 
     .message-content ul,
     .message-content ol {
       margin-left: 20px;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
 
     .message-content li {
@@ -356,26 +349,28 @@ export function generateStandaloneHtml(messages: Message[]): string {
       border-left: 4px solid #d1d5db;
       padding-left: 16px;
       font-style: italic;
-      color: #4b5563;
-      margin: 8px 0;
+      color: #6b7280;
+      margin: 12px 0;
     }
 
-    /* Code */
+    /* Code - print-friendly styling */
     .inline-code {
       background-color: #f3f4f6;
       padding: 2px 6px;
       border-radius: 4px;
       font-family: 'SF Mono', Monaco, 'Courier New', monospace;
       font-size: 0.875em;
+      color: #374151;
     }
 
     .code-block {
-      background-color: #1f2937;
-      color: #f9fafb;
+      background-color: #f9fafb;
+      color: #374151;
       padding: 16px;
       border-radius: 8px;
+      border: 1px solid #e5e7eb;
       overflow-x: auto;
-      margin: 8px 0;
+      margin: 12px 0;
     }
 
     .code-block code {
@@ -385,73 +380,169 @@ export function generateStandaloneHtml(messages: Message[]): string {
       white-space: pre;
     }
 
+    /* Tool Badges - match ToolBadge component */
+    .tool-badge {
+      display: inline-block;
+      background-color: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      color: #6b7280;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+
     /* Tool calls */
     .tool-calls {
       margin-top: 12px;
-      background-color: #f3f4f6;
+      background-color: #f9fafb;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      font-size: 14px;
     }
 
-    .tool-calls summary {
+    .tool-summary {
       padding: 8px 12px;
       cursor: pointer;
-      color: #4b5563;
+      color: #6b7280;
       user-select: none;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
     }
 
-    .tool-calls summary:hover {
-      background-color: #e5e7eb;
+    .tool-summary:hover {
+      background-color: #f3f4f6;
       border-radius: 8px;
+    }
+
+    .tool-summary::marker {
+      display: none;
+    }
+
+    .tool-calls summary::before {
+      content: '▶ ';
+      display: inline-block;
+      margin-right: 4px;
+      font-size: 10px;
+    }
+
+    .tool-calls[open] summary::before {
+      content: '▼ ';
+    }
+
+    .tool-total {
+      color: #9ca3af;
+      font-size: 12px;
+      margin-left: auto;
     }
 
     .tool-details {
-      padding: 8px 12px 12px 24px;
+      padding: 8px 12px 12px 32px;
       border-top: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
     .tool-item {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 0;
-      color: #4b5563;
+      padding: 2px 0;
+      font-size: 13px;
+    }
+
+    .tool-item .tool-badge {
+      margin: 0;
     }
 
     .tool-count {
       color: #9ca3af;
+      font-size: 12px;
+      margin-left: 4px;
     }
 
-    /* Print styles */
+    /* Print optimized styles */
     @media print {
       body {
         background-color: white;
         padding: 0;
+        margin: 0;
+      }
+
+      .container {
+        max-width: 100%;
       }
 
       .message {
         break-inside: avoid;
         page-break-inside: avoid;
-      }
-
-      .message.user,
-      .message.assistant {
+        margin-bottom: 16px;
         border: 1px solid #e5e7eb;
       }
 
+      .header {
+        padding: 0 0 16px 0;
+      }
+
+      /* Ensure code blocks are readable in print */
       .code-block {
-        background-color: #f3f4f6 !important;
-        color: #1f2937 !important;
-        border: 1px solid #e5e7eb;
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        break-inside: avoid;
       }
 
       .tool-calls {
         break-inside: avoid;
+        background-color: #ffffff;
       }
 
       .tool-calls[open] .tool-details {
-        display: block;
+        display: flex;
+      }
+
+      /* Hide hover effects in print */
+      .tool-summary:hover {
+        background-color: transparent;
+      }
+
+      a {
+        text-decoration: underline;
+      }
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+      body {
+        padding: 16px 12px;
+      }
+
+      .container {
+        max-width: 100%;
+      }
+
+      .message-content {
+        padding-left: 40px;
+      }
+
+      .message-content h1 {
+        font-size: 18px;
+      }
+
+      .message-content h2 {
+        font-size: 16px;
+      }
+
+      .message-content h3 {
+        font-size: 15px;
+      }
+
+      .code-block {
+        font-size: 12px;
       }
     }
   </style>
@@ -491,13 +582,16 @@ export function downloadHtml(html: string, filename: string): void {
 /**
  * Opens a print dialog to save conversation as PDF
  * Uses browser's native print-to-PDF functionality
+ * Uses data: URL to avoid document.write() security concerns
  */
 export function exportToPdf(messages: Message[]): void {
   const html = generateStandaloneHtml(messages)
-  const printWindow = window.open('', '_blank')
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+  const printWindow = window.open(dataUrl, '_blank')
   if (printWindow) {
-    printWindow.document.write(html)
-    printWindow.document.close()
-    printWindow.print()
+    // Give the window time to load before triggering print
+    setTimeout(() => {
+      printWindow.print()
+    }, 250)
   }
 }
