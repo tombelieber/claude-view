@@ -7,9 +7,9 @@ import { cn } from '../lib/utils'
 import type { SessionInfo } from '../hooks/use-projects'
 
 export interface ActivityCalendarProps {
-  sessions: SessionInfo[]
-  selectedRange: DateRange | undefined
-  onRangeChange: (range: DateRange | undefined) => void
+  sessions: SessionInfo[] | null | undefined
+  selectedRange?: DateRange | undefined
+  onRangeChange?: (range: DateRange | undefined) => void
   totalProjects?: number
 }
 
@@ -27,18 +27,21 @@ export function ActivityCalendar({
   onRangeChange,
   totalProjects,
 }: ActivityCalendarProps) {
-  const countsByDay = useMemo(() => countSessionsByDay(sessions), [sessions])
+  // Null safety: handle null/undefined sessions
+  const safeSessionss = sessions || []
+
+  const countsByDay = useMemo(() => countSessionsByDay(safeSessionss), [safeSessionss])
 
   const earliestDate = useMemo(() => {
-    if (sessions.length === 0) return null
+    if (!safeSessionss || safeSessionss.length === 0) return null
     let min = Infinity
-    for (const s of sessions) {
-      if (s.modifiedAt < min) min = s.modifiedAt
+    for (const s of safeSessionss) {
+      if (s?.modifiedAt && s.modifiedAt < min) min = s.modifiedAt
     }
-    return new Date(min * 1000)
-  }, [sessions])
+    return min === Infinity ? null : new Date(min * 1000)
+  }, [safeSessionss])
 
-  const totalSessions = sessions.length
+  const totalSessions = safeSessionss?.length || 0
 
   const sinceLabel = earliestDate
     ? earliestDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
