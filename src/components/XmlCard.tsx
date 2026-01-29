@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { ChevronRight, ChevronDown, FileText, Brain, Wrench, FileCode, Terminal, Bot, CheckCircle2, XCircle, AlertTriangle, Zap, Shield } from 'lucide-react'
+import DOMPurify from 'dompurify'
 import { cn } from '../lib/utils'
 import { CodeBlock } from './CodeBlock'
 
@@ -314,7 +315,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
     )
   }
 
-  // Untrusted data: render external content with amber dashed border
+  // Untrusted data: render external content with amber dashed border (plaintext only for security)
   if (type === 'untrusted_data') {
     const tagMatch = content.match(/<untrusted-data-[a-f0-9-]+>([\s\S]*?)<\/untrusted-data-[a-f0-9-]+>/)
     const innerContent = tagMatch?.[1]?.trim() || content.trim()
@@ -323,6 +324,32 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const displayContent = expanded
       ? innerContent
       : lines.slice(0, 3).join('\n') + (lines.length > 3 ? '\n...' : '')
+
+    // Security: Render as plaintext in <pre> tag
+    // React's <pre> tag renders all content as text nodes (not HTML), which prevents:
+    // - Script execution (no way to execute scripts when rendering as text)
+    // - Event handler binding (onclick/onerror don't bind to text)
+    // - Any HTML interpretation (markup appears literally)
+    //
+    // Additional defense-in-depth: Apply DOMPurify to strip any executable content
+    // ALLOWED_TAGS: [] with KEEP_CONTENT: true means:
+    // - All tags are stripped (script, svg, iframe, etc. become harmless)
+    // - All attributes are removed (onclick, onerror, src, etc. removed)
+    // - Text content is preserved
+    // Final result: dangerous markup becomes plaintext when rendered in <pre>
+    const sanitized = useMemo(
+      () => {
+        if (!displayContent || !displayContent.trim()) {
+          return ''
+        }
+        return DOMPurify.sanitize(displayContent, {
+          ALLOWED_TAGS: [],
+          ALLOWED_ATTR: [],
+          KEEP_CONTENT: true,
+        })
+      },
+      [displayContent]
+    )
 
     return (
       <div className="border border-dashed border-l-4 border-l-amber-400 rounded-lg overflow-hidden bg-amber-950/20 my-2">
@@ -342,9 +369,9 @@ export function XmlCard({ content, type }: XmlCardProps) {
             )
           )}
         </button>
-        <div className="px-3 py-2 border-t border-amber-900/50 bg-amber-950/10 text-amber-100 whitespace-pre-wrap font-mono text-xs">
-          {displayContent}
-        </div>
+        <pre className="px-3 py-2 border-t border-amber-900/50 bg-amber-950/10 text-amber-100 whitespace-pre-wrap font-mono text-xs overflow-auto break-all">
+          {sanitized}
+        </pre>
       </div>
     )
   }
