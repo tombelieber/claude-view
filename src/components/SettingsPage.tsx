@@ -1,0 +1,346 @@
+import { useState } from 'react'
+import {
+  Database,
+  GitBranch,
+  Download,
+  Info,
+  RefreshCw,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Command,
+} from 'lucide-react'
+import { useStatus, formatRelativeTime } from '../hooks/use-status'
+import { useGitSync } from '../hooks/use-git-sync'
+import { useExport, type ExportFormat } from '../hooks/use-export'
+import { formatNumber } from '../lib/format-utils'
+import { cn } from '../lib/utils'
+
+// Hardcoded version - should match package.json
+const APP_VERSION = '0.1.0'
+
+interface SettingsSectionProps {
+  icon: React.ReactNode
+  title: string
+  children: React.ReactNode
+}
+
+function SettingsSection({ icon, title, children }: SettingsSectionProps) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <span className="text-gray-500">{icon}</span>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          {title}
+        </h2>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  )
+}
+
+interface InfoRowProps {
+  label: string
+  value: string | null
+  className?: string
+}
+
+function InfoRow({ label, value, className }: InfoRowProps) {
+  return (
+    <div className={cn('flex items-center justify-between py-1.5', className)}>
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-medium text-gray-900 tabular-nums">
+        {value ?? '--'}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Settings page with data status, git sync, export, and about sections.
+ *
+ * Route: /settings
+ *
+ * Sections:
+ * 1. DATA STATUS: Last indexed, duration, sessions, projects
+ * 2. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
+ * 3. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
+ * 4. ABOUT: Version, keyboard shortcuts
+ */
+export function SettingsPage() {
+  const { data: status, isLoading: isStatusLoading } = useStatus()
+  const { triggerSync, status: syncStatus, isLoading: isSyncing, error: syncError, reset: resetSync } = useGitSync()
+  const { exportSessions, isExporting, error: exportError, clearError: clearExportError } = useExport()
+
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
+  const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
+
+  const handleSync = async () => {
+    resetSync()
+    await triggerSync()
+  }
+
+  const handleExport = async () => {
+    clearExportError()
+    // Note: project scope not implemented yet - would need project context
+    await exportSessions(exportFormat)
+  }
+
+  // Format duration in milliseconds to human-readable
+  const formatDurationMs = (ms: bigint | null): string => {
+    if (ms === null) return '--'
+    const seconds = Number(ms) / 1000
+    if (seconds < 1) return `${Number(ms)}ms`
+    return `${seconds.toFixed(1)}s`
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-6 py-6">
+        <h1 className="text-xl font-semibold text-gray-900 mb-6">Settings</h1>
+
+        <div className="space-y-4">
+          {/* DATA STATUS */}
+          <SettingsSection icon={<Database className="w-4 h-4" />} title="Data Status">
+            {isStatusLoading ? (
+              <div className="flex items-center gap-2 text-gray-400 py-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Loading status...</span>
+              </div>
+            ) : status ? (
+              <div className="space-y-0">
+                <InfoRow
+                  label="Last indexed"
+                  value={status.lastIndexedAt ? formatRelativeTime(status.lastIndexedAt) : 'Never'}
+                />
+                <InfoRow
+                  label="Index duration"
+                  value={formatDurationMs(status.lastIndexDurationMs)}
+                />
+                <InfoRow
+                  label="Sessions"
+                  value={formatNumber(status.sessionsIndexed)}
+                />
+                <InfoRow
+                  label="Projects"
+                  value={formatNumber(status.projectsIndexed)}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No status data available</p>
+            )}
+          </SettingsSection>
+
+          {/* GIT SYNC */}
+          <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
+            <p className="text-sm text-gray-500 mb-4">
+              Scans git history and correlates commits with sessions.
+            </p>
+
+            {status && (
+              <div className="space-y-0 mb-4">
+                <InfoRow
+                  label="Last sync"
+                  value={status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'}
+                />
+                <InfoRow
+                  label="Commits found"
+                  value={formatNumber(status.commitsFound)}
+                />
+                <InfoRow
+                  label="Links created"
+                  value={formatNumber(status.linksCreated)}
+                />
+              </div>
+            )}
+
+            {/* Sync status message */}
+            {syncStatus === 'success' && (
+              <div className="flex items-center gap-2 text-green-600 mb-3 text-sm">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Sync started successfully</span>
+              </div>
+            )}
+            {syncStatus === 'conflict' && (
+              <div className="flex items-center gap-2 text-amber-600 mb-3 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                <span>Sync already in progress</span>
+              </div>
+            )}
+            {syncError && (
+              <div className="flex items-center gap-2 text-red-600 mb-3 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                <span>{syncError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors',
+                'bg-gray-900 text-white hover:bg-gray-800',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+              )}
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Sync Git History
+                </>
+              )}
+            </button>
+          </SettingsSection>
+
+          {/* EXPORT DATA */}
+          <SettingsSection icon={<Download className="w-4 h-4" />} title="Export Data">
+            <p className="text-sm text-gray-500 mb-4">
+              Export all session data with metrics and commits.
+            </p>
+
+            {/* Format selection */}
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Format</label>
+              <div className="flex items-center gap-4">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="format"
+                    value="json"
+                    checked={exportFormat === 'json'}
+                    onChange={() => setExportFormat('json')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">JSON</span>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="format"
+                    value="csv"
+                    checked={exportFormat === 'csv'}
+                    onChange={() => setExportFormat('csv')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">CSV</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Scope selection */}
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Scope</label>
+              <div className="flex items-center gap-4">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="scope"
+                    value="all"
+                    checked={exportScope === 'all'}
+                    onChange={() => setExportScope('all')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">All sessions</span>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer opacity-50">
+                  <input
+                    type="radio"
+                    name="scope"
+                    value="project"
+                    checked={exportScope === 'project'}
+                    onChange={() => setExportScope('project')}
+                    disabled
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Current project only</span>
+                  <span className="text-xs text-gray-400">(coming soon)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Export error */}
+            {exportError && (
+              <div className="flex items-center gap-2 text-red-600 mb-3 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                <span>{exportError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={isExporting}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors',
+                'bg-gray-900 text-white hover:bg-gray-800',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+              )}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Download Export
+                </>
+              )}
+            </button>
+          </SettingsSection>
+
+          {/* ABOUT */}
+          <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-900">
+                Claude View v{APP_VERSION}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Browse and export Claude Code sessions
+              </p>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Keyboard Shortcuts</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                    <Command className="w-3 h-3" />K
+                  </kbd>
+                  <span className="text-gray-600">Command palette</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                    <Command className="w-3 h-3" />/
+                  </kbd>
+                  <span className="text-gray-600">Focus search</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                    <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>E
+                  </kbd>
+                  <span className="text-gray-600">Export HTML</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                    <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>P
+                  </kbd>
+                  <span className="text-gray-600">Export PDF</span>
+                </div>
+              </div>
+            </div>
+          </SettingsSection>
+        </div>
+      </div>
+    </div>
+  )
+}
