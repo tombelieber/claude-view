@@ -4,37 +4,41 @@ import { Check, Copy } from 'lucide-react'
 import { useExpandContext } from '../contexts/ExpandContext'
 
 interface CodeBlockProps {
-  code: string
-  language?: string
+  code: string | null | undefined
+  language?: string | null | undefined
   blockId?: string
 }
 
 const COLLAPSE_THRESHOLD = 25
 
-export function CodeBlock({ code, language = '', blockId }: CodeBlockProps) {
+export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
   const { expandedBlocks, toggleBlock } = useExpandContext()
   const isExpanded = blockId ? expandedBlocks.has(blockId) : false
   const [copied, setCopied] = useState(false)
 
-  const lines = code.split('\n')
+  // Null safety: handle null/undefined code
+  const safeCode = code || ''
+  const safeLanguage = language || ''
+
+  const lines = safeCode.split('\n')
   const shouldCollapse = lines.length > COLLAPSE_THRESHOLD
   const displayCode = shouldCollapse && !isExpanded
     ? lines.slice(0, COLLAPSE_THRESHOLD).join('\n')
-    : code
+    : safeCode
   const remainingLines = lines.length - COLLAPSE_THRESHOLD
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(code)
+      await navigator.clipboard.writeText(safeCode)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy code:', err)
     }
-  }, [code])
+  }, [safeCode])
 
   // Map common language aliases
-  const normalizedLanguage = language.toLowerCase()
+  const normalizedLanguage = safeLanguage.toLowerCase()
   const languageMap: Record<string, string> = {
     'js': 'javascript',
     'ts': 'typescript',

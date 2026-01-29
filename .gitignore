@@ -46,6 +46,9 @@ e2e/screenshots/*
 tmp/
 temp/
 
+# Git worktrees
+.worktrees/
+
 # TypeScript build info
 *.tsbuildinfo
 
