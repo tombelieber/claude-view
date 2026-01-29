@@ -41,13 +41,14 @@
 | **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps | Personal |
 | Phase 2D: Session Health | Merged into Phase 3 | — | — |
 | **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
+| **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
 | Phase 4: Distribution (npx) | Not started | — | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
 **Current focus:** Phase 4 Distribution (npx) — next up
 
-**Code compiles:** Yes (cargo check passes, 224+ backend tests green, TypeScript compiles cleanly)
+**Code compiles:** Yes (cargo check passes, 577+ backend tests green, TypeScript compiles cleanly)
 
 ---
 
