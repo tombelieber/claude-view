@@ -223,7 +223,7 @@ mod tests {
         assert!(!json["heatmap"].as_array().unwrap().is_empty());
 
         // Check current week metrics
-        assert!(json["currentWeek"]["sessionCount"].as_u64().unwrap() >= 0);
+        assert!(json["currentWeek"]["sessionCount"].is_number());
 
         // Check trends structure
         assert!(json["trends"]["sessions"]["current"].is_number());
