@@ -1075,6 +1075,18 @@ where
             .map_err(|e| format!("spawn_blocking join error: {}", e))?;
 
             let meta = &parse_result.deep;
+            let diag = &parse_result.diagnostics;
+
+            // Log parse anomalies per session
+            if diag.json_parse_failures > 0 || diag.lines_unknown_type > 0 {
+                tracing::warn!(
+                    session_id = %id,
+                    parse_failures = diag.json_parse_failures,
+                    unknown_types = diag.lines_unknown_type,
+                    total_lines = diag.lines_total,
+                    "Parse anomalies detected"
+                );
+            }
 
             // Serialize vec fields to JSON strings
             let files_touched =
@@ -1217,6 +1229,8 @@ where
         }
     }
 
+    let indexed = counter.load(Ordering::Relaxed);
+
     if !errors.is_empty() {
         tracing::warn!(
             "pass_2_deep_index encountered {} errors: {:?}",
@@ -1225,7 +1239,14 @@ where
         );
     }
 
-    Ok(counter.load(Ordering::Relaxed))
+    tracing::info!(
+        sessions_indexed = indexed,
+        sessions_total = total,
+        parse_version = CURRENT_PARSE_VERSION,
+        "Pass 2 deep indexing complete"
+    );
+
+    Ok(indexed)
 }
 
 /// Type alias for the shared registry holder used by the server.
