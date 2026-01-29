@@ -92,8 +92,8 @@ pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
 /// Handles `--` → `/@` conversion for scoped packages.
 /// The `--` represents a path separator `/` followed by `@`.
 ///
-/// Example: `-Users-user-dev--myorg-claude-view`
-///   → `["Users", "user", "dev", "@myproject", "ai", "claude", "view"]`
+/// Example: `-Users-user-dev--example-org-claude-view`
+///   → `["Users", "user", "dev", "@example", "org", "claude", "view"]`
 fn tokenize_encoded_name(encoded_name: &str) -> Vec<String> {
     let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
     if name.is_empty() {
@@ -124,7 +124,7 @@ fn tokenize_encoded_name(encoded_name: &str) -> Vec<String> {
 /// At each position, tries:
 /// 1. Current segment as a new directory component (path separator)
 /// 2. Joining current + next segments with `-` (hyphenated name, up to 4 segments)
-/// 3. Joining with `.` (domain-like names such as `Famatch.io`)
+/// 3. Joining with `.` (domain-like names such as `acme.io`)
 ///
 /// Returns the first complete path that exists on the filesystem.
 fn dfs_resolve(base: &Path, segments: &[String], start: usize) -> Option<PathBuf> {
@@ -156,7 +156,7 @@ fn dfs_resolve(base: &Path, segments: &[String], start: usize) -> Option<PathBuf
             }
         }
 
-        // Also try `.` join for domain-like names (e.g., Famatch.io)
+        // Also try `.` join for domain-like names (e.g., acme.io)
         if join_count == 2 {
             let dot_joined = format!("{}.{}", segments[start], segments[start + 1]);
             let dot_candidate = base.join(&dot_joined);
@@ -181,7 +181,7 @@ fn dfs_resolve(base: &Path, segments: &[String], start: usize) -> Option<PathBuf
 /// Strategy:
 /// 1. Walk up from the resolved path to find the nearest `.git` directory
 /// 2. Then walk further up to find the **topmost** `.git` within 5 levels
-///    (handles worktrees/nested repos like `project-a/web` inside `project-a`)
+///    (handles worktrees/nested repos like `my-app/web` inside `my-app`)
 /// 3. Display name = topmost git root name + relative path
 ///
 /// Examples:
@@ -855,11 +855,11 @@ mod tests {
 
     #[test]
     fn test_double_dash_converts_to_at_symbol() {
-        // --myorg should become /@myorg (scoped packages)
-        let variants = get_join_variants("-Users-user-dev--myorg-project");
+        // --example-org should become /@example-org (scoped packages)
+        let variants = get_join_variants("-Users-user-dev--example-org-project");
 
         assert!(
-            variants.iter().any(|v| v.contains("/@myorg")),
+            variants.iter().any(|v| v.contains("/@example-org")),
             "Should convert -- to /@ for scoped packages. Got: {:?}",
             variants
         );
@@ -879,11 +879,11 @@ mod tests {
 
     #[test]
     fn test_dot_separator_for_domains() {
-        // famatch-io should try famatch.io
-        let variants = get_join_variants("-Users-test-famatch-io");
+        // acme-io should try acme.io
+        let variants = get_join_variants("-Users-test-acme-io");
 
         assert!(
-            variants.iter().any(|v| v.ends_with("famatch.io")),
+            variants.iter().any(|v| v.ends_with("acme.io")),
             "Should try dot separator for domain-like names. Got: {:?}",
             variants
         );
@@ -1417,10 +1417,10 @@ mod tests {
     #[test]
     fn test_tokenize_double_dash_at_prefix() {
         // -- means /@ for scoped packages
-        let segments = tokenize_encoded_name("-Users-dev--myorg-project");
+        let segments = tokenize_encoded_name("-Users-dev--example-org-project");
         assert_eq!(
             segments,
-            vec!["Users", "dev", "@myproject", "ai", "project"]
+            vec!["Users", "dev", "@example", "org", "project"]
         );
     }
 
@@ -1436,11 +1436,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let base = temp.path();
 
-        // Create: base/dev/@myorg/claude-view/
-        std::fs::create_dir_all(base.join("dev/@myorg/claude-view")).unwrap();
+        // Create: base/dev/@example-org/claude-view/
+        std::fs::create_dir_all(base.join("dev/@example-org/claude-view")).unwrap();
 
         let segments: Vec<String> = vec![
-            "dev", "@myproject", "ai", "claude", "view",
+            "dev", "@example", "org", "claude", "view",
         ]
         .into_iter()
         .map(String::from)
@@ -1450,8 +1450,8 @@ mod tests {
         assert!(result.is_some(), "DFS should find the path");
         let resolved = result.unwrap();
         assert!(
-            resolved.ends_with("dev/@myorg/claude-view"),
-            "Should resolve to @myorg/claude-view, got: {:?}",
+            resolved.ends_with("dev/@example-org/claude-view"),
+            "Should resolve to @example-org/claude-view, got: {:?}",
             resolved
         );
     }
@@ -1482,10 +1482,10 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let base = temp.path();
 
-        // Create: base/dev/famatch.io/
-        std::fs::create_dir_all(base.join("dev/famatch.io")).unwrap();
+        // Create: base/dev/acme.io/
+        std::fs::create_dir_all(base.join("dev/acme.io")).unwrap();
 
-        let segments: Vec<String> = vec!["dev", "famatch", "io"]
+        let segments: Vec<String> = vec!["dev", "acme", "io"]
             .into_iter()
             .map(String::from)
             .collect();
@@ -1493,7 +1493,7 @@ mod tests {
         let result = dfs_resolve(base, &segments, 0);
         assert!(result.is_some());
         assert!(
-            result.unwrap().ends_with("dev/famatch.io"),
+            result.unwrap().ends_with("dev/acme.io"),
             "Should try dot join for domain-like names"
         );
     }

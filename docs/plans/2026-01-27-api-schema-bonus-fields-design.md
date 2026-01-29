@@ -147,9 +147,9 @@ Returns project summaries without session details:
 ```json
 [
   {
-    "name": "-Users-user-dev--myorg-claude-view",
+    "name": "-Users-user-dev--example-org-claude-view",
     "displayName": "claude-view",
-    "path": "/Users/user/dev/@myorg/claude-view",
+    "path": "/Users/user/dev/@example-org/claude-view",
     "sessionCount": 87,
     "activeCount": 2,
     "lastActivityAt": "2026-01-27T14:30:00Z"

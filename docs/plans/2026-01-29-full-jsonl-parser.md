@@ -899,7 +899,7 @@ Expected: ALL PASS (224+ existing tests + new golden/migration tests).
 
 **Step 2: Run frontend compile check**
 
-Run: `cd /Users/user/dev/@myorg/claude-view && npx tsc --noEmit`
+Run: `cd /Users/user/dev/@example-org/claude-view && npx tsc --noEmit`
 Expected: No TypeScript errors.
 
 **Step 3: Run the server to verify startup**
