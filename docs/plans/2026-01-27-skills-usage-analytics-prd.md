@@ -7,7 +7,7 @@ date: 2026-01-27
 
 > Robust, registry-validated analytics for Claude Code plugin usage (skills, commands, agents, MCP tools, built-in tools)
 
-**Author:** Tom Tang
+**Author:** Author
 **Version:** 2.0 (Registry-Validated, All Invocable Types)
 
 ---

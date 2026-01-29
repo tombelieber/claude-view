@@ -424,10 +424,10 @@ mod tests {
 
     #[test]
     fn test_session_path_construction() {
-        let project_dir = "Users-TBGor-dev-myproject";
+        let project_dir = "Users-user-dev-myproject";
         let session_id = "abc123-def456";
 
-        let base = PathBuf::from("/Users/TBGor/.claude/projects");
+        let base = PathBuf::from("/Users/user/.claude/projects");
         let session_path = base
             .join(project_dir)
             .join(session_id)
@@ -435,7 +435,7 @@ mod tests {
 
         assert_eq!(
             session_path.to_string_lossy(),
-            "/Users/TBGor/.claude/projects/Users-TBGor-dev-myproject/abc123-def456.jsonl"
+            "/Users/user/.claude/projects/Users-user-dev-myproject/abc123-def456.jsonl"
         );
     }
 
