@@ -8,7 +8,7 @@ const https = require("https");
 const zlib = require("zlib");
 
 const VERSION = require("./package.json").version;
-const REPO = "vicky-ai/claude-view";
+const REPO = "OWNER/claude-view";
 const BINARY_NAME = process.platform === "win32" ? "vibe-recall.exe" : "vibe-recall";
 
 // --- Platform detection ---
@@ -94,6 +94,35 @@ function extractZip(buffer, destDir) {
   }
 }
 
+function downloadChecksums(version) {
+  const url = `https://github.com/${REPO}/releases/download/v${version}/checksums.txt`;
+  return download(url)
+    .then((buf) => {
+      const map = {};
+      const lines = buf.toString("utf-8").split("\n");
+      for (const line of lines) {
+        // Format: "<64-hex-chars>  <filename>" (two spaces between hash and filename)
+        const match = line.match(/^([0-9a-f]{64})  (.+)$/);
+        if (match) {
+          map[match[2]] = match[1];
+        }
+      }
+      return map;
+    })
+    .catch(() => null); // Graceful fallback for older releases without checksums
+}
+
+function verifyChecksum(buffer, expectedHash) {
+  const crypto = require("crypto");
+  const actualHash = crypto.createHash("sha256").update(buffer).digest("hex");
+  if (actualHash !== expectedHash) {
+    console.error(`Checksum verification failed.`);
+    console.error(`  Expected: ${expectedHash}`);
+    console.error(`  Actual:   ${actualHash}`);
+    process.exit(1);
+  }
+}
+
 // --- Main ---
 
 async function main() {
@@ -118,6 +147,13 @@ async function main() {
       console.error(`\nURL: ${url}`);
       console.error(`\nCheck that release v${VERSION} exists at https://github.com/${REPO}/releases`);
       process.exit(1);
+    }
+
+    // Verify checksum if available
+    const checksums = await downloadChecksums(VERSION);
+    if (checksums && checksums[platformInfo.artifact]) {
+      verifyChecksum(buffer, checksums[platformInfo.artifact]);
+      console.log("Checksum verified.");
     }
 
     // Clean previous install

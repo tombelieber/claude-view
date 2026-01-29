@@ -38,8 +38,8 @@ On first run, `npx claude-view` downloads a platform-specific tarball from GitHu
 
 ## Links
 
-- [GitHub Repository](https://github.com/vicky-ai/claude-view)
-- [Report an Issue](https://github.com/vicky-ai/claude-view/issues)
+- [GitHub Repository](https://github.com/OWNER/claude-view)
+- [Report an Issue](https://github.com/OWNER/claude-view/issues)
 
 ## License
 

@@ -736,20 +736,20 @@ git commit -m "feat: redesign Sidebar with VSCode Explorer patterns
 
 **Problem:** Current URLs look like:
 ```
-/session/-Users-TBGor-dev--vicky-ai-vic-ai-mvp/974d98a2-2a04-49dc-b37e-db042a9d1345
+/session/-Users-user-dev--example-org-my-project/974d98a2-2a04-49dc-b37e-db042a9d1345
 ```
 
 This is not human-readable. Users see encoded project dirs and raw UUIDs.
 
 **Solution:** Generate human-readable slugs from session metadata:
 ```
-/project/vic-ai-mvp/session/fix-login-bug-974d98a2
+/project/my-project/session/fix-login-bug-974d98a2
 ```
 
 Structure: `/project/:projectSlug/session/:sessionSlug`
 
 Where:
-- `projectSlug` = `displayName` slugified (e.g., `vic-ai-mvp`)
+- `projectSlug` = `displayName` slugified (e.g., `my-project`)
 - `sessionSlug` = first 6 words of `preview` slugified + first 8 chars of UUID for uniqueness (e.g., `fix-the-login-bug-we-discussed-974d98a2`)
 
 The UUID suffix ensures uniqueness even when multiple sessions have similar previews.
@@ -969,8 +969,8 @@ Expected: No errors.
 **Step 9: Manual verification**
 
 - Navigate to a project, click a session
-- URL should be: `/project/-Users-TBGor-dev--vicky-ai-vic-ai-mvp/session/fix-the-login-bug-974d98a2`
-- Breadcrumb should show: `vic-ai-mvp > fix the login bug`
+- URL should be: `/project/-Users-user-dev--example-org-my-project/session/fix-the-login-bug-974d98a2`
+- Breadcrumb should show: `my-project > fix the login bug`
 - Refreshing the URL should load the correct session
 - Legacy URLs (`/session/:projectId/:sessionId`) should still work
 
@@ -981,7 +981,7 @@ git add src/lib/url-slugs.ts src/router.tsx src/hooks/use-projects.ts src/compon
 git commit -m "feat: human-readable session URLs with slugified previews
 
 URLs change from:
-  /session/-Users-TBGor-dev--vicky-ai-vic-ai-mvp/974d98a2-...
+  /session/-Users-user-dev--example-org-my-project/974d98a2-...
 to:
   /project/.../session/fix-the-login-bug-974d98a2
 

@@ -144,8 +144,8 @@ async fn test_active_count_uses_5_minute_window() {
 
 ### Problem
 - **Node**: Full recursive filesystem verification with:
-  - `--` → `/@` conversion (scoped packages like `@vicky-ai`)
-  - `.` separator support (domains like `famatch.io`)
+  - `--` → `/@` conversion (scoped packages like `@example-org`)
+  - `.` separator support (domains like `acme.io`)
   - Recursive segment joining with filesystem checks
 - **Rust**: Simplified heuristics only:
   - Missing `--` → `/@` conversion
@@ -153,8 +153,8 @@ async fn test_active_count_uses_5_minute_window() {
   - Limited variant generation (only 3-4 patterns)
 
 ### Impact
-- Scoped packages like `@vicky-ai/claude-view` show wrong project name
-- Domain-style directories like `famatch.io` show wrong project name
+- Scoped packages like `@example-org/claude-view` show wrong project name
+- Domain-style directories like `acme.io` show wrong project name
 
 ### Test Cases (TDD)
 
@@ -163,32 +163,32 @@ async fn test_active_count_uses_5_minute_window() {
 
 #[test]
 fn test_resolve_scoped_package_path() {
-    // Create test directory: /tmp/test/@vicky-ai/claude-view
+    // Create test directory: /tmp/test/@example-org/claude-view
     let temp = create_temp_scoped_package();
 
-    let resolved = resolve_project_path("-tmp-test--vicky-ai-claude-view");
+    let resolved = resolve_project_path("-tmp-test--example-org-claude-view");
 
-    assert_eq!(resolved.full_path, "/tmp/test/@vicky-ai/claude-view");
+    assert_eq!(resolved.full_path, "/tmp/test/@example-org/claude-view");
     assert_eq!(resolved.display_name, "claude-view");
 }
 
 #[test]
 fn test_resolve_double_dash_to_at_symbol() {
     // Verify -- decodes to @
-    let variants = get_join_variants("-Users-TBGor-dev--vicky-ai-project");
+    let variants = get_join_variants("-Users-user-dev--example-org-project");
 
-    assert!(variants.iter().any(|v| v.contains("/@vicky-ai/")));
+    assert!(variants.iter().any(|v| v.contains("/@example-org/")));
 }
 
 #[test]
 fn test_resolve_domain_style_path() {
-    // Create test directory: /tmp/test/famatch.io
-    let temp = create_temp_domain_dir("famatch.io");
+    // Create test directory: /tmp/test/acme.io
+    let temp = create_temp_domain_dir("acme.io");
 
-    let resolved = resolve_project_path("-tmp-test-famatch-io");
+    let resolved = resolve_project_path("-tmp-test-acme-io");
 
-    assert_eq!(resolved.full_path, "/tmp/test/famatch.io");
-    assert_eq!(resolved.display_name, "famatch.io");
+    assert_eq!(resolved.full_path, "/tmp/test/acme.io");
+    assert_eq!(resolved.display_name, "acme.io");
 }
 
 #[test]

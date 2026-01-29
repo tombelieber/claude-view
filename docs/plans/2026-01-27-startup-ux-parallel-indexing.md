@@ -35,7 +35,7 @@ Each project has an index file with session metadata. Example entry:
   "created": "2026-01-25T16:42:56.852Z",
   "modified": "2026-01-25T17:18:30.718Z",
   "gitBranch": "main",
-  "projectPath": "/Users/TBGor/dev/@vicky-ai/claude-view",
+  "projectPath": "/Users/user/dev/@example-org/claude-view",
   "isSidechain": false
 }
 ```
@@ -79,7 +79,7 @@ Pre-aggregated daily activity stats across all projects:
 Every user prompt with timestamp and project:
 
 ```json
-{ "display": "how to start ngrok login", "timestamp": 1760357006294, "project": "/Users/.../vic-ai-mvp" }
+{ "display": "how to start ngrok login", "timestamp": 1760357006294, "project": "/Users/.../my-project" }
 ```
 
 ---
