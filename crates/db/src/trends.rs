@@ -671,6 +671,14 @@ mod tests {
             600,
             1,
             None, // first_message_at
+            // Phase 3.5: Full parser metrics
+            0, 0, 0, 0, // token counts
+            0,           // thinking_block_count
+            None, None, None, // turn durations
+            0, 0, 0, 0, // error/retry/compaction/hook_blocked
+            0, 0, 0, 0, // progress counts
+            None,        // summary_text
+            1,           // parse_version
         )
         .await
         .unwrap();
