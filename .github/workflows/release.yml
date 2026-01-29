@@ -19,11 +19,11 @@ jobs:
       matrix:
         include:
           - platform: darwin-arm64
-            os: macos-14
+            os: macos-latest
             binary: vibe-recall
             artifact: claude-view-darwin-arm64.tar.gz
           - platform: darwin-x64
-            os: macos-13
+            os: macos-15-intel
             binary: vibe-recall
             artifact: claude-view-darwin-x64.tar.gz
           - platform: linux-x64
