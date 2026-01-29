@@ -119,8 +119,35 @@ async fn main() -> Result<()> {
         )
         .await;
 
-        if let Err(e) = result {
-            idx_state.set_error(e);
+        match result {
+            Ok(_) => {
+                // Auto git-sync: correlate commits with sessions after indexing completes.
+                tracing::info!("Starting auto git sync...");
+                match vibe_recall_db::git_correlation::run_git_sync(&idx_db).await {
+                    Ok(sync_result) => {
+                        tracing::info!(
+                            "Auto git sync complete: {} repos, {} commits, {} links",
+                            sync_result.repos_scanned,
+                            sync_result.commits_found,
+                            sync_result.links_created,
+                        );
+                        if !sync_result.errors.is_empty() {
+                            tracing::warn!(
+                                "Auto git sync had {} errors: {:?}",
+                                sync_result.errors.len(),
+                                sync_result.errors,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        // Git sync failure is non-fatal
+                        tracing::warn!("Auto git sync failed (non-fatal): {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                idx_state.set_error(e);
+            }
         }
     });
 
