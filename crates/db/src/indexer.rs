@@ -265,6 +265,10 @@ where
             tool_counts: extracted.tool_counts,
             message_count: extracted.message_count,
             turn_count: extracted.turn_count,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
         };
 
         // Store in DB
