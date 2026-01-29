@@ -5,7 +5,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { Message } from './Message'
+import { MessageTyped } from './MessageTyped'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
@@ -152,7 +152,7 @@ export function ConversationView() {
               data={session.messages}
               itemContent={(index, message) => (
                 <div className="max-w-4xl mx-auto px-6 pb-4">
-                  <Message key={message.id || index} message={message} messageIndex={index} />
+                  <MessageTyped key={message.id || index} message={message} messageIndex={index} />
                 </div>
               )}
               components={{
