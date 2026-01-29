@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-01-28T10:00:00Z","message":{"content":"What is Rust?"}}
+{"type":"assistant","timestamp":"2026-01-28T10:01:00Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Rust is a systems programming language."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","timestamp":"2026-01-28T10:02:00Z","message":{"content":"How does ownership work?"}}
+{"type":"assistant","timestamp":"2026-01-28T10:03:00Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Every value has a single owner."}],"usage":{"input_tokens":200,"output_tokens":100}}}
