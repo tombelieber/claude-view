@@ -4,20 +4,105 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* react-day-picker calendar heatmap overrides */
-.rdp {
+/* ── ActivityCalendar: react-day-picker heatmap ── */
+
+.activity-calendar .rdp-root {
   --rdp-accent-color: #059669;
-  --rdp-background-color: transparent;
+  --rdp-accent-background-color: transparent;
+  width: 100%;
+  max-width: 100%;
 }
-.rdp-month_caption {
+
+/* Month fills container */
+.activity-calendar .rdp-month {
+  width: 100%;
+}
+
+/* Caption row: month name + nav arrows */
+.activity-calendar .rdp-month_caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.activity-calendar .rdp-caption_label {
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
+  color: #111827;
+  letter-spacing: -0.01em;
+}
+
+/* Nav buttons */
+.activity-calendar .rdp-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.activity-calendar .rdp-button_previous,
+.activity-calendar .rdp-button_next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.activity-calendar .rdp-button_previous:hover,
+.activity-calendar .rdp-button_next:hover {
+  background: #f3f4f6;
   color: #111827;
 }
-.rdp-day {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
-  transition: all 150ms;
+
+/* Day grid: 7 even columns filling width */
+.activity-calendar .rdp-month_grid {
+  width: 100%;
+  border-spacing: 4px;
+  border-collapse: separate;
+}
+
+/* Weekday headers */
+.activity-calendar .rdp-weekday {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.5rem;
+  text-align: center;
+  width: calc(100% / 7);
+}
+
+/* Day cells: uniform square */
+.activity-calendar .rdp-day {
+  width: calc(100% / 7);
+  padding: 2px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Range selection styling */
+.activity-calendar .rdp-range_start .rdp-day_button,
+.activity-calendar .rdp-range_end .rdp-day_button {
+  box-shadow: 0 0 0 2px #059669;
+}
+
+.activity-calendar .rdp-range_middle .rdp-day_button {
+  opacity: 0.85;
+}
+
+/* Today indicator */
+.activity-calendar .rdp-today {
+  font-weight: 700;
+}
+
+/* Hide default selected styles that clash */
+.activity-calendar .rdp-selected .rdp-day_button {
+  border: none;
+  outline: none;
 }
