@@ -1,0 +1,438 @@
+# 🚀 MVP Release Runbook — Complete Step-by-Step Guide
+
+**Last updated:** 2026-01-29
+
+> Everything you need to do to ship `npx claude-view` and close out the MVP. This is your personal action checklist.
+
+---
+
+## Phase Overview
+
+| Phase | What | Status | Your Role |
+|-------|------|--------|-----------|
+| **Code** | Phases 1-3.5 complete (backend, frontend, metrics) | ✅ Done | Read only |
+| **Setup** | Create npm account, generate token, add GitHub secret | ⏳ Pending | **YOU DO THIS** |
+| **CI/Code** | Add checksums, npm publish automation, version checks | 📝 Ready to implement | I'll do this |
+| **Validation** | Dry run, build locally, smoke test | ✅ Ready | **YOU DO THIS** |
+| **Release** | Tag, push, monitor CI, verify npm, e2e test | 📋 Ready | **YOU DO THIS** |
+
+---
+
+## PART 1: One-Time Human Setup (15 minutes)
+
+These steps must complete **before** any code changes. Do them in order.
+
+### Step 1.1: Create or Verify npm Account
+
+Go to **https://www.npmjs.com/** and either:
+- Create a new account if you don't have one, verify your email
+- Or log in to your existing account
+
+**Verify package name is available:**
+```bash
+npm view claude-view
+```
+
+Should return `404 not found`. If it's taken, use a scoped name like `@your-username/claude-view`.
+
+**✓ Done when:** You're logged into npm and confirmed the name is free.
+
+---
+
+### Step 1.2: Generate npm Access Token
+
+1. At https://www.npmjs.com/, click your **avatar** (top right)
+2. Select **Access Tokens**
+3. Click **Generate New Token**
+4. Choose **Granular Access Token** (recommended)
+
+**Configure with these exact settings:**
+- **Token name:** `claude-view-github-actions`
+- **Expiration:** 365 days (or no expiry)
+- **Packages and scopes:** Select "Only select packages and scopes" → add `claude-view`
+- **Permissions:** Read and write
+
+5. Click **Generate Token**
+6. **Copy the token immediately** — it looks like `npm_xxxxxxxxxxxxxxxxxxxx` and won't display again
+
+**✓ Done when:** Token is copied to clipboard. Paste it in the next step without closing this page.
+
+---
+
+### Step 1.3: Add NPM_TOKEN to GitHub Secrets
+
+1. Go to **https://github.com/myorg/claude-view/settings/secrets/actions**
+   - Replace `myorg` with your GitHub username if needed
+2. Click **New repository secret** (top right)
+3. **Name:** `NPM_TOKEN` (exactly)
+4. **Value:** Paste the token from Step 1.2
+5. Click **Add secret**
+
+**✓ Done when:** You see "`NPM_TOKEN`" listed on the secrets page (value is hidden).
+
+---
+
+### Step 1.4: Verify Repo is Public
+
+npm provenance requires your GitHub repo to be public.
+
+Go to **https://github.com/myorg/claude-view/settings** and check:
+- Under "Danger Zone" → is the repo visibility set to **Public**?
+- If **Private**, click "Change visibility" and make it public
+
+**✓ Done when:** Repo visibility shows "Public".
+
+---
+
+### ✅ Setup Complete
+
+You've done the three things only a human can do:
+- ✓ npm account created/verified
+- ✓ npm token generated and saved to GitHub secrets
+- ✓ GitHub repo is public
+
+**Next step:** Tell me you're done with setup, and I'll implement the CI/code changes.
+
+---
+
+## PART 2: Implementation Tasks (Claude Does This)
+
+Once you signal setup is complete, I will:
+
+### Task 2.1: Add SHA256 Checksums to CI
+- Modify `.github/workflows/release.yml`
+- Generate `checksums.txt` on each release
+- Upload to GitHub Release
+
+### Task 2.2: Add Checksum Verification to npx Wrapper
+- Modify `npx-cli/index.js`
+- Verify downloaded binary before execution
+- Fail gracefully with clear error if checksum doesn't match
+
+### Task 2.3: Add Automated npm Publish to CI
+- Append `publish-npm` job to `.github/workflows/release.yml`
+- Automatically publish to npm when GitHub Release is created
+- Include npm provenance (Sigstore attestation)
+
+### Task 2.4: Add Version Sync Check
+- Add CI check that git tag version matches `npx-cli/package.json`
+- Prevents version mismatches that break the release
+
+### Task 2.5: Add Release Helper Scripts
+- Add `release:bump`, `release:tag`, `release:push` to `package.json`
+- Makes future releases as simple as: `bun run release:bump X.Y.Z && bun run release:tag && bun run release:push`
+
+---
+
+## PART 3: Validation (You Do This)
+
+After I implement the code changes, you'll do a dry run.
+
+### Step 3.1: Verify Package Contents
+
+```bash
+cd npx-cli
+npm pack --dry-run
+```
+
+**Check output shows:**
+- ✓ `claude-view/index.js` (the wrapper)
+- ✓ `claude-view/package.json`
+- ✓ `claude-view/README.md`
+- ✓ No source code, no `dist/`, no `crates/`
+
+### Step 3.2: Build Locally
+
+```bash
+# Build frontend
+bun run build
+
+# Build Rust backend
+cargo build --release -p vibe-recall-server
+```
+
+Both must succeed without errors.
+
+### Step 3.3: Smoke Test the Binary
+
+```bash
+mkdir -p /tmp/cv-staging
+cp target/release/vibe-recall /tmp/cv-staging/
+cp -r dist /tmp/cv-staging/
+
+# Start the server
+STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/vibe-recall
+```
+
+**Should see:**
+```
+Server running at http://127.0.0.1:47892
+Ready.
+```
+
+Press `Ctrl+C` to stop.
+
+### Step 3.4: Verify GitHub Secret
+
+Go to **https://github.com/myorg/claude-view/settings/secrets/actions** and confirm you see:
+- ✓ `NPM_TOKEN` listed (value hidden)
+
+**✓ Validation complete when:** All 4 checks pass.
+
+---
+
+## PART 4: Release (You Do This)
+
+You're now ready to ship the MVP.
+
+### Step 4.1: Decide Release Version
+
+For first release, use `0.2.0` (or `0.1.0` if you prefer).
+
+Write this version down: `________`
+
+### Step 4.2: Update Version
+
+```bash
+bun run release:bump 0.2.0
+```
+
+This automatically updates `npx-cli/package.json` to `0.2.0`.
+
+### Step 4.3: Commit Version Bump
+
+```bash
+git add npx-cli/package.json
+git commit -m "chore: bump to v0.2.0"
+```
+
+### Step 4.4: Tag and Push
+
+```bash
+bun run release:tag
+bun run release:push
+```
+
+This:
+1. Creates a git tag `v0.2.0`
+2. Pushes commits and tags to GitHub
+3. Triggers the CI pipeline automatically
+
+### Step 4.5: Monitor CI
+
+Go to **https://github.com/myorg/claude-view/actions** and watch the release workflow.
+
+**Wait for:**
+1. ✓ `build` job completes (4 platform binaries)
+2. ✓ `release` job completes (GitHub Release created)
+3. ✓ `publish-npm` job completes (npm publish succeeds)
+
+Should take ~3-5 minutes total.
+
+**If any job fails:** Check the logs, fix the issue, and we'll retag.
+
+### Step 4.6: Verify npm
+
+```bash
+npm view claude-view
+```
+
+**Should show:**
+```
+claude-view@0.2.0 | MIT | deps: none | versions: 1
+```
+
+### Step 4.7: End-to-End Test
+
+```bash
+# Clean the cache to force re-download
+rm -rf ~/.cache/claude-view
+
+# Install and run
+npx claude-view@latest
+```
+
+**Should see:**
+1. Download starts
+2. Checksum verification (if release has checksums)
+3. Server starts on `http://127.0.0.1:47892`
+4. Opens in browser
+
+**✓ Release complete when:** Everything works.
+
+---
+
+## PART 5: Post-Release (Cleanup & Documentation)
+
+After the first release ships, you should:
+
+### 5.1: Update PROGRESS.md
+
+Mark Phase 4 as **DONE**:
+```
+| Phase 4: Distribution (npx) | **DONE** | v0.2.0 released, auto-publish working | Personal |
+```
+
+### 5.2: Create Release Notes
+
+Add to **https://github.com/myorg/claude-view/releases/tag/v0.2.0**:
+
+```markdown
+## 🎉 vibe-recall v0.2.0 — MVP Release
+
+### What's Included
+- Full JSONL parser (7-type extraction: assistant, user, tool_use, etc.)
+- Parallel indexing (~1.8s for 500 sessions on 8 cores)
+- Metrics engine (atomic units, derived metrics, git correlation)
+- Full dashboard with filtering, export, trends
+- Session deep-dive view with metrics, git commits, files touched
+- 335+ backend tests, full TypeScript coverage
+- Accessibility audit (WCAG AA compliance)
+
+### Distribution
+- `npx claude-view` — install with Node.js (zero build tools needed)
+- SHA256 checksum verification for integrity
+- npm provenance attestation (Sigstore)
+
+### Known Limitations
+- macOS ARM64/Intel only (MVP)
+- Linux/Windows support in v0.3+
+- Search (Tantivy) planned for v0.4+
+- Enterprise team layer in Phase 5
+
+### Getting Started
+```bash
+npx claude-view
+```
+
+Open `http://127.0.0.1:47892` in your browser.
+
+### Feedback
+Found a bug? Have a feature request? [Open an issue](https://github.com/myorg/claude-view/issues)
+```
+
+### 5.3: Announce
+
+Post in your channels (Twitter, blog, Discord, etc.):
+
+> 🚀 **vibe-recall v0.2.0 is live!**
+>
+> Browse & search your Claude Code sessions with:
+> ```bash
+> npx claude-view
+> ```
+>
+> ✨ Features: metrics, trends, git correlation, full-text export
+>
+> 📊 335+ tests, zero dependencies, open-source
+>
+> GitHub: [myorg/claude-view](https://github.com/myorg/claude-view)
+
+### 5.4: Future Releases
+
+For every release after this one, use the same workflow:
+
+```bash
+# 1. Bump version
+bun run release:bump X.Y.Z
+
+# 2. Commit
+git add npx-cli/package.json
+git commit -m "chore: bump to vX.Y.Z"
+
+# 3. Tag and push
+bun run release:tag
+bun run release:push
+
+# 4. Wait for CI (~5 minutes)
+# 5. Verify: npx view claude-view
+# 6. Smoke test: rm -rf ~/.cache/claude-view && npx claude-view@latest
+```
+
+---
+
+## Quick Reference Checklist
+
+### Before Anything (Setup)
+- [ ] npm account created/verified
+- [ ] npm token generated (`npm_xxxxxxxx`)
+- [ ] `NPM_TOKEN` added to GitHub secrets
+- [ ] GitHub repo is public
+- [ ] Tell Claude you're done with setup
+
+### Before Release (Validation)
+- [ ] `npm pack --dry-run` shows correct files
+- [ ] `bun run build` succeeds
+- [ ] `cargo build --release -p vibe-recall-server` succeeds
+- [ ] Local smoke test starts server on :47892
+- [ ] `NPM_TOKEN` secret exists on GitHub
+
+### Release
+- [ ] Decide version number
+- [ ] `bun run release:bump X.Y.Z`
+- [ ] `git add -A && git commit -m "chore: bump to vX.Y.Z"`
+- [ ] `bun run release:tag && bun run release:push`
+- [ ] Watch CI at `/actions` (should take ~5 min)
+- [ ] `npm view claude-view` shows new version
+- [ ] `rm -rf ~/.cache/claude-view && npx claude-view@latest` works
+
+### After Release
+- [ ] Update PROGRESS.md (mark Phase 4 DONE)
+- [ ] Add release notes to GitHub Release
+- [ ] Announce on Twitter/blog/Discord
+
+---
+
+## Troubleshooting
+
+### "npm ERR! 403 Forbidden"
+- **Cause:** `NPM_TOKEN` is missing, invalid, or has expired
+- **Fix:** Go to https://github.com/myorg/claude-view/settings/secrets/actions and verify `NPM_TOKEN` is set
+- **Or:** Generate a new token at https://www.npmjs.com/settings/tokens
+
+### "Checksum verification FAILED"
+- **Cause:** Binary was corrupted during download, or checksums.txt is wrong
+- **Fix:** Check GitHub Release has `checksums.txt` file, or retry the download
+
+### "Version mismatch: tag v0.2.0 != package.json 0.1.0"
+- **Cause:** You tagged but forgot to bump `npx-cli/package.json` first
+- **Fix:** Run `bun run release:bump 0.2.0` and recommit before tagging
+
+### "npm publish fails with 'not authorized'"
+- **Cause:** Token has expired (if you set 365-day expiry, might be ~1 year old)
+- **Fix:** Generate a new token, update `NPM_TOKEN` secret
+
+### "GitHub Actions fails during build"
+- **Check:** https://github.com/myorg/claude-view/actions
+- **Click:** Failed job → logs
+- **Common issues:**
+  - Rust compilation error → run `cargo test` locally
+  - TypeScript error → run `bun run build` locally
+  - Missing dependency → check `Cargo.toml`, `package.json`
+
+---
+
+## Done! 🎉
+
+Once you complete all these steps, `vibe-recall` will be:
+- ✅ Open source (public GitHub repo)
+- ✅ PII-free (privacy scrub complete)
+- ✅ Publicly installable (`npx claude-view`)
+- ✅ Integrity-verified (SHA256 checksums)
+- ✅ Provenance-attested (npm provenance)
+- ✅ Auto-published (CI handles it)
+
+**Next phases (after MVP):**
+- **Phase 5:** Enterprise team layer (multi-user aggregation)
+- **Phase 6:** Full-text search (Tantivy)
+- **v0.3:** Linux + Windows support
+
+---
+
+## Questions?
+
+- **About npm setup?** Check https://docs.npmjs.com/
+- **About GitHub secrets?** Check https://docs.github.com/en/actions/security-guides/encrypted-secrets
+- **About the code?** Read `docs/plans/2026-01-29-phase4-npx-release.md` for full details
+
+**Ready? Tell me you've completed PART 1 (Setup) and I'll implement PART 2 (Tasks).**
