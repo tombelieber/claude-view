@@ -1,25 +1,26 @@
 // Golden tests for parse_bytes correctness.
-// These verify that JSONL parsing produces expected ExtendedMetadata results
+// These verify that JSONL parsing produces expected ParseResult/ExtendedMetadata
 // across a variety of inputs: empty, single message, multi-turn, truncation, and invalid data.
 
 use vibe_recall_db::indexer_parallel::parse_bytes;
 
 #[test]
 fn golden_empty_file() {
-    let meta = parse_bytes(b"");
-    assert_eq!(meta.turn_count, 0);
-    assert!(meta.last_message.is_empty());
-    assert!(meta.tool_counts.is_empty());
-    assert!(meta.skills_used.is_empty());
-    assert!(meta.files_touched.is_empty());
+    let result = parse_bytes(b"");
+    assert_eq!(result.deep.turn_count, 0);
+    assert!(result.deep.last_message.is_empty());
+    assert!(result.deep.tool_counts.is_empty());
+    assert!(result.deep.skills_used.is_empty());
+    assert!(result.deep.files_touched.is_empty());
+    assert!(result.raw_invocations.is_empty());
 }
 
 #[test]
 fn golden_single_user_message() {
     let data = br#"{"type":"user","message":{"content":"Hello world"}}"#;
-    let meta = parse_bytes(data);
-    assert_eq!(meta.last_message, "Hello world");
-    assert_eq!(meta.turn_count, 0); // No assistant response yet
+    let result = parse_bytes(data);
+    assert_eq!(result.deep.last_message, "Hello world");
+    assert_eq!(result.deep.turn_count, 0); // No assistant response yet
 }
 
 #[test]
@@ -31,15 +32,15 @@ fn golden_full_conversation() {
 {"type":"user","message":{"content":"Now run the tests"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cargo test"}}]}}
 "#;
-    let meta = parse_bytes(data);
-    assert_eq!(meta.turn_count, 3);
-    assert_eq!(meta.last_message, "Now run the tests");
-    assert_eq!(meta.tool_counts.read, 2);
-    assert_eq!(meta.tool_counts.edit, 1);
-    assert_eq!(meta.tool_counts.bash, 1);
-    assert_eq!(meta.tool_counts.write, 0);
-    assert!(meta.files_touched.contains(&"/src/main.rs".to_string()));
-    assert!(meta.files_touched.contains(&"/src/lib.rs".to_string()));
+    let result = parse_bytes(data);
+    assert_eq!(result.deep.turn_count, 3);
+    assert_eq!(result.deep.last_message, "Now run the tests");
+    assert_eq!(result.deep.tool_counts.read, 2);
+    assert_eq!(result.deep.tool_counts.edit, 1);
+    assert_eq!(result.deep.tool_counts.bash, 1);
+    assert_eq!(result.deep.tool_counts.write, 0);
+    assert!(result.deep.files_touched.contains(&"/src/main.rs".to_string()));
+    assert!(result.deep.files_touched.contains(&"/src/lib.rs".to_string()));
 }
 
 #[test]
@@ -49,9 +50,9 @@ fn golden_long_message_truncated() {
         r#"{{"type":"user","message":{{"content":"{}"}}}}"#,
         long_msg
     );
-    let meta = parse_bytes(data.as_bytes());
-    assert_eq!(meta.last_message.len(), 203); // 200 + "..."
-    assert!(meta.last_message.ends_with("..."));
+    let result = parse_bytes(data.as_bytes());
+    assert_eq!(result.deep.last_message.len(), 203); // 200 + "..."
+    assert!(result.deep.last_message.ends_with("..."));
 }
 
 #[test]
@@ -61,9 +62,9 @@ fn golden_non_utf8_no_panic() {
     .to_vec();
     data.extend_from_slice(&[0xFF, 0xFE, b'\n']); // Invalid UTF-8
     data.extend_from_slice(br#"{"type":"assistant","message":{"content":"response"}}"#);
-    let meta = parse_bytes(&data);
+    let result = parse_bytes(&data);
     // Should not panic, may have partial results
-    assert!(meta.turn_count <= 1);
+    assert!(result.deep.turn_count <= 1);
 }
 
 #[test]
@@ -75,16 +76,16 @@ fn golden_realistic_session() {
 {"type":"user","message":{"content":"commit please"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add ."}}]}}
 "#;
-    let meta = parse_bytes(data);
-    assert_eq!(meta.turn_count, 3);
-    assert_eq!(meta.last_message, "commit please");
-    assert_eq!(meta.tool_counts.read, 1);
-    assert_eq!(meta.tool_counts.write, 1);
-    assert_eq!(meta.tool_counts.bash, 2);
-    assert_eq!(meta.tool_counts.edit, 0);
-    assert!(meta.files_touched.contains(&"/src/app.ts".to_string()));
+    let result = parse_bytes(data);
+    assert_eq!(result.deep.turn_count, 3);
+    assert_eq!(result.deep.last_message, "commit please");
+    assert_eq!(result.deep.tool_counts.read, 1);
+    assert_eq!(result.deep.tool_counts.write, 1);
+    assert_eq!(result.deep.tool_counts.bash, 2);
+    assert_eq!(result.deep.tool_counts.edit, 0);
+    assert!(result.deep.files_touched.contains(&"/src/app.ts".to_string()));
     assert!(
-        meta.files_touched
+        result.deep.files_touched
             .contains(&"/tests/app.test.ts".to_string())
     );
 }

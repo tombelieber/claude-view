@@ -2,9 +2,19 @@
 //! Application state for the Axum server.
 
 use crate::indexing_state::IndexingState;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use vibe_recall_core::Registry;
 use vibe_recall_db::Database;
+
+/// Type alias for the shared registry holder.
+///
+/// The registry is `None` until background indexing builds it, then `Some(Registry)`.
+/// Uses `std::sync::RwLock` (not `tokio::sync::RwLock`) because:
+/// - The registry is written exactly once from the background task
+/// - Read operations are uncontended after the initial write
+/// - No need to hold the lock across `.await` points
+pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 
 /// Shared application state accessible from all route handlers.
 pub struct AppState {
@@ -14,17 +24,21 @@ pub struct AppState {
     pub db: Database,
     /// Shared indexing progress state (lock-free atomics).
     pub indexing: Arc<IndexingState>,
+    /// Invocable registry (skills, commands, MCP tools, built-in tools).
+    /// `None` until background indexing completes registry build.
+    pub registry: RegistryHolder,
 }
 
 impl AppState {
     /// Create a new application state wrapped in an Arc for sharing.
     ///
-    /// Uses a default (idle) `IndexingState`.
+    /// Uses a default (idle) `IndexingState` and empty registry holder.
     pub fn new(db: Database) -> Arc<Self> {
         Arc::new(Self {
             start_time: Instant::now(),
             db,
             indexing: Arc::new(IndexingState::new()),
+            registry: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -35,6 +49,21 @@ impl AppState {
             start_time: Instant::now(),
             db,
             indexing,
+            registry: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    /// Create with both an external `IndexingState` and a shared registry holder.
+    pub fn new_with_indexing_and_registry(
+        db: Database,
+        indexing: Arc<IndexingState>,
+        registry: RegistryHolder,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            start_time: Instant::now(),
+            db,
+            indexing,
+            registry,
         })
     }
 

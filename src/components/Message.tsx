@@ -1,13 +1,17 @@
+import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { User, Copy, Check } from 'lucide-react'
 import type { Message as MessageType } from '../hooks/use-session'
 import { ToolBadge } from './ToolBadge'
 import { CodeBlock } from './CodeBlock'
 import { XmlCard, extractXmlBlocks } from './XmlCard'
+import { ThinkingBlock } from './ThinkingBlock'
 import { cn } from '../lib/utils'
 
 interface MessageProps {
   message: MessageType
+  messageIndex?: number
 }
 
 function formatTime(timestamp?: string): string | null {
@@ -26,7 +30,7 @@ function formatTime(timestamp?: string): string | null {
  * Returns segments of text and XML for mixed rendering
  * Uses position tracking from original content to handle duplicate XML blocks correctly
  */
-function processContent(content: string): Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> {
+function processContent(content: string): Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown' }> {
   const xmlBlocks = extractXmlBlocks(content)
 
   if (xmlBlocks.length === 0) {
@@ -34,7 +38,7 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
   }
 
   // Find positions of each block in original content, tracking search offset for duplicates
-  const blocksWithPositions: Array<{ xml: string; type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown'; index: number }> = []
+  const blocksWithPositions: Array<{ xml: string; type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown'; index: number }> = []
   let searchOffset = 0
 
   for (const block of xmlBlocks) {
@@ -48,7 +52,7 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
   // Sort by position (should already be sorted, but ensure correctness)
   blocksWithPositions.sort((a, b) => a.index - b.index)
 
-  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'unknown' }> = []
+  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown' }> = []
   let lastIndex = 0
 
   for (const block of blocksWithPositions) {
@@ -76,44 +80,70 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
   return segments
 }
 
-export function Message({ message }: MessageProps) {
+export function Message({ message, messageIndex }: MessageProps) {
   const isUser = message.role === 'user'
   const time = formatTime(message.timestamp)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyMessage = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy message:', err)
+    }
+  }, [message.content])
 
   return (
     <div
       className={cn(
-        'p-4 rounded-lg',
+        'p-4 rounded-lg group',
         isUser ? 'bg-white border border-gray-200' : 'bg-gray-50'
       )}
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
         {/* Avatar */}
-        <div
-          className={cn(
-            'w-8 h-8 rounded flex items-center justify-center text-white font-semibold text-sm flex-shrink-0',
-            isUser ? 'bg-blue-500' : 'bg-orange-500'
-          )}
-        >
-          {isUser ? 'U' : 'C'}
-        </div>
+        {isUser ? (
+          <div className="w-8 h-8 rounded flex items-center justify-center bg-gray-200 text-gray-600 flex-shrink-0">
+            <User className="w-4 h-4" />
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded flex items-center justify-center bg-orange-500 text-white font-semibold text-sm flex-shrink-0">
+            C
+          </div>
+        )}
 
         {/* Name and timestamp */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-gray-900">
-              {isUser ? 'You' : 'Claude'}
+              {isUser ? 'Human' : 'Claude'}
             </span>
-            {time && (
-              <span className="text-xs text-gray-400">{time}</span>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyMessage}
+                className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 transition-all"
+                title="Copy message"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              {time && (
+                <span className="text-xs text-gray-400">{time}</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="pl-11">
+        {/* Thinking block (merged from preceding thinking-only message) */}
+        {message.thinking && (
+          <ThinkingBlock thinking={message.thinking} />
+        )}
+
         {processContent(message.content).map((segment, i) => {
           if (segment.type === 'xml' && segment.xmlType) {
             return (
@@ -129,28 +159,36 @@ export function Message({ message }: MessageProps) {
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  code({ className, children, ...props }) {
-                    const match = /language-(\w+)/.exec(className || '')
-                    const isInline = !match && !String(children).includes('\n')
+                  code: (() => {
+                    let blockCounter = 0
+                    return ({ className, children, ...props }: any) => {
+                      const match = /language-(\w+)/.exec(className || '')
+                      const isInline = !match && !String(children).includes('\n')
 
-                    if (isInline) {
+                      if (isInline) {
+                        return (
+                          <code
+                            className="px-1.5 py-0.5 bg-gray-100 rounded text-sm font-mono"
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        )
+                      }
+
+                      const blockId = messageIndex !== undefined
+                        ? `${messageIndex}-${blockCounter++}`
+                        : undefined
+
                       return (
-                        <code
-                          className="px-1.5 py-0.5 bg-gray-100 rounded text-sm font-mono"
-                          {...props}
-                        >
-                          {children}
-                        </code>
+                        <CodeBlock
+                          code={String(children).replace(/\n$/, '')}
+                          language={match?.[1]}
+                          blockId={blockId}
+                        />
                       )
                     }
-
-                    return (
-                      <CodeBlock
-                        code={String(children).replace(/\n$/, '')}
-                        language={match?.[1]}
-                      />
-                    )
-                  },
+                  })(),
                   pre({ children }) {
                     // Let the code component handle the pre
                     return <>{children}</>
