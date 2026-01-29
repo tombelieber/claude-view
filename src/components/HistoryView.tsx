@@ -1,19 +1,81 @@
 // src/components/HistoryView.tsx
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Search, X, FolderOpen } from 'lucide-react'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Search, X, FolderOpen, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { ActivitySparkline } from './ActivitySparkline'
 import { FilterSortBar, useFilterSort } from './FilterSortBar'
+import type { SessionSort, SessionFilter } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
 
 type TimeFilter = 'all' | 'today' | '7d' | '30d'
 
+/** Human-readable labels for sort options */
+const SORT_LABELS: Record<SessionSort, string> = {
+  recent: 'Most recent',
+  tokens: 'Most tokens',
+  prompts: 'Most prompts',
+  files_edited: 'Most files edited',
+  duration: 'Longest duration',
+}
+
+const SORT_ICONS: Record<SessionSort, React.ReactNode> = {
+  recent: <Clock className="w-3.5 h-3.5" />,
+  tokens: <Coins className="w-3.5 h-3.5" />,
+  prompts: <MessageSquare className="w-3.5 h-3.5" />,
+  files_edited: <FileEdit className="w-3.5 h-3.5" />,
+  duration: <Clock className="w-3.5 h-3.5" />,
+}
+
+const FILTER_LABELS: Record<SessionFilter, string> = {
+  all: 'All sessions',
+  has_commits: 'Sessions with commits',
+  high_reedit: 'High re-edit rate sessions',
+  long_session: 'Long sessions (>30 min)',
+}
+
+/** Format duration in human-readable form */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = seconds / 3600
+  return `${hours.toFixed(1)}h`
+}
+
+/** Format value for the sort metric displayed on each card */
+function formatSortMetric(session: { durationSeconds?: number; userPromptCount?: number; filesEditedCount?: number; totalInputTokens?: bigint | null; totalOutputTokens?: bigint | null }, sort: SessionSort): string | null {
+  switch (sort) {
+    case 'duration': {
+      const dur = session.durationSeconds ?? 0
+      return dur > 0 ? formatDuration(dur) : null
+    }
+    case 'prompts': {
+      const count = session.userPromptCount ?? 0
+      return count > 0 ? `${count} prompts` : null
+    }
+    case 'files_edited': {
+      const count = session.filesEditedCount ?? 0
+      return count > 0 ? `${count} files` : null
+    }
+    case 'tokens': {
+      const total = Number((session.totalInputTokens ?? 0n) + (session.totalOutputTokens ?? 0n))
+      if (total <= 0) return null
+      if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M tokens`
+      if (total >= 1_000) return `${(total / 1_000).toFixed(0)}K tokens`
+      return `${total} tokens`
+    }
+    default:
+      return null
+  }
+}
+
 export function HistoryView() {
+  const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
   const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
   const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
@@ -30,10 +92,17 @@ export function HistoryView() {
   const searchRef = useRef<HTMLInputElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
 
-  // Focus search on mount
+  // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
+  const hasDeepLinkSort = sort !== 'recent'
+  const hasDeepLinkFilter = filter !== 'all'
+  const hasDeepLink = hasDeepLinkSort || hasDeepLinkFilter
+
+  // Focus search on mount (only if not deep-linked)
   useEffect(() => {
-    searchRef.current?.focus()
-  }, [])
+    if (!hasDeepLink) {
+      searchRef.current?.focus()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close project filter on outside click
   useEffect(() => {
@@ -134,7 +203,7 @@ export function HistoryView() {
   }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filter, sort])
 
   const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filter !== 'all' || sort !== 'recent'
-  const groups = sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: 'Results', sessions: filteredSessions }]
+  const groups = sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
 
   // Project list sorted by session count
   const sortedProjects = useMemo(() => {
@@ -182,6 +251,40 @@ export function HistoryView() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-5">
+
+        {/* Deep-link context banner */}
+        {hasDeepLink && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <button
+              onClick={() => navigate('/')}
+              className="p-1 -ml-1 rounded hover:bg-gray-200 transition-colors text-gray-400 hover:text-gray-600"
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              {hasDeepLinkSort && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                  {SORT_ICONS[sort]}
+                  {SORT_LABELS[sort]}
+                </span>
+              )}
+              {hasDeepLinkFilter && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  {FILTER_LABELS[filter]}
+                </span>
+              )}
+              <span className="text-gray-400 tabular-nums">{filteredSessions.length} sessions</span>
+            </div>
+            <button
+              onClick={clearAll}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Activity sparkline chart */}
         <ActivitySparkline
@@ -318,7 +421,7 @@ export function HistoryView() {
             <div>
               {groups.map(group => (
                 <div key={group.label}>
-                  {/* Date header */}
+                  {/* Group header */}
                   <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-2 flex items-center gap-3">
                     <span className="text-[13px] font-semibold text-gray-500 tracking-tight whitespace-nowrap">
                       {group.label}
@@ -331,19 +434,35 @@ export function HistoryView() {
 
                   {/* Cards */}
                   <div className="space-y-1.5 pb-3">
-                    {group.sessions.map(session => (
-                      <Link
-                        key={session.id}
-                        to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
-                        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
-                      >
-                        <SessionCard
-                          session={session}
-                          isSelected={false}
-                          projectDisplayName={projectDisplayNames.get(session.project)}
-                        />
-                      </Link>
-                    ))}
+                    {group.sessions.map((session, idx) => {
+                      const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
+                      return (
+                        <div key={session.id} className="relative">
+                          {/* Rank badge for non-default sorts */}
+                          {sort !== 'recent' && (
+                            <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center">
+                              <span className="text-[10px] font-bold text-gray-500 tabular-nums">{idx + 1}</span>
+                            </div>
+                          )}
+                          <Link
+                            to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                            className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                          >
+                            <SessionCard
+                              session={session}
+                              isSelected={false}
+                              projectDisplayName={projectDisplayNames.get(session.project)}
+                            />
+                          </Link>
+                          {/* Sort metric badge overlay */}
+                          {metric && (
+                            <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-[11px] font-medium text-gray-500 tabular-nums">
+                              {metric}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}

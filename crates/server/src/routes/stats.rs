@@ -49,6 +49,10 @@ pub struct DashboardTrends {
     pub files_edited: TrendMetric,
     /// Commits linked trend
     pub commits: TrendMetric,
+    /// Avg tokens per prompt trend
+    pub avg_tokens_per_prompt: TrendMetric,
+    /// Avg re-edit rate trend (percentage 0-100)
+    pub avg_reedit_rate: TrendMetric,
 }
 
 impl From<WeekTrends> for DashboardTrends {
@@ -58,6 +62,8 @@ impl From<WeekTrends> for DashboardTrends {
             tokens: t.total_tokens,
             files_edited: t.total_files_edited,
             commits: t.commit_link_count,
+            avg_tokens_per_prompt: t.avg_tokens_per_prompt,
+            avg_reedit_rate: t.avg_reedit_rate,
         }
     }
 }
