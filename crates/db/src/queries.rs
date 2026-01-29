@@ -256,7 +256,11 @@ impl Database {
                 s.user_prompt_count, s.api_call_count, s.tool_call_count,
                 s.files_read, s.files_edited,
                 s.files_read_count, s.files_edited_count, s.reedited_files_count,
-                s.duration_seconds, s.first_message_at, s.commit_count
+                s.duration_seconds, s.first_message_at, s.commit_count,
+                s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
+                s.api_error_count, s.compaction_count, s.agent_spawn_count,
+                s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
+                s.summary_text, s.parse_version
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1052,7 +1056,11 @@ impl Database {
                 s.user_prompt_count, s.api_call_count, s.tool_call_count,
                 s.files_read, s.files_edited,
                 s.files_read_count, s.files_edited_count, s.reedited_files_count,
-                s.duration_seconds, s.first_message_at, s.commit_count
+                s.duration_seconds, s.first_message_at, s.commit_count,
+                s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
+                s.api_error_count, s.compaction_count, s.agent_spawn_count,
+                s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
+                s.summary_text, s.parse_version
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1343,6 +1351,18 @@ struct SessionRow {
     #[allow(dead_code)] // Used internally by git sync queries, not by into_session_info()
     first_message_at: Option<i64>,
     commit_count: i32,
+    // Phase 3.5: Full parser metrics
+    thinking_block_count: i32,
+    turn_duration_avg_ms: Option<i64>,
+    turn_duration_max_ms: Option<i64>,
+    api_error_count: i32,
+    compaction_count: i32,
+    agent_spawn_count: i32,
+    bash_progress_count: i32,
+    hook_progress_count: i32,
+    mcp_progress_count: i32,
+    summary_text: Option<String>,
+    parse_version: i32,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -1388,6 +1408,18 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             duration_seconds: row.try_get("duration_seconds")?,
             first_message_at: row.try_get("first_message_at")?,
             commit_count: row.try_get("commit_count")?,
+            // Phase 3.5: Full parser metrics
+            thinking_block_count: row.try_get("thinking_block_count")?,
+            turn_duration_avg_ms: row.try_get("turn_duration_avg_ms").ok().flatten(),
+            turn_duration_max_ms: row.try_get("turn_duration_max_ms").ok().flatten(),
+            api_error_count: row.try_get("api_error_count")?,
+            compaction_count: row.try_get("compaction_count")?,
+            agent_spawn_count: row.try_get("agent_spawn_count")?,
+            bash_progress_count: row.try_get("bash_progress_count")?,
+            hook_progress_count: row.try_get("hook_progress_count")?,
+            mcp_progress_count: row.try_get("mcp_progress_count")?,
+            summary_text: row.try_get("summary_text")?,
+            parse_version: row.try_get("parse_version")?,
         })
     }
 }
@@ -1444,6 +1476,18 @@ impl SessionRow {
             reedited_files_count: self.reedited_files_count as u32,
             duration_seconds: self.duration_seconds as u32,
             commit_count: self.commit_count as u32,
+            // Phase 3.5
+            thinking_block_count: self.thinking_block_count as u32,
+            turn_duration_avg_ms: self.turn_duration_avg_ms.map(|v| v as u64),
+            turn_duration_max_ms: self.turn_duration_max_ms.map(|v| v as u64),
+            api_error_count: self.api_error_count as u32,
+            compaction_count: self.compaction_count as u32,
+            agent_spawn_count: self.agent_spawn_count as u32,
+            bash_progress_count: self.bash_progress_count as u32,
+            hook_progress_count: self.hook_progress_count as u32,
+            mcp_progress_count: self.mcp_progress_count as u32,
+            summary_text: self.summary_text,
+            parse_version: self.parse_version as u32,
         }
     }
 }
@@ -1501,6 +1545,17 @@ mod tests {
             reedited_files_count: 0,
             duration_seconds: 0,
             commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
         }
     }
 
