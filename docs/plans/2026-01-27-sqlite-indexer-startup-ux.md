@@ -67,7 +67,7 @@ for fields the current API returns that aren't in the v2 spec.
 CREATE TABLE IF NOT EXISTS sessions (
     -- v2 spec columns
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL,           -- encoded dir name (e.g., "-Users-user-dev--myorg-project")
+    project_id TEXT NOT NULL,           -- encoded dir name (e.g., "-Users-user-dev--example-org-project")
     title TEXT,                         -- reserved for future use
     preview TEXT NOT NULL DEFAULT '',    -- first user message (truncated)
     turn_count INTEGER NOT NULL DEFAULT 0,

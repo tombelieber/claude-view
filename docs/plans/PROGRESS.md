@@ -42,11 +42,13 @@
 | Phase 2D: Session Health | Merged into Phase 3 | — | — |
 | **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
 | **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
-| Phase 4: Distribution (npx) | Not started | — | Personal |
+| **Phase 4: Distribution (npx)** | **IN PROGRESS** | 5/7 tasks done — awaiting human setup (npm token) + first release | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
-**Current focus:** Phase 4 Distribution (npx) — next up
+**Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
+
+**Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
 **Code compiles:** Yes (cargo check passes, 577+ backend tests green, TypeScript compiles cleanly)
 
@@ -148,6 +150,33 @@ See `docs/plans/2026-01-28-phase3-metrics-engine.md` for full plan.
 
 ---
 
+## Phase 3.5: Full JSONL Parser — DONE
+
+Full 7-type extraction (assistant, result, tool_use, tool_result, system, user, summary) with ParseDiagnostics and parse_version-triggered re-indexing. Extended `update_session_deep_fields` from 21 to 39 parameters.
+
+See `docs/plans/2026-01-29-full-jsonl-parser.md` for full plan.
+
+---
+
+## Phase 4: Distribution (npx) — IN PROGRESS
+
+Ship `npx claude-view` with checksum verification, automated npm publish, and provenance attestation.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| — | Human setup: npm account + token + GitHub secret | **PENDING** | Must be done before Task 7 |
+| 1 | Add SHA256 checksum generation to CI | **DONE** | `checksums.txt` in GitHub Release |
+| 2 | Add checksum verification to npx wrapper | **DONE** | SHA256 verify before execute |
+| 3 | Add automated npm publish to CI | **DONE** | `--provenance --access public` |
+| 4 | Add version sync check to CI | **DONE** | Tag vs package.json guard, `shell: bash` for Windows |
+| 5 | Update release script message | **DONE** | Reflects auto npm publish |
+| 6 | Dry run validation | **PENDING** | `npm pack --dry-run` + local smoke test |
+| 7 | First release | **PENDING** | Tag + push + verify npm + e2e test |
+
+See `docs/plans/2026-01-29-phase4-npx-release.md` for full plan.
+
+---
+
 ## Phase 5: Enterprise Team Layer — Not Started
 
 Multi-user aggregation and admin features. Transforms single-user analytics into team-wide insights.
@@ -177,21 +206,30 @@ Quick reference so you never have to scan the folder again.
 | File | Status | Role |
 |------|--------|------|
 | `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
-| `phase2-parallel-indexing-and-registry.md` | approved | **Active work** — Phase 2A-2 registry + perf fixes |
-| `sqlite-indexer-startup-ux.md` | done | All 6 tasks delivered by Phase 2 work |
-| `vibe-recall-phase1-implementation.md` | done | All 7 tasks complete (workspace, types, parser, discovery, server) |
+| `vibe-recall-phase1-implementation.md` | done | Phase 1 — workspace, types, parser, discovery, server |
+| `phase2-parallel-indexing-and-registry.md` | done | Phase 2A — parallel indexing + invocable registry |
+| `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
+| `phase2c-api-split-ux-polish.md` | done | Phase 2C — API split + UX polish, 24/24 steps |
+| `phase3-metrics-engine.md` | done | Phase 3 — atomic units, derived metrics, git correlation, 48 steps |
+| `2026-01-29-phase3b-git-sync-orchestrator.md` | done | Phase 3B — git sync orchestrator, auto-sync, frontend refresh |
+| `2026-01-29-full-jsonl-parser.md` | done | Phase 3.5 — full 7-type JSONL extraction, parse_version re-index |
+| `2026-01-29-jsonl-parser-spec.md` | done | Phase 3.5 — parser specification reference |
+| `2026-01-28-mvp-npx-distribution.md` | superseded | Replaced by Phase 4 plan (infra already built) |
+| `2026-01-29-phase4-npx-release.md` | pending | **Phase 4** — checksum verification, npm publish CI, release pipeline |
+| `2026-01-28-session-view-ux-polish.md` | done | Session view UX improvements |
+| `2026-01-28-xml-card-full-coverage-design.md` | done | XML card rendering coverage |
+| `2026-01-28-rust-ts-type-sync-design.md` | done | Rust/TS type sync via ts-rs |
+| `2026-01-27-history-view-date-grouping-design.md` | done | History view date grouping |
+| `sqlite-indexer-startup-ux.md` | done | Archived — delivered by Phase 2 |
+| `vibe-recall-analytics-design.md` | superseded | Merged into Phase 3 |
+| `skills-usage-analytics-prd.md` | superseded | Merged into Phase 3 |
 | `ux-polish-a11y-sidenav-urls.md` | superseded | Merged into Phase 2C |
 | `api-schema-bonus-fields-design.md` | superseded | Merged into Phase 2C |
-| `phase2c-api-split-ux-polish.md` | done | Phase 2C — API split + UX polish, 24/24 steps |
-| `skills-usage-analytics-prd.md` | superseded | PRD merged into Phase 3 plan |
-| `phase2b-token-model-tracking.md` | done | Phase 2B — token/model tracking, 12/12 steps |
-| `phase3-metrics-engine.md` | done | **Phase 3** — atomic units, derived metrics, git correlation, 48 steps |
-| `2026-01-29-phase3b-git-sync-orchestrator.md` | done | **Phase 3B** — wire git sync orchestrator, fix sync route, auto-sync on startup, fix frontend refresh |
-| `vibe-recall-analytics-design.md` | superseded | Merged into Phase 3 plan |
+| `startup-ux-parallel-indexing.md` | superseded | Merged into Phase 2 |
 | `path-resolution-dfs-design.md` | done | Archived — shipped |
 | `phase2-backend-integration.md` | done | Archived — shipped |
 | `rust-backend-parity-fix.md` | done | Archived — shipped |
-| `startup-ux-parallel-indexing.md` | superseded | Archived — merged into Phase 2 |
+| `2026-01-29-pre-release-privacy-scrub.md` | done | Pre-release — personal identifiers removed for open-source |
 
 ---
 
