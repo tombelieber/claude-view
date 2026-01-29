@@ -1,8 +1,9 @@
+import { useMemo } from 'react'
 import DOMPurify from 'dompurify'
 
 interface StructuredDataCardProps {
   xml: string | null | undefined
-  type?: 'unknown' | 'observation' | 'tool_call' | 'command' | string
+  type?: 'unknown' | 'observation' | 'tool_call' | 'command'
 }
 
 /**
@@ -26,24 +27,27 @@ interface StructuredDataCardProps {
  */
 export function StructuredDataCard({
   xml,
-  type = 'unknown',
 }: StructuredDataCardProps) {
-  // Handle empty/null/undefined content
-  if (!xml || !xml.trim()) {
-    return <div className="text-gray-500">No data</div>
-  }
-
-  // Sanitize XML with DOMPurify
+  // Sanitize XML with DOMPurify (hook must be called unconditionally)
+  // Wrapped in useMemo to prevent re-sanitization on every render
   // ALLOWED_TAGS: Only safe structural tags, no script/iframe/style
   // ALLOWED_ATTR: Empty array = no attributes = no onclick/onerror/src injection
   // KEEP_CONTENT: Preserve text content when stripping unsafe tags
-  const sanitizedXml = DOMPurify.sanitize(xml, {
-    ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'ul', 'ol', 'li', 'pre', 'code'],
-    ALLOWED_ATTR: [],
-    KEEP_CONTENT: true,
-  })
+  const sanitizedXml = useMemo(
+    () => {
+      if (!xml || !xml.trim()) {
+        return ''
+      }
+      return DOMPurify.sanitize(xml, {
+        ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'ul', 'ol', 'li', 'pre', 'code'],
+        ALLOWED_ATTR: [],
+        KEEP_CONTENT: true,
+      })
+    },
+    [xml]
+  )
 
-  // Check if sanitized content is effectively empty (only whitespace)
+  // Handle empty/null/undefined content
   if (!sanitizedXml.trim()) {
     return <div className="text-gray-500">No data</div>
   }
@@ -53,6 +57,8 @@ export function StructuredDataCard({
       <div className="font-mono text-sm text-gray-700">
         <pre
           className="whitespace-pre-wrap break-words text-xs bg-gray-50 p-2 rounded border border-gray-100"
+          role="document"
+          aria-label="Structured data content"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: sanitizedXml }}
         />
