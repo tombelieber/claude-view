@@ -12,10 +12,10 @@ This encoding is ambiguous — literal hyphens in directory names look identical
 path separators. The current algorithm generates a fixed set of variants (tail-join
 heuristics) that fails for:
 
-- **`-Users-user-dev--myorg-claude-view`** → resolves to `/Users/user/dev/@myproject/ai/claude/view` → display name "view" (should be "claude-view")
-- **`-Users-user-dev--myorg-project-a-web`** → resolves to `/Users/user/dev/@myproject/ai/project-a/web` → display name "web" (should be "project-a/web")
+- **`-Users-user-dev--example-org-claude-view`** → resolves to `/Users/user/dev/@example/org/claude/view` → display name "view" (should be "claude-view")
+- **`-Users-user-dev--example-org-my-app-web`** → resolves to `/Users/user/dev/@example/org/my-app/web` → display name "web" (should be "my-app/web")
 
-Root cause: `--` is correctly converted to `/@`, but the remaining `-` in `myorg`
+Root cause: `--` is correctly converted to `/@`, but the remaining `-` in `example-org`
 is treated as a path separator because the algorithm only joins segments from the tail,
 never in the middle.
 
@@ -36,7 +36,7 @@ backtracking to find the actual filesystem path.
 At each position, try:
 1. Current segment as new directory → if exists as dir, recurse
 2. Join current + next segment(s) with `-` → check again (lookahead cap: 4 segments)
-3. Join with `.` instead of `-` (domain names like `Famatch.io`)
+3. Join with `.` instead of `-` (domain names like `acme.io`)
 4. If at last segment(s), check for file/dir existence of joined path
 5. Backtrack if no child leads to complete resolution
 
@@ -54,9 +54,9 @@ After resolving the full path, derive the display name from the nearest git root
 Examples:
 | Resolved Path | Git Root | Display Name |
 |---|---|---|
-| `/Users/user/dev/@myorg/claude-view` | `claude-view/.git` | `claude-view` |
-| `/Users/user/dev/@myorg/project-a/web` | `project-a/.git` | `project-a/web` |
-| `/Users/user/dev/@Famatch.io` | `@Famatch.io/.git` | `@Famatch.io` |
+| `/Users/user/dev/@example-org/claude-view` | `claude-view/.git` | `claude-view` |
+| `/Users/user/dev/@example-org/my-app/web` | `my-app/.git` | `my-app/web` |
+| `/Users/user/dev/@acme.io` | `@acme.io/.git` | `@acme.io` |
 | `/Users/user` | (none) | `user` |
 
 Fallback: if no `.git` found, use last path component (current behavior).
