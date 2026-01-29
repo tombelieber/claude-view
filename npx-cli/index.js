@@ -8,7 +8,7 @@ const https = require("https");
 const zlib = require("zlib");
 
 const VERSION = require("./package.json").version;
-const REPO = "OWNER/claude-view";
+const REPO = "anonymous-dev/claude-view";
 const BINARY_NAME = process.platform === "win32" ? "vibe-recall.exe" : "vibe-recall";
 
 // --- Platform detection ---
