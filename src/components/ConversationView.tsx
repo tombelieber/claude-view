@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react'
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, MessageSquare } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
@@ -7,6 +7,7 @@ import { Message } from './Message'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
+import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import type { ProjectSummary } from '../hooks/use-projects'
 
 export function ConversationView() {
@@ -55,10 +56,19 @@ export function ConversationView() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-3 text-gray-600">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading conversation...</span>
+      <div className="h-full flex flex-col overflow-hidden bg-gray-50">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+          <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+            <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="flex-1 p-6">
+          <div className="max-w-4xl mx-auto">
+            <Skeleton label="conversation" rows={4} withHeader={false} />
+          </div>
         </div>
       </div>
     )
@@ -67,16 +77,10 @@ export function ConversationView() {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center text-red-600">
-          <p className="font-medium">Failed to load conversation</p>
-          <p className="text-sm mt-1">{error.message}</p>
-          <button
-            onClick={handleBack}
-            className="mt-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            Go back
-          </button>
-        </div>
+        <ErrorState
+          message={error.message}
+          onBack={handleBack}
+        />
       </div>
     )
   }
@@ -84,15 +88,12 @@ export function ConversationView() {
   if (!session) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center text-gray-500">
-          <p>No conversation data found</p>
-          <button
-            onClick={handleBack}
-            className="mt-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            Go back
-          </button>
-        </div>
+        <EmptyState
+          icon={<MessageSquare className="w-6 h-6 text-gray-400" />}
+          title="No conversation data found"
+          description="This session may have been deleted or moved."
+          action={{ label: 'Go back', onClick: handleBack }}
+        />
       </div>
     )
   }
