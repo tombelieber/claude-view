@@ -500,6 +500,7 @@ impl Database {
         reedited_files_count: i32,
         duration_seconds: i32,
         commit_count: i32,
+        first_message_at: Option<i64>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -524,7 +525,8 @@ impl Database {
                 files_edited_count = ?17,
                 reedited_files_count = ?18,
                 duration_seconds = ?19,
-                commit_count = ?20
+                commit_count = ?20,
+                first_message_at = ?21
             WHERE id = ?1
             "#,
         )
@@ -548,6 +550,7 @@ impl Database {
         .bind(reedited_files_count)
         .bind(duration_seconds)
         .bind(commit_count)
+        .bind(first_message_at)
         .execute(self.pool())
         .await?;
 
@@ -2029,6 +2032,7 @@ mod tests {
             1,   // reedited_files_count (file1.rs edited twice)
             600, // duration_seconds (10 minutes)
             3,   // commit_count
+            Some(1000), // first_message_at
         )
         .await
         .unwrap();
@@ -2091,6 +2095,7 @@ mod tests {
             r#"["/a.rs"]"#, r#"["/b.rs"]"#, // files_read, files_edited
             1, 1, 0,    // counts
             120, 2,     // duration_seconds, commit_count
+            None, // first_message_at
         )
         .await
         .unwrap();

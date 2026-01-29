@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { IndexMetadata } from '../types/generated'
 
@@ -60,6 +61,19 @@ export function formatRelativeTime(timestamp: bigint | null): string | null {
   if (hours > 0) return `${hours} hour${hours === 1 ? '' : 's'} ago`
   if (minutes > 0) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
   return 'just now'
+}
+
+/**
+ * Hook that ticks every `intervalMs` to force re-renders.
+ * Use this alongside formatRelativeTime to keep "just now" / "X minutes ago" fresh.
+ */
+export function useTick(intervalMs = 30_000): number {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return tick
 }
 
 // Re-export types for convenience
