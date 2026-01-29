@@ -216,148 +216,301 @@ pub fn read_file_fast(path: &Path) -> io::Result<Vec<u8>> {
     }
 }
 
-/// SIMD-accelerated line scanner that extracts only the fields NOT in sessions-index.json.
+/// Full JSON parser that extracts all 7 JSONL line types.
 ///
-/// Returns a `ParseResult` containing both the deep metadata (tool counts, skills, etc.)
-/// and raw tool_use invocations for downstream classification.
+/// Returns a `ParseResult` containing deep metadata (tool counts, skills, token usage,
+/// system metrics, progress counts, etc.) and raw tool_use invocations for downstream
+/// classification.
+///
+/// Every non-empty line is parsed with `serde_json::from_slice::<Value>`, then dispatched
+/// on the `type` field: user, assistant, system, progress, queue-operation, summary,
+/// file-history-snapshot. This replaces the previous SIMD-selective parser that only
+/// handled user and assistant lines.
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut result = ParseResult::default();
-    let mut user_count = 0usize;
-    let mut assistant_count = 0usize;
-    let mut last_user_content: Option<String> = None;
+    let diag = &mut result.diagnostics;
+    diag.bytes_total = data.len() as u64;
 
-    // Phase 3: Tracking for atomic units
+    let mut user_count = 0u32;
+    let mut assistant_count = 0u32;
+    let mut last_user_content: Option<String> = None;
     let mut tool_call_count = 0u32;
     let mut files_read_all: Vec<String> = Vec::new();
     let mut files_edited_all: Vec<String> = Vec::new();
     let mut first_timestamp: Option<i64> = None;
     let mut last_timestamp: Option<i64> = None;
 
-    let user_finder = memmem::Finder::new(b"\"type\":\"user\"");
-    let asst_finder = memmem::Finder::new(b"\"type\":\"assistant\"");
-
-    // Tool name patterns for counting
-    let read_finder = memmem::Finder::new(b"\"Read\"");
-    let edit_finder = memmem::Finder::new(b"\"Edit\"");
-    let write_finder = memmem::Finder::new(b"\"Write\"");
-    let bash_finder = memmem::Finder::new(b"\"Bash\"");
-
-    // File path pattern (from tool_use inputs)
-    let file_path_finder = memmem::Finder::new(b"\"file_path\"");
-
-    // SIMD pre-filter for tool_use blocks (only parse JSON for lines containing this)
-    let tool_use_finder = memmem::Finder::new(b"\"tool_use\"");
-
-    // SIMD pre-filter for turn extraction (only parse JSON if usage data present)
-    let usage_finder = memmem::Finder::new(b"\"input_tokens\":");
-
-    // Hoisted finders for helper functions (avoid rebuilding SIMD tables per line)
+    // Keep SIMD finders for string-level extraction within already-classified lines
     let content_finder = memmem::Finder::new(b"\"content\":\"");
     let text_finder = memmem::Finder::new(b"\"text\":\"");
     let skill_name_finder = memmem::Finder::new(b"\"skill\":\"");
-    let file_path_value_finder = memmem::Finder::new(b"\"file_path\":\"");
-
-    // Timestamp finder for duration calculation
-    let timestamp_finder = memmem::Finder::new(b"\"timestamp\":");
 
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
+            diag.lines_empty += 1;
             continue;
         }
 
-        // Extract timestamp from any line that has one (for duration calculation)
-        if timestamp_finder.find(line).is_some() {
-            if let Some(ts) = extract_timestamp_from_line(line) {
-                if first_timestamp.is_none() {
-                    first_timestamp = Some(ts);
-                }
-                last_timestamp = Some(ts);
+        diag.lines_total += 1;
+        diag.json_parse_attempts += 1;
+
+        // Full JSON parse every line
+        let value: serde_json::Value = match serde_json::from_slice(line) {
+            Ok(v) => v,
+            Err(_) => {
+                diag.json_parse_failures += 1;
+                continue;
             }
+        };
+
+        // Extract timestamp from any line
+        if let Some(ts) = extract_timestamp_from_value(&value) {
+            diag.timestamps_extracted += 1;
+            if first_timestamp.is_none() {
+                first_timestamp = Some(ts);
+            }
+            last_timestamp = Some(ts);
         }
 
-        if user_finder.find(line).is_some() {
-            user_count += 1;
-            // Extract content for last_message tracking
-            if let Some(content) =
-                extract_first_text_content(line, &content_finder, &text_finder)
-            {
-                last_user_content = Some(content);
-            }
-            // Check for skill invocations in user messages
-            extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
-        } else if asst_finder.find(line).is_some() {
-            assistant_count += 1;
-            // Count tool usage
-            if read_finder.find(line).is_some() {
-                result.deep.tool_counts.read += count_occurrences(line, &read_finder);
-            }
-            if edit_finder.find(line).is_some() {
-                result.deep.tool_counts.edit += count_occurrences(line, &edit_finder);
-            }
-            if write_finder.find(line).is_some() {
-                result.deep.tool_counts.write += count_occurrences(line, &write_finder);
-            }
-            if bash_finder.find(line).is_some() {
-                result.deep.tool_counts.bash += count_occurrences(line, &bash_finder);
-            }
-            // Extract file paths from tool_use inputs
-            if file_path_finder.find(line).is_some() {
-                extract_file_paths_from_line(
-                    line,
-                    &file_path_value_finder,
-                    &mut result.deep.files_touched,
-                );
-            }
-            // Extract raw tool_use invocations (SIMD pre-filter: only parse JSON if "tool_use" present)
-            if tool_use_finder.find(line).is_some() {
-                let invocation_count_before = result.raw_invocations.len();
-                extract_raw_invocations(line, byte_offset, &mut result.raw_invocations);
-                let invocations_added = result.raw_invocations.len() - invocation_count_before;
-                tool_call_count += invocations_added as u32;
+        // Dispatch on type field
+        let line_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
-                // Phase 3: Extract file paths for files_read and files_edited
-                extract_files_read_edited(
-                    &result.raw_invocations[invocation_count_before..],
-                    &mut files_read_all,
-                    &mut files_edited_all,
-                );
+        match line_type {
+            "user" => {
+                diag.lines_user += 1;
+                user_count += 1;
+                // Extract content for last_message tracking (use SIMD helpers on raw bytes)
+                if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
+                    last_user_content = Some(content);
+                }
+                // Check for skill invocations
+                extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
             }
-            // Extract turn data (model + token usage) if usage data is present
-            if usage_finder.find(line).is_some() {
-                extract_turn_data(line, byte_offset, (assistant_count - 1) as u32, &mut result.turns, &mut result.models_seen);
+            "assistant" => {
+                diag.lines_assistant += 1;
+                assistant_count += 1;
+
+                // Extract token usage from .message.usage
+                if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+                    if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                        result.deep.total_input_tokens += v;
+                    }
+                    if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                        result.deep.total_output_tokens += v;
+                    }
+                    if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                        result.deep.cache_read_tokens += v;
+                    }
+                    if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+                        result.deep.cache_creation_tokens += v;
+                    }
+                }
+
+                // Extract turn data (model + tokens) for turns table
+                if let Some(message) = value.get("message") {
+                    if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
+                        let model_id = model.to_string();
+                        if !result.models_seen.contains(&model_id) {
+                            result.models_seen.push(model_id.clone());
+                        }
+
+                        let usage = message.get("usage");
+                        let uuid = value.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let content_type = message.get("content")
+                            .and_then(|c| c.as_array())
+                            .and_then(|arr| arr.first())
+                            .and_then(|block| block.get("type"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("text")
+                            .to_string();
+                        let timestamp = extract_timestamp_from_value(&value);
+
+                        result.turns.push(vibe_recall_core::RawTurn {
+                            uuid,
+                            parent_uuid,
+                            seq: assistant_count - 1,
+                            model_id,
+                            content_type,
+                            input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
+                            output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
+                            cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
+                            cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                            service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                            timestamp,
+                        });
+                        diag.turns_extracted += 1;
+                    }
+                }
+
+                // Extract tool_use blocks from content
+                let content = value.get("message").and_then(|m| m.get("content"));
+                match content {
+                    Some(serde_json::Value::Array(arr)) => {
+                        for block in arr {
+                            let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                            match block_type {
+                                "tool_use" => {
+                                    diag.tool_use_blocks_found += 1;
+                                    let name = match block.get("name").and_then(|n| n.as_str()) {
+                                        Some(n) => n,
+                                        None => {
+                                            diag.tool_use_missing_name += 1;
+                                            continue;
+                                        }
+                                    };
+
+                                    tool_call_count += 1;
+
+                                    // Count by tool name for ToolCounts
+                                    match name {
+                                        "Read" => result.deep.tool_counts.read += 1,
+                                        "Edit" => result.deep.tool_counts.edit += 1,
+                                        "Write" => result.deep.tool_counts.write += 1,
+                                        "Bash" => result.deep.tool_counts.bash += 1,
+                                        _ => {}
+                                    }
+
+                                    // Extract file paths
+                                    let input = block.get("input");
+                                    if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
+                                        if !fp.is_empty() {
+                                            diag.file_paths_extracted += 1;
+                                            result.deep.files_touched.push(fp.to_string());
+                                            match name {
+                                                "Read" => files_read_all.push(fp.to_string()),
+                                                "Edit" | "Write" => files_edited_all.push(fp.to_string()),
+                                                _ => {}
+                                            }
+                                        }
+                                    }
+
+                                    // Store raw invocation
+                                    let ts = value.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+                                    result.raw_invocations.push(RawInvocation {
+                                        name: name.to_string(),
+                                        input: input.cloned(),
+                                        byte_offset,
+                                        timestamp: ts,
+                                    });
+                                }
+                                "thinking" => {
+                                    result.deep.thinking_block_count += 1;
+                                }
+                                "text" => {
+                                    // counted but nothing special to extract
+                                }
+                                _ => {
+                                    // unknown block type
+                                }
+                            }
+                        }
+                    }
+                    Some(serde_json::Value::String(_)) => {
+                        // Content is a string, not an array — valid but no tool_use blocks
+                        diag.content_not_array += 1;
+                    }
+                    _ => {
+                        // null or missing content
+                    }
+                }
+            }
+            "system" => {
+                diag.lines_system += 1;
+                let subtype = value.get("subtype").and_then(|s| s.as_str()).unwrap_or("");
+                match subtype {
+                    "turn_duration" => {
+                        if let Some(ms) = value.get("durationMs").and_then(|v| v.as_u64()) {
+                            result.deep.turn_durations_ms.push(ms);
+                        }
+                    }
+                    "api_error" => {
+                        result.deep.api_error_count += 1;
+                        if let Some(retries) = value.get("retryAttempt").and_then(|v| v.as_u64()) {
+                            result.deep.api_retry_count += retries as u32;
+                        }
+                    }
+                    "compact_boundary" | "microcompact_boundary" => {
+                        result.deep.compaction_count += 1;
+                    }
+                    "stop_hook_summary" => {
+                        if value.get("preventedContinuation").and_then(|v| v.as_bool()) == Some(true) {
+                            result.deep.hook_blocked_count += 1;
+                        }
+                    }
+                    _ => {
+                        // local_command and unknown subtypes — counted in lines_system already
+                    }
+                }
+            }
+            "progress" => {
+                diag.lines_progress += 1;
+                let data_type = value.get("data").and_then(|d| d.get("type")).and_then(|t| t.as_str()).unwrap_or("");
+                match data_type {
+                    "agent_progress" => {
+                        result.deep.agent_spawn_count += 1;
+                    }
+                    "bash_progress" => {
+                        result.deep.bash_progress_count += 1;
+                    }
+                    "hook_progress" => {
+                        result.deep.hook_progress_count += 1;
+                    }
+                    "mcp_progress" => {
+                        result.deep.mcp_progress_count += 1;
+                    }
+                    _ => {
+                        // waiting_for_task and other subtypes
+                    }
+                }
+            }
+            "queue-operation" => {
+                diag.lines_queue_op += 1;
+                match value.get("operation").and_then(|o| o.as_str()) {
+                    Some("enqueue") => result.deep.queue_enqueue_count += 1,
+                    Some("dequeue") => result.deep.queue_dequeue_count += 1,
+                    _ => {}
+                }
+            }
+            "summary" => {
+                diag.lines_summary += 1;
+                if let Some(summary) = value.get("summary").and_then(|s| s.as_str()) {
+                    result.deep.summary_text = Some(summary.to_string());
+                }
+            }
+            "file-history-snapshot" => {
+                diag.lines_file_snapshot += 1;
+                result.deep.file_snapshot_count += 1;
+            }
+            _ => {
+                diag.lines_unknown_type += 1;
             }
         }
     }
 
-    result.deep.turn_count = user_count.min(assistant_count);
-    result.deep.last_message = last_user_content
-        .map(|c| truncate(&c, 200))
-        .unwrap_or_default();
-
-    // Phase 3: Populate atomic unit metrics
-    result.deep.user_prompt_count = user_count as u32;
-    result.deep.api_call_count = assistant_count as u32;
+    // Finalize metrics
+    result.deep.turn_count = (user_count as usize).min(assistant_count as usize);
+    result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
+    result.deep.user_prompt_count = user_count;
+    result.deep.api_call_count = assistant_count;
     result.deep.tool_call_count = tool_call_count;
 
-    // files_read: deduplicated unique paths
+    // files_read: deduplicated
     let mut files_read_unique = files_read_all.clone();
     files_read_unique.sort();
     files_read_unique.dedup();
     result.deep.files_read_count = files_read_unique.len() as u32;
     result.deep.files_read = files_read_unique;
 
-    // files_edited: store ALL occurrences (for re-edit calculation)
+    // files_edited: store all occurrences
     result.deep.files_edited = files_edited_all.clone();
-    // files_edited_count: unique paths only
     let mut files_edited_unique = files_edited_all.clone();
     files_edited_unique.sort();
     files_edited_unique.dedup();
     result.deep.files_edited_count = files_edited_unique.len() as u32;
-
-    // reedited_files_count: count files appearing 2+ times in files_edited
     result.deep.reedited_files_count = count_reedited_files(&files_edited_all);
 
-    // duration_seconds: last - first timestamp
+    // Duration
     result.deep.first_timestamp = first_timestamp;
     result.deep.last_timestamp = last_timestamp;
     result.deep.duration_seconds = match (first_timestamp, last_timestamp) {
@@ -384,6 +537,18 @@ fn extract_timestamp_from_line(line: &[u8]) -> Option<i64> {
         // Try integer first
         v.as_i64().or_else(|| {
             // Try ISO8601 string
+            v.as_str()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.timestamp())
+        })
+    })
+}
+
+/// Extract timestamp from an already-parsed JSON value.
+/// Handles both ISO8601 strings and Unix integers.
+fn extract_timestamp_from_value(value: &serde_json::Value) -> Option<i64> {
+    value.get("timestamp").and_then(|v| {
+        v.as_i64().or_else(|| {
             v.as_str()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.timestamp())
@@ -943,6 +1108,7 @@ where
                 meta.reedited_files_count as i32,
                 meta.duration_seconds as i32,
                 commit_count,
+                meta.first_timestamp,
             )
             .await
             .map_err(|e| format!("Failed to update deep fields for {}: {}", id, e))?;
@@ -2077,6 +2243,106 @@ mod tests {
         let raw: Vec<RawInvocation> = vec![];
         let result = extract_commit_skill_invocations(&raw);
         assert!(result.is_empty(), "Should return empty for empty input");
+    }
+
+    // ============================================================================
+    // Golden Fixture Tests (Task 5: Full 7-type JSONL extraction)
+    // ============================================================================
+
+    #[test]
+    fn test_golden_complete_session() {
+        let data = include_bytes!("../tests/golden_fixtures/complete_session.jsonl");
+        let result = parse_bytes(data);
+        let diag = &result.diagnostics;
+
+        // Line counts
+        assert_eq!(diag.lines_total, 10);
+        assert_eq!(diag.lines_user, 2);
+        assert_eq!(diag.lines_assistant, 2);
+        assert_eq!(diag.lines_system, 1);
+        assert_eq!(diag.lines_progress, 1);
+        assert_eq!(diag.lines_queue_op, 2);
+        assert_eq!(diag.lines_summary, 1);
+        assert_eq!(diag.lines_file_snapshot, 1);
+        assert_eq!(diag.lines_unknown_type, 0);
+        assert_eq!(diag.json_parse_failures, 0);
+
+        // Core metrics
+        assert_eq!(result.deep.user_prompt_count, 2);
+        assert_eq!(result.deep.api_call_count, 2);
+        assert_eq!(result.deep.tool_call_count, 3);
+        assert_eq!(result.deep.files_read_count, 1);
+        assert_eq!(result.deep.files_edited_count, 1);
+        assert_eq!(result.deep.reedited_files_count, 1);
+
+        // Tokens
+        assert_eq!(result.deep.total_input_tokens, 3500);
+        assert_eq!(result.deep.total_output_tokens, 350);
+        assert_eq!(result.deep.cache_read_tokens, 500);
+        assert_eq!(result.deep.cache_creation_tokens, 100);
+        assert_eq!(result.deep.thinking_block_count, 1);
+
+        // System
+        assert_eq!(result.deep.turn_durations_ms, vec![5000]);
+        assert_eq!(result.deep.compaction_count, 0);
+        assert_eq!(result.deep.api_error_count, 0);
+
+        // Progress
+        assert_eq!(result.deep.hook_progress_count, 1);
+        assert_eq!(result.deep.agent_spawn_count, 0);
+
+        // Summary
+        assert_eq!(result.deep.summary_text.as_deref(), Some("Fixed authentication bug in auth.rs"));
+
+        // Queue
+        assert_eq!(result.deep.queue_enqueue_count, 1);
+        assert_eq!(result.deep.queue_dequeue_count, 1);
+
+        // File snapshot
+        assert_eq!(result.deep.file_snapshot_count, 1);
+    }
+
+    #[test]
+    fn test_golden_edge_cases() {
+        let data = include_bytes!("../tests/golden_fixtures/edge_cases.jsonl");
+        let result = parse_bytes(data);
+        let diag = &result.diagnostics;
+
+        assert_eq!(diag.lines_unknown_type, 1);
+        assert_eq!(diag.json_parse_failures, 1);
+        assert_eq!(diag.content_not_array, 1);
+        assert_eq!(diag.tool_use_missing_name, 1);
+        assert_eq!(result.deep.api_error_count, 1);
+        assert_eq!(result.deep.compaction_count, 1);
+        assert_eq!(result.deep.agent_spawn_count, 1);
+    }
+
+    #[test]
+    fn test_golden_spacing_variants() {
+        let data = include_bytes!("../tests/golden_fixtures/spacing_variants.jsonl");
+        let result = parse_bytes(data);
+        assert_eq!(result.diagnostics.lines_user, 3);
+        assert_eq!(result.deep.user_prompt_count, 3);
+    }
+
+    #[test]
+    fn test_golden_empty_session() {
+        let data = include_bytes!("../tests/golden_fixtures/empty_session.jsonl");
+        let result = parse_bytes(data);
+        assert_eq!(result.diagnostics.lines_total, 0);
+        assert_eq!(result.deep.user_prompt_count, 0);
+    }
+
+    #[test]
+    fn test_golden_text_only() {
+        let data = include_bytes!("../tests/golden_fixtures/text_only_session.jsonl");
+        let result = parse_bytes(data);
+        assert_eq!(result.deep.user_prompt_count, 2);
+        assert_eq!(result.deep.api_call_count, 2);
+        assert_eq!(result.deep.tool_call_count, 0);
+        assert_eq!(result.deep.files_read_count, 0);
+        assert_eq!(result.deep.total_input_tokens, 300);
+        assert_eq!(result.deep.total_output_tokens, 150);
     }
 
     // ============================================================================
