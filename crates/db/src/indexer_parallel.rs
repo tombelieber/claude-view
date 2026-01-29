@@ -192,31 +192,50 @@ pub struct ParseDiagnostics {
     pub bytes_total: u64,
 }
 
+/// Zero-copy file data: holds either an mmap (large files) or a Vec (small files).
+/// Derefs to `&[u8]` so callers can use it transparently as a byte slice.
+/// The mmap stays alive for the lifetime of this value, enabling zero-copy parsing.
+pub enum FileData {
+    Mmap(memmap2::Mmap),
+    Vec(Vec<u8>),
+}
+
+impl std::ops::Deref for FileData {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            FileData::Mmap(m) => m,
+            FileData::Vec(v) => v,
+        }
+    }
+}
+
 /// Read a file using memory-mapped I/O with fallback to regular read.
 /// mmap is faster for large files (>64KB) because it avoids copying data through kernel buffers.
 ///
-/// NOTE: This returns `Vec<u8>` (a heap copy). For zero-copy parsing, see
-/// `pass_2_deep_index` which mmaps and parses inline without copying.
-pub fn read_file_fast(path: &Path) -> io::Result<Vec<u8>> {
+/// Returns a `FileData` that derefs to `&[u8]`. For large files, the data is memory-mapped
+/// (zero-copy); for small files, it's read into a Vec. The mmap stays alive as long as the
+/// returned `FileData` is held, so parsing can happen directly on the mapped pages.
+pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
     let file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
     let len = metadata.len() as usize;
 
     if len == 0 {
-        return Ok(Vec::new());
+        return Ok(FileData::Vec(Vec::new()));
     }
 
     // For small files, regular read is faster (no mmap overhead)
     if len < 64 * 1024 {
-        return std::fs::read(path);
+        return Ok(FileData::Vec(std::fs::read(path)?));
     }
 
     // Try mmap, fall back to regular read on failure
     // SAFETY: The file is read-only and we only hold the mapping briefly.
     // Claude Code appends to JSONL (never truncates), so the file won't shrink.
     match unsafe { memmap2::Mmap::map(&file) } {
-        Ok(mmap) => Ok(mmap.to_vec()),
-        Err(_) => std::fs::read(path),
+        Ok(mmap) => Ok(FileData::Mmap(mmap)),
+        Err(_) => Ok(FileData::Vec(std::fs::read(path)?)),
     }
 }
 
@@ -533,21 +552,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result
 }
 
-/// Extract timestamp from a JSONL line. Handles both ISO8601 strings and Unix integers.
-fn extract_timestamp_from_line(line: &[u8]) -> Option<i64> {
-    // Try to find timestamp value after "timestamp":
-    let value: serde_json::Value = serde_json::from_slice(line).ok()?;
-    value.get("timestamp").and_then(|v| {
-        // Try integer first
-        v.as_i64().or_else(|| {
-            // Try ISO8601 string
-            v.as_str()
-                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                .map(|dt| dt.timestamp())
-        })
-    })
-}
-
 /// Extract timestamp from an already-parsed JSON value.
 /// Handles both ISO8601 strings and Unix integers.
 fn extract_timestamp_from_value(value: &serde_json::Value) -> Option<i64> {
@@ -558,36 +562,6 @@ fn extract_timestamp_from_value(value: &serde_json::Value) -> Option<i64> {
                 .map(|dt| dt.timestamp())
         })
     })
-}
-
-/// Extract file paths from raw invocations for files_read and files_edited tracking.
-///
-/// - Read tool: adds to files_read
-/// - Edit/Write tools: adds to files_edited
-fn extract_files_read_edited(
-    invocations: &[RawInvocation],
-    files_read: &mut Vec<String>,
-    files_edited: &mut Vec<String>,
-) {
-    for inv in invocations {
-        let file_path = inv
-            .input
-            .as_ref()
-            .and_then(|v| v.get("file_path"))
-            .and_then(|v| v.as_str());
-
-        // Skip if no file_path or empty
-        let path = match file_path {
-            Some(p) if !p.is_empty() => p.to_string(),
-            _ => continue,
-        };
-
-        match inv.name.as_str() {
-            "Read" => files_read.push(path),
-            "Edit" | "Write" => files_edited.push(path),
-            _ => {}
-        }
-    }
 }
 
 /// Count files that appear 2+ times in the files_edited list.
@@ -637,161 +611,6 @@ fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])>
             (offset, line)
         })
     })
-}
-
-/// Extract raw tool_use invocations from a JSONL line by parsing it as JSON.
-///
-/// Only called on lines that already passed the SIMD `"tool_use"` pre-filter.
-/// Extracts all `{"type": "tool_use", "name": ..., "input": ...}` blocks from
-/// the assistant message's content array.
-fn extract_raw_invocations(line: &[u8], byte_offset: usize, out: &mut Vec<RawInvocation>) {
-    // Parse the line as JSON
-    let value: serde_json::Value = match serde_json::from_slice(line) {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-
-    // Extract timestamp from the top-level object (if present)
-    let timestamp = value
-        .get("timestamp")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-
-    // Navigate to the content array: could be at .message.content or .content
-    let content = value
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .or_else(|| value.get("content"));
-
-    let content_arr = match content.and_then(|c| c.as_array()) {
-        Some(arr) => arr,
-        None => return,
-    };
-
-    for block in content_arr {
-        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
-            continue;
-        }
-        let name = match block.get("name").and_then(|n| n.as_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        let input = block.get("input").cloned();
-
-        out.push(RawInvocation {
-            name,
-            input,
-            byte_offset,
-            timestamp,
-        });
-    }
-}
-
-/// Extract turn data (model ID and token usage) from an assistant JSONL line.
-///
-/// Only called on lines that passed the SIMD `"input_tokens":` pre-filter.
-/// Builds a `RawTurn` and collects unique model IDs.
-fn extract_turn_data(
-    line: &[u8],
-    _byte_offset: usize,
-    seq: u32,
-    turns: &mut Vec<vibe_recall_core::RawTurn>,
-    models_seen: &mut Vec<String>,
-) {
-    let value: serde_json::Value = match serde_json::from_slice(line) {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-
-    let message = match value.get("message") {
-        Some(m) => m,
-        None => return,
-    };
-
-    let model_id = match message.get("model").and_then(|m| m.as_str()) {
-        Some(m) => m.to_string(),
-        None => return,
-    };
-
-    // Collect unique models
-    if !models_seen.contains(&model_id) {
-        models_seen.push(model_id.clone());
-    }
-
-    let usage = message.get("usage");
-
-    let input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64());
-    let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64());
-    let cache_read_tokens = usage
-        .and_then(|u| u.get("cache_read_input_tokens"))
-        .and_then(|v| v.as_u64());
-    let cache_creation_tokens = usage
-        .and_then(|u| u.get("cache_creation_input_tokens"))
-        .and_then(|v| v.as_u64());
-    let service_tier = usage
-        .and_then(|u| u.get("service_tier"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    let uuid = value
-        .get("uuid")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let parent_uuid = value
-        .get("parentUuid")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    // Determine content_type from first content block
-    let content_type = message
-        .get("content")
-        .and_then(|c| c.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|block| block.get("type"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("text")
-        .to_string();
-
-    // Parse timestamp - could be string (ISO) or integer (unix)
-    let timestamp = value
-        .get("timestamp")
-        .and_then(|v| {
-            v.as_i64().or_else(|| {
-                v.as_str()
-                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                    .map(|dt| dt.timestamp())
-            })
-        });
-
-    turns.push(vibe_recall_core::RawTurn {
-        uuid,
-        parent_uuid,
-        seq,
-        model_id,
-        content_type,
-        input_tokens,
-        output_tokens,
-        cache_read_tokens,
-        cache_creation_tokens,
-        service_tier,
-        timestamp,
-    });
-}
-
-/// Count occurrences of a pattern in a line.
-fn count_occurrences(line: &[u8], finder: &memmem::Finder) -> usize {
-    let mut count = 0;
-    let mut start = 0;
-    while start < line.len() {
-        if let Some(pos) = finder.find(&line[start..]) {
-            count += 1;
-            start += pos + finder.needle().len();
-        } else {
-            break;
-        }
-    }
-    count
 }
 
 /// Extract the first text content from a JSONL line (best-effort, no full JSON parse).
@@ -856,24 +675,6 @@ fn extract_skills_from_line(
             if let Some(name) = extract_quoted_string(&line[begin..]) {
                 if !name.is_empty() {
                     skills.push(name);
-                }
-            }
-            start = begin;
-        } else {
-            break;
-        }
-    }
-}
-
-/// Extract file_path values from tool_use inputs.
-fn extract_file_paths_from_line(line: &[u8], finder: &memmem::Finder, paths: &mut Vec<String>) {
-    let mut start = 0;
-    while start < line.len() {
-        if let Some(pos) = finder.find(&line[start..]) {
-            let begin = start + pos + b"\"file_path\":\"".len();
-            if let Some(path) = extract_quoted_string(&line[begin..]) {
-                if !path.is_empty() {
-                    paths.push(path);
                 }
             }
             start = begin;
@@ -1451,7 +1252,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::new().unwrap();
         std::io::Write::write_all(&mut tmp, b"hello world").unwrap();
         let data = read_file_fast(tmp.path()).unwrap();
-        assert_eq!(data, b"hello world");
+        assert_eq!(&*data, b"hello world");
     }
 
     #[test]
@@ -1468,16 +1269,6 @@ mod tests {
         assert_eq!(lines[0], b"line1");
         assert_eq!(lines[1], b"line2");
         assert_eq!(lines[2], b"line3");
-    }
-
-    #[test]
-    fn test_extract_file_paths() {
-        let line = br#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs"}}]}}"#;
-        let finder = memmem::Finder::new(b"\"file_path\":\"");
-        let mut paths = Vec::new();
-        extract_file_paths_from_line(line, &finder, &mut paths);
-        assert!(paths.contains(&"/src/main.rs".to_string()));
-        assert!(paths.contains(&"/src/lib.rs".to_string()));
     }
 
     // ============================================================================
@@ -1863,36 +1654,6 @@ mod tests {
             "c".to_string(),
         ];
         assert_eq!(count_reedited_files(&multi_reedit), 2); // a and b were re-edited
-    }
-
-    // --- Unit test for extract_timestamp_from_line ---
-
-    #[test]
-    fn test_extract_timestamp_from_line_iso8601() {
-        let line = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{}}"#;
-        let ts = extract_timestamp_from_line(line);
-        assert_eq!(ts, Some(1769508000));  // 2026-01-27T10:00:00Z
-    }
-
-    #[test]
-    fn test_extract_timestamp_from_line_unix() {
-        let line = br#"{"type":"user","timestamp":1706400000,"message":{}}"#;
-        let ts = extract_timestamp_from_line(line);
-        assert_eq!(ts, Some(1706400000));
-    }
-
-    #[test]
-    fn test_extract_timestamp_from_line_missing() {
-        let line = br#"{"type":"user","message":{}}"#;
-        let ts = extract_timestamp_from_line(line);
-        assert!(ts.is_none());
-    }
-
-    #[test]
-    fn test_extract_timestamp_from_line_invalid() {
-        let line = br#"{"type":"user","timestamp":"not-a-timestamp","message":{}}"#;
-        let ts = extract_timestamp_from_line(line);
-        assert!(ts.is_none());
     }
 
     // --- Integration: All metrics together ---
