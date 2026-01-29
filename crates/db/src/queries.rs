@@ -5,7 +5,10 @@ use crate::{Database, DbResult};
 use chrono::Utc;
 use std::collections::HashMap;
 use ts_rs::TS;
-use vibe_recall_core::{parse_model_id, ProjectInfo, RawTurn, SessionInfo, ToolCounts};
+use vibe_recall_core::{
+    parse_model_id, DashboardStats, DayActivity, ProjectInfo, ProjectStat, ProjectSummary,
+    RawTurn, SessionInfo, SessionsPage, SkillStat, ToolCounts,
+};
 
 /// Indexer state entry returned from the database.
 #[derive(Debug, Clone)]
@@ -205,15 +208,35 @@ impl Database {
         let rows: Vec<SessionRow> = sqlx::query_as(
             r#"
             SELECT
-                id, project_id, preview, turn_count,
-                last_message_at, file_path,
-                project_path, project_display_name,
-                size_bytes, last_message, files_touched, skills_used,
-                tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
-                message_count,
-                summary, git_branch, is_sidechain, deep_indexed_at
-            FROM sessions
-            ORDER BY last_message_at DESC
+                s.id, s.project_id, s.preview, s.turn_count,
+                s.last_message_at, s.file_path,
+                s.project_path, s.project_display_name,
+                s.size_bytes, s.last_message, s.files_touched, s.skills_used,
+                s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
+                s.message_count,
+                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                tok.total_input_tokens,
+                tok.total_output_tokens,
+                tok.total_cache_read_tokens,
+                tok.total_cache_creation_tokens,
+                tok.turn_count_api,
+                tok.primary_model
+            FROM sessions s
+            LEFT JOIN (
+                SELECT session_id,
+                       SUM(input_tokens) as total_input_tokens,
+                       SUM(output_tokens) as total_output_tokens,
+                       SUM(cache_read_tokens) as total_cache_read_tokens,
+                       SUM(cache_creation_tokens) as total_cache_creation_tokens,
+                       COUNT(*) as turn_count_api,
+                       (SELECT model_id FROM turns t2
+                        WHERE t2.session_id = t.session_id
+                        GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
+                       ) as primary_model
+                FROM turns t
+                GROUP BY session_id
+            ) tok ON tok.session_id = s.id
+            ORDER BY s.last_message_at DESC
             "#,
         )
         .fetch_all(self.pool())
@@ -793,6 +816,271 @@ impl Database {
         })
     }
 
+    // ========================================================================
+    // Phase 2C: Project Summaries, Paginated Sessions, Dashboard Stats
+    // ========================================================================
+
+    /// List lightweight project summaries (no sessions array).
+    /// Returns ProjectSummary with counts only — sidebar payload.
+    pub async fn list_project_summaries(&self) -> DbResult<Vec<ProjectSummary>> {
+        let now = Utc::now().timestamp();
+        let active_threshold = now - 300; // 5 minutes
+
+        let rows: Vec<(String, String, String, i64, i64, Option<i64>)> = sqlx::query_as(
+            r#"
+            SELECT
+                project_id,
+                COALESCE(project_display_name, project_id),
+                COALESCE(project_path, ''),
+                COUNT(*) as session_count,
+                SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
+                MAX(last_message_at) as last_activity_at
+            FROM sessions
+            WHERE is_sidechain = 0
+            GROUP BY project_id
+            ORDER BY last_activity_at DESC
+            "#,
+        )
+        .bind(active_threshold)
+        .fetch_all(self.pool())
+        .await?;
+
+        let summaries = rows
+            .into_iter()
+            .map(|(name, display_name, path, session_count, active_count, last_activity_at)| {
+                ProjectSummary {
+                    name,
+                    display_name,
+                    path,
+                    session_count: session_count as usize,
+                    active_count: active_count as usize,
+                    last_activity_at,
+                }
+            })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    /// List paginated sessions for a specific project.
+    ///
+    /// Supports sorting (recent, oldest, messages), branch filtering,
+    /// and sidechain inclusion.
+    pub async fn list_sessions_for_project(
+        &self,
+        project_id: &str,
+        limit: i64,
+        offset: i64,
+        sort: &str,
+        branch: Option<&str>,
+        include_sidechains: bool,
+    ) -> DbResult<SessionsPage> {
+        // Build WHERE clause dynamically
+        let mut conditions = vec!["s.project_id = ?1".to_string()];
+        if !include_sidechains {
+            conditions.push("s.is_sidechain = 0".to_string());
+        }
+        if branch.is_some() {
+            conditions.push("s.git_branch = ?4".to_string());
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        let order_clause = match sort {
+            "oldest" => "s.last_message_at ASC",
+            "messages" => "s.message_count DESC",
+            _ => "s.last_message_at DESC", // "recent" is default
+        };
+
+        // Count total matching sessions
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM sessions s WHERE {}",
+            where_clause
+        );
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql)
+            .bind(project_id);
+        if let Some(b) = branch {
+            count_query = count_query.bind(b);
+        }
+        let (total,) = count_query.fetch_one(self.pool()).await?;
+
+        // Fetch paginated sessions with token LEFT JOIN
+        let select_sql = format!(
+            r#"
+            SELECT
+                s.id, s.project_id, s.preview, s.turn_count,
+                s.last_message_at, s.file_path,
+                s.project_path, s.project_display_name,
+                s.size_bytes, s.last_message, s.files_touched, s.skills_used,
+                s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
+                s.message_count,
+                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                tok.total_input_tokens,
+                tok.total_output_tokens,
+                tok.total_cache_read_tokens,
+                tok.total_cache_creation_tokens,
+                tok.turn_count_api,
+                tok.primary_model
+            FROM sessions s
+            LEFT JOIN (
+                SELECT session_id,
+                       SUM(input_tokens) as total_input_tokens,
+                       SUM(output_tokens) as total_output_tokens,
+                       SUM(cache_read_tokens) as total_cache_read_tokens,
+                       SUM(cache_creation_tokens) as total_cache_creation_tokens,
+                       COUNT(*) as turn_count_api,
+                       (SELECT model_id FROM turns t2
+                        WHERE t2.session_id = t.session_id
+                        GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
+                       ) as primary_model
+                FROM turns t
+                GROUP BY session_id
+            ) tok ON tok.session_id = s.id
+            WHERE {}
+            ORDER BY {}
+            LIMIT ?2 OFFSET ?3
+            "#,
+            where_clause, order_clause
+        );
+
+        let mut query = sqlx::query_as::<_, SessionRow>(&select_sql)
+            .bind(project_id)
+            .bind(limit)
+            .bind(offset);
+        if let Some(b) = branch {
+            query = query.bind(b);
+        }
+
+        let rows: Vec<SessionRow> = query.fetch_all(self.pool()).await?;
+
+        let sessions: Vec<SessionInfo> = rows
+            .into_iter()
+            .map(|r| {
+                let pid = project_id.to_string();
+                r.into_session_info(&pid)
+            })
+            .collect();
+
+        Ok(SessionsPage {
+            sessions,
+            total: total as usize,
+        })
+    }
+
+    /// Get pre-computed dashboard statistics.
+    ///
+    /// Returns heatmap (90 days), top 10 skills, top 5 projects, tool totals.
+    pub async fn get_dashboard_stats(&self) -> DbResult<DashboardStats> {
+        // Total sessions and projects
+        let (total_sessions,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+                .fetch_one(self.pool())
+                .await?;
+
+        let (total_projects,): (i64,) =
+            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0")
+                .fetch_one(self.pool())
+                .await?;
+
+        // Heatmap: 90-day activity (sessions per day)
+        let now = Utc::now().timestamp();
+        let ninety_days_ago = now - (90 * 86400);
+        let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
+            FROM sessions
+            WHERE last_message_at >= ?1 AND is_sidechain = 0
+            GROUP BY day
+            ORDER BY day ASC
+            "#,
+        )
+        .bind(ninety_days_ago)
+        .fetch_all(self.pool())
+        .await?;
+
+        let heatmap: Vec<DayActivity> = heatmap_rows
+            .into_iter()
+            .map(|(date, count)| DayActivity {
+                date,
+                count: count as usize,
+            })
+            .collect();
+
+        // Top 10 skills
+        let skill_rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT j.value as skill_name, COUNT(*) as cnt
+            FROM sessions, json_each(sessions.skills_used) as j
+            WHERE sessions.is_sidechain = 0
+            GROUP BY skill_name
+            ORDER BY cnt DESC
+            LIMIT 10
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let top_skills: Vec<SkillStat> = skill_rows
+            .into_iter()
+            .map(|(name, count)| SkillStat {
+                name,
+                count: count as usize,
+            })
+            .collect();
+
+        // Top 5 projects by session count
+        let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
+            FROM sessions
+            WHERE is_sidechain = 0
+            GROUP BY project_id
+            ORDER BY cnt DESC
+            LIMIT 5
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let top_projects: Vec<ProjectStat> = project_rows
+            .into_iter()
+            .map(|(name, display_name, session_count)| ProjectStat {
+                name,
+                display_name,
+                session_count: session_count as usize,
+            })
+            .collect();
+
+        // Tool totals (aggregate across all non-sidechain sessions)
+        let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(SUM(tool_counts_edit), 0),
+                COALESCE(SUM(tool_counts_read), 0),
+                COALESCE(SUM(tool_counts_bash), 0),
+                COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(DashboardStats {
+            total_sessions: total_sessions as usize,
+            total_projects: total_projects as usize,
+            heatmap,
+            top_skills,
+            top_projects,
+            tool_totals: ToolCounts {
+                edit: edit as usize,
+                read: read as usize,
+                bash: bash as usize,
+                write: write as usize,
+            },
+        })
+    }
+
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
     /// Also cleans up corresponding indexer_state entries.
     /// Both deletes run in a transaction for consistency.
@@ -864,6 +1152,12 @@ struct SessionRow {
     git_branch: Option<String>,
     is_sidechain: bool,
     deep_indexed_at: Option<i64>,
+    total_input_tokens: Option<i64>,
+    total_output_tokens: Option<i64>,
+    total_cache_read_tokens: Option<i64>,
+    total_cache_creation_tokens: Option<i64>,
+    turn_count_api: Option<i64>,
+    primary_model: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -891,6 +1185,12 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             git_branch: row.try_get("git_branch")?,
             is_sidechain: row.try_get("is_sidechain")?,
             deep_indexed_at: row.try_get("deep_indexed_at")?,
+            total_input_tokens: row.try_get("total_input_tokens").ok().flatten(),
+            total_output_tokens: row.try_get("total_output_tokens").ok().flatten(),
+            total_cache_read_tokens: row.try_get("total_cache_read_tokens").ok().flatten(),
+            total_cache_creation_tokens: row.try_get("total_cache_creation_tokens").ok().flatten(),
+            turn_count_api: row.try_get("turn_count_api").ok().flatten(),
+            primary_model: row.try_get("primary_model").ok().flatten(),
         })
     }
 }
@@ -925,6 +1225,12 @@ impl SessionRow {
             git_branch: self.git_branch,
             is_sidechain: self.is_sidechain,
             deep_indexed: self.deep_indexed_at.is_some(),
+            total_input_tokens: self.total_input_tokens.map(|v| v as u64),
+            total_output_tokens: self.total_output_tokens.map(|v| v as u64),
+            total_cache_read_tokens: self.total_cache_read_tokens.map(|v| v as u64),
+            total_cache_creation_tokens: self.total_cache_creation_tokens.map(|v| v as u64),
+            turn_count_api: self.turn_count_api.map(|v| v as u64),
+            primary_model: self.primary_model.clone(),
         }
     }
 }
@@ -965,6 +1271,12 @@ mod tests {
             git_branch: None,
             is_sidechain: false,
             deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
         }
     }
 
@@ -1366,5 +1678,139 @@ mod tests {
         assert!(stats.top_invocables.len() <= 10);
         assert_eq!(stats.top_invocables[0].id, "tool::Read");
         assert_eq!(stats.top_invocables[0].invocation_count, 2);
+    }
+
+    // ========================================================================
+    // Phase 2C: Project Summaries, Paginated Sessions, Dashboard Stats
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_list_project_summaries() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let s1 = make_session("sess-1", "project-a", 1000);
+        let s2 = make_session("sess-2", "project-a", 2000);
+        let s3 = make_session("sess-3", "project-b", 3000);
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s3, "project-b", "Project B").await.unwrap();
+
+        let summaries = db.list_project_summaries().await.unwrap();
+        assert_eq!(summaries.len(), 2);
+
+        // Sorted by last_activity_at DESC
+        assert_eq!(summaries[0].name, "project-b");
+        assert_eq!(summaries[0].session_count, 1);
+        assert_eq!(summaries[0].display_name, "Project B");
+
+        assert_eq!(summaries[1].name, "project-a");
+        assert_eq!(summaries[1].session_count, 2);
+
+        // No sessions array on summaries
+        let json = serde_json::to_string(&summaries).unwrap();
+        assert!(!json.contains("\"sessions\""), "Summaries should NOT include sessions array");
+        assert!(json.contains("\"sessionCount\""), "Should have sessionCount field");
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_for_project_pagination() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 5 sessions for project-a
+        for i in 1..=5 {
+            let s = make_session(&format!("sess-{}", i), "project-a", i as i64 * 1000);
+            db.insert_session(&s, "project-a", "Project A").await.unwrap();
+        }
+
+        // Page 1: limit=2, offset=0
+        let page1 = db.list_sessions_for_project("project-a", 2, 0, "recent", None, false).await.unwrap();
+        assert_eq!(page1.total, 5);
+        assert_eq!(page1.sessions.len(), 2);
+        assert_eq!(page1.sessions[0].id, "sess-5"); // Most recent first
+
+        // Page 2: limit=2, offset=2
+        let page2 = db.list_sessions_for_project("project-a", 2, 2, "recent", None, false).await.unwrap();
+        assert_eq!(page2.total, 5);
+        assert_eq!(page2.sessions.len(), 2);
+        assert_eq!(page2.sessions[0].id, "sess-3");
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_for_project_sort() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let s1 = SessionInfo { message_count: 100, ..make_session("sess-1", "project-a", 1000) };
+        let s2 = SessionInfo { message_count: 5, ..make_session("sess-2", "project-a", 3000) };
+        let s3 = SessionInfo { message_count: 50, ..make_session("sess-3", "project-a", 2000) };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s3, "project-a", "Project A").await.unwrap();
+
+        // Sort by oldest
+        let oldest = db.list_sessions_for_project("project-a", 10, 0, "oldest", None, false).await.unwrap();
+        assert_eq!(oldest.sessions[0].id, "sess-1");
+
+        // Sort by messages
+        let by_msg = db.list_sessions_for_project("project-a", 10, 0, "messages", None, false).await.unwrap();
+        assert_eq!(by_msg.sessions[0].id, "sess-1"); // 100 messages
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_excludes_sidechains() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let s1 = make_session("sess-1", "project-a", 1000);
+        let s2 = SessionInfo { is_sidechain: true, ..make_session("sess-2", "project-a", 2000) };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+
+        // Default: exclude sidechains
+        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", None, false).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.sessions[0].id, "sess-1");
+
+        // Include sidechains
+        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", None, true).await.unwrap();
+        assert_eq!(page.total, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo { modified_at: now - 86400, ..make_session("sess-1", "project-a", now - 86400) };
+        let s2 = SessionInfo { modified_at: now - 172800, ..make_session("sess-2", "project-a", now - 172800) };
+        let s3 = SessionInfo { modified_at: now - 86400, ..make_session("sess-3", "project-b", now - 86400) };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s3, "project-b", "Project B").await.unwrap();
+
+        let stats = db.get_dashboard_stats().await.unwrap();
+        assert_eq!(stats.total_sessions, 3);
+        assert_eq!(stats.total_projects, 2);
+        assert!(!stats.heatmap.is_empty());
+        assert!(!stats.top_projects.is_empty());
+        assert_eq!(stats.top_projects[0].session_count, 2); // project-a has most
+        assert!(stats.tool_totals.edit > 0); // sessions have tool counts
+    }
+
+    #[tokio::test]
+    async fn test_project_summaries_exclude_sidechains() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let s1 = make_session("sess-1", "project-a", 1000);
+        let s2 = SessionInfo { is_sidechain: true, ..make_session("sess-2", "project-a", 2000) };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+
+        let summaries = db.list_project_summaries().await.unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].session_count, 1, "Sidechain should be excluded from count");
     }
 }

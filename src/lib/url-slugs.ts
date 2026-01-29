@@ -17,20 +17,24 @@ export function slugify(text: string, maxWords = 6): string {
 
 /**
  * Generate a human-readable session slug from preview text and session ID.
- * Format: "fix-the-login-bug-974d98a2" (preview slug + UUID prefix)
+ * Format: "fix-the-login-bug--974d98a2-512b-41db-b6b6-4e865b4882de"
+ * Uses "--" (double hyphen) as separator so the full session ID is preserved
+ * and unambiguously extractable.
  */
 export function sessionSlug(preview: string, sessionId: string): string {
   const textPart = slugify(preview, 6)
-  const idPart = sessionId.slice(0, 8)
-  return `${textPart}-${idPart}`
+  return `${textPart}--${sessionId}`
 }
 
 /**
- * Extract the UUID prefix from a session slug.
- * The last 8 characters after the final hyphen group.
+ * Extract the full session ID from a session slug.
+ * The session ID follows the "--" separator.
+ * Falls back to treating the entire slug as the ID if no separator found.
  */
-export function extractSessionIdPrefix(slug: string): string {
-  return slug.slice(-8)
+export function sessionIdFromSlug(slug: string): string {
+  const separator = slug.indexOf('--')
+  if (separator === -1) return slug // Fallback: entire slug is the ID
+  return slug.slice(separator + 2)
 }
 
 /**

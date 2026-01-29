@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Loader2, FolderOpen } from 'lucide-react'
-import { useProjects } from './hooks/use-projects'
+import { useProjectSummaries } from './hooks/use-projects'
 import { useAppStore } from './store/app-store'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
@@ -9,7 +9,7 @@ import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 
 export default function App() {
-  const { data: projects, isLoading, error } = useProjects()
+  const { data: summaries, isLoading, error } = useProjectSummaries()
   const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette } = useAppStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -51,7 +51,7 @@ export default function App() {
   }
 
   // Empty state
-  if (!projects || projects.length === 0) {
+  if (!summaries || summaries.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center text-gray-500">
@@ -65,22 +65,23 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col">
+      <a href="#main" className="skip-to-content">Skip to content</a>
       <Header />
 
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar projects={projects} />
+        <Sidebar projects={summaries} />
 
-        <main className="flex-1 overflow-hidden bg-gray-50">
-          <Outlet context={{ projects }} />
+        <main id="main" className="flex-1 overflow-hidden bg-gray-50">
+          <Outlet context={{ summaries }} />
         </main>
       </div>
 
-      <StatusBar projects={projects} />
+      <StatusBar projects={summaries} />
 
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={closeCommandPalette}
-        projects={projects}
+        projects={summaries}
       />
     </div>
   )
