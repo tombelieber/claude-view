@@ -46,6 +46,32 @@ fn get_static_dir() -> Option<PathBuf> {
         })
 }
 
+/// Run git sync with structured logging. Used by both initial and periodic sync.
+async fn run_git_sync_logged(db: &Database, label: &str) {
+    tracing::info!("Starting {} git sync...", label);
+    match vibe_recall_db::git_correlation::run_git_sync(db).await {
+        Ok(r) => {
+            if r.repos_scanned > 0 || r.links_created > 0 {
+                tracing::info!(
+                    "{} git sync: {} repos, {} commits, {} links",
+                    label, r.repos_scanned, r.commits_found, r.links_created,
+                );
+            } else {
+                tracing::debug!("{} git sync: no changes", label);
+            }
+            if !r.errors.is_empty() {
+                tracing::warn!(
+                    "{} git sync had {} errors: {:?}",
+                    label, r.errors.len(), r.errors,
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!("{} git sync failed (non-fatal): {}", label, e);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing (quiet — startup UX uses eprintln)
@@ -122,27 +148,21 @@ async fn main() -> Result<()> {
         match result {
             Ok(_) => {
                 // Auto git-sync: correlate commits with sessions after indexing completes.
-                tracing::info!("Starting auto git sync...");
-                match vibe_recall_db::git_correlation::run_git_sync(&idx_db).await {
-                    Ok(sync_result) => {
-                        tracing::info!(
-                            "Auto git sync complete: {} repos, {} commits, {} links",
-                            sync_result.repos_scanned,
-                            sync_result.commits_found,
-                            sync_result.links_created,
-                        );
-                        if !sync_result.errors.is_empty() {
-                            tracing::warn!(
-                                "Auto git sync had {} errors: {:?}",
-                                sync_result.errors.len(),
-                                sync_result.errors,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        // Git sync failure is non-fatal
-                        tracing::warn!("Auto git sync failed (non-fatal): {}", e);
-                    }
+                run_git_sync_logged(&idx_db, "initial").await;
+
+                // Periodic git-sync: re-scan every 60s to pick up new commits.
+                // At 10x scale (~100 repos, ~5000 sessions), each run takes ~4-6s.
+                // 60s interval means <10% duty cycle — minimal resource usage.
+                let sync_interval = Duration::from_secs(
+                    std::env::var("GIT_SYNC_INTERVAL_SECS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(60),
+                );
+                tracing::info!("Periodic git sync every {}s", sync_interval.as_secs());
+                loop {
+                    tokio::time::sleep(sync_interval).await;
+                    run_git_sync_logged(&idx_db, "periodic").await;
                 }
             }
             Err(e) => {
