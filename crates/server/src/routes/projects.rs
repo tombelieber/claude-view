@@ -126,6 +126,17 @@ mod tests {
             reedited_files_count: 0,
             duration_seconds: 0,
             commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
         }
     }
 

@@ -188,6 +188,29 @@ pub struct SessionInfo {
     pub duration_seconds: u32,
     #[serde(default)]
     pub commit_count: u32,
+    // Phase 3.5: Full parser metrics
+    #[serde(default)]
+    pub thinking_block_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_duration_avg_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_duration_max_ms: Option<u64>,
+    #[serde(default)]
+    pub api_error_count: u32,
+    #[serde(default)]
+    pub compaction_count: u32,
+    #[serde(default)]
+    pub agent_spawn_count: u32,
+    #[serde(default)]
+    pub bash_progress_count: u32,
+    #[serde(default)]
+    pub hook_progress_count: u32,
+    #[serde(default)]
+    pub mcp_progress_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_text: Option<String>,
+    #[serde(default)]
+    pub parse_version: u32,
 }
 
 impl SessionInfo {
@@ -670,6 +693,17 @@ mod tests {
             reedited_files_count: 0,
             duration_seconds: 0,
             commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -768,6 +802,17 @@ mod tests {
             reedited_files_count: 2,
             duration_seconds: 600, // 10 minutes
             commit_count: 3,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
         }
     }
 
