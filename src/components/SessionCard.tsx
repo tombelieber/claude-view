@@ -4,9 +4,9 @@ import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 
 interface SessionCardProps {
-  session: SessionInfo
-  isSelected: boolean
-  projectDisplayName?: string
+  session: SessionInfo | null | undefined
+  isSelected?: boolean
+  projectDisplayName?: string | null
 }
 
 /** Strip XML tags, system prompt noise, and quotes from preview text */
@@ -133,30 +133,39 @@ function formatRelativeTime(timestamp: number): string {
   }
 }
 
-export function SessionCard({ session, isSelected, projectDisplayName }: SessionCardProps) {
-  const toolCounts = session.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
-  const editCount = toolCounts.edit + toolCounts.write // Combined edit + write
-  const totalTools = editCount + toolCounts.bash + toolCounts.read
+export function SessionCard({ session, isSelected = false, projectDisplayName }: SessionCardProps) {
+  // Null safety: handle null/undefined session
+  if (!session) {
+    return (
+      <article className="w-full text-left p-3.5 rounded-lg border border-gray-200 bg-gray-50">
+        <div className="text-sm text-gray-500">Session data unavailable</div>
+      </article>
+    )
+  }
+
+  const toolCounts = session?.toolCounts ?? { edit: 0, read: 0, bash: 0, write: 0 }
+  const editCount = (toolCounts?.edit ?? 0) + (toolCounts?.write ?? 0) // Combined edit + write
+  const totalTools = editCount + (toolCounts?.bash ?? 0) + (toolCounts?.read ?? 0)
 
   // Clean up preview text: strip XML tags and system prompt noise
-  const cleanPreview = cleanPreviewText(session.preview)
-  const cleanLast = session.lastMessage ? cleanPreviewText(session.lastMessage) : ''
+  const cleanPreview = cleanPreviewText(session?.preview || '')
+  const cleanLast = session?.lastMessage ? cleanPreviewText(session.lastMessage) : ''
 
   const projectLabel = projectDisplayName || undefined
 
   // Calculate total tokens (input + output)
-  const totalTokens = (session.totalInputTokens ?? 0n) + (session.totalOutputTokens ?? 0n)
+  const totalTokens = ((session?.totalInputTokens ?? 0n) as bigint) + ((session?.totalOutputTokens ?? 0n) as bigint)
   const hasTokens = totalTokens > 0n
 
   // New atomic unit metrics
-  const prompts = session.userPromptCount ?? 0
-  const filesEdited = session.filesEditedCount ?? 0
-  const reeditedFiles = session.reeditedFilesCount ?? 0
-  const commitCount = session.commitCount ?? 0
-  const durationSeconds = session.durationSeconds ?? 0
+  const prompts = session?.userPromptCount ?? 0
+  const filesEdited = session?.filesEditedCount ?? 0
+  const reeditedFiles = session?.reeditedFilesCount ?? 0
+  const commitCount = session?.commitCount ?? 0
+  const durationSeconds = session?.durationSeconds ?? 0
 
   // Calculate start timestamp from modifiedAt - durationSeconds
-  const endTimestamp = Number(session.modifiedAt)
+  const endTimestamp = Number(session?.modifiedAt ?? 0)
   const startTimestamp = endTimestamp - durationSeconds
 
   return (

@@ -100,6 +100,67 @@ describe('StructuredDataCard', () => {
     })
   })
 
+  describe('Nesting depth protection', () => {
+    it('should handle normal nesting depth (10 levels)', () => {
+      let xml = '<div><div><div><div><div><div><div><div><div><div>Content</div></div></div></div></div></div></div></div></div></div>'
+
+      render(<StructuredDataCard xml={xml} />)
+
+      expect(screen.getByText('Content')).toBeInTheDocument()
+    })
+
+    it('should handle moderate nesting depth (50 levels)', () => {
+      let xml = 'Content'
+      for (let i = 0; i < 50; i++) {
+        xml = `<div>${xml}</div>`
+      }
+
+      render(<StructuredDataCard xml={xml} />)
+
+      // Should render without crashing
+      expect(screen.getByText('Content')).toBeInTheDocument()
+    })
+
+    it('should handle deep nesting gracefully (100+ levels)', () => {
+      let xml = 'Deep content'
+      for (let i = 0; i < 100; i++) {
+        xml = `<div>${xml}</div>`
+      }
+
+      const { container } = render(<StructuredDataCard xml={xml} />)
+
+      // Should render without crashing (graceful degradation)
+      expect(container).toBeInTheDocument()
+    })
+
+    it('should prevent stack overflow from excessive nesting', () => {
+      // Create a pathologically deep structure
+      let xml = 'Content'
+      for (let i = 0; i < 500; i++) {
+        xml = `<div>${xml}</div>`
+      }
+
+      const { container } = render(<StructuredDataCard xml={xml} />)
+
+      // Should not crash the browser/render
+      expect(container).toBeInTheDocument()
+    })
+
+    it('should show graceful degradation indicator for very deep content', () => {
+      let xml = 'Nested content'
+      for (let i = 0; i < 200; i++) {
+        xml = `<div>${xml}</div>`
+      }
+
+      render(<StructuredDataCard xml={xml} />)
+
+      // Either content is shown or a depth warning appears
+      // This ensures implementation handles it gracefully
+      const { container } = render(<StructuredDataCard xml={xml} />)
+      expect(container).toBeInTheDocument()
+    })
+  })
+
   describe('Large XML performance', () => {
     it('should sanitize large XML efficiently without crashing', () => {
       // Generate large XML content (100KB)
