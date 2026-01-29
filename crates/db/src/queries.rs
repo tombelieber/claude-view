@@ -501,6 +501,25 @@ impl Database {
         duration_seconds: i32,
         commit_count: i32,
         first_message_at: Option<i64>,
+        // Full parser metrics (Phase 3.5)
+        total_input_tokens: i64,
+        total_output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        thinking_block_count: i32,
+        turn_duration_avg_ms: Option<i64>,
+        turn_duration_max_ms: Option<i64>,
+        turn_duration_total_ms: Option<i64>,
+        api_error_count: i32,
+        api_retry_count: i32,
+        compaction_count: i32,
+        hook_blocked_count: i32,
+        agent_spawn_count: i32,
+        bash_progress_count: i32,
+        hook_progress_count: i32,
+        mcp_progress_count: i32,
+        summary_text: Option<&str>,
+        parse_version: i32,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -526,7 +545,25 @@ impl Database {
                 reedited_files_count = ?18,
                 duration_seconds = ?19,
                 commit_count = ?20,
-                first_message_at = ?21
+                first_message_at = ?21,
+                total_input_tokens = ?22,
+                total_output_tokens = ?23,
+                cache_read_tokens = ?24,
+                cache_creation_tokens = ?25,
+                thinking_block_count = ?26,
+                turn_duration_avg_ms = ?27,
+                turn_duration_max_ms = ?28,
+                turn_duration_total_ms = ?29,
+                api_error_count = ?30,
+                api_retry_count = ?31,
+                compaction_count = ?32,
+                hook_blocked_count = ?33,
+                agent_spawn_count = ?34,
+                bash_progress_count = ?35,
+                hook_progress_count = ?36,
+                mcp_progress_count = ?37,
+                summary_text = ?38,
+                parse_version = ?39
             WHERE id = ?1
             "#,
         )
@@ -551,18 +588,38 @@ impl Database {
         .bind(duration_seconds)
         .bind(commit_count)
         .bind(first_message_at)
+        .bind(total_input_tokens)
+        .bind(total_output_tokens)
+        .bind(cache_read_tokens)
+        .bind(cache_creation_tokens)
+        .bind(thinking_block_count)
+        .bind(turn_duration_avg_ms)
+        .bind(turn_duration_max_ms)
+        .bind(turn_duration_total_ms)
+        .bind(api_error_count)
+        .bind(api_retry_count)
+        .bind(compaction_count)
+        .bind(hook_blocked_count)
+        .bind(agent_spawn_count)
+        .bind(bash_progress_count)
+        .bind(hook_progress_count)
+        .bind(mcp_progress_count)
+        .bind(summary_text)
+        .bind(parse_version)
         .execute(self.pool())
         .await?;
 
         Ok(())
     }
 
-    /// Get sessions that haven't been deep-indexed yet.
-    /// Returns Vec<(id, file_path)> for sessions where deep_indexed_at IS NULL.
+    /// Get sessions that haven't been deep-indexed yet or have a stale parse version.
+    /// Returns Vec<(id, file_path)> for sessions where deep_indexed_at IS NULL
+    /// or parse_version < CURRENT_PARSE_VERSION.
     pub async fn get_sessions_needing_deep_index(&self) -> DbResult<Vec<(String, String)>> {
         let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, file_path FROM sessions WHERE deep_indexed_at IS NULL",
+            "SELECT id, file_path FROM sessions WHERE deep_indexed_at IS NULL OR parse_version < ?1",
         )
+        .bind(crate::indexer_parallel::CURRENT_PARSE_VERSION)
         .fetch_all(self.pool())
         .await?;
         Ok(rows)
@@ -2033,6 +2090,25 @@ mod tests {
             600, // duration_seconds (10 minutes)
             3,   // commit_count
             Some(1000), // first_message_at
+            // Phase 3.5: Full parser metrics
+            5000,  // total_input_tokens
+            3000,  // total_output_tokens
+            1000,  // cache_read_tokens
+            500,   // cache_creation_tokens
+            2,     // thinking_block_count
+            Some(150), // turn_duration_avg_ms
+            Some(300), // turn_duration_max_ms
+            Some(750), // turn_duration_total_ms
+            1,     // api_error_count
+            0,     // api_retry_count
+            0,     // compaction_count
+            0,     // hook_blocked_count
+            1,     // agent_spawn_count
+            2,     // bash_progress_count
+            0,     // hook_progress_count
+            1,     // mcp_progress_count
+            Some("Session summary text"), // summary_text
+            1,     // parse_version
         )
         .await
         .unwrap();
@@ -2096,6 +2172,14 @@ mod tests {
             1, 1, 0,    // counts
             120, 2,     // duration_seconds, commit_count
             None, // first_message_at
+            // Phase 3.5: Full parser metrics
+            0, 0, 0, 0, // token counts
+            0,           // thinking_block_count
+            None, None, None, // turn durations
+            0, 0, 0, 0, // error/retry/compaction/hook_blocked
+            0, 0, 0, 0, // progress counts
+            None,        // summary_text
+            1,           // parse_version
         )
         .await
         .unwrap();
