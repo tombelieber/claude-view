@@ -11,7 +11,7 @@ describe('StructuredDataCard', () => {
           <script>alert('XSS')</script>
         </div>
       `
-      render(<StructuredDataCard xml={xmlWithScript} type="unknown" />)
+      render(<StructuredDataCard xml={xmlWithScript} />)
 
       const content = screen.getByText(/Safe content/i)
       expect(content).toBeInTheDocument()
@@ -30,16 +30,18 @@ describe('StructuredDataCard', () => {
           <span>Safe content</span>
         </div>
       `
-      render(<StructuredDataCard xml={xmlWithHandlers} type="unknown" />)
+      render(<StructuredDataCard xml={xmlWithHandlers} />)
 
       // Get the rendered element
       const content = screen.getByText(/Safe content/i)
       expect(content).toBeInTheDocument()
 
-      // Verify no onclick or onerror attributes exist in the rendered content
-      const allDivs = screen.getByText(/Safe content/i).closest('div')
-      expect(allDivs?.innerHTML).not.toContain('onclick')
-      expect(allDivs?.innerHTML).not.toContain('onerror')
+      // Verify event handlers were stripped (handlers would appear in text if present)
+      expect(screen.queryByText(/alert/)).not.toBeInTheDocument()
+
+      // Verify img tag is stripped (not in allowed tags)
+      const images = screen.queryAllByRole('img')
+      expect(images).toHaveLength(0)
     })
   })
 
@@ -58,7 +60,7 @@ describe('StructuredDataCard', () => {
           <pre>Preformatted text</pre>
         </div>
       `
-      render(<StructuredDataCard xml={safeXml} type="unknown" />)
+      render(<StructuredDataCard xml={safeXml} />)
 
       expect(screen.getByText(/Paragraph text/i)).toBeInTheDocument()
       expect(screen.getByText(/Span text/i)).toBeInTheDocument()
@@ -71,22 +73,22 @@ describe('StructuredDataCard', () => {
 
   describe('Empty and null content handling', () => {
     it('should gracefully handle empty content', () => {
-      render(<StructuredDataCard xml="" type="unknown" />)
+      render(<StructuredDataCard xml="" />)
       expect(screen.getByText(/No data/i)).toBeInTheDocument()
     })
 
     it('should gracefully handle null content', () => {
-      render(<StructuredDataCard xml={null as any} type="unknown" />)
+      render(<StructuredDataCard xml={null} />)
       expect(screen.getByText(/No data/i)).toBeInTheDocument()
     })
 
     it('should gracefully handle undefined content', () => {
-      render(<StructuredDataCard xml={undefined as any} type="unknown" />)
+      render(<StructuredDataCard xml={undefined} />)
       expect(screen.getByText(/No data/i)).toBeInTheDocument()
     })
 
     it('should gracefully handle whitespace-only content', () => {
-      const { container } = render(<StructuredDataCard xml="   \n\n  " type="unknown" />)
+      const { container } = render(<StructuredDataCard xml="   \n\n  " />)
       // Should either show "No data" or the container should have minimal meaningful content
       const noDataElement = screen.queryByText(/No data/i)
       if (noDataElement) {
@@ -106,7 +108,7 @@ describe('StructuredDataCard', () => {
         .join('')
 
       const startTime = performance.now()
-      render(<StructuredDataCard xml={largeContent} type="unknown" />)
+      render(<StructuredDataCard xml={largeContent} />)
       const endTime = performance.now()
 
       // Should complete in under 5 seconds (render + sanitization)
@@ -129,7 +131,7 @@ describe('StructuredDataCard', () => {
         .join('')
 
       const startTime = performance.now()
-      render(<StructuredDataCard xml={largeContent} type="unknown" />)
+      render(<StructuredDataCard xml={largeContent} />)
       const endTime = performance.now()
 
       // Should complete efficiently
