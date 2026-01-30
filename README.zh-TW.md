@@ -17,7 +17,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
-  <a href="https://github.com/OWNER/claude-view/stargazers"><img src="https://img.shields.io/github/stars/OWNER/claude-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
 ---
@@ -88,8 +88,8 @@ npx claude-view
 如果 **claude-view** 節省了你的時間，請考慮給它一顆星！這有助於更多人發現這個工具。
 
 <p align="center">
-  <a href="https://github.com/OWNER/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/OWNER/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  <a href="https://github.com/anonymous-dev/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
 
