@@ -92,6 +92,11 @@ main() {
   fi
 
   chmod +x "${BIN_DIR}/vibe-recall"
+
+  # macOS Gatekeeper: remove quarantine flag from downloaded binary
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    xattr -dr com.apple.quarantine "$BIN_DIR" 2>/dev/null || true
+  fi
   mkdir -p "$CACHE_DIR"
   echo "$version" > "$VERSION_FILE"
   echo "Installed to ${BIN_DIR}"
