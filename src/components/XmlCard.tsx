@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react'
 import { ChevronRight, ChevronDown, FileText, Brain, Wrench, FileCode, Terminal, Bot, CheckCircle2, XCircle, AlertTriangle, Zap, Shield } from 'lucide-react'
 import DOMPurify from 'dompurify'
 import { cn } from '../lib/utils'
-import { CodeBlock } from './CodeBlock'
+import { ToolCallCard } from './ToolCallCard'
+import { StructuredDataCard } from './StructuredDataCard'
 
 interface XmlCardProps {
   content: string
@@ -24,6 +25,12 @@ interface ParsedToolCall {
   parameters?: string
   outcome?: string
   workingDirectory?: string
+}
+
+interface ParsedToolCallForCard {
+  name: string
+  input: Record<string, unknown>
+  description: string
 }
 
 function parseObservation(xml: string): ParsedObservation {
@@ -78,6 +85,50 @@ function parseToolCall(xml: string): ParsedToolCall {
 
   const dirMatch = xml.match(/<working_directory>([^<]+)<\/working_directory>/)
   if (dirMatch) result.workingDirectory = dirMatch[1]
+
+  return result
+}
+
+function parseToolCallForCard(xml: string): ParsedToolCallForCard {
+  const result: ParsedToolCallForCard = { name: '', input: {}, description: '' }
+
+  // Extract tool name from <tool_name> or <name> tag
+  const nameMatch = xml.match(/<tool_name>([^<]+)<\/tool_name>/) || xml.match(/<name>([^<]+)<\/name>/)
+  if (nameMatch) result.name = nameMatch[1].trim()
+
+  // Extract description from <what_happened> or <description> tag
+  const descMatch = xml.match(/<what_happened>([^<]+)<\/what_happened>/) || xml.match(/<description>([^<]+)<\/description>/)
+  if (descMatch) result.description = descMatch[1].trim()
+
+  // Extract input/parameters - try JSON first, then structured tags
+  const paramsMatch = xml.match(/<parameters>([\s\S]*?)<\/parameters>/) || xml.match(/<input>([\s\S]*?)<\/input>/)
+  if (paramsMatch) {
+    const raw = paramsMatch[1].trim()
+    try {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed === 'object' && parsed !== null) {
+        result.input = parsed as Record<string, unknown>
+      } else {
+        result.input = { value: parsed }
+      }
+    } catch {
+      // Not JSON - treat as a simple string value
+      if (raw) {
+        result.input = { value: raw }
+      }
+    }
+  }
+
+  // Extract working directory as additional input context
+  const dirMatch = xml.match(/<working_directory>([^<]+)<\/working_directory>/)
+  if (dirMatch) {
+    result.input = { ...result.input, working_directory: dirMatch[1].trim() }
+  }
+
+  // Fallback: if no name found, use "Tool Call"
+  if (!result.name) result.name = 'Tool Call'
+  // Fallback: if no description found, use the tool name
+  if (!result.description) result.description = result.name
 
   return result
 }
@@ -376,6 +427,25 @@ export function XmlCard({ content, type }: XmlCardProps) {
     )
   }
 
+  // tool_call type: render as ToolCallCard (dedicated component)
+  if (type === 'tool_call') {
+    const parsed = parseToolCallForCard(content)
+    return (
+      <ToolCallCard
+        name={parsed.name}
+        input={parsed.input}
+        description={parsed.description}
+      />
+    )
+  }
+
+  // unknown type: render as StructuredDataCard (semantic rendering)
+  if (type === 'unknown') {
+    return (
+      <StructuredDataCard xml={content} type="unknown" />
+    )
+  }
+
   // Parse based on type
   let summary = ''
   let details: React.ReactNode = null
@@ -430,12 +500,6 @@ export function XmlCard({ content, type }: XmlCardProps) {
           </p>
         )}
       </div>
-    )
-  } else {
-    // Unknown XML - show as code block
-    summary = 'Structured content'
-    details = (
-      <CodeBlock code={content} language="xml" />
     )
   }
 
