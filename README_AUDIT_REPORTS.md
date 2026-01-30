@@ -44,11 +44,9 @@ Read: **AUDIT_REPORT_INDEX.md** - comprehensive guide to all 4 reports
 
 ## The 2 Fixes Required
 
-### Fix 1: GitHub Repository Reference (1 minute)
-**File:** `npx-cli/index.js` line 11  
-**Current:** `const REPO = "anonymous-dev/claude-view"`  
-**Change to:** `const REPO = "OWNER/claude-view"`  
-**Why:** Prevents accidental release to personal GitHub account
+### Fix 1: GitHub Repository Reference — RESOLVED
+**File:** `npx-cli/index.js` line 11
+**Value:** `const REPO = "anonymous-dev/claude-view"` — correct, no change needed.
 
 ### Fix 2: Port Number in Documentation (3 minutes)
 **Files:** `README.md`, `README.zh-TW.md`, `README.zh-CN.md` line 61  
