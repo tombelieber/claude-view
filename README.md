@@ -67,6 +67,8 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 | Method | Command |
 |--------|---------|
 | **npx** (recommended) | `npx claude-view` |
+| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
 | **Homebrew** | `brew install claude-view` |
 
 ---
