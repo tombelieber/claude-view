@@ -17,7 +17,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
-  <a href="https://github.com/OWNER/claude-view/stargazers"><img src="https://img.shields.io/github/stars/OWNER/claude-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
 ---
@@ -88,8 +88,8 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 If **claude-view** saves you time, consider giving it a star! It helps others discover this tool.
 
 <p align="center">
-  <a href="https://github.com/OWNER/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/OWNER/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  <a href="https://github.com/tombelieber/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
 
