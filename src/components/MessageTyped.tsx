@@ -22,11 +22,36 @@ import { XmlCard, extractXmlBlocks } from './XmlCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { cn } from '../lib/utils'
 
+// System event cards
+import { TurnDurationCard } from './TurnDurationCard'
+import { ApiErrorCard } from './ApiErrorCard'
+import { CompactBoundaryCard } from './CompactBoundaryCard'
+import { HookSummaryCard } from './HookSummaryCard'
+import { LocalCommandEventCard } from './LocalCommandEventCard'
+
+// Progress event cards
+import { AgentProgressCard } from './AgentProgressCard'
+import { BashProgressCard } from './BashProgressCard'
+import { HookProgressCard } from './HookProgressCard'
+import { McpProgressCard } from './McpProgressCard'
+import { TaskQueueCard } from './TaskQueueCard'
+
+/** Maximum nesting depth for thread indentation */
+const MAX_INDENT_LEVEL = 5
+/** Pixels per indent level (desktop) */
+const INDENT_PX = 12
+
 interface MessageTypedProps {
   message: MessageType
   messageIndex?: number
   messageType?: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress' | 'summary'
   metadata?: Record<string, any>
+  /** Parent message UUID for threading */
+  parentUuid?: string
+  /** Nesting level (0 = root, 1 = child, 2 = grandchild, etc.). Capped at MAX_INDENT_LEVEL. */
+  indent?: number
+  /** Whether this message is a child in a thread (shows connector line) */
+  isChildMessage?: boolean
 }
 
 const TYPE_CONFIG = {
@@ -163,6 +188,42 @@ function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>
   )
 }
 
+function renderSystemSubtype(metadata: Record<string, any>): React.ReactNode | null {
+  const subtype = metadata?.type ?? metadata?.subtype
+  switch (subtype) {
+    case 'turn_duration':
+      return <TurnDurationCard durationMs={metadata.durationMs} startTime={metadata.startTime} endTime={metadata.endTime} />
+    case 'api_error':
+      return <ApiErrorCard error={metadata.error} retryAttempt={metadata.retryAttempt} maxRetries={metadata.maxRetries} retryInMs={metadata.retryInMs} />
+    case 'compact_boundary':
+      return <CompactBoundaryCard trigger={metadata.trigger} preTokens={metadata.preTokens} postTokens={metadata.postTokens} />
+    case 'hook_summary':
+      return <HookSummaryCard hookCount={metadata.hookCount} hookInfos={metadata.hookInfos} hookErrors={metadata.hookErrors} durationMs={metadata.durationMs} preventedContinuation={metadata.preventedContinuation} />
+    case 'local_command':
+      return <LocalCommandEventCard content={metadata.content} />
+    default:
+      return null
+  }
+}
+
+function renderProgressSubtype(metadata: Record<string, any>): React.ReactNode | null {
+  const subtype = metadata?.type
+  switch (subtype) {
+    case 'agent_progress':
+      return <AgentProgressCard agentId={metadata.agentId} prompt={metadata.prompt} model={metadata.model} tokens={metadata.tokens} normalizedMessages={metadata.normalizedMessages} indent={metadata.indent} />
+    case 'bash_progress':
+      return <BashProgressCard command={metadata.command} output={metadata.output} exitCode={metadata.exitCode} duration={metadata.duration} />
+    case 'hook_progress':
+      return <HookProgressCard hookEvent={metadata.hookEvent} hookName={metadata.hookName} command={metadata.command} output={metadata.output} />
+    case 'mcp_progress':
+      return <McpProgressCard server={metadata.server} method={metadata.method} params={metadata.params} result={metadata.result} />
+    case 'waiting_for_task':
+      return <TaskQueueCard waitDuration={metadata.waitDuration} position={metadata.position} queueLength={metadata.queueLength} />
+    default:
+      return null
+  }
+}
+
 function TypeBadge({ type, label }: { type: keyof typeof TYPE_CONFIG, label: string }) {
   const config = TYPE_CONFIG[type]
   const Icon = config.icon
@@ -179,13 +240,20 @@ export function MessageTyped({
   message,
   messageIndex,
   messageType = message.role as any,
-  metadata
+  metadata,
+  parentUuid,
+  indent = 0,
+  isChildMessage = false,
 }: MessageTypedProps) {
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
   const Icon = config.icon
   const time = formatTime(message.timestamp)
   const [copied, setCopied] = useState(false)
+
+  // Cap indent at MAX_INDENT_LEVEL
+  const clampedIndent = Math.min(Math.max(indent, 0), MAX_INDENT_LEVEL)
+  const indentPx = clampedIndent * INDENT_PX
 
   const handleCopyMessage = useCallback(async () => {
     try {
@@ -202,11 +270,23 @@ export function MessageTyped({
   }
 
   return (
-    <div className={cn(
-      'border-l-4 rounded-r-lg transition-colors',
-      config.accent,
-      'bg-white hover:bg-gray-50/50'
-    )}>
+    <div
+      role="article"
+      aria-level={clampedIndent + 1}
+      {...(parentUuid ? { 'data-parent-uuid': parentUuid } : {})}
+      className={cn(
+        'border-l-4 rounded-r-lg transition-colors',
+        config.accent,
+        'bg-white hover:bg-gray-50/50',
+        isChildMessage && 'thread-child'
+      )}
+      style={{
+        paddingLeft: indentPx > 0 ? `${indentPx}px` : undefined,
+        ...(isChildMessage
+          ? { borderLeftWidth: '4px', borderLeftStyle: 'dashed' as const, borderLeftColor: '#9CA3AF' }
+          : {}),
+      }}
+    >
       <div className="p-4 group">
         {/* Header */}
         <div className="flex items-start gap-3 mb-3">
@@ -353,8 +433,16 @@ export function MessageTyped({
             </div>
           )}
 
-          {/* System/Progress metadata */}
-          <SystemMetadataCard metadata={metadata} type={type as 'system' | 'progress'} />
+          {/* System/Progress metadata — dispatch to specialized cards */}
+          {type === 'system' && metadata && (
+            renderSystemSubtype(metadata) ?? <SystemMetadataCard metadata={metadata} type="system" />
+          )}
+          {type === 'progress' && metadata && (
+            renderProgressSubtype(metadata) ?? <SystemMetadataCard metadata={metadata} type="progress" />
+          )}
+          {type !== 'system' && type !== 'progress' && (
+            <SystemMetadataCard metadata={metadata} type={type as 'system' | 'progress'} />
+          )}
 
           {/* Tool calls summary */}
           {message.toolCalls && message.toolCalls.length > 0 && (
@@ -380,4 +468,4 @@ export function MessageTyped({
   )
 }
 
-export { TYPE_CONFIG }
+export { TYPE_CONFIG, MAX_INDENT_LEVEL, INDENT_PX }
