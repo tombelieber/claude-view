@@ -5,36 +5,13 @@
  * ============================================
  *
  * All text content (agentId, prompt, model, etc.) is rendered via React JSX text nodes.
- * React automatically escapes all text nodes, preventing XSS attacks:
- *
- * - Text like `<script>alert("XSS")</script>` is rendered as literal text: &lt;script&gt;...&lt;/script&gt;
- * - Event handler attributes like `onclick="..."` become plain text, not executable attributes
- * - HTML entities are escaped: & becomes &amp;, < becomes &lt;, > becomes &gt;, " becomes &quot;
- * - No dangerouslySetInnerHTML is used
- * - Event handlers cannot bind to escaped text
- *
- * This is React's default behavior for all string interpolation in JSX ({} syntax).
- * It is enforced automatically by React's render engine and cannot be bypassed unless
- * you explicitly use dangerouslySetInnerHTML (which this component does not).
- *
- * Performance:
- * - Text escaping is O(n) where n = text length, typically less than 1ms
- * - No regex or sanitization library needed (React handles it)
- *
- * @example
- * // Input: XSS attempt in props
- * <AgentProgressCard
- *   agentId="<img src=x onerror='alert(\"XSS\")'>"
- *   prompt="<script>alert('hi')</script>"
- *   model="claude-opus"
- * />
- *
- * // Output: Rendered as escaped text (safe)
- * // HTML: <span>&lt;img src=x onerror='alert("XSS")'&gt;</span>
- * // Display: <img src=x onerror='alert("XSS")'> (literal text, no HTML interpretation)
+ * React automatically escapes all text nodes, preventing XSS attacks.
+ * No dangerouslySetInnerHTML is used.
  */
 
-import { Bot } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, ChevronRight, ChevronDown } from 'lucide-react'
+import { cn } from '../lib/utils'
 
 interface TokenCount {
   input?: number
@@ -50,6 +27,8 @@ interface AgentProgressCardProps {
   indent?: number
 }
 
+const MAX_PROMPT_LENGTH = 1000
+
 export function AgentProgressCard({
   agentId,
   prompt,
@@ -58,29 +37,65 @@ export function AgentProgressCard({
   normalizedMessages,
   indent = 0,
 }: AgentProgressCardProps) {
-  // Calculate total tokens (input + output)
+  const [expanded, setExpanded] = useState(false)
+
   const totalTokens = tokens
     ? (tokens.input || 0) + (tokens.output || 0)
     : undefined
 
-  // Render component with all text escaped by React's default behavior
+  const displayName = agentId ? `Agent #${agentId}` : 'Sub-agent'
+
+  const tokenSuffix = totalTokens !== undefined ? ` (${totalTokens} tokens used)` : ''
+
+  const titleParts = [displayName]
+  if (model) titleParts.push(`(${model})`)
+
+  const title = titleParts.join(' ')
+
+  const truncatedPrompt =
+    prompt && prompt.length > MAX_PROMPT_LENGTH
+      ? prompt.slice(0, MAX_PROMPT_LENGTH) + '...'
+      : prompt
+
   return (
     <div
-      className="rounded-lg border border-blue-200 bg-blue-50 p-3 my-2"
-      style={{ paddingLeft: `${indent}px` }}
+      className={cn(
+        'rounded-lg border border-indigo-200 border-l-4 border-l-indigo-400 bg-indigo-50 my-2 overflow-hidden'
+      )}
+      style={{ marginLeft: indent ? `${indent * 16}px` : undefined }}
     >
-      <div className="flex items-start gap-2">
-        <Bot className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
-        <div className="flex-1 min-w-0">
-          {agentId && (
-            <div className="text-sm font-semibold text-blue-900">{agentId}</div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-100 transition-colors"
+        aria-label="Agent progress"
+        aria-expanded={expanded}
+      >
+        <Bot className="w-4 h-4 text-indigo-600 flex-shrink-0" aria-hidden="true" />
+        <span className="text-sm font-semibold text-indigo-900 truncate flex-1">
+          {title}
+          {tokenSuffix && (
+            <span className="font-normal text-indigo-700">{tokenSuffix}</span>
+          )}
+        </span>
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-indigo-400" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-indigo-400" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="px-3 py-2 border-t border-indigo-100 bg-indigo-50/50">
+          {truncatedPrompt && (
+            <div
+              className="text-sm text-indigo-800 mb-2"
+              data-testid="agent-prompt"
+            >
+              {truncatedPrompt}
+            </div>
           )}
 
-          {prompt && (
-            <div className="text-sm text-blue-800 mt-1">{prompt}</div>
-          )}
-
-          <div className="text-xs text-blue-700 mt-2 space-y-1">
+          <div className="text-xs text-indigo-700 space-y-1">
             {model && (
               <div>
                 <span className="font-medium">Model:</span> {model}
@@ -100,7 +115,7 @@ export function AgentProgressCard({
             )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
