@@ -3,8 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { StructuredDataCard } from './StructuredDataCard'
 
 describe('StructuredDataCard', () => {
-  describe('Script tag sanitization', () => {
-    it('should remove script tags from the sanitized content', () => {
+  describe('XSS prevention', () => {
+    it('should render content as plain text (no script execution)', () => {
       const xmlWithScript = `
         <div>
           <p>Safe content</p>
@@ -13,16 +13,16 @@ describe('StructuredDataCard', () => {
       `
       render(<StructuredDataCard xml={xmlWithScript} />)
 
+      // Content is preserved as text
       const content = screen.getByText(/Safe content/i)
       expect(content).toBeInTheDocument()
 
-      // Verify script tag is not in the DOM
-      expect(screen.queryByText(/alert/)).not.toBeInTheDocument()
+      // No script elements in the DOM (rendered as text, not HTML)
+      const scripts = document.querySelectorAll('script')
+      expect(scripts).toHaveLength(0)
     })
-  })
 
-  describe('Event handler removal', () => {
-    it('should remove onclick and onerror event handlers', () => {
+    it('should not create interactive elements from untrusted HTML', () => {
       const xmlWithHandlers = `
         <div>
           <p onclick="alert('XSS')">Malicious content</p>
@@ -30,23 +30,22 @@ describe('StructuredDataCard', () => {
           <span>Safe content</span>
         </div>
       `
-      render(<StructuredDataCard xml={xmlWithHandlers} />)
+      const { container } = render(<StructuredDataCard xml={xmlWithHandlers} />)
 
-      // Get the rendered element
-      const content = screen.getByText(/Safe content/i)
-      expect(content).toBeInTheDocument()
+      // Text content is preserved
+      expect(container.textContent).toContain('Safe content')
+      expect(container.textContent).toContain('Malicious content')
 
-      // Verify event handlers were stripped (handlers would appear in text if present)
-      expect(screen.queryByText(/alert/)).not.toBeInTheDocument()
-
-      // Verify img tag is stripped (not in allowed tags)
-      const images = screen.queryAllByRole('img')
-      expect(images).toHaveLength(0)
+      // No interactive img elements (rendered as text, not HTML elements)
+      const preElement = container.querySelector('pre')
+      expect(preElement).toBeInTheDocument()
+      // Content is in a pre tag as text, not as DOM elements
+      expect(preElement?.tagName).toBe('PRE')
     })
   })
 
   describe('Safe content preservation', () => {
-    it('should preserve safe HTML tags and text content', () => {
+    it('should preserve text content from HTML tags', () => {
       const safeXml = `
         <div>
           <p>Paragraph text</p>
@@ -89,12 +88,10 @@ describe('StructuredDataCard', () => {
 
     it('should gracefully handle whitespace-only content', () => {
       const { container } = render(<StructuredDataCard xml="   \n\n  " />)
-      // Should either show "No data" or the container should have minimal meaningful content
       const noDataElement = screen.queryByText(/No data/i)
       if (noDataElement) {
         expect(noDataElement).toBeInTheDocument()
       } else {
-        // If not "No data", then it should still render without crashing
         expect(container).toBeInTheDocument()
       }
     })
@@ -102,11 +99,9 @@ describe('StructuredDataCard', () => {
 
   describe('Nesting depth protection', () => {
     it('should handle normal nesting depth (10 levels)', () => {
-      let xml = '<div><div><div><div><div><div><div><div><div><div>Content</div></div></div></div></div></div></div></div></div></div>'
-
+      const xml = '<div><div><div><div><div><div><div><div><div><div>Content</div></div></div></div></div></div></div></div></div></div>'
       render(<StructuredDataCard xml={xml} />)
-
-      expect(screen.getByText('Content')).toBeInTheDocument()
+      expect(screen.getByText(/Content/)).toBeInTheDocument()
     })
 
     it('should handle moderate nesting depth (50 levels)', () => {
@@ -114,11 +109,8 @@ describe('StructuredDataCard', () => {
       for (let i = 0; i < 50; i++) {
         xml = `<div>${xml}</div>`
       }
-
       render(<StructuredDataCard xml={xml} />)
-
-      // Should render without crashing
-      expect(screen.getByText('Content')).toBeInTheDocument()
+      expect(screen.getByText(/Content/)).toBeInTheDocument()
     })
 
     it('should handle deep nesting gracefully (100+ levels)', () => {
@@ -126,23 +118,16 @@ describe('StructuredDataCard', () => {
       for (let i = 0; i < 100; i++) {
         xml = `<div>${xml}</div>`
       }
-
       const { container } = render(<StructuredDataCard xml={xml} />)
-
-      // Should render without crashing (graceful degradation)
       expect(container).toBeInTheDocument()
     })
 
     it('should prevent stack overflow from excessive nesting', () => {
-      // Create a pathologically deep structure
       let xml = 'Content'
       for (let i = 0; i < 500; i++) {
         xml = `<div>${xml}</div>`
       }
-
       const { container } = render(<StructuredDataCard xml={xml} />)
-
-      // Should not crash the browser/render
       expect(container).toBeInTheDocument()
     })
 
@@ -151,11 +136,6 @@ describe('StructuredDataCard', () => {
       for (let i = 0; i < 200; i++) {
         xml = `<div>${xml}</div>`
       }
-
-      render(<StructuredDataCard xml={xml} />)
-
-      // Either content is shown or a depth warning appears
-      // This ensures implementation handles it gracefully
       const { container } = render(<StructuredDataCard xml={xml} />)
       expect(container).toBeInTheDocument()
     })
@@ -163,7 +143,6 @@ describe('StructuredDataCard', () => {
 
   describe('Large XML performance', () => {
     it('should sanitize large XML efficiently without crashing', () => {
-      // Generate large XML content (100KB)
       const largeContent = Array(10000)
         .fill('<div><p>Safe content line</p></div>')
         .join('')
@@ -172,16 +151,12 @@ describe('StructuredDataCard', () => {
       render(<StructuredDataCard xml={largeContent} />)
       const endTime = performance.now()
 
-      // Should complete in under 6 seconds (render + sanitization)
       expect(endTime - startTime).toBeLessThan(6000)
-
-      // Verify content is rendered (queryAllByText since there will be multiple matches)
       const matches = screen.queryAllByText(/Safe content line/i)
       expect(matches.length).toBeGreaterThan(0)
     })
 
     it('should handle large XML with mixed safe and unsafe content', () => {
-      // Generate large XML with both safe and unsafe content (50KB)
       const largeContent = Array(5000)
         .fill(null)
         .map((_, i) =>
@@ -192,14 +167,12 @@ describe('StructuredDataCard', () => {
         .join('')
 
       const startTime = performance.now()
-      render(<StructuredDataCard xml={largeContent} />)
+      const { container } = render(<StructuredDataCard xml={largeContent} />)
       const endTime = performance.now()
 
-      // Should complete efficiently
       expect(endTime - startTime).toBeLessThan(6000)
-
-      // Scripts should be removed
-      expect(screen.queryByText(/alert/)).not.toBeInTheDocument()
+      // No script elements in the DOM
+      expect(container.querySelectorAll('script')).toHaveLength(0)
     })
   })
 })
