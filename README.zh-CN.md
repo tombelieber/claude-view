@@ -67,6 +67,8 @@ npx claude-view
 | 方式 | 命令 |
 |------|------|
 | **npx**（推荐） | `npx claude-view` |
+| **Shell 脚本**（无需 Node） | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
 | **Homebrew** | `brew install claude-view` |
 
 ---
