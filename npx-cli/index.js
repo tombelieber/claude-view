@@ -177,6 +177,15 @@ async function main() {
       fs.chmodSync(binaryPath, 0o755);
     }
 
+    // macOS Gatekeeper: remove quarantine flag from downloaded binary
+    if (process.platform === "darwin") {
+      try {
+        execFileSync("xattr", ["-dr", "com.apple.quarantine", binDir], { stdio: "pipe" });
+      } catch {
+        // Ignore — xattr may not be available or quarantine flag may not be set
+      }
+    }
+
     // Write version marker
     fs.mkdirSync(cacheDir, { recursive: true });
     fs.writeFileSync(versionFile, VERSION);
