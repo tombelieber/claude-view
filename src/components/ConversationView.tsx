@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react'
-import { ArrowLeft, Download, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Copy, Download, MessageSquare } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
@@ -10,6 +10,8 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
+import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
+import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
@@ -42,6 +44,19 @@ export function ConversationView() {
     if (!session) return
     exportToPdf(session.messages)
   }, [session])
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!session) return
+    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    downloadMarkdown(markdown, `conversation-${sessionId}.md`)
+  }, [session, projectName, sessionId])
+
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!session) return
+    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    const ok = await copyToClipboard(markdown)
+    showToast(ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions', ok ? 2000 : 3000)
+  }, [session, projectName, sessionId])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
@@ -139,6 +154,22 @@ export function ConversationView() {
           >
             <span>PDF</span>
             <Download className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExportMarkdown}
+            aria-label="Export as Markdown"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          >
+            <span>MD</span>
+            <Download className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleCopyMarkdown}
+            aria-label="Copy conversation as Markdown"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          >
+            <span>Copy</span>
+            <Copy className="w-4 h-4" />
           </button>
         </div>
       </div>
