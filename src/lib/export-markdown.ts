@@ -49,8 +49,8 @@ export function generateMarkdown(
     const ts = formatTimestamp(message.timestamp)
     md += `**${roleLabel}:**${ts ? ` *${ts}*` : ''}\n\n`
     md += message.content
-    if (message.toolCalls && message.toolCalls.length > 0) {
-      md += renderToolCalls(message.toolCalls)
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      md += renderToolCalls(message.tool_calls)
     }
     if (message.thinking) {
       md += `\n\n<details>\n<summary>Thinking</summary>\n\n${message.thinking}\n\n</details>`
