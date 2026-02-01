@@ -113,6 +113,86 @@ impl Message {
         self.thinking = Some(thinking.into());
         self
     }
+
+    pub fn with_uuid(mut self, uuid: impl Into<String>) -> Self {
+        self.uuid = Some(uuid.into());
+        self
+    }
+
+    pub fn with_parent_uuid(mut self, parent_uuid: impl Into<String>) -> Self {
+        self.parent_uuid = Some(parent_uuid.into());
+        self
+    }
+
+    pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::System,
+            content: content.into(),
+            timestamp: None,
+            tool_calls: None,
+            thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
+        }
+    }
+
+    pub fn tool_use(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::ToolUse,
+            content: content.into(),
+            timestamp: None,
+            tool_calls: None,
+            thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
+        }
+    }
+
+    pub fn tool_result(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::ToolResult,
+            content: content.into(),
+            timestamp: None,
+            tool_calls: None,
+            thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
+        }
+    }
+
+    pub fn progress(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Progress,
+            content: content.into(),
+            timestamp: None,
+            tool_calls: None,
+            thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
+        }
+    }
+
+    pub fn summary(content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Summary,
+            content: content.into(),
+            timestamp: None,
+            tool_calls: None,
+            thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
+        }
+    }
 }
 
 /// Session metadata extracted from parsing
