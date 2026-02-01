@@ -25,10 +25,22 @@ impl ToolCounts {
 /// Message role in a conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Role {
+    /// Real user prompt (string content)
     User,
+    /// Claude response with text
     Assistant,
+    /// Assistant message with only tool_use blocks (no text)
+    ToolUse,
+    /// User message with tool_result array content
+    ToolResult,
+    /// System events + queue-ops + file-snapshots
+    System,
+    /// Progress events (agent, bash, hook, mcp, waiting)
+    Progress,
+    /// Auto-generated session summaries
+    Summary,
 }
 
 /// A tool call made by the assistant
@@ -51,6 +63,13 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "any")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 impl Message {
@@ -61,6 +80,9 @@ impl Message {
             timestamp: None,
             tool_calls: None,
             thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
         }
     }
 
@@ -71,6 +93,9 @@ impl Message {
             timestamp: None,
             tool_calls: None,
             thinking: None,
+            uuid: None,
+            parent_uuid: None,
+            metadata: None,
         }
     }
 
@@ -547,14 +572,29 @@ mod tests {
     fn test_role_serialization() {
         assert_eq!(serde_json::to_string(&Role::User).unwrap(), "\"user\"");
         assert_eq!(serde_json::to_string(&Role::Assistant).unwrap(), "\"assistant\"");
+        assert_eq!(serde_json::to_string(&Role::ToolUse).unwrap(), "\"tool_use\"");
+        assert_eq!(serde_json::to_string(&Role::ToolResult).unwrap(), "\"tool_result\"");
+        assert_eq!(serde_json::to_string(&Role::System).unwrap(), "\"system\"");
+        assert_eq!(serde_json::to_string(&Role::Progress).unwrap(), "\"progress\"");
+        assert_eq!(serde_json::to_string(&Role::Summary).unwrap(), "\"summary\"");
     }
 
     #[test]
     fn test_role_deserialization() {
         let user: Role = serde_json::from_str("\"user\"").unwrap();
         let assistant: Role = serde_json::from_str("\"assistant\"").unwrap();
+        let tool_use: Role = serde_json::from_str("\"tool_use\"").unwrap();
+        let tool_result: Role = serde_json::from_str("\"tool_result\"").unwrap();
+        let system: Role = serde_json::from_str("\"system\"").unwrap();
+        let progress: Role = serde_json::from_str("\"progress\"").unwrap();
+        let summary: Role = serde_json::from_str("\"summary\"").unwrap();
         assert_eq!(user, Role::User);
         assert_eq!(assistant, Role::Assistant);
+        assert_eq!(tool_use, Role::ToolUse);
+        assert_eq!(tool_result, Role::ToolResult);
+        assert_eq!(system, Role::System);
+        assert_eq!(progress, Role::Progress);
+        assert_eq!(summary, Role::Summary);
     }
 
     #[test]
@@ -636,10 +676,13 @@ mod tests {
         let msg = Message::user("Hello");
         let json = serde_json::to_string(&msg).unwrap();
 
-        // Should not contain timestamp, tool_calls, or thinking when None
+        // Should not contain optional fields when None
         assert!(!json.contains("timestamp"));
         assert!(!json.contains("tool_calls"));
         assert!(!json.contains("thinking"));
+        assert!(!json.contains("uuid"));
+        assert!(!json.contains("parent_uuid"));
+        assert!(!json.contains("metadata"));
     }
 
     #[test]
