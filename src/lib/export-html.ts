@@ -123,7 +123,7 @@ function renderToolCalls(toolCalls: ToolCall[]): string {
 /**
  * Formats a timestamp for display
  */
-function formatTime(timestamp?: string): string {
+function formatTime(timestamp?: string | null): string {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   return date.toLocaleTimeString('en-US', {
@@ -161,7 +161,7 @@ export function generateStandaloneHtml(messages: Message[]): string {
         </div>
         <div class="message-content">
           ${markdownToHtml(message.content)}
-          ${renderToolCalls(message.toolCalls || [])}
+          ${renderToolCalls(message.tool_calls || [])}
         </div>
       </div>
     `

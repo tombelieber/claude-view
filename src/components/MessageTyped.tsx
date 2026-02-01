@@ -9,12 +9,12 @@
  * Supports dense conversations while maintaining clarity.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   User, Copy, Check, MessageSquare, Wrench, CheckCircle,
-  AlertCircle, Zap, BookOpen, Brain
+  AlertCircle, Zap, BookOpen
 } from 'lucide-react'
 import type { Message as MessageType } from '../hooks/use-session'
 import { CodeBlock } from './CodeBlock'
@@ -104,7 +104,7 @@ const TYPE_CONFIG = {
   }
 }
 
-function formatTime(timestamp?: string): string | null {
+function formatTime(timestamp?: string | null): string | null {
   if (!timestamp) return null
   const date = new Date(timestamp)
   return date.toLocaleTimeString('en-US', {
@@ -277,6 +277,9 @@ export function MessageTyped({
     }
   }, [message.content])
 
+  // Memoize content processing to avoid re-running XML extraction on every render
+  const contentSegments = useMemo(() => processContent(message.content), [message.content])
+
   if ((type === 'system' || type === 'progress') && !message.content && !message.thinking) {
     if (!metadata || Object.keys(metadata).length === 0) return null
   }
@@ -347,7 +350,7 @@ export function MessageTyped({
           {/* Main content */}
           {message.content && (
             <div className="space-y-3">
-              {processContent(message.content).map((segment, i) => {
+              {contentSegments.map((segment, i) => {
                 if (segment.type === 'xml' && segment.xmlType) {
                   return (
                     <XmlCard
