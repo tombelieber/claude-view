@@ -13,6 +13,28 @@ use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::debug;
 
+/// Attach common fields (timestamp, uuid, parent_uuid) to a message.
+///
+/// Takes references so the same Option values can be used across multiple
+/// branches within the user content match arms.
+fn attach_common_fields(
+    mut message: Message,
+    timestamp: &Option<String>,
+    uuid: &Option<String>,
+    parent_uuid: &Option<String>,
+) -> Message {
+    if let Some(ts) = timestamp {
+        message = message.with_timestamp(ts.clone());
+    }
+    if let Some(u) = uuid {
+        message = message.with_uuid(u.clone());
+    }
+    if let Some(pu) = parent_uuid {
+        message = message.with_parent_uuid(pu.clone());
+    }
+    message
+}
+
 /// Parse a Claude Code session JSONL file into a structured `ParsedSession`.
 ///
 /// # Features
@@ -112,16 +134,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                             // Role::ToolResult - extract readable content
                             let content = extract_tool_result_content(arr);
                             if !content.trim().is_empty() {
-                                let mut message = Message::tool_result(content);
-                                if let Some(ts) = timestamp {
-                                    message = message.with_timestamp(ts);
-                                }
-                                if let Some(u) = uuid {
-                                    message = message.with_uuid(u);
-                                }
-                                if let Some(pu) = parent_uuid {
-                                    message = message.with_parent_uuid(pu);
-                                }
+                                let message = Message::tool_result(content);
+                                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                                 messages.push(message);
                             }
                         } else {
@@ -138,16 +152,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                     );
                                     let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                     if !cleaned_content.trim().is_empty() {
-                                        let mut message = Message::user(cleaned_content);
-                                        if let Some(ts) = timestamp {
-                                            message = message.with_timestamp(ts);
-                                        }
-                                        if let Some(u) = uuid {
-                                            message = message.with_uuid(u);
-                                        }
-                                        if let Some(pu) = parent_uuid {
-                                            message = message.with_parent_uuid(pu);
-                                        }
+                                        let message = Message::user(cleaned_content);
+                                        let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                                         messages.push(message);
                                     }
                                 }
@@ -166,16 +172,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                         let cleaned_content = cleaned_content.replace("\\\n", "\n");
 
                         if !cleaned_content.trim().is_empty() {
-                            let mut message = Message::user(cleaned_content);
-                            if let Some(ts) = timestamp {
-                                message = message.with_timestamp(ts);
-                            }
-                            if let Some(u) = uuid {
-                                message = message.with_uuid(u);
-                            }
-                            if let Some(pu) = parent_uuid {
-                                message = message.with_parent_uuid(pu);
-                            }
+                            let message = Message::user(cleaned_content);
+                            let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                             messages.push(message);
                         }
                     }
@@ -192,16 +190,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                 );
                                 let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                 if !cleaned_content.trim().is_empty() {
-                                    let mut message = Message::user(cleaned_content);
-                                    if let Some(ts) = timestamp {
-                                        message = message.with_timestamp(ts);
-                                    }
-                                    if let Some(u) = uuid {
-                                        message = message.with_uuid(u);
-                                    }
-                                    if let Some(pu) = parent_uuid {
-                                        message = message.with_parent_uuid(pu);
-                                    }
+                                    let message = Message::user(cleaned_content);
+                                    let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                                     messages.push(message);
                                 }
                             }
@@ -241,15 +231,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                             Message::assistant(content)
                         };
 
-                        if let Some(ts) = timestamp {
-                            message = message.with_timestamp(ts);
-                        }
-                        if let Some(u) = uuid {
-                            message = message.with_uuid(u);
-                        }
-                        if let Some(pu) = parent_uuid {
-                            message = message.with_parent_uuid(pu);
-                        }
+                        message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                         if has_tools {
                             message = message.with_tools(tool_calls);
                         }
@@ -267,10 +249,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             "system" => {
                 let subtype = value.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
 
-                // Skip system messages with isMeta=true (same as user meta skip)
-                if value.get("isMeta").and_then(|v| v.as_bool()) == Some(true) {
-                    // Still emit the message - system lines are metadata events
-                }
+                // Note: system lines may have isMeta=true but we still emit them as metadata events
 
                 let duration_ms = value.get("durationMs").and_then(|v| v.as_u64());
                 let content = if let Some(ms) = duration_ms {
@@ -289,17 +268,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     meta.insert("error".to_string(), err.clone());
                 }
 
-                let mut message = Message::system(content)
+                let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
-                if let Some(ts) = timestamp {
-                    message = message.with_timestamp(ts);
-                }
-                if let Some(u) = uuid {
-                    message = message.with_uuid(u);
-                }
-                if let Some(pu) = parent_uuid {
-                    message = message.with_parent_uuid(pu);
-                }
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 messages.push(message);
             }
             "progress" => {
@@ -321,17 +292,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 // Copy data object as metadata
                 let metadata = data.cloned().unwrap_or(serde_json::json!({"type": data_type}));
 
-                let mut message = Message::progress(content)
+                let message = Message::progress(content)
                     .with_metadata(metadata);
-                if let Some(ts) = timestamp {
-                    message = message.with_timestamp(ts);
-                }
-                if let Some(u) = uuid {
-                    message = message.with_uuid(u);
-                }
-                if let Some(pu) = parent_uuid {
-                    message = message.with_parent_uuid(pu);
-                }
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 messages.push(message);
             }
             "queue-operation" => {
@@ -351,17 +314,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     meta.insert("content".to_string(), serde_json::Value::String(c.to_string()));
                 }
 
-                let mut message = Message::system(content)
+                let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
-                if let Some(ts) = timestamp {
-                    message = message.with_timestamp(ts);
-                }
-                if let Some(u) = uuid {
-                    message = message.with_uuid(u);
-                }
-                if let Some(pu) = parent_uuid {
-                    message = message.with_parent_uuid(pu);
-                }
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 messages.push(message);
             }
             "file-history-snapshot" => {
@@ -379,17 +334,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 }
                 meta.insert("isSnapshotUpdate".to_string(), serde_json::json!(is_update));
 
-                let mut message = Message::system(content)
+                let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
-                if let Some(ts) = timestamp {
-                    message = message.with_timestamp(ts);
-                }
-                if let Some(u) = uuid {
-                    message = message.with_uuid(u);
-                }
-                if let Some(pu) = parent_uuid {
-                    message = message.with_parent_uuid(pu);
-                }
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 messages.push(message);
             }
             "summary" => {
@@ -402,17 +349,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     meta.insert("leafUuid".to_string(), serde_json::Value::String(lu.to_string()));
                 }
 
-                let mut message = Message::summary(summary_text.to_string())
+                let message = Message::summary(summary_text.to_string())
                     .with_metadata(serde_json::Value::Object(meta));
-                if let Some(ts) = timestamp {
-                    message = message.with_timestamp(ts);
-                }
-                if let Some(u) = uuid {
-                    message = message.with_uuid(u);
-                }
-                if let Some(pu) = parent_uuid {
-                    message = message.with_parent_uuid(pu);
-                }
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 messages.push(message);
             }
             _ => {
@@ -438,7 +377,12 @@ fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
                 match block.get("content") {
                     Some(serde_json::Value::String(s)) => {
                         let truncated = if s.len() > 200 {
-                            format!("{}...", &s[..200])
+                            // Find a safe char boundary at or before byte 200
+                            let mut end = 200;
+                            while end > 0 && !s.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            format!("{}...", &s[..end])
                         } else {
                             s.clone()
                         };
