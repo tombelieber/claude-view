@@ -73,9 +73,10 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn user(content: impl Into<String>) -> Self {
+    /// Private helper to reduce boilerplate across role constructors.
+    fn new_with_role(role: Role, content: impl Into<String>) -> Self {
         Self {
-            role: Role::User,
+            role,
             content: content.into(),
             timestamp: None,
             tool_calls: None,
@@ -86,18 +87,13 @@ impl Message {
         }
     }
 
-    pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
-    }
+    pub fn user(content: impl Into<String>) -> Self { Self::new_with_role(Role::User, content) }
+    pub fn assistant(content: impl Into<String>) -> Self { Self::new_with_role(Role::Assistant, content) }
+    pub fn system(content: impl Into<String>) -> Self { Self::new_with_role(Role::System, content) }
+    pub fn tool_use(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolUse, content) }
+    pub fn tool_result(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolResult, content) }
+    pub fn progress(content: impl Into<String>) -> Self { Self::new_with_role(Role::Progress, content) }
+    pub fn summary(content: impl Into<String>) -> Self { Self::new_with_role(Role::Summary, content) }
 
     pub fn with_timestamp(mut self, timestamp: impl Into<String>) -> Self {
         self.timestamp = Some(timestamp.into());
@@ -127,71 +123,6 @@ impl Message {
     pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
         self.metadata = Some(metadata);
         self
-    }
-
-    pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::System,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
-    }
-
-    pub fn tool_use(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::ToolUse,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
-    }
-
-    pub fn tool_result(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::ToolResult,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
-    }
-
-    pub fn progress(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Progress,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
-    }
-
-    pub fn summary(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Summary,
-            content: content.into(),
-            timestamp: None,
-            tool_calls: None,
-            thinking: None,
-            uuid: None,
-            parent_uuid: None,
-            metadata: None,
-        }
     }
 }
 
@@ -526,23 +457,6 @@ pub fn parse_model_id(model_str: &str) -> (&str, &str) {
 // ============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum JsonlEntry {
-    User {
-        message: Option<JsonlMessage>,
-        timestamp: Option<String>,
-        #[serde(rename = "isMeta")]
-        is_meta: Option<bool>,
-    },
-    Assistant {
-        message: Option<JsonlMessage>,
-        timestamp: Option<String>,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 pub struct JsonlMessage {
     pub role: Option<String>,
     pub content: JsonlContent,
@@ -678,20 +592,6 @@ mod tests {
     }
 
     #[test]
-    fn test_jsonl_entry_deserialization() {
-        let json = r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-27T10:00:00Z"}"#;
-        let entry: JsonlEntry = serde_json::from_str(json).unwrap();
-
-        match entry {
-            JsonlEntry::User { message, timestamp, .. } => {
-                assert!(message.is_some());
-                assert_eq!(timestamp, Some("2026-01-27T10:00:00Z".to_string()));
-            }
-            _ => panic!("Expected User entry"),
-        }
-    }
-
-    #[test]
     fn test_jsonl_content_text() {
         let json = r#""Hello world""#;
         let content: JsonlContent = serde_json::from_str(json).unwrap();
@@ -721,13 +621,6 @@ mod tests {
             }
             _ => panic!("Expected Blocks content"),
         }
-    }
-
-    #[test]
-    fn test_jsonl_entry_unknown_type() {
-        let json = r#"{"type":"unknown_future_type","data":"something"}"#;
-        let entry: JsonlEntry = serde_json::from_str(json).unwrap();
-        assert!(matches!(entry, JsonlEntry::Other));
     }
 
     #[test]
