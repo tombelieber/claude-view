@@ -14,7 +14,7 @@ interface MessageProps {
   messageIndex?: number
 }
 
-function formatTime(timestamp?: string): string | null {
+function formatTime(timestamp?: string | null): string | null {
   if (!timestamp) return null
 
   const date = new Date(timestamp)
@@ -262,8 +262,8 @@ export function Message({ message, messageIndex }: MessageProps) {
         })}
 
         {/* Tool calls badge */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <ToolBadge toolCalls={message.toolCalls} />
+        {message.tool_calls && message.tool_calls.length > 0 && (
+          <ToolBadge toolCalls={message.tool_calls} />
         )}
       </div>
     </div>
