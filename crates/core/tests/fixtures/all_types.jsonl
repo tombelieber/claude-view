@@ -1,0 +1,12 @@
+{"type":"user","uuid":"u1","timestamp":"2026-01-28T10:00:00Z","message":{"role":"user","content":"Read and fix auth.rs"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-28T10:01:00Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"thinking","thinking":"Let me read the file first"},{"type":"text","text":"I'll read the file first."},{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"/project/src/auth.rs"}}]}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-28T10:02:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"fn authenticate() { todo!() }"}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"u2","timestamp":"2026-01-28T10:02:30Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"tool_use","id":"tu2","name":"Edit","input":{"file_path":"/project/src/auth.rs"}}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":"2026-01-28T10:03:00Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"I've fixed the authentication function."}]}}
+{"type":"system","uuid":"s1","timestamp":"2026-01-28T10:03:05Z","subtype":"turn_duration","durationMs":5000,"isMeta":true}
+{"type":"progress","uuid":"p1","timestamp":"2026-01-28T10:03:10Z","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"lint-check","command":"eslint --fix"}}
+{"type":"queue-operation","uuid":"q1","timestamp":"2026-01-28T10:03:15Z","operation":"enqueue","content":"next task"}
+{"type":"queue-operation","uuid":"q2","timestamp":"2026-01-28T10:03:20Z","operation":"dequeue"}
+{"type":"summary","uuid":"sum1","timestamp":"2026-01-28T10:04:00Z","summary":"Fixed authentication bug in auth.rs","leafUuid":"a2"}
+{"type":"file-history-snapshot","uuid":"fhs1","timestamp":"2026-01-28T10:04:05Z","messageId":"a2","snapshot":{"trackedFileBackups":{"/project/src/auth.rs":"backup-hash"}},"isSnapshotUpdate":false}
+{"type":"user","uuid":"u3","timestamp":"2026-01-28T10:00:00Z","isMeta":true,"message":{"role":"user","content":"System init"}}
