@@ -164,15 +164,15 @@ export function ConversationView() {
 
         <div className="flex items-center gap-2">
           {/* View mode toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
             <button
               onClick={() => setViewMode('compact')}
               aria-pressed={viewMode === 'compact'}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
                 viewMode === 'compact'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 cursor-pointer'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer'
               )}
             >
               <Eye className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
@@ -184,8 +184,8 @@ export function ConversationView() {
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
                 viewMode === 'full'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 cursor-pointer'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer'
               )}
             >
               <Code className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
@@ -193,7 +193,7 @@ export function ConversationView() {
             </button>
           </div>
           {viewMode === 'compact' && hiddenCount > 0 && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 dark:text-gray-500">
               {hiddenCount} hidden
             </span>
           )}
