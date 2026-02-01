@@ -1,5 +1,5 @@
-import { useEffect, useCallback } from 'react'
-import { ArrowLeft, Copy, Download, MessageSquare } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
@@ -15,7 +15,23 @@ import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
+import { cn } from '../lib/utils'
+import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
+
+function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
+  if (mode === 'full') return messages
+  return messages.filter(msg => {
+    if (msg.role === 'user') return true
+    if (msg.role === 'assistant') return true
+    if (msg.role === 'tool_use') return false
+    if (msg.role === 'tool_result') return false
+    if (msg.role === 'system') return false
+    if (msg.role === 'progress') return false
+    if (msg.role === 'summary') return false
+    return false
+  })
+}
 
 export function ConversationView() {
   const { projectId, slug } = useParams()
@@ -26,6 +42,8 @@ export function ConversationView() {
   const project = summaries.find(p => p.name === projectDir)
   const projectName = project?.displayName || projectDir
   const sessionId = slug ? sessionIdFromSlug(slug) : ''
+
+  const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
 
   const handleBack = () => navigate(-1)
   const { data: session, isLoading, error } = useSession(projectDir, sessionId)
@@ -76,6 +94,12 @@ export function ConversationView() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf])
+
+  const filteredMessages = useMemo(
+    () => session ? filterMessages(session.messages, viewMode) : [],
+    [session?.messages, viewMode]
+  )
+  const hiddenCount = session ? session.messages.length - filteredMessages.length : 0
 
   if (isLoading) {
     return (
@@ -139,6 +163,43 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
+            <button
+              onClick={() => setViewMode('compact')}
+              aria-pressed={viewMode === 'compact'}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
+                viewMode === 'compact'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 cursor-pointer'
+              )}
+            >
+              <Eye className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
+              Smart
+            </button>
+            <button
+              onClick={() => setViewMode('full')}
+              aria-pressed={viewMode === 'full'}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
+                viewMode === 'full'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 cursor-pointer'
+              )}
+            >
+              <Code className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
+              Full
+            </button>
+          </div>
+          {viewMode === 'compact' && hiddenCount > 0 && (
+            <span className="text-xs text-gray-400">
+              {hiddenCount} hidden
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
             onClick={handleExportHtml}
             aria-label="Export as HTML"
@@ -180,18 +241,28 @@ export function ConversationView() {
         <div className="flex-1 min-w-0">
           <ExpandProvider>
             <Virtuoso
-              data={session.messages}
+              data={filteredMessages}
               itemContent={(index, message) => (
                 <div className="max-w-4xl mx-auto px-6 pb-4">
-                  <MessageTyped key={message.id || index} message={message} messageIndex={index} />
+                  <MessageTyped
+                    key={message.uuid || index}
+                    message={message}
+                    messageIndex={index}
+                    messageType={message.role}
+                    metadata={message.metadata}
+                    parentUuid={message.parent_uuid ?? undefined}
+                  />
                 </div>
               )}
               components={{
                 Header: () => <div className="h-6" />,
                 Footer: () => (
-                  session.messages.length > 0 ? (
+                  filteredMessages.length > 0 ? (
                     <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
                       {session.metadata.totalMessages} messages
+                      {viewMode === 'compact' && hiddenCount > 0 && (
+                        <> &bull; {hiddenCount} hidden in compact view</>
+                      )}
                       {session.metadata.toolCallCount > 0 && (
                         <> &bull; {session.metadata.toolCallCount} tool calls</>
                       )}
