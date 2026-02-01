@@ -65,9 +65,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             continue;
         }
 
-        // Try to parse as JSON, skip malformed lines
-        let entry: JsonlEntry = match serde_json::from_str(line) {
-            Ok(entry) => entry,
+        // Parse as serde_json::Value to read the top-level "type" field
+        let value: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
             Err(e) => {
                 debug!(
                     "Skipping malformed JSON at line {} in {:?}: {}",
@@ -79,88 +79,404 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             }
         };
 
-        match entry {
-            JsonlEntry::User {
-                message,
-                timestamp,
-                is_meta,
-            } => {
+        let entry_type = match value.get("type").and_then(|t| t.as_str()) {
+            Some(t) => t,
+            None => {
+                debug!("Skipping line {} with missing/non-string type field", line_number);
+                continue;
+            }
+        };
+
+        // Extract common fields: uuid, parentUuid, timestamp
+        let uuid = value.get("uuid").and_then(|v| v.as_str()).map(String::from);
+        let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(String::from);
+        let timestamp = value.get("timestamp").and_then(|v| v.as_str()).map(String::from);
+
+        match entry_type {
+            "user" => {
                 // Skip meta messages
-                if is_meta == Some(true) {
+                if value.get("isMeta").and_then(|v| v.as_bool()) == Some(true) {
                     debug!("Skipping meta message at line {}", line_number);
                     continue;
                 }
 
-                if let Some(msg) = message {
-                    let content = extract_text_content(&msg.content);
-                    // Clean command tags from user messages
-                    let cleaned_content = clean_command_tags(
-                        &content,
-                        &command_name_regex,
-                        &command_args_regex,
-                        &command_message_regex,
-                    );
-                    // D5: Normalize backslash-newline sequences
-                    let cleaned_content = cleaned_content.replace("\\\n", "\n");
+                // Check content type: string (real user prompt) vs array (tool results)
+                let msg_content = value.get("message").and_then(|m| m.get("content"));
+                match msg_content {
+                    Some(serde_json::Value::Array(arr)) => {
+                        // Check if any block is a tool_result type
+                        let has_tool_result = arr.iter().any(|b|
+                            b.get("type").and_then(|t| t.as_str()) == Some("tool_result")
+                        );
+                        if has_tool_result {
+                            // Role::ToolResult - extract readable content
+                            let content = extract_tool_result_content(arr);
+                            if !content.trim().is_empty() {
+                                let mut message = Message::tool_result(content);
+                                if let Some(ts) = timestamp {
+                                    message = message.with_timestamp(ts);
+                                }
+                                if let Some(u) = uuid {
+                                    message = message.with_uuid(u);
+                                }
+                                if let Some(pu) = parent_uuid {
+                                    message = message.with_parent_uuid(pu);
+                                }
+                                messages.push(message);
+                            }
+                        } else {
+                            // Array content without tool_result blocks - extract text
+                            // Deserialize message field for existing helper
+                            if let Some(msg_value) = value.get("message") {
+                                if let Ok(msg) = serde_json::from_value::<JsonlMessage>(msg_value.clone()) {
+                                    let content = extract_text_content(&msg.content);
+                                    let cleaned_content = clean_command_tags(
+                                        &content,
+                                        &command_name_regex,
+                                        &command_args_regex,
+                                        &command_message_regex,
+                                    );
+                                    let cleaned_content = cleaned_content.replace("\\\n", "\n");
+                                    if !cleaned_content.trim().is_empty() {
+                                        let mut message = Message::user(cleaned_content);
+                                        if let Some(ts) = timestamp {
+                                            message = message.with_timestamp(ts);
+                                        }
+                                        if let Some(u) = uuid {
+                                            message = message.with_uuid(u);
+                                        }
+                                        if let Some(pu) = parent_uuid {
+                                            message = message.with_parent_uuid(pu);
+                                        }
+                                        messages.push(message);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Some(serde_json::Value::String(s)) => {
+                        // Role::User - normal user prompt, apply command tag cleaning
+                        let cleaned_content = clean_command_tags(
+                            s,
+                            &command_name_regex,
+                            &command_args_regex,
+                            &command_message_regex,
+                        );
+                        // D5: Normalize backslash-newline sequences
+                        let cleaned_content = cleaned_content.replace("\\\n", "\n");
 
-                    // Only add non-empty messages
-                    if !cleaned_content.trim().is_empty() {
-                        let mut message = Message::user(cleaned_content);
+                        if !cleaned_content.trim().is_empty() {
+                            let mut message = Message::user(cleaned_content);
+                            if let Some(ts) = timestamp {
+                                message = message.with_timestamp(ts);
+                            }
+                            if let Some(u) = uuid {
+                                message = message.with_uuid(u);
+                            }
+                            if let Some(pu) = parent_uuid {
+                                message = message.with_parent_uuid(pu);
+                            }
+                            messages.push(message);
+                        }
+                    }
+                    _ => {
+                        // No content or unexpected format - try legacy deserialization
+                        if let Some(msg_value) = value.get("message") {
+                            if let Ok(msg) = serde_json::from_value::<JsonlMessage>(msg_value.clone()) {
+                                let content = extract_text_content(&msg.content);
+                                let cleaned_content = clean_command_tags(
+                                    &content,
+                                    &command_name_regex,
+                                    &command_args_regex,
+                                    &command_message_regex,
+                                );
+                                let cleaned_content = cleaned_content.replace("\\\n", "\n");
+                                if !cleaned_content.trim().is_empty() {
+                                    let mut message = Message::user(cleaned_content);
+                                    if let Some(ts) = timestamp {
+                                        message = message.with_timestamp(ts);
+                                    }
+                                    if let Some(u) = uuid {
+                                        message = message.with_uuid(u);
+                                    }
+                                    if let Some(pu) = parent_uuid {
+                                        message = message.with_parent_uuid(pu);
+                                    }
+                                    messages.push(message);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "assistant" => {
+                // Deserialize the message field using existing types
+                if let Some(msg_value) = value.get("message") {
+                    if let Ok(msg) = serde_json::from_value::<JsonlMessage>(msg_value.clone()) {
+                        let (content, tool_calls, thinking_text) =
+                            extract_assistant_content(&msg.content);
+                        let tool_call_count = tool_calls.iter().map(|tc| tc.count).sum::<usize>();
+                        total_tool_calls += tool_call_count;
+
+                        let has_content = !content.trim().is_empty();
+                        let has_tools = !tool_calls.is_empty();
+                        let has_thinking = thinking_text.is_some();
+
+                        // If this message has ONLY thinking (no content, no tools),
+                        // store the thinking for the next assistant message
+                        if !has_content && !has_tools && has_thinking {
+                            pending_thinking = thinking_text;
+                            continue;
+                        }
+
+                        // Skip completely empty assistant messages
+                        if !has_content && !has_tools && !has_thinking && pending_thinking.is_none() {
+                            continue;
+                        }
+
+                        // Determine role: tool-only → ToolUse, otherwise Assistant
+                        let mut message = if !has_content && has_tools {
+                            Message::tool_use(content)
+                        } else {
+                            Message::assistant(content)
+                        };
+
                         if let Some(ts) = timestamp {
                             message = message.with_timestamp(ts);
+                        }
+                        if let Some(u) = uuid {
+                            message = message.with_uuid(u);
+                        }
+                        if let Some(pu) = parent_uuid {
+                            message = message.with_parent_uuid(pu);
+                        }
+                        if has_tools {
+                            message = message.with_tools(tool_calls);
+                        }
+                        // Attach thinking: prefer pending (from previous thinking-only message),
+                        // fall back to this message's own thinking
+                        if let Some(thinking) = pending_thinking.take() {
+                            message = message.with_thinking(thinking);
+                        } else if let Some(thinking) = thinking_text {
+                            message = message.with_thinking(thinking);
                         }
                         messages.push(message);
                     }
                 }
             }
-            JsonlEntry::Assistant { message, timestamp } => {
-                if let Some(msg) = message {
-                    let (content, tool_calls, thinking_text) =
-                        extract_assistant_content(&msg.content);
-                    let tool_call_count = tool_calls.iter().map(|tc| tc.count).sum::<usize>();
-                    total_tool_calls += tool_call_count;
+            "system" => {
+                let subtype = value.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
 
-                    let has_content = !content.trim().is_empty();
-                    let has_tools = !tool_calls.is_empty();
-                    let has_thinking = thinking_text.is_some();
-
-                    // If this message has ONLY thinking (no content, no tools),
-                    // store the thinking for the next assistant message
-                    if !has_content && !has_tools && has_thinking {
-                        pending_thinking = thinking_text;
-                        continue;
-                    }
-
-                    // Skip completely empty assistant messages
-                    if !has_content && !has_tools && !has_thinking && pending_thinking.is_none() {
-                        continue;
-                    }
-
-                    let mut message = Message::assistant(content);
-                    if let Some(ts) = timestamp {
-                        message = message.with_timestamp(ts);
-                    }
-                    if has_tools {
-                        message = message.with_tools(tool_calls);
-                    }
-                    // Attach thinking: prefer pending (from previous thinking-only message),
-                    // fall back to this message's own thinking
-                    if let Some(thinking) = pending_thinking.take() {
-                        message = message.with_thinking(thinking);
-                    } else if let Some(thinking) = thinking_text {
-                        message = message.with_thinking(thinking);
-                    }
-                    messages.push(message);
+                // Skip system messages with isMeta=true (same as user meta skip)
+                if value.get("isMeta").and_then(|v| v.as_bool()) == Some(true) {
+                    // Still emit the message - system lines are metadata events
                 }
+
+                let duration_ms = value.get("durationMs").and_then(|v| v.as_u64());
+                let content = if let Some(ms) = duration_ms {
+                    format!("{}: {}ms", subtype, ms)
+                } else {
+                    subtype.to_string()
+                };
+
+                // Build metadata from relevant fields
+                let mut meta = serde_json::Map::new();
+                meta.insert("subtype".to_string(), serde_json::Value::String(subtype.to_string()));
+                if let Some(ms) = duration_ms {
+                    meta.insert("durationMs".to_string(), serde_json::json!(ms));
+                }
+                if let Some(err) = value.get("error") {
+                    meta.insert("error".to_string(), err.clone());
+                }
+
+                let mut message = Message::system(content)
+                    .with_metadata(serde_json::Value::Object(meta));
+                if let Some(ts) = timestamp {
+                    message = message.with_timestamp(ts);
+                }
+                if let Some(u) = uuid {
+                    message = message.with_uuid(u);
+                }
+                if let Some(pu) = parent_uuid {
+                    message = message.with_parent_uuid(pu);
+                }
+                messages.push(message);
             }
-            JsonlEntry::Other => {
+            "progress" => {
+                let data = value.get("data");
+                let data_type = data
+                    .and_then(|d| d.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
+
+                // Build a readable content string
+                let content = if let Some(hook_name) = data.and_then(|d| d.get("hookName")).and_then(|v| v.as_str()) {
+                    format!("{}: {}", data_type, hook_name)
+                } else if let Some(command) = data.and_then(|d| d.get("command")).and_then(|v| v.as_str()) {
+                    format!("{}: {}", data_type, command)
+                } else {
+                    data_type.to_string()
+                };
+
+                // Copy data object as metadata
+                let metadata = data.cloned().unwrap_or(serde_json::json!({"type": data_type}));
+
+                let mut message = Message::progress(content)
+                    .with_metadata(metadata);
+                if let Some(ts) = timestamp {
+                    message = message.with_timestamp(ts);
+                }
+                if let Some(u) = uuid {
+                    message = message.with_uuid(u);
+                }
+                if let Some(pu) = parent_uuid {
+                    message = message.with_parent_uuid(pu);
+                }
+                messages.push(message);
+            }
+            "queue-operation" => {
+                let operation = value.get("operation").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let op_content = value.get("content").and_then(|v| v.as_str());
+
+                let content = if let Some(c) = op_content {
+                    format!("queue-{}: {}", operation, c)
+                } else {
+                    format!("queue-{}", operation)
+                };
+
+                let mut meta = serde_json::Map::new();
+                meta.insert("type".to_string(), serde_json::Value::String("queue-operation".to_string()));
+                meta.insert("operation".to_string(), serde_json::Value::String(operation.to_string()));
+                if let Some(c) = op_content {
+                    meta.insert("content".to_string(), serde_json::Value::String(c.to_string()));
+                }
+
+                let mut message = Message::system(content)
+                    .with_metadata(serde_json::Value::Object(meta));
+                if let Some(ts) = timestamp {
+                    message = message.with_timestamp(ts);
+                }
+                if let Some(u) = uuid {
+                    message = message.with_uuid(u);
+                }
+                if let Some(pu) = parent_uuid {
+                    message = message.with_parent_uuid(pu);
+                }
+                messages.push(message);
+            }
+            "file-history-snapshot" => {
+                let is_update = value.get("isSnapshotUpdate").and_then(|v| v.as_bool()).unwrap_or(false);
+                let content = if is_update {
+                    "file-history-snapshot (update)".to_string()
+                } else {
+                    "file-history-snapshot".to_string()
+                };
+
+                let mut meta = serde_json::Map::new();
+                meta.insert("type".to_string(), serde_json::Value::String("file-history-snapshot".to_string()));
+                if let Some(snapshot) = value.get("snapshot") {
+                    meta.insert("snapshot".to_string(), snapshot.clone());
+                }
+                meta.insert("isSnapshotUpdate".to_string(), serde_json::json!(is_update));
+
+                let mut message = Message::system(content)
+                    .with_metadata(serde_json::Value::Object(meta));
+                if let Some(ts) = timestamp {
+                    message = message.with_timestamp(ts);
+                }
+                if let Some(u) = uuid {
+                    message = message.with_uuid(u);
+                }
+                if let Some(pu) = parent_uuid {
+                    message = message.with_parent_uuid(pu);
+                }
+                messages.push(message);
+            }
+            "summary" => {
+                let summary_text = value.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+                let leaf_uuid = value.get("leafUuid").and_then(|v| v.as_str());
+
+                let mut meta = serde_json::Map::new();
+                meta.insert("summary".to_string(), serde_json::Value::String(summary_text.to_string()));
+                if let Some(lu) = leaf_uuid {
+                    meta.insert("leafUuid".to_string(), serde_json::Value::String(lu.to_string()));
+                }
+
+                let mut message = Message::summary(summary_text.to_string())
+                    .with_metadata(serde_json::Value::Object(meta));
+                if let Some(ts) = timestamp {
+                    message = message.with_timestamp(ts);
+                }
+                if let Some(u) = uuid {
+                    message = message.with_uuid(u);
+                }
+                if let Some(pu) = parent_uuid {
+                    message = message.with_parent_uuid(pu);
+                }
+                messages.push(message);
+            }
+            _ => {
                 // Silently ignore unknown entry types for forward compatibility
-                debug!("Ignoring unknown entry type at line {}", line_number);
+                debug!("Ignoring unknown entry type '{}' at line {}", entry_type, line_number);
             }
         }
     }
 
     Ok(ParsedSession::new(messages, total_tool_calls))
+}
+
+/// Extract readable content from tool_result array blocks.
+fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    for block in blocks {
+        let block_type = block.get("type").and_then(|t| t.as_str());
+        match block_type {
+            Some("tool_result") => {
+                let tool_use_id = block.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                // Try to extract text content from the tool result
+                match block.get("content") {
+                    Some(serde_json::Value::String(s)) => {
+                        let truncated = if s.len() > 200 {
+                            format!("{}...", &s[..200])
+                        } else {
+                            s.clone()
+                        };
+                        parts.push(format!("[Tool result for {}]: {}", tool_use_id, truncated));
+                    }
+                    Some(serde_json::Value::Array(arr)) => {
+                        // Content might be array of text blocks
+                        let text: String = arr.iter()
+                            .filter_map(|item| {
+                                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                    item.get("text").and_then(|t| t.as_str()).map(String::from)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        if !text.is_empty() {
+                            parts.push(format!("[Tool result for {}]: {}", tool_use_id, text));
+                        } else {
+                            parts.push(format!("[Tool result for {}]", tool_use_id));
+                        }
+                    }
+                    _ => {
+                        parts.push(format!("[Tool result for {}]", tool_use_id));
+                    }
+                }
+            }
+            Some("text") => {
+                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                    parts.push(text.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    parts.join("\n")
 }
 
 /// Extract text content from JSONL content, handling both string and block formats.
@@ -526,8 +842,8 @@ mod tests {
         let session = parse_session(&path).await.unwrap();
 
         // Should parse user/assistant only, ignore unknown types
-        // File has: user, future_type (Other), assistant, system (malformed - message is string),
-        // user, metadata (Other), assistant
+        // File has: user, future_type (ignored), assistant, telemetry (ignored),
+        // user, metadata (ignored), assistant
         // = 2 user + 2 assistant = 4 valid messages
         assert_eq!(session.messages.len(), 4);
 
@@ -720,5 +1036,207 @@ mod tests {
 
         let session = parse_session(&path).await.unwrap();
         assert!(session.is_empty());
+    }
+
+    // ============================================================================
+    // All 7 JSONL Line Types Tests
+    // ============================================================================
+
+    /// Fixture: all_types.jsonl has 12 lines:
+    ///   1. user (string content)         → Role::User
+    ///   2. assistant (text+thinking+tool) → Role::Assistant
+    ///   3. user (tool_result array)       → Role::ToolResult
+    ///   4. assistant (tool-only)          → Role::ToolUse
+    ///   5. assistant (text-only)          → Role::Assistant
+    ///   6. system                         → Role::System
+    ///   7. progress                       → Role::Progress
+    ///   8. queue-operation (enqueue)      → Role::System
+    ///   9. queue-operation (dequeue)      → Role::System
+    ///  10. summary                        → Role::Summary
+    ///  11. file-history-snapshot          → Role::System
+    ///  12. user (isMeta=true)             → skipped
+    /// = 11 messages total
+
+    #[tokio::test]
+    async fn test_parse_all_types_count() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+        assert_eq!(session.messages.len(), 11);
+    }
+
+    #[tokio::test]
+    async fn test_parse_user_string_is_user_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        let msg = &session.messages[0];
+        assert_eq!(msg.role, Role::User);
+        assert_eq!(msg.content, "Read and fix auth.rs");
+    }
+
+    #[tokio::test]
+    async fn test_parse_user_array_is_tool_result_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        let msg = &session.messages[2];
+        assert_eq!(msg.role, Role::ToolResult);
+        assert!(msg.content.contains("tool_result") || msg.content.contains("Tool result"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_assistant_with_text_is_assistant_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 1 is assistant with text+thinking+tools → Role::Assistant
+        let msg = &session.messages[1];
+        assert_eq!(msg.role, Role::Assistant);
+        assert!(msg.content.contains("I'll read the file first"));
+        assert!(msg.tool_calls.is_some());
+        assert!(msg.thinking.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parse_assistant_tool_only_is_tool_use_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 3 is assistant with only tool_use blocks → Role::ToolUse
+        let msg = &session.messages[3];
+        assert_eq!(msg.role, Role::ToolUse);
+        assert!(msg.tool_calls.is_some());
+        let tools = msg.tool_calls.as_ref().unwrap();
+        let edit_tool = tools.iter().find(|t| t.name == "Edit");
+        assert!(edit_tool.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parse_system_role_and_metadata() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 5 is system (turn_duration)
+        let msg = &session.messages[5];
+        assert_eq!(msg.role, Role::System);
+        assert!(msg.content.contains("turn_duration"));
+        assert!(msg.content.contains("5000"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("subtype").unwrap().as_str().unwrap(), "turn_duration");
+        assert_eq!(meta.get("durationMs").unwrap().as_u64().unwrap(), 5000);
+    }
+
+    #[tokio::test]
+    async fn test_parse_progress_role_and_metadata() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 6 is progress (hook_progress)
+        let msg = &session.messages[6];
+        assert_eq!(msg.role, Role::Progress);
+        assert!(msg.content.contains("hook_progress"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "hook_progress");
+        assert_eq!(meta.get("hookName").unwrap().as_str().unwrap(), "lint-check");
+    }
+
+    #[tokio::test]
+    async fn test_parse_queue_operation_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 7 is queue-operation (enqueue)
+        let msg = &session.messages[7];
+        assert_eq!(msg.role, Role::System);
+        assert!(msg.content.contains("enqueue"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "queue-operation");
+        assert_eq!(meta.get("operation").unwrap().as_str().unwrap(), "enqueue");
+        assert_eq!(meta.get("content").unwrap().as_str().unwrap(), "next task");
+
+        // Message index 8 is queue-operation (dequeue)
+        let msg2 = &session.messages[8];
+        assert_eq!(msg2.role, Role::System);
+        assert!(msg2.content.contains("dequeue"));
+        let meta2 = msg2.metadata.as_ref().unwrap();
+        assert_eq!(meta2.get("operation").unwrap().as_str().unwrap(), "dequeue");
+    }
+
+    #[tokio::test]
+    async fn test_parse_file_history_snapshot_role() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 10 is file-history-snapshot
+        let msg = &session.messages[10];
+        assert_eq!(msg.role, Role::System);
+        assert!(msg.content.contains("file-history-snapshot"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "file-history-snapshot");
+        assert_eq!(meta.get("isSnapshotUpdate").unwrap().as_bool().unwrap(), false);
+        assert!(meta.get("snapshot").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parse_summary_role_and_metadata() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 9 is summary
+        let msg = &session.messages[9];
+        assert_eq!(msg.role, Role::Summary);
+        assert_eq!(msg.content, "Fixed authentication bug in auth.rs");
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("summary").unwrap().as_str().unwrap(), "Fixed authentication bug in auth.rs");
+        assert_eq!(meta.get("leafUuid").unwrap().as_str().unwrap(), "a2");
+    }
+
+    #[tokio::test]
+    async fn test_parse_uuid_passthrough() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // First user message has uuid "u1"
+        assert_eq!(session.messages[0].uuid, Some("u1".to_string()));
+        // First assistant has uuid "a1"
+        assert_eq!(session.messages[1].uuid, Some("a1".to_string()));
+        // System has uuid "s1"
+        assert_eq!(session.messages[5].uuid, Some("s1".to_string()));
+        // Progress has uuid "p1"
+        assert_eq!(session.messages[6].uuid, Some("p1".to_string()));
+        // Summary has uuid "sum1"
+        assert_eq!(session.messages[9].uuid, Some("sum1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_parse_parent_uuid_passthrough() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // First user has no parentUuid
+        assert_eq!(session.messages[0].parent_uuid, None);
+        // First assistant has parentUuid "u1"
+        assert_eq!(session.messages[1].parent_uuid, Some("u1".to_string()));
+        // Tool result user (index 2) has parentUuid "a1"
+        assert_eq!(session.messages[2].parent_uuid, Some("a1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_parse_meta_user_still_skipped() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // The last line is a user with isMeta=true, should be skipped
+        // So we should have 11 messages, not 12
+        assert_eq!(session.messages.len(), 11);
+        // No message should contain "System init"
+        for msg in &session.messages {
+            assert!(!msg.content.contains("System init"));
+        }
     }
 }
