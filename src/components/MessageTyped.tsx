@@ -36,6 +36,11 @@ import { HookProgressCard } from './HookProgressCard'
 import { McpProgressCard } from './McpProgressCard'
 import { TaskQueueCard } from './TaskQueueCard'
 
+// Track 4: Queue, Snapshot, Summary cards
+import { MessageQueueEventCard } from './MessageQueueEventCard'
+import { FileSnapshotCard } from './FileSnapshotCard'
+import { SessionSummaryCard } from './SessionSummaryCard'
+
 /** Maximum nesting depth for thread indentation */
 const MAX_INDENT_LEVEL = 5
 /** Pixels per indent level (desktop) */
@@ -201,6 +206,13 @@ function renderSystemSubtype(metadata: Record<string, any>): React.ReactNode | n
       return <HookSummaryCard hookCount={metadata.hookCount} hookInfos={metadata.hookInfos} hookErrors={metadata.hookErrors} durationMs={metadata.durationMs} preventedContinuation={metadata.preventedContinuation} />
     case 'local_command':
       return <LocalCommandEventCard content={metadata.content} />
+    case 'queue-operation':
+      return <MessageQueueEventCard operation={metadata.operation} timestamp={metadata.timestamp || ''} content={metadata.content} />
+    case 'file-history-snapshot': {
+      const snapshot = metadata.snapshot || {}
+      const files = Object.keys(snapshot.trackedFileBackups || {})
+      return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={metadata.isSnapshotUpdate || false} />
+    }
     default:
       return null
   }
@@ -440,18 +452,24 @@ export function MessageTyped({
           {type === 'progress' && metadata && (
             renderProgressSubtype(metadata) ?? <SystemMetadataCard metadata={metadata} type="progress" />
           )}
-          {type !== 'system' && type !== 'progress' && (
-            <SystemMetadataCard metadata={metadata} type={type as 'system' | 'progress'} />
+
+          {/* Summary card */}
+          {type === 'summary' && metadata && (
+            <SessionSummaryCard
+              summary={metadata.summary || message.content}
+              leafUuid={metadata.leafUuid || ''}
+              wordCount={(metadata.summary || message.content || '').split(/\s+/).filter(Boolean).length}
+            />
           )}
 
           {/* Tool calls summary */}
-          {message.toolCalls && message.toolCalls.length > 0 && (
+          {message.tool_calls && message.tool_calls.length > 0 && (
             <div className="mt-2 pt-3 border-t border-gray-200">
               <div className="text-xs font-semibold text-gray-600 mb-2">
-                Tool Calls: {message.toolCalls.length}
+                Tool Calls: {message.tool_calls.length}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {message.toolCalls.map((tool, idx) => (
+                {message.tool_calls.map((tool, idx) => (
                   <div
                     key={idx}
                     className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs font-mono text-gray-700"
