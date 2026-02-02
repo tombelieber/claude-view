@@ -1982,8 +1982,9 @@ mod tests {
         assert!(!json.contains("\"gitBranch\""), "gitBranch=None should be omitted");
 
         // modifiedAt should be a Unix timestamp number (not an ISO string)
+        let expected_fragment = format!("\"modifiedAt\":{}", now);
         assert!(
-            json.contains("\"modifiedAt\":1769"),
+            json.contains(&expected_fragment),
             "modifiedAt should be a number: {}",
             json
         );
