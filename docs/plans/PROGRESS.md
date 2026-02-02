@@ -229,7 +229,7 @@ Clean 3-tier structure: active work only in main folder.
 |------|--------|------|
 | `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
 | `2026-01-29-phase4-npx-release.md` | pending | **Current work** — checksum verification, npm publish CI, release pipeline |
-| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | pending | **Pre-release security** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
+| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | done | **Completed** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
 | `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | pending | **Phase 1 UI rebuild** — 4-phase implementation covering message types, XML cards, hierarchy |
 | `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
