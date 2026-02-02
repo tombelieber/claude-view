@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-01-29
+> **Last updated:** 2026-01-31
 
 ---
 
@@ -43,10 +43,13 @@
 | **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
 | **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
 | **Phase 4: Distribution (npx)** | **IN PROGRESS** | 5/7 tasks done — awaiting human setup (npm token) + first release | Personal |
+| **Phase 4B: Session Parser + UI Wiring** | **DONE** | 4/4 tasks — 7-type parser rewrite, TS types, compact/full toggle, Track 4 wiring | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
 **Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
+
+**Recently completed:** Phase 4B Session Parser + UI Wiring — parser rewrite emits all 7 JSONL types, compact/full toggle in conversation UI
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -158,6 +161,23 @@ See `docs/plans/2026-01-29-full-jsonl-parser.md` for full plan.
 
 ---
 
+## Phase 4B: Session Parser + UI Wiring — DONE
+
+Upgraded session parser to emit all 7 JSONL line types and wired to frontend conversation UI with compact/full toggle.
+
+5 commits, 239 backend tests passing, 0 TypeScript errors in changed files.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | Extend Role enum + Message struct | **DONE** | 7 Role variants, uuid/parent_uuid/metadata fields |
+| 2 | Rewrite parse_session() | **DONE** | serde_json::Value dispatch, all 7 types, 14 new tests |
+| 3 | Regenerate TypeScript types | **DONE** | ts-rs auto-generated Role.ts + Message.ts |
+| 4 | Wire frontend + compact/full toggle | **DONE** | Segmented control, filterMessages, Track 4 cards, dark mode |
+
+See `docs/plans/2026-01-31-session-parser-ui-wiring.md` for full plan.
+
+---
+
 ## Phase 4: Distribution (npx) — IN PROGRESS
 
 Ship `npx claude-view` with checksum verification, automated npm publish, and provenance attestation.
@@ -211,6 +231,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-01-29-phase4-npx-release.md` | pending | **Current work** — checksum verification, npm publish CI, release pipeline |
 | `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | pending | **Pre-release security** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
 | `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | pending | **Phase 1 UI rebuild** — 4-phase implementation covering message types, XML cards, hierarchy |
+| `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
 
 ### Reference Plans (in `/docs/plans/archived/`)
