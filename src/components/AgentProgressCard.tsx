@@ -60,21 +60,21 @@ export function AgentProgressCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-indigo-200 border-l-4 border-l-indigo-400 bg-indigo-50 my-2 overflow-hidden'
+        'rounded-lg border border-indigo-200 dark:border-indigo-800 border-l-4 border-l-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 my-2 overflow-hidden'
       )}
       style={{ marginLeft: indent ? `${indent * 16}px` : undefined }}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-100 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
         aria-label="Agent progress"
         aria-expanded={expanded}
       >
         <Bot className="w-4 h-4 text-indigo-600 flex-shrink-0" aria-hidden="true" />
-        <span className="text-sm font-semibold text-indigo-900 truncate flex-1">
+        <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 truncate flex-1">
           {title}
           {tokenSuffix && (
-            <span className="font-normal text-indigo-700">{tokenSuffix}</span>
+            <span className="font-normal text-indigo-700 dark:text-indigo-400">{tokenSuffix}</span>
           )}
         </span>
         {expanded ? (
@@ -85,17 +85,17 @@ export function AgentProgressCard({
       </button>
 
       {expanded && (
-        <div className="px-3 py-2 border-t border-indigo-100 bg-indigo-50/50">
+        <div className="px-3 py-2 border-t border-indigo-100 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20">
           {truncatedPrompt && (
             <div
-              className="text-sm text-indigo-800 mb-2"
+              className="text-sm text-indigo-800 dark:text-indigo-300 mb-2"
               data-testid="agent-prompt"
             >
               {truncatedPrompt}
             </div>
           )}
 
-          <div className="text-xs text-indigo-700 space-y-1">
+          <div className="text-xs text-indigo-700 dark:text-indigo-400 space-y-1">
             {model && (
               <div>
                 <span className="font-medium">Model:</span> {model}
