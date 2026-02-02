@@ -849,19 +849,23 @@ pub async fn pass_1_read_indexes(
 
 /// Pass 2: Parallel deep JSONL parsing for extended metadata.
 ///
-/// Processes sessions where `deep_indexed_at IS NULL`. For each session,
-/// reads the JSONL file with memory-mapped I/O, extracts tool counts,
-/// skills, files touched, last message, and turn count using SIMD-accelerated
-/// scanning, then updates the database.
+/// Uses a collect-then-write pattern:
+/// 1. **Parse phase** (parallel): Each session is parsed in a tokio task with
+///    semaphore-bounded parallelism. Tasks return `DeepIndexResult` structs
+///    instead of writing to the DB. The `on_file_done` callback fires per
+///    session during this phase so the TUI progress spinner still works.
+/// 2. **Write phase** (sequential): After all parse tasks complete, one
+///    transaction writes all results. This eliminates ~N*3 implicit fsyncs
+///    (one per session per write call) and replaces them with a single COMMIT.
 ///
 /// Uses zero-copy mmap: the file is memory-mapped and `parse_bytes` runs
 /// directly on the mapped pages. The mmap stays alive for the duration of
 /// parsing, then drops — no heap copy is ever made.
 ///
-/// If `registry` is `Some`, raw tool_use invocations are classified and
-/// batch-inserted into the `invocations` table.
+/// If `registry` is `Some`, raw tool_use invocations are classified during the
+/// parse phase and included in the result struct for batch insertion.
 ///
-/// Calls `on_file_done(indexed_so_far, total)` after each file completes.
+/// Calls `on_file_done(indexed_so_far, total)` after each file's parse completes.
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
@@ -892,10 +896,12 @@ where
         .unwrap_or(4);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(parallelism));
 
+    // ── Parse phase (parallel) ──────────────────────────────────────────
+    // Each task returns Option<DeepIndexResult>. None means the file was
+    // missing or empty (nothing to write).
     let mut handles = Vec::with_capacity(total);
 
     for (id, file_path) in sessions {
-        let db = db.clone();
         let sem = semaphore.clone();
         let counter = counter.clone();
         let on_done = on_file_done.clone();
@@ -945,7 +951,6 @@ where
             .await
             .map_err(|e| format!("spawn_blocking join error: {}", e))?;
 
-            let meta = &parse_result.deep;
             let diag = &parse_result.diagnostics;
 
             // Log parse anomalies per session
@@ -959,79 +964,9 @@ where
                 );
             }
 
-            // Serialize vec fields to JSON strings
-            let files_touched =
-                serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
-            let skills_used =
-                serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
-            // Phase 3: Serialize files_read and files_edited as JSON arrays
-            let files_read =
-                serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
-            let files_edited =
-                serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
-
-            // Phase 3: Count commit skills for commit_count
-            let commit_invocations = extract_commit_skill_invocations(&parse_result.raw_invocations);
-            let commit_count = commit_invocations.len() as i32;
-
-            // Compute turn duration aggregates
-            let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
-                (None, None, None)
-            } else {
-                let total: u64 = meta.turn_durations_ms.iter().sum();
-                let max = *meta.turn_durations_ms.iter().max().unwrap();
-                let avg = total / meta.turn_durations_ms.len() as u64;
-                (Some(avg as i64), Some(max as i64), Some(total as i64))
-            };
-
-            db.update_session_deep_fields(
-                &id,
-                &meta.last_message,
-                meta.turn_count as i32,
-                meta.tool_counts.edit as i32,
-                meta.tool_counts.read as i32,
-                meta.tool_counts.bash as i32,
-                meta.tool_counts.write as i32,
-                &files_touched,
-                &skills_used,
-                // Phase 3: Atomic unit metrics
-                meta.user_prompt_count as i32,
-                meta.api_call_count as i32,
-                meta.tool_call_count as i32,
-                &files_read,
-                &files_edited,
-                meta.files_read_count as i32,
-                meta.files_edited_count as i32,
-                meta.reedited_files_count as i32,
-                meta.duration_seconds as i32,
-                commit_count,
-                meta.first_timestamp,
-                // Phase 3.5: Full parser metrics
-                meta.total_input_tokens as i64,
-                meta.total_output_tokens as i64,
-                meta.cache_read_tokens as i64,
-                meta.cache_creation_tokens as i64,
-                meta.thinking_block_count as i32,
-                dur_avg,
-                dur_max,
-                dur_total,
-                meta.api_error_count as i32,
-                meta.api_retry_count as i32,
-                meta.compaction_count as i32,
-                meta.hook_blocked_count as i32,
-                meta.agent_spawn_count as i32,
-                meta.bash_progress_count as i32,
-                meta.hook_progress_count as i32,
-                meta.mcp_progress_count as i32,
-                meta.summary_text.as_deref(),
-                CURRENT_PARSE_VERSION,
-            )
-            .await
-            .map_err(|e| format!("Failed to update deep fields for {}: {}", id, e))?;
-
-            // Classify raw invocations and batch-insert if registry is available
-            if let Some(ref registry) = registry {
-                let classified: Vec<(String, i64, String, String, String, i64)> = parse_result
+            // Classify raw invocations during parse phase (CPU work, no DB)
+            let classified = if let Some(ref registry) = registry {
+                parse_result
                     .raw_invocations
                     .iter()
                     .filter_map(|raw| {
@@ -1052,61 +987,192 @@ where
                             _ => None, // Rejected and Ignored are discarded
                         }
                     })
-                    .collect();
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
-                if !classified.is_empty() {
-                    db.batch_insert_invocations(&classified)
-                        .await
-                        .map_err(|e| {
-                            format!("Failed to insert invocations for {}: {}", id, e)
-                        })?;
-                }
-            }
-
-            // Batch upsert models and insert turns (Phase 2B)
-            if !parse_result.turns.is_empty() {
-                let seen_at = chrono::Utc::now().timestamp();
-                if let Err(e) = db
-                    .batch_upsert_models(&parse_result.models_seen, seen_at)
-                    .await
-                {
-                    tracing::warn!("Failed to upsert models for {}: {}", id, e);
-                }
-
-                if let Err(e) = db
-                    .batch_insert_turns(&id, &parse_result.turns)
-                    .await
-                {
-                    tracing::warn!("Failed to insert turns for {}: {}", id, e);
-                }
-            }
-
+            // Fire progress callback during parse phase so TUI spinner works
             let indexed = counter.fetch_add(1, Ordering::Relaxed) + 1;
             on_done(indexed, total);
 
-            Ok::<(), String>(())
+            Ok::<Option<DeepIndexResult>, String>(Some(DeepIndexResult {
+                session_id: id,
+                file_path,
+                parse_result,
+                classified_invocations: classified,
+            }))
         });
 
         handles.push(handle);
     }
 
-    // Await all tasks
-    let mut errors = Vec::new();
+    // Collect all parse results
+    let mut results = Vec::with_capacity(total);
+    let mut parse_errors = Vec::new();
     for handle in handles {
         match handle.await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => errors.push(e),
-            Err(e) => errors.push(format!("Task join error: {}", e)),
+            Ok(Ok(Some(result))) => results.push(result),
+            Ok(Ok(None)) => {} // file missing or empty, skip
+            Ok(Err(e)) => parse_errors.push(e),
+            Err(e) => parse_errors.push(format!("Task join error: {}", e)),
         }
     }
 
-    let indexed = counter.load(Ordering::Relaxed);
-
-    if !errors.is_empty() {
+    if !parse_errors.is_empty() {
         tracing::warn!(
-            "pass_2_deep_index encountered {} errors: {:?}",
-            errors.len(),
-            errors
+            "pass_2_deep_index parse phase encountered {} errors: {:?}",
+            parse_errors.len(),
+            parse_errors
+        );
+    }
+
+    // ── Write phase (single transaction) ────────────────────────────────
+    // All parsed results are written in one BEGIN/COMMIT, eliminating ~N*3
+    // implicit fsyncs from per-session transactions.
+    if !results.is_empty() {
+        let mut tx = db
+            .pool()
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
+
+        let seen_at = chrono::Utc::now().timestamp();
+
+        for result in &results {
+            let meta = &result.parse_result.deep;
+
+            // Serialize vec fields to JSON strings
+            let files_touched = serde_json::to_string(&meta.files_touched)
+                .unwrap_or_else(|_| "[]".to_string());
+            let skills_used = serde_json::to_string(&meta.skills_used)
+                .unwrap_or_else(|_| "[]".to_string());
+            let files_read = serde_json::to_string(&meta.files_read)
+                .unwrap_or_else(|_| "[]".to_string());
+            let files_edited = serde_json::to_string(&meta.files_edited)
+                .unwrap_or_else(|_| "[]".to_string());
+
+            // Count commit skills for commit_count
+            let commit_invocations =
+                extract_commit_skill_invocations(&result.parse_result.raw_invocations);
+            let commit_count = commit_invocations.len() as i32;
+
+            // Compute turn duration aggregates
+            let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
+                (None, None, None)
+            } else {
+                let total: u64 = meta.turn_durations_ms.iter().sum();
+                let max = *meta.turn_durations_ms.iter().max().unwrap();
+                let avg = total / meta.turn_durations_ms.len() as u64;
+                (Some(avg as i64), Some(max as i64), Some(total as i64))
+            };
+
+            crate::queries::update_session_deep_fields_tx(
+                &mut tx,
+                &result.session_id,
+                &meta.last_message,
+                meta.turn_count as i32,
+                meta.tool_counts.edit as i32,
+                meta.tool_counts.read as i32,
+                meta.tool_counts.bash as i32,
+                meta.tool_counts.write as i32,
+                &files_touched,
+                &skills_used,
+                meta.user_prompt_count as i32,
+                meta.api_call_count as i32,
+                meta.tool_call_count as i32,
+                &files_read,
+                &files_edited,
+                meta.files_read_count as i32,
+                meta.files_edited_count as i32,
+                meta.reedited_files_count as i32,
+                meta.duration_seconds as i32,
+                commit_count,
+                meta.first_timestamp,
+                meta.total_input_tokens as i64,
+                meta.total_output_tokens as i64,
+                meta.cache_read_tokens as i64,
+                meta.cache_creation_tokens as i64,
+                meta.thinking_block_count as i32,
+                dur_avg,
+                dur_max,
+                dur_total,
+                meta.api_error_count as i32,
+                meta.api_retry_count as i32,
+                meta.compaction_count as i32,
+                meta.hook_blocked_count as i32,
+                meta.agent_spawn_count as i32,
+                meta.bash_progress_count as i32,
+                meta.hook_progress_count as i32,
+                meta.mcp_progress_count as i32,
+                meta.summary_text.as_deref(),
+                CURRENT_PARSE_VERSION,
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to update deep fields for {}: {}",
+                    result.session_id, e
+                )
+            })?;
+
+            // Insert classified invocations
+            if !result.classified_invocations.is_empty() {
+                crate::queries::batch_insert_invocations_tx(
+                    &mut tx,
+                    &result.classified_invocations,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert invocations for {}: {}",
+                        result.session_id, e
+                    )
+                })?;
+            }
+
+            // Upsert models and insert turns
+            if !result.parse_result.turns.is_empty() {
+                crate::queries::batch_upsert_models_tx(
+                    &mut tx,
+                    &result.parse_result.models_seen,
+                    seen_at,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to upsert models for {}: {}",
+                        result.session_id, e
+                    )
+                })?;
+
+                crate::queries::batch_insert_turns_tx(
+                    &mut tx,
+                    &result.session_id,
+                    &result.parse_result.turns,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert turns for {}: {}",
+                        result.session_id, e
+                    )
+                })?;
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
+    }
+
+    let indexed = results.len();
+
+    if !parse_errors.is_empty() {
+        tracing::warn!(
+            "pass_2_deep_index encountered {} parse errors (still wrote {} results)",
+            parse_errors.len(),
+            indexed
         );
     }
 
