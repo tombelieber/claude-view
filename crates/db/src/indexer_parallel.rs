@@ -1186,7 +1186,7 @@ where
             let write_result: Result<usize, String> = tokio::task::spawn_blocking(move || {
                 let conn = rusqlite::Connection::open(&db_path)
                     .map_err(|e| format!("rusqlite open error: {}", e))?;
-                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=30000;")
                     .map_err(|e| format!("rusqlite pragma error: {}", e))?;
 
                 let mut update_stmt = conn.prepare(UPDATE_SESSION_DEEP_SQL)
