@@ -184,8 +184,8 @@ async fn main() -> Result<()> {
         let projects = tui_state.projects_found();
         let sessions = tui_state.sessions_found();
         eprintln!(
-            "  \u{2713} Ready in {:.1}s \u{2014} {} projects, {} sessions",
-            elapsed.as_secs_f64(),
+            "  \u{2713} Ready in {} \u{2014} {} projects, {} sessions",
+            vibe_recall_core::format_duration(elapsed),
             projects,
             sessions,
         );
@@ -221,9 +221,9 @@ async fn main() -> Result<()> {
                 let deep_elapsed = deep_start.elapsed();
                 let total = tui_state.sessions_found();
                 eprintln!(
-                    "  \u{2713} Deep index complete \u{2014} {} sessions ({}ms)\n",
+                    "  \u{2713} Deep index complete \u{2014} {} sessions ({})\n",
                     total,
-                    deep_elapsed.as_millis(),
+                    vibe_recall_core::format_duration(deep_elapsed),
                 );
             } else if let Some(err) = tui_state.error() {
                 eprintln!("  \u{2717} Indexing error: {}\n", err);
