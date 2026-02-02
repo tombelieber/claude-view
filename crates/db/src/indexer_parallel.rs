@@ -1439,7 +1439,6 @@ where
     // 2. parse_version < CURRENT → parser upgraded
     // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
     // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
-    #[cfg(debug_assertions)]
     let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String)> = all_sessions
         .into_iter()
@@ -1477,9 +1476,7 @@ where
         })
         .collect();
 
-    #[cfg(debug_assertions)]
     let phase_start = std::time::Instant::now();
-    #[cfg(debug_assertions)]
     let skipped = all_sessions_count - sessions.len();
 
     if sessions.is_empty() {
@@ -1633,7 +1630,6 @@ where
         }
     }
 
-    #[cfg(debug_assertions)]
     let parse_elapsed = phase_start.elapsed();
 
     if !parse_errors.is_empty() {
@@ -1801,7 +1797,6 @@ where
         0
     };
 
-    #[cfg(debug_assertions)]
     let write_elapsed = phase_start.elapsed() - parse_elapsed;
 
     if !parse_errors.is_empty() {
@@ -1819,7 +1814,6 @@ where
         "Pass 2 deep indexing complete"
     );
 
-    #[cfg(debug_assertions)]
     {
         let total_elapsed = phase_start.elapsed();
         eprintln!(
