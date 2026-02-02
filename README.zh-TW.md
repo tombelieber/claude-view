@@ -1,12 +1,22 @@
 # claude-view
 
 <p align="center">
-  <img src="./docs/screenshot.png" alt="claude-view" width="800" />
-</p>
-
-<p align="center">
   <strong>瀏覽與匯出你的 Claude Code 對話紀錄</strong>
 </p>
+
+<!-- TODO: 將 YOUTUBE_VIDEO_ID 替換為實際的 YouTube 影片 ID -->
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID">
+    <img src="https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg" alt="claude-view 示範" width="800" />
+  </a>
+  <br/>
+  <sub>點擊觀看示範影片</sub>
+</p>
+
+<!-- TODO: 擷取應用程式截圖並儲存至 docs/screenshot.png -->
+<!-- <p align="center">
+  <img src="./docs/screenshot.png" alt="claude-view 截圖" width="800" />
+</p> -->
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -16,7 +26,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
   <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -45,9 +55,9 @@ npx claude-view
 | 功能 | 說明 |
 |------|------|
 | 📁 **依專案瀏覽** | 對話依工作目錄分類整理 |
-| 🔍 **豐富預覽** | 一目瞭然：修改的檔案、使用的工具、啟用的技能 |
+| 🔍 **豐富預覽** | 一目瞭然：使用的工具、啟用的技能。點入對話查看修改的檔案 |
 | 💬 **完整對話** | 語法高亮程式碼、Markdown 渲染 |
-| 📤 **匯出 HTML** | 分享或封存為獨立檔案 |
+| 📤 **匯出對話** | 分享或封存為 HTML、PDF 或 Markdown |
 | ⌨️ **鍵盤優先** | `⌘K` 跨所有對話搜尋 |
 
 ---
@@ -69,7 +79,7 @@ npx claude-view
 | **npx**（推薦） | `npx claude-view` |
 | **Shell 腳本**（無需 Node） | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
 | **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
-| **Homebrew** | `brew install claude-view` |
+| **Homebrew**（即將推出） | `brew install claude-view` |
 
 ---
 
@@ -99,14 +109,14 @@ npx claude-view
 
 ## 🗺️ 平台支援藍圖
 
-| 平台 | 狀態 | 預計 |
-|------|------|------|
-| macOS (Apple Silicon) | ✅ 已支援 | 現在 |
-| macOS (Intel) | ✅ 已支援 | 現在 |
-| Linux (x64) | 🔜 即將推出 | v2.1 |
-| Linux (ARM64) | 🔜 即將推出 | v2.1 |
-| Windows (x64) | 🔜 即將推出 | v2.2 |
-| Windows (ARM64) | 🔜 即將推出 | v2.2 |
+| 平台 | 狀態 |
+|------|------|
+| macOS (Apple Silicon) | ✅ 已支援 |
+| macOS (Intel) | ✅ 已支援 |
+| Linux (x64) | ✅ 已支援 |
+| Windows (x64) | ✅ 已支援 |
+| Linux (ARM64) | 🔜 即將推出 |
+| Windows (ARM64) | 🔜 即將推出 |
 
 ---
 
