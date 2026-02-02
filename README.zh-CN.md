@@ -4,19 +4,6 @@
   <strong>浏览与导出你的 Claude Code 对话记录</strong>
 </p>
 
-<!-- TODO: 将 YOUTUBE_VIDEO_ID 替换为实际的 YouTube 视频 ID -->
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID">
-    <img src="https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg" alt="claude-view 演示" width="800" />
-  </a>
-  <br/>
-  <sub>点击观看演示视频</sub>
-</p>
-
-<!-- TODO: 截取应用截图并保存至 docs/screenshot.png -->
-<!-- <p align="center">
-  <img src="./docs/screenshot.png" alt="claude-view 截图" width="800" />
-</p> -->
 
 <p align="center">
   <a href="./README.md">English</a> ·
