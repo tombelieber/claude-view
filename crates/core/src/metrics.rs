@@ -77,6 +77,21 @@ pub fn read_to_edit_ratio(files_read_count: u32, files_edited_count: u32) -> Opt
     Some(files_read_count as f64 / files_edited_count as f64)
 }
 
+/// Format a `std::time::Duration` with smart unit selection:
+/// - < 1ms → microseconds (e.g. "342µs")
+/// - 1ms..999ms → milliseconds (e.g. "170ms")
+/// - >= 1s → seconds with 2 decimal places (e.g. "1.23s")
+pub fn format_duration(d: std::time::Duration) -> String {
+    let micros = d.as_micros();
+    if micros < 1_000 {
+        format!("{}µs", micros)
+    } else if d.as_millis() < 1_000 {
+        format!("{}ms", d.as_millis())
+    } else {
+        format!("{:.2}s", d.as_secs_f64())
+    }
+}
+
 /// Helper to round a metric to 2 decimal places for display.
 pub fn round_for_display(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
@@ -297,6 +312,45 @@ mod tests {
         assert_eq!(round_for_display(0.005), 0.01); // rounds up
         assert_eq!(round_for_display(0.004), 0.0); // rounds down
         assert_eq!(round_for_display(100.999), 101.0);
+    }
+
+    // ========================================================================
+    // format_duration (smart unit selection)
+    // ========================================================================
+
+    #[test]
+    fn test_format_duration_microseconds() {
+        use std::time::Duration;
+        assert_eq!(format_duration(Duration::from_micros(0)), "0µs");
+        assert_eq!(format_duration(Duration::from_micros(1)), "1µs");
+        assert_eq!(format_duration(Duration::from_micros(342)), "342µs");
+        assert_eq!(format_duration(Duration::from_micros(999)), "999µs");
+    }
+
+    #[test]
+    fn test_format_duration_milliseconds() {
+        use std::time::Duration;
+        assert_eq!(format_duration(Duration::from_millis(1)), "1ms");
+        assert_eq!(format_duration(Duration::from_millis(170)), "170ms");
+        assert_eq!(format_duration(Duration::from_millis(999)), "999ms");
+    }
+
+    #[test]
+    fn test_format_duration_seconds() {
+        use std::time::Duration;
+        assert_eq!(format_duration(Duration::from_millis(1000)), "1.00s");
+        assert_eq!(format_duration(Duration::from_millis(1230)), "1.23s");
+        assert_eq!(format_duration(Duration::from_millis(2500)), "2.50s");
+        assert_eq!(format_duration(Duration::from_secs(60)), "60.00s");
+    }
+
+    #[test]
+    fn test_format_duration_boundary() {
+        use std::time::Duration;
+        // Exactly 1ms boundary: 1000µs → should show as ms
+        assert_eq!(format_duration(Duration::from_micros(1000)), "1ms");
+        // Exactly 1s boundary: 1000ms → should show as seconds
+        assert_eq!(format_duration(Duration::from_millis(1000)), "1.00s");
     }
 
     // ========================================================================
