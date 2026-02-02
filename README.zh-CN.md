@@ -1,12 +1,9 @@
 # claude-view
 
 <p align="center">
-  <img src="./docs/screenshot.png" alt="claude-view" width="800" />
-</p>
-
-<p align="center">
   <strong>浏览与导出你的 Claude Code 对话记录</strong>
 </p>
+
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -16,7 +13,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
   <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -45,9 +42,9 @@ npx claude-view
 | 功能 | 说明 |
 |------|------|
 | 📁 **按项目浏览** | 对话按工作目录分类整理 |
-| 🔍 **丰富预览** | 一目了然：修改的文件、使用的工具、启用的技能 |
+| 🔍 **丰富预览** | 一目了然：使用的工具、启用的技能。点入对话查看修改的文件 |
 | 💬 **完整对话** | 语法高亮代码、Markdown 渲染 |
-| 📤 **导出 HTML** | 分享或归档为独立文件 |
+| 📤 **导出对话** | 分享或归档为 HTML、PDF 或 Markdown |
 | ⌨️ **键盘优先** | `⌘K` 跨所有对话搜索 |
 
 ---
@@ -69,7 +66,6 @@ npx claude-view
 | **npx**（推荐） | `npx claude-view` |
 | **Shell 脚本**（无需 Node） | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
 | **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
-| **Homebrew** | `brew install claude-view` |
 
 ---
 
@@ -99,14 +95,14 @@ npx claude-view
 
 ## 🗺️ 平台支持路线图
 
-| 平台 | 状态 | 预计 |
-|------|------|------|
-| macOS (Apple Silicon) | ✅ 已支持 | 现在 |
-| macOS (Intel) | ✅ 已支持 | 现在 |
-| Linux (x64) | 🔜 即将推出 | v2.1 |
-| Linux (ARM64) | 🔜 即将推出 | v2.1 |
-| Windows (x64) | 🔜 即将推出 | v2.2 |
-| Windows (ARM64) | 🔜 即将推出 | v2.2 |
+| 平台 | 状态 |
+|------|------|
+| macOS (Apple Silicon) | ✅ 已支持 |
+| macOS (Intel) | ✅ 已支持 |
+| Linux (x64) | ✅ 已支持 |
+| Windows (x64) | ✅ 已支持 |
+| Linux (ARM64) | 🔜 即将推出 |
+| Windows (ARM64) | 🔜 即将推出 |
 
 ---
 
