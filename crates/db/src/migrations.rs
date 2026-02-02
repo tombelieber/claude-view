@@ -220,6 +220,11 @@ CREATE TABLE IF NOT EXISTS api_errors (
     r#"CREATE INDEX IF NOT EXISTS idx_api_errors_session_id ON api_errors(session_id);"#,
     // 10f: Partial index for re-indexing
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_needs_reindex ON sessions(id, file_path) WHERE parse_version < 1;"#,
+    // Migration 11: File modification detection for re-indexing
+    // Stores file size and mtime at last deep-index time so we can detect
+    // when a JSONL file has grown (user continued a conversation).
+    r#"ALTER TABLE sessions ADD COLUMN file_size_at_index INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN file_mtime_at_index INTEGER;"#,
 ];
 
 // ============================================================================
