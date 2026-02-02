@@ -173,6 +173,7 @@ pub struct ParseDiagnostics {
     pub lines_queue_op: u32,
     pub lines_summary: u32,
     pub lines_file_snapshot: u32,
+    pub lines_hook_context: u32,
     pub lines_unknown_type: u32,
 
     // Parse outcomes
@@ -504,6 +505,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             "file-history-snapshot" => {
                 diag.lines_file_snapshot += 1;
                 result.deep.file_snapshot_count += 1;
+            }
+            "saved_hook_context" => {
+                diag.lines_hook_context += 1;
             }
             _ => {
                 diag.lines_unknown_type += 1;
@@ -2175,6 +2179,7 @@ mod tests {
         assert_eq!(diag.lines_queue_op, 0);
         assert_eq!(diag.lines_summary, 0);
         assert_eq!(diag.lines_file_snapshot, 0);
+        assert_eq!(diag.lines_hook_context, 0);
         assert_eq!(diag.lines_unknown_type, 0);
         assert_eq!(diag.json_parse_failures, 0);
         assert_eq!(diag.content_not_array, 0);

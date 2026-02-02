@@ -18,16 +18,39 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
+use axum::http::HeaderValue;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+
+/// Create a CORS layer that only allows localhost origins.
+///
+/// This prevents cross-origin attacks where a malicious website could exfiltrate
+/// Claude Code session data via `fetch()` to `localhost:47892`.
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(
+            |origin: &HeaderValue, _req_parts: &axum::http::request::Parts| {
+                if let Ok(origin) = origin.to_str() {
+                    origin.starts_with("http://localhost:")
+                        || origin.starts_with("http://127.0.0.1:")
+                        || origin == "http://localhost"
+                        || origin == "http://127.0.0.1"
+                } else {
+                    false
+                }
+            },
+        ))
+        .allow_methods(Any)
+        .allow_headers(Any)
+}
 use vibe_recall_db::Database;
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
 /// This sets up:
 /// - API routes (health, projects, sessions)
-/// - CORS for development (allows any origin)
+/// - CORS restricted to localhost origins
 /// - Request tracing
 pub fn create_app(db: Database) -> Router {
     create_app_with_static(db, None)
@@ -68,14 +91,9 @@ pub fn create_app_full(
 ) -> Router {
     let state = AppState::new_with_indexing_and_registry(db, indexing, registry);
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let mut app = Router::new()
         .merge(api_routes(state))
-        .layer(cors)
+        .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
 
     if let Some(dir) = static_dir {
@@ -103,14 +121,9 @@ pub fn create_app_with_indexing_and_static(
 ) -> Router {
     let state = AppState::new_with_indexing(db, indexing);
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let mut app = Router::new()
         .merge(api_routes(state))
-        .layer(cors)
+        .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
 
     // Serve static files with SPA fallback
@@ -271,14 +284,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cors_allows_any_origin() {
+    async fn test_cors_allows_localhost_origin() {
         let app = create_app(test_db().await);
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/api/health")
-                    .header("Origin", "http://example.com")
+                    .header("Origin", "http://localhost:5173")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -288,7 +301,31 @@ mod tests {
         let headers = response.headers();
         let allow_origin = headers.get("access-control-allow-origin");
         assert!(allow_origin.is_some());
-        assert_eq!(allow_origin.unwrap(), "*");
+        assert_eq!(allow_origin.unwrap(), "http://localhost:5173");
+    }
+
+    #[tokio::test]
+    async fn test_cors_rejects_external_origin() {
+        let app = create_app(test_db().await);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .header("Origin", "https://evil.com")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let headers = response.headers();
+        let allow_origin = headers.get("access-control-allow-origin");
+        assert!(
+            allow_origin.is_none(),
+            "External origin should not get CORS header, got: {:?}",
+            allow_origin
+        );
     }
 
     // ========================================================================

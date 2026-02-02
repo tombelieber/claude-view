@@ -108,10 +108,8 @@ impl IntoResponse for ApiError {
                         (StatusCode::INTERNAL_SERVER_ERROR, "Empty session file")
                     }
                 };
-                (
-                    status,
-                    ErrorResponse::with_details(error_msg, parse_err.to_string()),
-                )
+                // Return generic error message without file paths to avoid information leakage
+                (status, ErrorResponse::new(error_msg))
             }
             ApiError::Discovery(discovery_err) => {
                 let error_msg = match discovery_err {
@@ -132,10 +130,8 @@ impl IntoResponse for ApiError {
                         "Home directory not found"
                     }
                 };
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    ErrorResponse::with_details(error_msg, discovery_err.to_string()),
-                )
+                // Return generic error message without file paths to avoid information leakage
+                (StatusCode::INTERNAL_SERVER_ERROR, ErrorResponse::new(error_msg))
             }
             ApiError::Database(db_err) => {
                 tracing::error!(error = %db_err, "Database error");
@@ -220,7 +216,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.error, "File not found");
-        assert!(body.details.unwrap().contains("/path/to/session.jsonl"));
+        // Paths should NOT be leaked to clients
+        assert!(body.details.is_none());
     }
 
     #[tokio::test]
@@ -233,7 +230,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body.error, "Permission denied");
-        assert!(body.details.unwrap().contains("/secret/file.jsonl"));
+        // Paths should NOT be leaked to clients
+        assert!(body.details.is_none());
     }
 
     #[tokio::test]
@@ -308,6 +306,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.error, "Claude projects directory not found");
+        // Paths should NOT be leaked to clients
+        assert!(body.details.is_none());
     }
 
     #[tokio::test]
@@ -320,6 +320,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.error, "Cannot access Claude projects directory");
+        // Paths should NOT be leaked to clients
+        assert!(body.details.is_none());
     }
 
     #[tokio::test]
@@ -333,6 +335,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.error, "IO error accessing projects");
+        // Paths should NOT be leaked to clients
+        assert!(body.details.is_none());
     }
 
     #[tokio::test]

@@ -1,12 +1,22 @@
 # claude-view
 
 <p align="center">
-  <img src="./docs/screenshot.png" alt="claude-view" width="800" />
-</p>
-
-<p align="center">
   <strong>Browse and export your Claude Code sessions</strong>
 </p>
+
+<!-- TODO: Replace YOUTUBE_VIDEO_ID with your actual YouTube video ID -->
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID">
+    <img src="https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg" alt="claude-view demo" width="800" />
+  </a>
+  <br/>
+  <sub>Click to watch the demo</sub>
+</p>
+
+<!-- TODO: Capture a screenshot of the app and save to docs/screenshot.png -->
+<!-- <p align="center">
+  <img src="./docs/screenshot.png" alt="claude-view screenshot" width="800" />
+</p> -->
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -16,7 +26,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -45,9 +55,9 @@ That's it. Opens in your browser. All your sessions, organized and searchable.
 | Feature | Description |
 |---------|-------------|
 | 📁 **Browse by project** | Sessions organized by working directory |
-| 🔍 **Rich previews** | See files touched, tools used, skills invoked — at a glance |
+| 🔍 **Rich previews** | See tools used, skills invoked — at a glance. Drill into sessions for files touched |
 | 💬 **Full conversations** | Syntax-highlighted code, rendered markdown |
-| 📤 **Export to HTML** | Share or archive as standalone files |
+| 📤 **Export conversations** | Share or archive as HTML, PDF, or Markdown |
 | ⌨️ **Keyboard-first** | `⌘K` to search across all sessions |
 
 ---
@@ -60,6 +70,13 @@ npx claude-view
 
 Opens at `http://localhost:47892` — your sessions are waiting.
 
+### Configuration
+
+| Env Variable | Default | Description |
+|-------------|---------|-------------|
+| `CLAUDE_VIEW_PORT` | `47892` | Override the default port |
+| `PORT` | `47892` | Alternative port override |
+
 ---
 
 ## 📦 Installation
@@ -69,7 +86,7 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 | **npx** (recommended) | `npx claude-view` |
 | **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
 | **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-| **Homebrew** | `brew install claude-view` |
+| **Homebrew** (coming soon) | `brew install claude-view` |
 
 ---
 
@@ -116,7 +133,8 @@ bun dev            # Start full-stack dev (Rust + Vite with hot reload)
 | `bun run lint` | Lint both frontend (ESLint) and backend (Clippy) |
 | `bun run fmt` | Format Rust code |
 | `bun run check` | Typecheck + lint + test (pre-commit gate) |
-| `bun test` | Run Rust test suite |
+| `bun test` | Run Rust test suite (`cargo test --workspace`) |
+| `bun test:client` | Run frontend tests (vitest) |
 | `bun run test:e2e` | Run Playwright end-to-end tests |
 
 ### Testing Production Distribution
@@ -148,8 +166,7 @@ bun run release:major    # major bump: 0.1.0 → 1.0.0
 This bumps the version in `npx-cli/package.json`, commits, and creates a git tag. Then:
 
 ```bash
-git push origin main --tags    # triggers CI → builds all platforms
-cd npx-cli && npm publish      # publish to npm after CI finishes
+git push origin main --tags    # triggers CI → builds all platforms → auto-publishes to npm
 ```
 
 ---

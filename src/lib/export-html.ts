@@ -47,8 +47,12 @@ function markdownToHtml(markdown: string): string {
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
 
-  // Links (escape quotes in URL for href attribute safety)
+  // Links (validate URL scheme and escape quotes for href attribute safety)
+  const SAFE_URL_SCHEME = /^https?:\/\//i
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    if (!SAFE_URL_SCHEME.test(url)) {
+      return text // render as plain text, not a link
+    }
     const safeUrl = url.replace(/"/g, '&quot;')
     return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${text}</a>`
   })
