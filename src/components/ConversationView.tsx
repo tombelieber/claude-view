@@ -4,6 +4,7 @@ import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code } from 'lucide-reac
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession } from '../hooks/use-session'
+import { useSessionMessages } from '../hooks/use-session-messages'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { MessageTyped } from './MessageTyped'
@@ -56,7 +57,22 @@ export function ConversationView() {
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
 
   const handleBack = () => navigate(-1)
-  const { data: session, isLoading, error } = useSession(projectDir, sessionId)
+  const { data: session, isLoading: isSessionLoading, error: sessionError } = useSession(projectDir, sessionId)
+  const {
+    data: pagesData,
+    isLoading: isMessagesLoading,
+    error: messagesError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useSessionMessages(projectDir, sessionId)
+
+  // Only gate initial render on paginated messages — the full session fetch
+  // loads in the background for export use. This ensures faster time-to-first-content.
+  const isLoading = isMessagesLoading
+  const error = messagesError
+  const exportsReady = !!session
+
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
@@ -105,11 +121,27 @@ export function ConversationView() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf])
 
-  const filteredMessages = useMemo(
-    () => session ? filterMessages(session.messages, viewMode) : [],
-    [session?.messages, viewMode]
+  const allMessages = useMemo(
+    () => pagesData?.pages.flatMap(page => page.messages) ?? [],
+    [pagesData]
   )
-  const hiddenCount = session ? session.messages.length - filteredMessages.length : 0
+  const totalMessages = pagesData?.pages[0]?.total ?? 0
+
+  const filteredMessages = useMemo(
+    () => allMessages.length > 0 ? filterMessages(allMessages, viewMode) : [],
+    [allMessages, viewMode]
+  )
+  const hiddenCount = allMessages.length - filteredMessages.length
+
+  // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
+  // since filtered content may not fill the viewport. This is bounded by hasMore
+  // and acceptable for the initial implementation. Task 5 (server-side caching)
+  // mitigates the server cost.
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const threadMap = useMemo(
     () => buildThreadMap(filteredMessages),
@@ -152,7 +184,7 @@ export function ConversationView() {
     )
   }
 
-  if (!session) {
+  if (!session && !pagesData) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
@@ -222,32 +254,48 @@ export function ConversationView() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportHtml}
+            disabled={!exportsReady}
             aria-label="Export as HTML"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
+            )}
           >
             <span>HTML</span>
             <Download className="w-4 h-4" />
           </button>
           <button
             onClick={handleExportPdf}
+            disabled={!exportsReady}
             aria-label="Export as PDF"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
+            )}
           >
             <span>PDF</span>
             <Download className="w-4 h-4" />
           </button>
           <button
             onClick={handleExportMarkdown}
+            disabled={!exportsReady}
             aria-label="Export as Markdown"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
+            )}
           >
             <span>MD</span>
             <Download className="w-4 h-4" />
           </button>
           <button
             onClick={handleCopyMarkdown}
+            disabled={!exportsReady}
             aria-label="Copy conversation as Markdown"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
+            )}
           >
             <span>Copy</span>
             <Copy className="w-4 h-4" />
@@ -263,6 +311,7 @@ export function ConversationView() {
           <ExpandProvider>
             <Virtuoso
               data={filteredMessages}
+              endReached={handleEndReached}
               itemContent={(index, message) => {
                 const thread = message.uuid ? threadMap.get(message.uuid) : undefined
                 return (
@@ -287,12 +336,18 @@ export function ConversationView() {
                 Footer: () => (
                   filteredMessages.length > 0 ? (
                     <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                      {session.metadata.totalMessages} messages
-                      {viewMode === 'compact' && hiddenCount > 0 && (
-                        <> &bull; {hiddenCount} hidden in compact view</>
-                      )}
-                      {session.metadata.toolCallCount > 0 && (
-                        <> &bull; {session.metadata.toolCallCount} tool calls</>
+                      {isFetchingNextPage ? (
+                        <span>Loading more messages...</span>
+                      ) : (
+                        <>
+                          {totalMessages} messages
+                          {viewMode === 'compact' && hiddenCount > 0 && (
+                            <> &bull; {hiddenCount} hidden in compact view</>
+                          )}
+                          {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                            <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                          )}
+                        </>
                       )}
                     </div>
                   ) : null
