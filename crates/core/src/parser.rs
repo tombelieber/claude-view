@@ -396,6 +396,35 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
     Ok(ParsedSession::new(messages, total_tool_calls))
 }
 
+/// Parse a session JSONL file and return a paginated slice of messages.
+///
+/// Parses the full file (necessary for correct message ordering and thinking
+/// attachment), then returns the requested slice. The total message count is
+/// included so the frontend can compute pagination state.
+pub async fn parse_session_paginated(
+    file_path: &Path,
+    limit: usize,
+    offset: usize,
+) -> Result<PaginatedMessages, ParseError> {
+    let session = parse_session(file_path).await?;
+    let total = session.messages.len();
+    let messages: Vec<Message> = session
+        .messages
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
+    let has_more = offset + messages.len() < total;
+
+    Ok(PaginatedMessages {
+        messages,
+        total,
+        offset,
+        limit,
+        has_more,
+    })
+}
+
 /// Extract readable content from tool_result array blocks.
 fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -1233,5 +1262,39 @@ mod tests {
         for msg in &session.messages {
             assert!(!msg.content.contains("System init"));
         }
+    }
+
+    // ============================================================================
+    // Paginated Parsing Tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_parse_session_paginated_first_page() {
+        let path = fixtures_path().join("large_session.jsonl");
+        let result = parse_session_paginated(&path, 10, 0).await.unwrap();
+        assert_eq!(result.messages.len(), 10);
+        assert_eq!(result.total, 200);
+        assert_eq!(result.offset, 0);
+        assert_eq!(result.limit, 10);
+        assert!(result.has_more);
+        assert!(result.messages[0].content.contains("Question number 1"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_session_paginated_last_page() {
+        let path = fixtures_path().join("large_session.jsonl");
+        let result = parse_session_paginated(&path, 10, 195).await.unwrap();
+        assert_eq!(result.messages.len(), 5); // only 5 remaining
+        assert_eq!(result.total, 200);
+        assert!(!result.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_parse_session_paginated_beyond_end() {
+        let path = fixtures_path().join("large_session.jsonl");
+        let result = parse_session_paginated(&path, 10, 999).await.unwrap();
+        assert_eq!(result.messages.len(), 0);
+        assert_eq!(result.total, 200);
+        assert!(!result.has_more);
     }
 }
