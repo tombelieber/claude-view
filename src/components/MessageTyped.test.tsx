@@ -209,6 +209,38 @@ describe('MessageTyped dispatch', () => {
     })
   })
 
+  describe('Nesting depth warning', () => {
+    it('should console.warn when indent exceeds MAX_INDENT_LEVEL', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      render(
+        <MessageTyped
+          message={{ uuid: '1', role: 'user', content: 'deep', timestamp: null, thinking: null, tool_calls: [], parent_uuid: null, metadata: null }}
+          indent={10}
+        />
+      )
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Max nesting depth')
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('should NOT warn when indent is within MAX_INDENT_LEVEL', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      render(
+        <MessageTyped
+          message={{ uuid: '2', role: 'user', content: 'shallow', timestamp: null, thinking: null, tool_calls: [], parent_uuid: null, metadata: null }}
+          indent={3}
+        />
+      )
+
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+  })
+
   describe('Non-system/progress types pass through', () => {
     it('renders assistant message content normally', () => {
       render(
