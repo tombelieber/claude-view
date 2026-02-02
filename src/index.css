@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Dark mode: class-based (not media query) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Design System Fonts */
 :root {
   --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
