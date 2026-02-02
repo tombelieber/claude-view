@@ -1171,151 +1171,165 @@ where
         );
     }
 
-    // ── Write phase (single transaction) ────────────────────────────────
-    // All parsed results are written in one BEGIN/COMMIT, eliminating ~N*3
-    // implicit fsyncs from per-session transactions.
-    if !results.is_empty() {
-        let mut tx = db
-            .pool()
-            .begin()
+    // ── Write phase ─────────────────────────────────────────────────────
+    // Two paths:
+    //   1. File-based DB (production): synchronous rusqlite with prepared
+    //      statements in spawn_blocking — avoids per-row async overhead.
+    //   2. In-memory DB (tests): sqlx _tx functions via async transaction,
+    //      because rusqlite can't open a separate connection to sqlx's
+    //      in-memory database.
+    let use_rusqlite = !db.db_path().as_os_str().is_empty();
+    let indexed = if !results.is_empty() {
+        if use_rusqlite {
+            // ── Fast path: rusqlite with prepared statements ──────────
+            let db_path = db.db_path().to_owned();
+            let write_result: Result<usize, String> = tokio::task::spawn_blocking(move || {
+                let conn = rusqlite::Connection::open(&db_path)
+                    .map_err(|e| format!("rusqlite open error: {}", e))?;
+                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+                    .map_err(|e| format!("rusqlite pragma error: {}", e))?;
+
+                let mut update_stmt = conn.prepare(UPDATE_SESSION_DEEP_SQL)
+                    .map_err(|e| format!("prepare UPDATE error: {}", e))?;
+                let mut turn_stmt = conn.prepare(INSERT_TURN_SQL)
+                    .map_err(|e| format!("prepare INSERT_TURN error: {}", e))?;
+                let mut inv_stmt = conn.prepare(INSERT_INVOCATION_SQL)
+                    .map_err(|e| format!("prepare INSERT_INVOC error: {}", e))?;
+                let mut model_stmt = conn.prepare(UPSERT_MODEL_SQL)
+                    .map_err(|e| format!("prepare UPSERT_MODEL error: {}", e))?;
+
+                let tx = conn.unchecked_transaction()
+                    .map_err(|e| format!("rusqlite begin error: {}", e))?;
+
+                let seen_at = chrono::Utc::now().timestamp();
+                let deep_indexed_at = seen_at;
+                let count = results.len();
+
+                for result in &results {
+                    let meta = &result.parse_result.deep;
+
+                    // Serialize vec fields to JSON strings
+                    let files_touched = serde_json::to_string(&meta.files_touched)
+                        .unwrap_or_else(|_| "[]".to_string());
+                    let skills_used = serde_json::to_string(&meta.skills_used)
+                        .unwrap_or_else(|_| "[]".to_string());
+                    let files_read = serde_json::to_string(&meta.files_read)
+                        .unwrap_or_else(|_| "[]".to_string());
+                    let files_edited = serde_json::to_string(&meta.files_edited)
+                        .unwrap_or_else(|_| "[]".to_string());
+
+                    // Count commit skills for commit_count
+                    let commit_invocations =
+                        extract_commit_skill_invocations(&result.parse_result.raw_invocations);
+                    let commit_count = commit_invocations.len() as i32;
+
+                    // Compute turn duration aggregates
+                    let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
+                        (None, None, None)
+                    } else {
+                        let total: u64 = meta.turn_durations_ms.iter().sum();
+                        let max = *meta.turn_durations_ms.iter().max().unwrap();
+                        let avg = total / meta.turn_durations_ms.len() as u64;
+                        (Some(avg as i64), Some(max as i64), Some(total as i64))
+                    };
+
+                    // UPDATE session deep fields (41 params: ?1=id, ?2-?41=fields)
+                    update_stmt.execute(rusqlite::params![
+                        result.session_id,                // ?1
+                        meta.last_message,                // ?2
+                        meta.turn_count as i32,           // ?3
+                        meta.tool_counts.edit as i32,     // ?4
+                        meta.tool_counts.read as i32,     // ?5
+                        meta.tool_counts.bash as i32,     // ?6
+                        meta.tool_counts.write as i32,    // ?7
+                        files_touched,                    // ?8
+                        skills_used,                      // ?9
+                        deep_indexed_at,                  // ?10
+                        meta.user_prompt_count as i32,    // ?11
+                        meta.api_call_count as i32,       // ?12
+                        meta.tool_call_count as i32,      // ?13
+                        files_read,                       // ?14
+                        files_edited,                     // ?15
+                        meta.files_read_count as i32,     // ?16
+                        meta.files_edited_count as i32,   // ?17
+                        meta.reedited_files_count as i32, // ?18
+                        meta.duration_seconds as i32,     // ?19
+                        commit_count,                     // ?20
+                        meta.first_timestamp,             // ?21 (Option<i64>)
+                        meta.total_input_tokens as i64,   // ?22
+                        meta.total_output_tokens as i64,  // ?23
+                        meta.cache_read_tokens as i64,    // ?24
+                        meta.cache_creation_tokens as i64, // ?25
+                        meta.thinking_block_count as i32, // ?26
+                        dur_avg,                          // ?27 (Option<i64>)
+                        dur_max,                          // ?28 (Option<i64>)
+                        dur_total,                        // ?29 (Option<i64>)
+                        meta.api_error_count as i32,      // ?30
+                        meta.api_retry_count as i32,      // ?31
+                        meta.compaction_count as i32,     // ?32
+                        meta.hook_blocked_count as i32,   // ?33
+                        meta.agent_spawn_count as i32,    // ?34
+                        meta.bash_progress_count as i32,  // ?35
+                        meta.hook_progress_count as i32,  // ?36
+                        meta.mcp_progress_count as i32,   // ?37
+                        meta.summary_text,                // ?38 (Option<String>)
+                        CURRENT_PARSE_VERSION,            // ?39
+                        result.file_size,                 // ?40
+                        result.file_mtime,                // ?41
+                    ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
+
+                    // INSERT invocations
+                    for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in &result.classified_invocations {
+                        inv_stmt.execute(rusqlite::params![
+                            source_file, byte_offset, invocable_id, session_id, project, timestamp
+                        ]).map_err(|e| format!("INSERT invocation error: {}", e))?;
+                    }
+
+                    // UPSERT models + INSERT turns
+                    if !result.parse_result.turns.is_empty() {
+                        for model_id in &result.parse_result.models_seen {
+                            let (provider, family) = vibe_recall_core::parse_model_id(model_id);
+                            model_stmt.execute(rusqlite::params![
+                                model_id, provider, family, seen_at, seen_at
+                            ]).map_err(|e| format!("UPSERT model error: {}", e))?;
+                        }
+
+                        for turn in &result.parse_result.turns {
+                            turn_stmt.execute(rusqlite::params![
+                                result.session_id,
+                                turn.uuid,
+                                turn.seq,
+                                turn.model_id,
+                                turn.parent_uuid,
+                                turn.content_type,
+                                turn.input_tokens.map(|v| v as i64),
+                                turn.output_tokens.map(|v| v as i64),
+                                turn.cache_read_tokens.map(|v| v as i64),
+                                turn.cache_creation_tokens.map(|v| v as i64),
+                                turn.service_tier,
+                                turn.timestamp,
+                            ]).map_err(|e| format!("INSERT turn error: {}", e))?;
+                        }
+                    }
+                }
+
+                tx.commit().map_err(|e| format!("rusqlite commit error: {}", e))?;
+                Ok(count)
+            })
             .await
-            .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
+            .map_err(|e| format!("spawn_blocking join error: {}", e))?;
 
-        let seen_at = chrono::Utc::now().timestamp();
-
-        for result in &results {
-            let meta = &result.parse_result.deep;
-
-            // Serialize vec fields to JSON strings
-            let files_touched = serde_json::to_string(&meta.files_touched)
-                .unwrap_or_else(|_| "[]".to_string());
-            let skills_used = serde_json::to_string(&meta.skills_used)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_read = serde_json::to_string(&meta.files_read)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_edited = serde_json::to_string(&meta.files_edited)
-                .unwrap_or_else(|_| "[]".to_string());
-
-            // Count commit skills for commit_count
-            let commit_invocations =
-                extract_commit_skill_invocations(&result.parse_result.raw_invocations);
-            let commit_count = commit_invocations.len() as i32;
-
-            // Compute turn duration aggregates
-            let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
-                (None, None, None)
-            } else {
-                let total: u64 = meta.turn_durations_ms.iter().sum();
-                let max = *meta.turn_durations_ms.iter().max().unwrap();
-                let avg = total / meta.turn_durations_ms.len() as u64;
-                (Some(avg as i64), Some(max as i64), Some(total as i64))
-            };
-
-            crate::queries::update_session_deep_fields_tx(
-                &mut tx,
-                &result.session_id,
-                &meta.last_message,
-                meta.turn_count as i32,
-                meta.tool_counts.edit as i32,
-                meta.tool_counts.read as i32,
-                meta.tool_counts.bash as i32,
-                meta.tool_counts.write as i32,
-                &files_touched,
-                &skills_used,
-                meta.user_prompt_count as i32,
-                meta.api_call_count as i32,
-                meta.tool_call_count as i32,
-                &files_read,
-                &files_edited,
-                meta.files_read_count as i32,
-                meta.files_edited_count as i32,
-                meta.reedited_files_count as i32,
-                meta.duration_seconds as i32,
-                commit_count,
-                meta.first_timestamp,
-                meta.total_input_tokens as i64,
-                meta.total_output_tokens as i64,
-                meta.cache_read_tokens as i64,
-                meta.cache_creation_tokens as i64,
-                meta.thinking_block_count as i32,
-                dur_avg,
-                dur_max,
-                dur_total,
-                meta.api_error_count as i32,
-                meta.api_retry_count as i32,
-                meta.compaction_count as i32,
-                meta.hook_blocked_count as i32,
-                meta.agent_spawn_count as i32,
-                meta.bash_progress_count as i32,
-                meta.hook_progress_count as i32,
-                meta.mcp_progress_count as i32,
-                meta.summary_text.as_deref(),
-                CURRENT_PARSE_VERSION,
-                result.file_size,
-                result.file_mtime,
-            )
-            .await
-            .map_err(|e| {
-                format!(
-                    "Failed to update deep fields for {}: {}",
-                    result.session_id, e
-                )
-            })?;
-
-            // Insert classified invocations
-            if !result.classified_invocations.is_empty() {
-                crate::queries::batch_insert_invocations_tx(
-                    &mut tx,
-                    &result.classified_invocations,
-                )
-                .await
-                .map_err(|e| {
-                    format!(
-                        "Failed to insert invocations for {}: {}",
-                        result.session_id, e
-                    )
-                })?;
-            }
-
-            // Upsert models and insert turns
-            if !result.parse_result.turns.is_empty() {
-                crate::queries::batch_upsert_models_tx(
-                    &mut tx,
-                    &result.parse_result.models_seen,
-                    seen_at,
-                )
-                .await
-                .map_err(|e| {
-                    format!(
-                        "Failed to upsert models for {}: {}",
-                        result.session_id, e
-                    )
-                })?;
-
-                crate::queries::batch_insert_turns_tx(
-                    &mut tx,
-                    &result.session_id,
-                    &result.parse_result.turns,
-                )
-                .await
-                .map_err(|e| {
-                    format!(
-                        "Failed to insert turns for {}: {}",
-                        result.session_id, e
-                    )
-                })?;
-            }
+            write_result?
+        } else {
+            // ── Fallback path: sqlx async transaction (in-memory DBs) ──
+            write_results_sqlx(db, &results).await?
         }
-
-        tx.commit()
-            .await
-            .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
-    }
+    } else {
+        0
+    };
 
     #[cfg(debug_assertions)]
     let write_elapsed = phase_start.elapsed() - parse_elapsed;
-
-    let indexed = results.len();
 
     if !parse_errors.is_empty() {
         tracing::warn!(
@@ -1356,6 +1370,146 @@ where
     }
 
     Ok(indexed)
+}
+
+/// Fallback write path using sqlx async transactions.
+/// Used for in-memory databases (tests) where rusqlite can't open a separate connection.
+async fn write_results_sqlx(
+    db: &Database,
+    results: &[DeepIndexResult],
+) -> Result<usize, String> {
+    let mut tx = db
+        .pool()
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
+
+    let seen_at = chrono::Utc::now().timestamp();
+
+    for result in results {
+        let meta = &result.parse_result.deep;
+
+        let files_touched = serde_json::to_string(&meta.files_touched)
+            .unwrap_or_else(|_| "[]".to_string());
+        let skills_used = serde_json::to_string(&meta.skills_used)
+            .unwrap_or_else(|_| "[]".to_string());
+        let files_read = serde_json::to_string(&meta.files_read)
+            .unwrap_or_else(|_| "[]".to_string());
+        let files_edited = serde_json::to_string(&meta.files_edited)
+            .unwrap_or_else(|_| "[]".to_string());
+
+        let commit_invocations =
+            extract_commit_skill_invocations(&result.parse_result.raw_invocations);
+        let commit_count = commit_invocations.len() as i32;
+
+        let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
+            (None, None, None)
+        } else {
+            let total: u64 = meta.turn_durations_ms.iter().sum();
+            let max = *meta.turn_durations_ms.iter().max().unwrap();
+            let avg = total / meta.turn_durations_ms.len() as u64;
+            (Some(avg as i64), Some(max as i64), Some(total as i64))
+        };
+
+        crate::queries::update_session_deep_fields_tx(
+            &mut tx,
+            &result.session_id,
+            &meta.last_message,
+            meta.turn_count as i32,
+            meta.tool_counts.edit as i32,
+            meta.tool_counts.read as i32,
+            meta.tool_counts.bash as i32,
+            meta.tool_counts.write as i32,
+            &files_touched,
+            &skills_used,
+            meta.user_prompt_count as i32,
+            meta.api_call_count as i32,
+            meta.tool_call_count as i32,
+            &files_read,
+            &files_edited,
+            meta.files_read_count as i32,
+            meta.files_edited_count as i32,
+            meta.reedited_files_count as i32,
+            meta.duration_seconds as i32,
+            commit_count,
+            meta.first_timestamp,
+            meta.total_input_tokens as i64,
+            meta.total_output_tokens as i64,
+            meta.cache_read_tokens as i64,
+            meta.cache_creation_tokens as i64,
+            meta.thinking_block_count as i32,
+            dur_avg,
+            dur_max,
+            dur_total,
+            meta.api_error_count as i32,
+            meta.api_retry_count as i32,
+            meta.compaction_count as i32,
+            meta.hook_blocked_count as i32,
+            meta.agent_spawn_count as i32,
+            meta.bash_progress_count as i32,
+            meta.hook_progress_count as i32,
+            meta.mcp_progress_count as i32,
+            meta.summary_text.as_deref(),
+            CURRENT_PARSE_VERSION,
+            result.file_size,
+            result.file_mtime,
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to update deep fields for {}: {}",
+                result.session_id, e
+            )
+        })?;
+
+        if !result.classified_invocations.is_empty() {
+            crate::queries::batch_insert_invocations_tx(
+                &mut tx,
+                &result.classified_invocations,
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to insert invocations for {}: {}",
+                    result.session_id, e
+                )
+            })?;
+        }
+
+        if !result.parse_result.turns.is_empty() {
+            crate::queries::batch_upsert_models_tx(
+                &mut tx,
+                &result.parse_result.models_seen,
+                seen_at,
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to upsert models for {}: {}",
+                    result.session_id, e
+                )
+            })?;
+
+            crate::queries::batch_insert_turns_tx(
+                &mut tx,
+                &result.session_id,
+                &result.parse_result.turns,
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to insert turns for {}: {}",
+                    result.session_id, e
+                )
+            })?;
+        }
+    }
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
+
+    Ok(results.len())
 }
 
 /// Type alias for the shared registry holder used by the server.
