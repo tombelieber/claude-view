@@ -116,9 +116,9 @@ export function ConversationView() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col overflow-hidden bg-gray-50">
+      <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
         {/* Header skeleton */}
-        <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
           <div className="flex items-center gap-2">
             <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
@@ -136,7 +136,7 @@ export function ConversationView() {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
+      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <ErrorState
           message={error.message}
           onBack={handleBack}
@@ -147,7 +147,7 @@ export function ConversationView() {
 
   if (!session) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
+      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
           icon={<MessageSquare className="w-6 h-6 text-gray-400" />}
           title="No conversation data found"
@@ -159,20 +159,20 @@ export function ConversationView() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-gray-50">
+    <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
       {/* Conversation Header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-4">
           <button
             onClick={handleBack}
             aria-label="Go back"
-            className="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+            className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">Back to sessions</span>
           </button>
           <span className="text-gray-300">|</span>
-          <span className="font-medium text-gray-900">{projectName}</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -216,7 +216,7 @@ export function ConversationView() {
           <button
             onClick={handleExportHtml}
             aria-label="Export as HTML"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>HTML</span>
             <Download className="w-4 h-4" />
@@ -224,7 +224,7 @@ export function ConversationView() {
           <button
             onClick={handleExportPdf}
             aria-label="Export as PDF"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>PDF</span>
             <Download className="w-4 h-4" />
@@ -232,7 +232,7 @@ export function ConversationView() {
           <button
             onClick={handleExportMarkdown}
             aria-label="Export as Markdown"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>MD</span>
             <Download className="w-4 h-4" />
@@ -240,7 +240,7 @@ export function ConversationView() {
           <button
             onClick={handleCopyMarkdown}
             aria-label="Copy conversation as Markdown"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white hover:bg-gray-50 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
             <span>Copy</span>
             <Copy className="w-4 h-4" />
@@ -279,7 +279,7 @@ export function ConversationView() {
                 Header: () => <div className="h-6" />,
                 Footer: () => (
                   filteredMessages.length > 0 ? (
-                    <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
+                    <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                       {session.metadata.totalMessages} messages
                       {viewMode === 'compact' && hiddenCount > 0 && (
                         <> &bull; {hiddenCount} hidden in compact view</>
@@ -300,7 +300,7 @@ export function ConversationView() {
         </div>
 
         {/* Right: Metrics Sidebar */}
-        <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 bg-white overflow-y-auto p-4 space-y-4 hidden lg:block">
+        <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
           {/* Metrics (vertical layout per plan B9.3) */}
           {sessionInfo && sessionInfo.userPromptCount > 0 && (
             <SessionMetricsBar
