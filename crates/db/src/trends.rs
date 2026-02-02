@@ -679,6 +679,8 @@ mod tests {
             0, 0, 0, 0, // progress counts
             None,        // summary_text
             1,           // parse_version
+            1000,        // file_size
+            1706200000,  // file_mtime
         )
         .await
         .unwrap();
