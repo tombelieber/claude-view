@@ -62,9 +62,9 @@ export function ConversationView() {
     data: pagesData,
     isLoading: isMessagesLoading,
     error: messagesError,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
+    fetchPreviousPage,
+    hasPreviousPage,
+    isFetchingPreviousPage,
   } = useSessionMessages(projectDir, sessionId)
 
   // Only gate initial render on paginated messages — the full session fetch
@@ -134,14 +134,14 @@ export function ConversationView() {
   const hiddenCount = allMessages.length - filteredMessages.length
 
   // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
-  // since filtered content may not fill the viewport. This is bounded by hasMore
+  // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
   // and acceptable for the initial implementation. Task 5 (server-side caching)
   // mitigates the server cost.
-  const handleEndReached = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage()
+  const handleStartReached = useCallback(() => {
+    if (hasPreviousPage && !isFetchingPreviousPage) {
+      fetchPreviousPage()
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage])
 
   const threadMap = useMemo(
     () => buildThreadMap(filteredMessages),
@@ -311,7 +311,9 @@ export function ConversationView() {
           <ExpandProvider>
             <Virtuoso
               data={filteredMessages}
-              endReached={handleEndReached}
+              startReached={handleStartReached}
+              initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+              followOutput="smooth"
               itemContent={(index, message) => {
                 const thread = message.uuid ? threadMap.get(message.uuid) : undefined
                 return (
@@ -332,29 +334,36 @@ export function ConversationView() {
                 )
               }}
               components={{
-                Header: () => <div className="h-6" />,
+                Header: () => (
+                  isFetchingPreviousPage ? (
+                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                      Loading older messages...
+                    </div>
+                  ) : hasPreviousPage ? (
+                    <div className="h-6" />
+                  ) : filteredMessages.length > 0 ? (
+                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                      Beginning of conversation
+                    </div>
+                  ) : (
+                    <div className="h-6" />
+                  )
+                ),
                 Footer: () => (
                   filteredMessages.length > 0 ? (
                     <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                      {isFetchingNextPage ? (
-                        <span>Loading more messages...</span>
-                      ) : (
-                        <>
-                          {totalMessages} messages
-                          {viewMode === 'compact' && hiddenCount > 0 && (
-                            <> &bull; {hiddenCount} hidden in compact view</>
-                          )}
-                          {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                            <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                          )}
-                        </>
+                      {totalMessages} messages
+                      {viewMode === 'compact' && hiddenCount > 0 && (
+                        <> &bull; {hiddenCount} hidden in compact view</>
+                      )}
+                      {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                        <> &bull; {sessionInfo.toolCallCount} tool calls</>
                       )}
                     </div>
                   ) : null
                 )
               }}
               increaseViewportBy={{ top: 400, bottom: 400 }}
-              initialTopMostItemIndex={0}
               className="h-full overflow-auto"
             />
           </ExpandProvider>
