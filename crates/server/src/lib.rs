@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::http::HeaderValue;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -93,6 +94,7 @@ pub fn create_app_full(
 
     let mut app = Router::new()
         .merge(api_routes(state))
+        .layer(CompressionLayer::new())
         .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
 
@@ -123,6 +125,7 @@ pub fn create_app_with_indexing_and_static(
 
     let mut app = Router::new()
         .merge(api_routes(state))
+        .layer(CompressionLayer::new())
         .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
 
@@ -355,6 +358,34 @@ mod tests {
 
         // Without /api prefix, should be 404
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    // ========================================================================
+    // Compression Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_api_response_is_gzip_compressed() {
+        let app = create_app(test_db().await);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .header("Accept-Encoding", "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-encoding")
+                .map(|v| v.to_str().unwrap()),
+            Some("gzip"),
+        );
     }
 
     // ========================================================================
