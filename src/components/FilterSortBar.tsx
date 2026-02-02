@@ -69,8 +69,8 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
           'transition-all duration-150 ease-out',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
           isActive
-            ? 'bg-blue-50 border-blue-200 text-blue-700'
-            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+            ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-750'
         )}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
@@ -83,7 +83,7 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
 
       {isOpen && (
         <div
-          className="absolute top-full left-0 mt-1.5 min-w-[180px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1"
+          className="absolute top-full left-0 mt-1.5 min-w-[180px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1"
           role="listbox"
           aria-label={label}
         >
@@ -101,21 +101,21 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
                 }}
                 className={cn(
                   'w-full flex items-start gap-2.5 px-3 py-2 text-left cursor-pointer',
-                  'transition-colors duration-150 hover:bg-gray-50',
-                  'focus-visible:outline-none focus-visible:bg-gray-100',
-                  isSelected && 'bg-blue-50'
+                  'transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700',
+                  'focus-visible:outline-none focus-visible:bg-gray-100 dark:focus-visible:bg-gray-700',
+                  isSelected && 'bg-blue-50 dark:bg-blue-950/30'
                 )}
               >
                 <div className={cn(
                   'w-4 h-4 flex-shrink-0 flex items-center justify-center mt-0.5',
-                  isSelected ? 'text-blue-600' : 'text-transparent'
+                  isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-transparent'
                 )}>
                   <Check className="w-3.5 h-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className={cn(
                     'text-sm',
-                    isSelected ? 'text-blue-700 font-medium' : 'text-gray-700'
+                    isSelected ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300'
                   )}>
                     {option.label}
                   </div>

@@ -43,7 +43,7 @@ export function StatusBar({ projects }: StatusBarProps) {
 
   return (
     <footer
-      className="h-8 bg-white border-t border-gray-200 px-4 flex items-center justify-between text-xs text-gray-500"
+      className="h-8 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
       role="contentinfo"
       aria-label="Data freshness status"
     >
@@ -76,7 +76,7 @@ export function StatusBar({ projects }: StatusBarProps) {
         type="button"
         onClick={handleRefresh}
         disabled={isSpinning}
-        className="p-1 -mr-1 rounded hover:bg-gray-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-50 cursor-pointer"
+        className="p-1 -mr-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-50 cursor-pointer"
         aria-label={isSyncing ? 'Sync in progress' : 'Trigger sync'}
         title={isSyncing ? 'Sync in progress...' : 'Sync data'}
       >

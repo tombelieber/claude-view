@@ -1,7 +1,7 @@
 # Comprehensive Conversation UI Redesign
 ## Full 7-Type JSONL Parser + Hierarchy + Event Rendering
 
-**Status:** Design Phase (Brainstorming Output)
+**Status:** Superseded — substance implemented, remaining gaps covered by 2026-02-02-thread-visualization-polish.md
 **Date:** 2026-01-29
 **Scope:** Complete audit + redesign of MessageTyped, XmlCard, and conversation threading
 **Principles:** UI/UX Pro Max + Semantic type-first hierarchy + Accessible ARIA + Master craftsmanship

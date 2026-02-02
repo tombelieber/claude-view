@@ -99,14 +99,14 @@ export function Message({ message, messageIndex }: MessageProps) {
     <div
       className={cn(
         'p-4 rounded-lg group',
-        isUser ? 'bg-white border border-gray-200' : 'bg-gray-50'
+        isUser ? 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700' : 'bg-gray-50 dark:bg-gray-800'
       )}
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
         {/* Avatar */}
         {isUser ? (
-          <div className="w-8 h-8 rounded flex items-center justify-center bg-gray-200 text-gray-600 flex-shrink-0">
+          <div className="w-8 h-8 rounded flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 flex-shrink-0">
             <User className="w-4 h-4" />
           </div>
         ) : (
@@ -118,13 +118,13 @@ export function Message({ message, messageIndex }: MessageProps) {
         {/* Name and timestamp */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-gray-900">
+            <span className="font-medium text-gray-900 dark:text-gray-100">
               {isUser ? 'Human' : 'Claude'}
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCopyMessage}
-                className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 transition-all"
+                className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
                 title="Copy message"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -155,7 +155,7 @@ export function Message({ message, messageIndex }: MessageProps) {
             )
           }
           return (
-            <div key={i} className="prose prose-sm prose-gray max-w-none break-words">
+            <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -168,7 +168,7 @@ export function Message({ message, messageIndex }: MessageProps) {
                       if (isInline) {
                         return (
                           <code
-                            className="px-1.5 py-0.5 bg-gray-100 rounded text-sm font-mono"
+                            className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-sm font-mono"
                             {...props}
                           >
                             {children}
@@ -220,7 +220,7 @@ export function Message({ message, messageIndex }: MessageProps) {
                   },
                   blockquote({ children }) {
                     return (
-                      <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-2">
+                      <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-2">
                         {children}
                       </blockquote>
                     )
@@ -237,20 +237,20 @@ export function Message({ message, messageIndex }: MessageProps) {
                   table({ children }) {
                     return (
                       <div className="overflow-x-auto my-2">
-                        <table className="min-w-full border border-gray-200">{children}</table>
+                        <table className="min-w-full border border-gray-200 dark:border-gray-700">{children}</table>
                       </div>
                     )
                   },
                   th({ children }) {
                     return (
-                      <th className="px-3 py-2 bg-gray-100 border border-gray-200 text-left font-medium">
+                      <th className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-left font-medium">
                         {children}
                       </th>
                     )
                   },
                   td({ children }) {
                     return (
-                      <td className="px-3 py-2 border border-gray-200">{children}</td>
+                      <td className="px-3 py-2 border border-gray-200 dark:border-gray-700">{children}</td>
                     )
                   },
                 }}

@@ -27,8 +27,8 @@ export function RecentCommits({ commits, className }: RecentCommitsProps) {
 
   if (displayCommits.length === 0) {
     return (
-      <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+      <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+        <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
           <GitCommit className="w-4 h-4" />
           Recent Commits
         </h2>
@@ -42,8 +42,8 @@ export function RecentCommits({ commits, className }: RecentCommitsProps) {
   }
 
   return (
-    <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-      <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+    <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+      <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
         <GitCommit className="w-4 h-4" />
         Recent Commits
       </h2>
@@ -51,13 +51,13 @@ export function RecentCommits({ commits, className }: RecentCommitsProps) {
         {displayCommits.map((commit) => (
           <div
             key={commit.hash}
-            className="flex items-start gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-start gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
-            <code className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">
+            <code className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
               {commit.hash.slice(0, 7)}
             </code>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-900 truncate">
+              <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
                 {truncateMessage(commit.message)}
               </p>
             </div>
