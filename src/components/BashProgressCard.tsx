@@ -40,18 +40,18 @@ export function BashProgressCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-gray-200 border-l-4 bg-white my-2 overflow-hidden',
+        'rounded-lg border border-gray-200 dark:border-gray-700 border-l-4 bg-white dark:bg-gray-900 my-2 overflow-hidden',
         borderColor
       )}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         aria-label="Bash command"
         aria-expanded={expanded}
       >
         <Terminal className={cn('w-4 h-4 flex-shrink-0', iconColor)} aria-hidden="true" />
-        <span className="text-sm font-mono text-gray-800 truncate flex-1">
+        <span className="text-sm font-mono text-gray-800 dark:text-gray-200 truncate flex-1">
           $ {command}
           {statusText && (
             <span className="text-gray-500">{statusText}</span>
@@ -65,7 +65,7 @@ export function BashProgressCard({
       </button>
 
       {expanded && (
-        <div className="px-3 py-2 border-t border-gray-100 bg-gray-900">
+        <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-900">
           <pre className="text-xs text-green-300 font-mono whitespace-pre-wrap break-all">
             {displayOutput ?? 'No output'}
           </pre>
