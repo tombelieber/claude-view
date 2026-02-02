@@ -17,6 +17,7 @@ import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
+import { buildThreadMap } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
@@ -101,6 +102,11 @@ export function ConversationView() {
     [session?.messages, viewMode]
   )
   const hiddenCount = session ? session.messages.length - filteredMessages.length : 0
+
+  const threadMap = useMemo(
+    () => buildThreadMap(filteredMessages),
+    [filteredMessages]
+  )
 
   if (isLoading) {
     return (
@@ -243,19 +249,24 @@ export function ConversationView() {
           <ExpandProvider>
             <Virtuoso
               data={filteredMessages}
-              itemContent={(index, message) => (
-                <div className="max-w-4xl mx-auto px-6 pb-4">
-                  <ErrorBoundary key={message.uuid || index}>
-                    <MessageTyped
-                      message={message}
-                      messageIndex={index}
-                      messageType={message.role}
-                      metadata={message.metadata}
-                      parentUuid={message.parent_uuid ?? undefined}
-                    />
-                  </ErrorBoundary>
-                </div>
-              )}
+              itemContent={(index, message) => {
+                const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                return (
+                  <div className="max-w-4xl mx-auto px-6 pb-4">
+                    <ErrorBoundary key={message.uuid || index}>
+                      <MessageTyped
+                        message={message}
+                        messageIndex={index}
+                        messageType={message.role}
+                        metadata={message.metadata}
+                        parentUuid={thread?.parentUuid}
+                        indent={thread?.indent ?? 0}
+                        isChildMessage={thread?.isChild ?? false}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                )
+              }}
               components={{
                 Header: () => <div className="h-6" />,
                 Footer: () => (
