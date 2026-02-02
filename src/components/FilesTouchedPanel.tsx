@@ -49,8 +49,8 @@ export function FilesTouchedPanel({
 
   if (files.length === 0) {
     return (
-      <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+      <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+        <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
           <FileText className="w-4 h-4" />
           Files Touched
         </h2>
@@ -63,8 +63,8 @@ export function FilesTouchedPanel({
   }
 
   return (
-    <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-      <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+    <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+      <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
         <FileText className="w-4 h-4" />
         Files Touched
         <span className="ml-auto text-gray-400 normal-case font-normal">
@@ -77,7 +77,7 @@ export function FilesTouchedPanel({
             key={file.path}
             className={cn(
               'flex items-center gap-2 p-2 -mx-2 rounded-lg transition-colors',
-              file.isReedited ? 'bg-amber-50' : 'hover:bg-gray-50'
+              file.isReedited ? 'bg-amber-50 dark:bg-amber-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
             )}
           >
             {/* Re-edit badge */}
@@ -92,7 +92,7 @@ export function FilesTouchedPanel({
 
             {/* File path */}
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-900 font-medium truncate font-mono">
+              <p className="text-sm text-gray-900 dark:text-gray-100 font-medium truncate font-mono">
                 {getFileName(file.path)}
               </p>
               {getParentDir(file.path) && (
@@ -106,7 +106,7 @@ export function FilesTouchedPanel({
             <div className="flex items-center gap-2 flex-shrink-0">
               {file.readCount > 0 && (
                 <span
-                  className="flex items-center gap-1 text-xs text-gray-500"
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
                   title={`Read ${file.readCount} time${file.readCount > 1 ? 's' : ''}`}
                 >
                   <Eye className="w-3 h-3" />
@@ -117,7 +117,7 @@ export function FilesTouchedPanel({
                 <span
                   className={cn(
                     'flex items-center gap-1 text-xs',
-                    file.isReedited ? 'text-amber-600' : 'text-gray-500'
+                    file.isReedited ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'
                   )}
                   title={`Edited ${file.editCount} time${file.editCount > 1 ? 's' : ''}`}
                 >
@@ -134,7 +134,7 @@ export function FilesTouchedPanel({
       {hasMore && (
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-3 flex items-center justify-center gap-1 w-full py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+          className="mt-3 flex items-center justify-center gap-1 w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           {isExpanded ? (
             <>
