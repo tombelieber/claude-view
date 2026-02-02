@@ -44,7 +44,7 @@ export function DashboardMetricsGrid({ trends }: DashboardMetricsGridProps) {
         aria-label="Week-over-week metrics (loading)"
       >
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-24 bg-gray-100 rounded animate-pulse" />
+          <div key={i} className="h-24 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
         ))}
       </section>
     )
