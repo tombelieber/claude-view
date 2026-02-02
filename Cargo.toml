@@ -22,6 +22,7 @@ tower = { version = "0.5", features = ["util"] }
 
 # Database
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Search (Phase 2)
 tantivy = "0.22"
