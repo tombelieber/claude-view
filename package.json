@@ -49,6 +49,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5.90.18",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.1",

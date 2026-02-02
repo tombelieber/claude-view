@@ -17,11 +17,11 @@ export function DateGroupedList({ sessions, showProjectBadge }: DateGroupedListP
       {groups.map((group, i) => (
         <div key={group.label}>
           {/* Sticky date header */}
-          <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm py-2.5 flex items-center gap-3">
-            <span className="text-[13px] font-semibold text-gray-700 tracking-tight whitespace-nowrap">
+          <div className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm py-2.5 flex items-center gap-3">
+            <span className="text-[13px] font-semibold text-gray-700 dark:text-gray-300 tracking-tight whitespace-nowrap">
               {group.label}
             </span>
-            <div className="flex-1 h-px bg-gray-200" />
+            <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
             <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">
               {group.sessions.length} {group.sessions.length === 1 ? 'session' : 'sessions'}
             </span>
