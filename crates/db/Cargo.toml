@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 vibe-recall-core = { workspace = true }
 sqlx = { workspace = true }
+rusqlite = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
