@@ -8,6 +8,7 @@ export type { ToolCall } from './ToolCall'
 export type { Message } from './Message'
 export type { SessionMetadata } from './SessionMetadata'
 export type { ParsedSession } from './ParsedSession'
+export type { PaginatedMessages } from './PaginatedMessages'
 export type { SessionInfo } from './SessionInfo'
 export type { ProjectInfo } from './ProjectInfo'
 
