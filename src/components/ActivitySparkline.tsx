@@ -13,6 +13,7 @@ import {
   type TooltipProps,
 } from 'recharts'
 import { countSessionsByDay, toDateKey } from '../lib/date-groups'
+import { useTheme } from '../hooks/use-theme'
 import type { SessionInfo } from '../hooks/use-projects'
 
 interface ActivitySparklineProps {
@@ -35,6 +36,8 @@ export function ActivitySparkline({
   selectedDate,
   onDateSelect,
 }: ActivitySparklineProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const countsByDay = useMemo(() => countSessionsByDay(sessions), [sessions])
 
   // Auto-size time range: from earliest session (or 14 days ago) to today,
@@ -167,12 +170,12 @@ export function ActivitySparkline({
         cy={cy}
         r={isSelected ? 5 : 3}
         fill={isSelected ? '#059669' : '#10b981'}
-        stroke="white"
+        stroke={isDark ? '#111827' : 'white'}
         strokeWidth={isSelected ? 2 : 1.5}
         style={{ cursor: 'pointer' }}
       />
     )
-  }, [selectedDate])
+  }, [selectedDate, isDark])
 
   return (
     <div className="flex items-start gap-6">
@@ -181,7 +184,7 @@ export function ActivitySparkline({
         <div
           ref={scrollRef}
           className="overflow-x-auto"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}
+          style={{ scrollbarWidth: 'thin', scrollbarColor: isDark ? '#4b5563 transparent' : '#d1d5db transparent' }}
         >
           <div style={{ minWidth: chartWidth, width: '100%' }}>
             <ResponsiveContainer width="100%" height={140}>
@@ -200,7 +203,7 @@ export function ActivitySparkline({
 
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="#f0f0f0"
+                  stroke={isDark ? '#374151' : '#f0f0f0'}
                   vertical={false}
                 />
 
@@ -210,16 +213,16 @@ export function ActivitySparkline({
                   domain={['dataMin', 'dataMax']}
                   ticks={xTicks}
                   tickFormatter={formatXTick}
-                  tick={{ fontSize: 10, fill: '#9ca3af' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb', strokeWidth: 1 }}
+                  tick={{ fontSize: 10, fill: isDark ? '#9ca3af' : '#9ca3af' }}
+                  axisLine={{ stroke: isDark ? '#4b5563' : '#e5e7eb' }}
+                  tickLine={{ stroke: isDark ? '#4b5563' : '#e5e7eb', strokeWidth: 1 }}
                   tickMargin={6}
                 />
 
                 <YAxis
                   domain={yDomain}
                   ticks={yTicks}
-                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: isDark ? '#9ca3af' : '#9ca3af' }}
                   axisLine={false}
                   tickLine={false}
                   tickMargin={4}
@@ -229,7 +232,7 @@ export function ActivitySparkline({
 
                 <Tooltip
                   content={<CustomTooltip />}
-                  cursor={{ stroke: '#d1d5db', strokeDasharray: '3 3' }}
+                  cursor={{ stroke: isDark ? '#6b7280' : '#d1d5db', strokeDasharray: '3 3' }}
                 />
 
                 <Area
@@ -242,7 +245,7 @@ export function ActivitySparkline({
                   activeDot={{
                     r: 5,
                     fill: '#059669',
-                    stroke: 'white',
+                    stroke: isDark ? '#111827' : 'white',
                     strokeWidth: 2,
                     cursor: 'pointer',
                   }}
@@ -256,7 +259,7 @@ export function ActivitySparkline({
         {selectedDate && (
           <button
             onClick={() => onDateSelect(null)}
-            className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium bg-emerald-50 text-emerald-700 rounded-full hover:bg-emerald-100 transition-colors"
+            className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
           >
             {(() => {
               const [y, m, d] = selectedDate.split('-').map(Number)
@@ -274,11 +277,11 @@ export function ActivitySparkline({
       {/* Quick stats */}
       <div className="flex-shrink-0 flex gap-5 pt-2">
         <div className="text-right">
-          <p className="text-xl font-semibold text-gray-900 tabular-nums leading-tight">{totalSessions}</p>
+          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">{totalSessions}</p>
           <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">sessions</p>
         </div>
         <div className="text-right">
-          <p className="text-xl font-semibold text-gray-900 tabular-nums leading-tight">{activeDays}</p>
+          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">{activeDays}</p>
           <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">active days</p>
         </div>
         {streak > 0 && (

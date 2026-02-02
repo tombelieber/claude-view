@@ -40,21 +40,21 @@ export function MetricCard({ label, value, trend, className }: MetricCardProps) 
   return (
     <div
       className={cn(
-        'bg-white rounded-xl border border-gray-200 p-4',
+        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4',
         className
       )}
       role="group"
       aria-label={`${label}: ${value}${trendText ? `, ${trendText}` : ''}`}
     >
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider font-metric-label mb-2" aria-hidden="true">
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider font-metric-label mb-2" aria-hidden="true">
         {label}
       </p>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-2xl font-semibold text-blue-900 font-metric-value tabular-nums" aria-hidden="true">
+        <span className="text-2xl font-semibold text-blue-900 dark:text-blue-300 font-metric-value tabular-nums" aria-hidden="true">
           {value}
         </span>
         {hasTrend && (
-          <div className="flex items-center gap-1 text-sm text-gray-500" aria-hidden="true">
+          <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400" aria-hidden="true">
             {isPositive && (
               <TrendingUp className="w-4 h-4" />
             )}

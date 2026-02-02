@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin "@tailwindcss/typography";
 
 /* Dark mode: class-based (not media query) */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -52,6 +53,10 @@ body {
   letter-spacing: -0.01em;
 }
 
+:where(.dark, .dark *) .activity-calendar .rdp-caption_label {
+  color: #f3f4f6;
+}
+
 /* Nav buttons */
 .activity-calendar .rdp-nav {
   display: flex;
@@ -77,6 +82,17 @@ body {
   color: #111827;
 }
 
+:where(.dark, .dark *) .activity-calendar .rdp-button_previous,
+:where(.dark, .dark *) .activity-calendar .rdp-button_next {
+  color: #9ca3af;
+}
+
+:where(.dark, .dark *) .activity-calendar .rdp-button_previous:hover,
+:where(.dark, .dark *) .activity-calendar .rdp-button_next:hover {
+  background: #374151;
+  color: #f3f4f6;
+}
+
 /* Day grid: 7 even columns filling width */
 .activity-calendar .rdp-month_grid {
   width: 100%;
@@ -94,6 +110,10 @@ body {
   padding-bottom: 0.5rem;
   text-align: center;
   width: calc(100% / 7);
+}
+
+:where(.dark, .dark *) .activity-calendar .rdp-weekday {
+  color: #6b7280;
 }
 
 /* Day cells: uniform square */
