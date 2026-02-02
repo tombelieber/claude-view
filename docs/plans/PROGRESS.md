@@ -49,6 +49,7 @@
 | **Deep Index Perf (Tasks 1-3)** | **DONE** | 3/3 tasks — tx batching, SIMD pre-filter, mtime re-index | Personal |
 | **Deep Index Perf Instrumentation** | **DONE** | Timing breakdown (parse/write phase) in debug builds | Personal |
 | **Deep Index Perf: rusqlite write phase** | **DONE** | 4/4 tasks — rusqlite dep, db_path, SQL constants, spawn_blocking write | Personal |
+| **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
 **Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
@@ -241,6 +242,42 @@ Plan file: TBD (will be created when Phase 5 begins)
 
 ---
 
+## Deferred: Analytical Database (Pre-Aggregation / DuckDB)
+
+**Decision: Keep current SQLite approach. Revisit when building Enterprise tier.**
+
+**Context (2026-02-03):** During deep index performance work, we evaluated whether to pre-aggregate session metrics (reduce ~168k turn/invocation rows → ~800 session-level rows) or switch to DuckDB for analytical queries.
+
+**Current performance (release mode, 1.2 GB / 676 sessions):**
+- Parse phase: 170ms
+- Write phase: 290ms
+- Total: 460ms
+- Incremental re-index: <100ms
+
+**Projections (release mode, linear extrapolation):**
+
+| Dataset | Sessions | Parse | Write | Total |
+|---------|----------|-------|-------|-------|
+| 1.2 GB (personal) | 676 | 170ms | 290ms | 460ms |
+| 12 GB (work machine) | ~6,700 | ~1.7s | ~2.9s | ~4.6s |
+| 50 GB (power user) | ~28,000 | ~7s | ~12s | ~19s |
+| 100 GB (extreme) | ~56,000 | ~14s | ~24s | ~38s |
+
+**Why defer:**
+1. **Incremental indexing already solves the common case** — day-to-day re-index is <100ms regardless of total data size
+2. **Full re-index is rare** — only on first run or `parse_version` bump (monthly at most)
+3. **Cold start UX solves the perception problem** — 38s with a progress bar showing `2.7 GB/s` is acceptable; 38s with no feedback is not
+4. **Pre-aggregation is a schema migration** — touches 6+ queries, changes data model. Better to design this into Enterprise tier from the start
+5. **DuckDB adds a dependency** — separate engine, more binary size, more complexity for marginal gain at current scale
+6. **SQLite handles up to 280 TB** — we're 1000x below the threshold where database choice matters
+
+**When to revisit:**
+- Enterprise tier design (Phase 5) — multi-user aggregation naturally requires pre-aggregated views
+- If incremental re-index degrades (unlikely — it only touches changed files)
+- If query latency on session list / dashboard becomes noticeable (currently <10ms)
+
+---
+
 ## Plan File Index
 
 Clean 3-tier structure: active work only in main folder.
@@ -259,6 +296,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-03-session-loading-perf.md` | done | **Session loading perf** — paginated messages endpoint, tail-first loading |
 | `2026-02-03-deep-index-perf.md` | done | **Deep index perf** — tx batching, SIMD pre-filter, mtime re-index (3 tasks) |
 | `2026-02-03-rusqlite-write-phase.md` | done | **Perf: rusqlite write** — replace async sqlx with sync rusqlite for hot write path |
+| `2026-02-03-cold-start-ux.md` | pending | **Cold start UX** — bandwidth progress bar (TUI + frontend SSE overlay), 7 tasks |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
