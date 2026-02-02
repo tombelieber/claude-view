@@ -137,8 +137,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   // Null safety: handle null/undefined session
   if (!session) {
     return (
-      <article className="w-full text-left p-3.5 rounded-lg border border-gray-200 bg-gray-50">
-        <div className="text-sm text-gray-500">Session data unavailable</div>
+      <article className="w-full text-left p-3.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+        <div className="text-sm text-gray-500 dark:text-gray-400">Session data unavailable</div>
       </article>
     )
   }
@@ -174,8 +174,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         'w-full text-left p-3.5 rounded-lg border cursor-pointer',
         'transition-all duration-200 ease-out',
         isSelected
-          ? 'bg-blue-50 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
-          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
+          ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
+          : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
@@ -183,17 +183,17 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           {projectLabel && (
-            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 rounded flex-shrink-0">
+            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded flex-shrink-0">
               {projectLabel}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
+        <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
           {durationSeconds > 0 ? (
             <>
               <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
-              <span className="text-gray-300">|</span>
-              <span className="font-medium text-gray-500">{formatDuration(durationSeconds)}</span>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span className="font-medium text-gray-500 dark:text-gray-400">{formatDuration(durationSeconds)}</span>
             </>
           ) : (
             <span>{formatRelativeTime(Number(session.modifiedAt))}</span>
@@ -203,36 +203,36 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
 
       {/* Preview text */}
       <div className="min-w-0">
-        <p className="text-sm font-medium text-gray-900 line-clamp-2">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
           {cleanPreview}
         </p>
 
         {/* Last message if different from first */}
         {cleanLast && cleanLast !== cleanPreview && (
-          <p className="text-[13px] text-gray-500 line-clamp-1 mt-0.5">
-            <span className="text-gray-300 mr-1">{'->'}</span>{cleanLast}
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
+            <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>{cleanLast}
           </p>
         )}
       </div>
 
       {/* Metrics row: prompts, tokens, files, re-edits */}
-      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500">
+      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
         {prompts > 0 && (
           <>
             <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {hasTokens && (
           <>
             <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {filesEdited > 0 && (
           <>
             <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {reeditedFiles > 0 && (
@@ -264,11 +264,11 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
       </div>
 
       {/* Footer: Commits badge + Skills */}
-      <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100">
+      <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2">
           {/* Commit badge */}
           {commitCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-green-50 text-green-700 rounded border border-green-200">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-200 dark:border-green-800">
               <GitCommit className="w-3 h-3" />
               {commitCount} commit{commitCount !== 1 ? 's' : ''}
             </span>
@@ -280,7 +280,7 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
               {session.skillsUsed?.slice(0, 2).map(skill => (
                 <span
                   key={skill}
-                  className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded font-mono"
+                  className="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded font-mono"
                 >
                   {skill}
                 </span>
