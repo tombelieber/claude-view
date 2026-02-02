@@ -188,12 +188,12 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-gray-400 tabular-nums whitespace-nowrap flex-shrink-0">
+        <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
           {durationSeconds > 0 ? (
             <>
               <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
-              <span className="text-gray-300">|</span>
-              <span className="font-medium text-gray-500">{formatDuration(durationSeconds)}</span>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span className="font-medium text-gray-500 dark:text-gray-400">{formatDuration(durationSeconds)}</span>
             </>
           ) : (
             <span>{formatRelativeTime(Number(session.modifiedAt))}</span>
@@ -209,30 +209,30 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
 
         {/* Last message if different from first */}
         {cleanLast && cleanLast !== cleanPreview && (
-          <p className="text-[13px] text-gray-500 line-clamp-1 mt-0.5">
-            <span className="text-gray-300 mr-1">{'->'}</span>{cleanLast}
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
+            <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>{cleanLast}
           </p>
         )}
       </div>
 
       {/* Metrics row: prompts, tokens, files, re-edits */}
-      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500">
+      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
         {prompts > 0 && (
           <>
             <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {hasTokens && (
           <>
             <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {filesEdited > 0 && (
           <>
             <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
           </>
         )}
         {reeditedFiles > 0 && (
