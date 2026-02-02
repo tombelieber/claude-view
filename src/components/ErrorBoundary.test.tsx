@@ -218,3 +218,25 @@ describe('ErrorBoundary', () => {
     })
   })
 })
+
+describe('Integration: ErrorBoundary wraps messages', () => {
+  it('should catch a crashing MessageTyped without killing the list', () => {
+    // Simulate: first child crashes, second child survives
+    const Crasher = () => { throw new Error('boom') }
+
+    const { container } = render(
+      <div>
+        <ErrorBoundary>
+          <Crasher />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <div data-testid="survivor">I survived</div>
+        </ErrorBoundary>
+      </div>
+    )
+
+    // Crashed message shows boundary, sibling still renders
+    expect(screen.getByTestId('error-boundary')).toBeInTheDocument()
+    expect(screen.getByTestId('survivor')).toBeInTheDocument()
+  })
+})
