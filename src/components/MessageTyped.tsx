@@ -170,8 +170,8 @@ function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>
     <div className={cn(
       'mt-3 p-3 rounded-sm text-sm',
       type === 'system'
-        ? 'bg-amber-100/30 border border-amber-200/50'
-        : 'bg-indigo-100/30 border border-indigo-200/50'
+        ? 'bg-amber-100/30 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-700/30'
+        : 'bg-indigo-100/30 dark:bg-indigo-900/20 border border-indigo-200/50 dark:border-indigo-700/30'
     )}>
       <div className="space-y-1 font-mono text-xs">
         {Object.entries(metadata).map(([key, value]) => {
@@ -180,11 +180,11 @@ function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>
             <div key={key} className="flex items-start gap-2">
               <span className={cn(
                 'font-semibold flex-shrink-0',
-                type === 'system' ? 'text-amber-700' : 'text-indigo-700'
+                type === 'system' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'
               )}>
                 {key}:
               </span>
-              <span className="text-gray-700 break-all">{displayValue}</span>
+              <span className="text-gray-700 dark:text-gray-300 break-all">{displayValue}</span>
             </div>
           )
         })}
@@ -292,7 +292,7 @@ export function MessageTyped({
       className={cn(
         'border-l-4 rounded-r-lg transition-colors',
         config.accent,
-        'bg-white hover:bg-gray-50/50',
+        'bg-white dark:bg-gray-900 hover:bg-gray-50/50 dark:hover:bg-gray-800/50',
         isChildMessage && 'thread-child'
       )}
       style={{
@@ -317,7 +317,7 @@ export function MessageTyped({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-900 text-sm">
+                <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                   {config.label}
                 </span>
                 {type !== message.role && (
@@ -327,13 +327,13 @@ export function MessageTyped({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopyMessage}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 transition-all"
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
                   title="Copy message"
                 >
                   {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 {time && (
-                  <span className="text-xs text-gray-500 whitespace-nowrap">{time}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{time}</span>
                 )}
               </div>
             </div>
@@ -374,7 +374,7 @@ export function MessageTyped({
                             if (isInline) {
                               return (
                                 <code
-                                  className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono"
+                                  className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono"
                                   {...props}
                                 >
                                   {children}
@@ -467,15 +467,15 @@ export function MessageTyped({
 
           {/* Tool calls summary */}
           {message.tool_calls && message.tool_calls.length > 0 && (
-            <div className="mt-2 pt-3 border-t border-gray-200">
-              <div className="text-xs font-semibold text-gray-600 mb-2">
+            <div className="mt-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
                 Tool Calls: {message.tool_calls.length}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {message.tool_calls.map((tool, idx) => (
                   <div
                     key={idx}
-                    className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs font-mono text-gray-700"
+                    className="px-2 py-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs font-mono text-gray-700 dark:text-gray-300"
                   >
                     {tool.name}
                   </div>
