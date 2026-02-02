@@ -3,6 +3,8 @@
 // Also contains the two-pass indexing pipeline: Pass 1 (index JSON) and Pass 2 (deep JSONL).
 
 use memchr::memmem;
+use serde::de::{self, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -157,6 +159,137 @@ pub struct ExtendedMetadata {
 
     // File history snapshots
     pub file_snapshot_count: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Typed structs for fast dispatched parsing (avoid full serde_json::Value).
+// Private to this file — only used inside parse_bytes().
+// ---------------------------------------------------------------------------
+
+/// Handles both integer and ISO8601 string timestamps.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum TimestampValue {
+    Integer(i64),
+    Iso(String),
+}
+
+impl TimestampValue {
+    fn to_unix(&self) -> Option<i64> {
+        match self {
+            TimestampValue::Integer(v) => Some(*v),
+            TimestampValue::Iso(s) => chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.timestamp()),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct AssistantLine {
+    timestamp: Option<TimestampValue>,
+    uuid: Option<String>,
+    #[serde(rename = "parentUuid")]
+    parent_uuid: Option<String>,
+    message: Option<AssistantMessage>,
+}
+
+#[derive(Deserialize)]
+struct AssistantMessage {
+    model: Option<String>,
+    usage: Option<UsageBlock>,
+    #[serde(default, deserialize_with = "deserialize_content")]
+    content: ContentResult,
+}
+
+#[derive(Deserialize)]
+struct UsageBlock {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+    service_tier: Option<String>,
+}
+
+/// Custom visitor result — avoids #[serde(untagged)] buffering overhead.
+enum ContentResult {
+    Blocks(Vec<FlatContentBlock>),
+    NotArray,
+    Missing,
+}
+
+impl Default for ContentResult {
+    fn default() -> Self {
+        ContentResult::Missing
+    }
+}
+
+/// Custom deserializer for message content that avoids `#[serde(untagged)]` buffering.
+/// Directly deserializes array elements as `FlatContentBlock` — no intermediate Value tree.
+fn deserialize_content<'de, D: Deserializer<'de>>(d: D) -> Result<ContentResult, D::Error> {
+    struct ContentVisitor;
+
+    impl<'de> Visitor<'de> for ContentVisitor {
+        type Value = ContentResult;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an array of content blocks, a string, or null")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<ContentResult, A::Error> {
+            let mut blocks = Vec::new();
+            while let Some(block) = seq.next_element::<FlatContentBlock>()? {
+                blocks.push(block);
+            }
+            Ok(ContentResult::Blocks(blocks))
+        }
+
+        fn visit_str<E: de::Error>(self, _: &str) -> Result<ContentResult, E> {
+            Ok(ContentResult::NotArray)
+        }
+
+        fn visit_string<E: de::Error>(self, _: String) -> Result<ContentResult, E> {
+            Ok(ContentResult::NotArray)
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<ContentResult, E> {
+            Ok(ContentResult::Missing)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<ContentResult, E> {
+            Ok(ContentResult::Missing)
+        }
+    }
+
+    d.deserialize_any(ContentVisitor)
+}
+
+/// Flat content block — only declares fields we actually read.
+/// Serde skips undeclared fields (text content, thinking content) without allocating them.
+#[derive(Deserialize)]
+struct FlatContentBlock {
+    #[serde(rename = "type")]
+    block_type: Option<String>,
+    name: Option<String>,
+    input: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct SystemLine {
+    timestamp: Option<TimestampValue>,
+    subtype: Option<String>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    #[serde(rename = "retryAttempt")]
+    retry_attempt: Option<u64>,
+    #[serde(rename = "preventedContinuation")]
+    prevented_continuation: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct SummaryLine {
+    timestamp: Option<TimestampValue>,
+    summary: Option<String>,
 }
 
 /// A raw tool_use extracted from JSONL, before classification.
@@ -380,6 +513,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let op_enqueue = memmem::Finder::new(b"\"operation\":\"enqueue\"");
     let op_dequeue = memmem::Finder::new(b"\"operation\":\"dequeue\"");
 
+    // Type-dispatched parsing: SIMD pre-filter before typed struct deserialization
+    let type_user = memmem::Finder::new(b"\"type\":\"user\"");
+    let type_assistant = memmem::Finder::new(b"\"type\":\"assistant\"");
+    let type_system = memmem::Finder::new(b"\"type\":\"system\"");
+    let type_summary = memmem::Finder::new(b"\"type\":\"summary\"");
+    let timestamp_finder = memmem::Finder::new(b"\"timestamp\":");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -424,7 +564,86 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             continue;
         }
 
-        // Full JSON parse only for user, assistant, system, summary, unknown
+        // ── Type-dispatched parsing ─────────────────────────────────────
+        // SIMD pre-filter on raw bytes determines which typed struct to use.
+        // User lines: raw bytes only (no JSON). Assistant/system/summary:
+        // typed structs (skip unneeded fields). Fallback: Value for unknowns.
+
+        // User lines: raw-byte path (no JSON parse at all)
+        if type_user.find(line).is_some() {
+            diag.lines_user += 1;
+            user_count += 1;
+            if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
+                last_user_content = Some(content);
+            }
+            extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
+            if let Some(ts) = extract_timestamp_from_bytes(line, &timestamp_finder) {
+                diag.timestamps_extracted += 1;
+                if first_timestamp.is_none() {
+                    first_timestamp = Some(ts);
+                }
+                last_timestamp = Some(ts);
+            }
+            continue;
+        }
+
+        // Assistant lines: typed struct parse (skips text/thinking content allocation)
+        if type_assistant.find(line).is_some() {
+            diag.json_parse_attempts += 1;
+            match serde_json::from_slice::<AssistantLine>(line) {
+                Ok(parsed) => {
+                    handle_assistant_line(
+                        parsed,
+                        byte_offset,
+                        &mut result.deep,
+                        &mut result.raw_invocations,
+                        &mut result.turns,
+                        &mut result.models_seen,
+                        diag,
+                        &mut assistant_count,
+                        &mut tool_call_count,
+                        &mut files_read_all,
+                        &mut files_edited_all,
+                        &mut first_timestamp,
+                        &mut last_timestamp,
+                    );
+                }
+                Err(_) => {
+                    diag.json_parse_failures += 1;
+                }
+            }
+            continue;
+        }
+
+        // System lines: small flat struct
+        if type_system.find(line).is_some() {
+            diag.json_parse_attempts += 1;
+            match serde_json::from_slice::<SystemLine>(line) {
+                Ok(parsed) => {
+                    handle_system_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                }
+                Err(_) => {
+                    diag.json_parse_failures += 1;
+                }
+            }
+            continue;
+        }
+
+        // Summary lines: tiny flat struct
+        if type_summary.find(line).is_some() {
+            diag.json_parse_attempts += 1;
+            match serde_json::from_slice::<SummaryLine>(line) {
+                Ok(parsed) => {
+                    handle_summary_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                }
+                Err(_) => {
+                    diag.json_parse_failures += 1;
+                }
+            }
+            continue;
+        }
+
+        // ── Fallback: full Value parse for spacing variants and unknown types ──
         diag.json_parse_attempts += 1;
 
         let value: serde_json::Value = match serde_json::from_slice(line) {
@@ -435,7 +654,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
         };
 
-        // Extract timestamp from any line
         if let Some(ts) = extract_timestamp_from_value(&value) {
             diag.timestamps_extracted += 1;
             if first_timestamp.is_none() {
@@ -444,148 +662,35 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             last_timestamp = Some(ts);
         }
 
-        // Dispatch on type field
         let line_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
         match line_type {
             "user" => {
+                // Spacing variant that SIMD missed
                 diag.lines_user += 1;
                 user_count += 1;
-                // Extract content for last_message tracking (use SIMD helpers on raw bytes)
                 if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
                     last_user_content = Some(content);
                 }
-                // Check for skill invocations
                 extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
             }
             "assistant" => {
+                // Spacing variant — fall back to Value-based extraction
                 diag.lines_assistant += 1;
                 assistant_count += 1;
-
-                // Extract token usage from .message.usage
-                if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
-                    if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
-                        result.deep.total_input_tokens += v;
-                    }
-                    if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
-                        result.deep.total_output_tokens += v;
-                    }
-                    if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
-                        result.deep.cache_read_tokens += v;
-                    }
-                    if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
-                        result.deep.cache_creation_tokens += v;
-                    }
-                }
-
-                // Extract turn data (model + tokens) for turns table
-                if let Some(message) = value.get("message") {
-                    if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
-                        let model_id = model.to_string();
-                        if !result.models_seen.contains(&model_id) {
-                            result.models_seen.push(model_id.clone());
-                        }
-
-                        let usage = message.get("usage");
-                        let uuid = value.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let content_type = message.get("content")
-                            .and_then(|c| c.as_array())
-                            .and_then(|arr| arr.first())
-                            .and_then(|block| block.get("type"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("text")
-                            .to_string();
-                        let timestamp = extract_timestamp_from_value(&value);
-
-                        result.turns.push(vibe_recall_core::RawTurn {
-                            uuid,
-                            parent_uuid,
-                            seq: assistant_count - 1,
-                            model_id,
-                            content_type,
-                            input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                            output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                            cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                            cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
-                            service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            timestamp,
-                        });
-                        diag.turns_extracted += 1;
-                    }
-                }
-
-                // Extract tool_use blocks from content
-                let content = value.get("message").and_then(|m| m.get("content"));
-                match content {
-                    Some(serde_json::Value::Array(arr)) => {
-                        for block in arr {
-                            let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                            match block_type {
-                                "tool_use" => {
-                                    diag.tool_use_blocks_found += 1;
-                                    let name = match block.get("name").and_then(|n| n.as_str()) {
-                                        Some(n) => n,
-                                        None => {
-                                            diag.tool_use_missing_name += 1;
-                                            continue;
-                                        }
-                                    };
-
-                                    tool_call_count += 1;
-
-                                    // Count by tool name for ToolCounts
-                                    match name {
-                                        "Read" => result.deep.tool_counts.read += 1,
-                                        "Edit" => result.deep.tool_counts.edit += 1,
-                                        "Write" => result.deep.tool_counts.write += 1,
-                                        "Bash" => result.deep.tool_counts.bash += 1,
-                                        _ => {}
-                                    }
-
-                                    // Extract file paths
-                                    let input = block.get("input");
-                                    if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
-                                        if !fp.is_empty() {
-                                            diag.file_paths_extracted += 1;
-                                            result.deep.files_touched.push(fp.to_string());
-                                            match name {
-                                                "Read" => files_read_all.push(fp.to_string()),
-                                                "Edit" | "Write" => files_edited_all.push(fp.to_string()),
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-
-                                    // Store raw invocation
-                                    let ts = value.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
-                                    result.raw_invocations.push(RawInvocation {
-                                        name: name.to_string(),
-                                        input: input.cloned(),
-                                        byte_offset,
-                                        timestamp: ts,
-                                    });
-                                }
-                                "thinking" => {
-                                    result.deep.thinking_block_count += 1;
-                                }
-                                "text" => {
-                                    // counted but nothing special to extract
-                                }
-                                _ => {
-                                    // unknown block type
-                                }
-                            }
-                        }
-                    }
-                    Some(serde_json::Value::String(_)) => {
-                        // Content is a string, not an array — valid but no tool_use blocks
-                        diag.content_not_array += 1;
-                    }
-                    _ => {
-                        // null or missing content
-                    }
-                }
+                handle_assistant_value(
+                    &value,
+                    byte_offset,
+                    &mut result.deep,
+                    &mut result.raw_invocations,
+                    &mut result.turns,
+                    &mut result.models_seen,
+                    diag,
+                    assistant_count,
+                    &mut tool_call_count,
+                    &mut files_read_all,
+                    &mut files_edited_all,
+                );
             }
             "system" => {
                 diag.lines_system += 1;
@@ -610,30 +715,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                             result.deep.hook_blocked_count += 1;
                         }
                     }
-                    _ => {
-                        // local_command and unknown subtypes — counted in lines_system already
-                    }
+                    _ => {}
                 }
             }
             "progress" => {
                 diag.lines_progress += 1;
                 let data_type = value.get("data").and_then(|d| d.get("type")).and_then(|t| t.as_str()).unwrap_or("");
                 match data_type {
-                    "agent_progress" => {
-                        result.deep.agent_spawn_count += 1;
-                    }
-                    "bash_progress" => {
-                        result.deep.bash_progress_count += 1;
-                    }
-                    "hook_progress" => {
-                        result.deep.hook_progress_count += 1;
-                    }
-                    "mcp_progress" => {
-                        result.deep.mcp_progress_count += 1;
-                    }
-                    _ => {
-                        // waiting_for_task and other subtypes
-                    }
+                    "agent_progress" => result.deep.agent_spawn_count += 1,
+                    "bash_progress" => result.deep.bash_progress_count += 1,
+                    "hook_progress" => result.deep.hook_progress_count += 1,
+                    "mcp_progress" => result.deep.mcp_progress_count += 1,
+                    _ => {}
                 }
             }
             "queue-operation" => {
@@ -704,6 +797,358 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result
 }
 
+// ---------------------------------------------------------------------------
+// Typed handler functions for dispatched parsing
+// ---------------------------------------------------------------------------
+
+/// Handle an assistant line parsed via typed `AssistantLine` struct.
+/// Produces identical output to the Value-based path.
+///
+/// Takes individual mutable refs to avoid borrowing `ParseResult` while `diag`
+/// (which borrows `result.diagnostics`) is also live.
+#[allow(clippy::too_many_arguments)]
+fn handle_assistant_line(
+    parsed: AssistantLine,
+    byte_offset: usize,
+    deep: &mut ExtendedMetadata,
+    raw_invocations: &mut Vec<RawInvocation>,
+    turns: &mut Vec<vibe_recall_core::RawTurn>,
+    models_seen: &mut Vec<String>,
+    diag: &mut ParseDiagnostics,
+    assistant_count: &mut u32,
+    tool_call_count: &mut u32,
+    files_read_all: &mut Vec<String>,
+    files_edited_all: &mut Vec<String>,
+    first_timestamp: &mut Option<i64>,
+    last_timestamp: &mut Option<i64>,
+) {
+    diag.lines_assistant += 1;
+    *assistant_count += 1;
+
+    // Extract timestamp
+    let ts = parsed.timestamp.as_ref().and_then(|t| t.to_unix());
+    if let Some(ts) = ts {
+        diag.timestamps_extracted += 1;
+        if first_timestamp.is_none() {
+            *first_timestamp = Some(ts);
+        }
+        *last_timestamp = Some(ts);
+    }
+
+    if let Some(message) = parsed.message {
+        // Extract token usage
+        if let Some(ref usage) = message.usage {
+            if let Some(v) = usage.input_tokens {
+                deep.total_input_tokens += v;
+            }
+            if let Some(v) = usage.output_tokens {
+                deep.total_output_tokens += v;
+            }
+            if let Some(v) = usage.cache_read_input_tokens {
+                deep.cache_read_tokens += v;
+            }
+            if let Some(v) = usage.cache_creation_input_tokens {
+                deep.cache_creation_tokens += v;
+            }
+        }
+
+        // Extract turn data (model + tokens) for turns table
+        if let Some(ref model) = message.model {
+            let model_id = model.clone();
+            if !models_seen.contains(&model_id) {
+                models_seen.push(model_id.clone());
+            }
+
+            let uuid = parsed.uuid.unwrap_or_default();
+            let parent_uuid = parsed.parent_uuid;
+
+            // Determine content_type from first block
+            let content_type = match &message.content {
+                ContentResult::Blocks(blocks) => blocks
+                    .first()
+                    .and_then(|b| b.block_type.as_deref())
+                    .unwrap_or("text")
+                    .to_string(),
+                _ => "text".to_string(),
+            };
+
+            turns.push(vibe_recall_core::RawTurn {
+                uuid,
+                parent_uuid,
+                seq: *assistant_count - 1,
+                model_id,
+                content_type,
+                input_tokens: message.usage.as_ref().and_then(|u| u.input_tokens),
+                output_tokens: message.usage.as_ref().and_then(|u| u.output_tokens),
+                cache_read_tokens: message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
+                cache_creation_tokens: message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                service_tier: message.usage.as_ref().and_then(|u| u.service_tier.clone()),
+                timestamp: ts,
+            });
+            diag.turns_extracted += 1;
+        }
+
+        // Extract tool_use blocks from content
+        match message.content {
+            ContentResult::Blocks(blocks) => {
+                for block in blocks {
+                    let block_type = block.block_type.as_deref().unwrap_or("");
+                    match block_type {
+                        "tool_use" => {
+                            diag.tool_use_blocks_found += 1;
+                            let name = match block.name {
+                                Some(ref n) => n.as_str(),
+                                None => {
+                                    diag.tool_use_missing_name += 1;
+                                    continue;
+                                }
+                            };
+
+                            *tool_call_count += 1;
+
+                            match name {
+                                "Read" => deep.tool_counts.read += 1,
+                                "Edit" => deep.tool_counts.edit += 1,
+                                "Write" => deep.tool_counts.write += 1,
+                                "Bash" => deep.tool_counts.bash += 1,
+                                _ => {}
+                            }
+
+                            // Extract file paths
+                            if let Some(fp) = block.input.as_ref()
+                                .and_then(|i| i.get("file_path"))
+                                .and_then(|v| v.as_str())
+                            {
+                                if !fp.is_empty() {
+                                    diag.file_paths_extracted += 1;
+                                    deep.files_touched.push(fp.to_string());
+                                    match name {
+                                        "Read" => files_read_all.push(fp.to_string()),
+                                        "Edit" | "Write" => files_edited_all.push(fp.to_string()),
+                                        _ => {}
+                                    }
+                                }
+                            }
+
+                            // Store raw invocation (move input, no clone needed)
+                            raw_invocations.push(RawInvocation {
+                                name: name.to_string(),
+                                input: block.input,
+                                byte_offset,
+                                timestamp: ts.unwrap_or(0),
+                            });
+                        }
+                        "thinking" => {
+                            deep.thinking_block_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            ContentResult::NotArray => {
+                diag.content_not_array += 1;
+            }
+            ContentResult::Missing => {}
+        }
+    }
+}
+
+/// Handle an assistant line via the fallback Value path (for spacing variants).
+#[allow(clippy::too_many_arguments)]
+fn handle_assistant_value(
+    value: &serde_json::Value,
+    byte_offset: usize,
+    deep: &mut ExtendedMetadata,
+    raw_invocations: &mut Vec<RawInvocation>,
+    turns: &mut Vec<vibe_recall_core::RawTurn>,
+    models_seen: &mut Vec<String>,
+    diag: &mut ParseDiagnostics,
+    assistant_count: u32,
+    tool_call_count: &mut u32,
+    files_read_all: &mut Vec<String>,
+    files_edited_all: &mut Vec<String>,
+) {
+    // Extract token usage from .message.usage
+    if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+        if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+            deep.total_input_tokens += v;
+        }
+        if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+            deep.total_output_tokens += v;
+        }
+        if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+            deep.cache_read_tokens += v;
+        }
+        if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+            deep.cache_creation_tokens += v;
+        }
+    }
+
+    // Extract turn data (model + tokens) for turns table
+    if let Some(message) = value.get("message") {
+        if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
+            let model_id = model.to_string();
+            if !models_seen.contains(&model_id) {
+                models_seen.push(model_id.clone());
+            }
+
+            let usage = message.get("usage");
+            let uuid = value.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let content_type = message.get("content")
+                .and_then(|c| c.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|block| block.get("type"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("text")
+                .to_string();
+            let timestamp = extract_timestamp_from_value(value);
+
+            turns.push(vibe_recall_core::RawTurn {
+                uuid,
+                parent_uuid,
+                seq: assistant_count - 1,
+                model_id,
+                content_type,
+                input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
+                output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
+                cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
+                cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                timestamp,
+            });
+            diag.turns_extracted += 1;
+        }
+    }
+
+    // Extract tool_use blocks from content
+    let content = value.get("message").and_then(|m| m.get("content"));
+    match content {
+        Some(serde_json::Value::Array(arr)) => {
+            for block in arr {
+                let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                match block_type {
+                    "tool_use" => {
+                        diag.tool_use_blocks_found += 1;
+                        let name = match block.get("name").and_then(|n| n.as_str()) {
+                            Some(n) => n,
+                            None => {
+                                diag.tool_use_missing_name += 1;
+                                continue;
+                            }
+                        };
+
+                        *tool_call_count += 1;
+
+                        match name {
+                            "Read" => deep.tool_counts.read += 1,
+                            "Edit" => deep.tool_counts.edit += 1,
+                            "Write" => deep.tool_counts.write += 1,
+                            "Bash" => deep.tool_counts.bash += 1,
+                            _ => {}
+                        }
+
+                        let input = block.get("input");
+                        if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
+                            if !fp.is_empty() {
+                                diag.file_paths_extracted += 1;
+                                deep.files_touched.push(fp.to_string());
+                                match name {
+                                    "Read" => files_read_all.push(fp.to_string()),
+                                    "Edit" | "Write" => files_edited_all.push(fp.to_string()),
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        let ts = value.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+                        raw_invocations.push(RawInvocation {
+                            name: name.to_string(),
+                            input: input.cloned(),
+                            byte_offset,
+                            timestamp: ts,
+                        });
+                    }
+                    "thinking" => {
+                        deep.thinking_block_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Some(serde_json::Value::String(_)) => {
+            diag.content_not_array += 1;
+        }
+        _ => {}
+    }
+}
+
+/// Handle a system line parsed via typed `SystemLine` struct.
+fn handle_system_line(
+    parsed: SystemLine,
+    deep: &mut ExtendedMetadata,
+    diag: &mut ParseDiagnostics,
+    first_timestamp: &mut Option<i64>,
+    last_timestamp: &mut Option<i64>,
+) {
+    diag.lines_system += 1;
+
+    if let Some(ts) = parsed.timestamp.as_ref().and_then(|t| t.to_unix()) {
+        diag.timestamps_extracted += 1;
+        if first_timestamp.is_none() {
+            *first_timestamp = Some(ts);
+        }
+        *last_timestamp = Some(ts);
+    }
+
+    let subtype = parsed.subtype.as_deref().unwrap_or("");
+    match subtype {
+        "turn_duration" => {
+            if let Some(ms) = parsed.duration_ms {
+                deep.turn_durations_ms.push(ms);
+            }
+        }
+        "api_error" => {
+            deep.api_error_count += 1;
+            if let Some(retries) = parsed.retry_attempt {
+                deep.api_retry_count += retries as u32;
+            }
+        }
+        "compact_boundary" | "microcompact_boundary" => {
+            deep.compaction_count += 1;
+        }
+        "stop_hook_summary" => {
+            if parsed.prevented_continuation == Some(true) {
+                deep.hook_blocked_count += 1;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Handle a summary line parsed via typed `SummaryLine` struct.
+fn handle_summary_line(
+    parsed: SummaryLine,
+    deep: &mut ExtendedMetadata,
+    diag: &mut ParseDiagnostics,
+    first_timestamp: &mut Option<i64>,
+    last_timestamp: &mut Option<i64>,
+) {
+    diag.lines_summary += 1;
+
+    if let Some(ts) = parsed.timestamp.as_ref().and_then(|t| t.to_unix()) {
+        diag.timestamps_extracted += 1;
+        if first_timestamp.is_none() {
+            *first_timestamp = Some(ts);
+        }
+        *last_timestamp = Some(ts);
+    }
+
+    if let Some(summary) = parsed.summary {
+        deep.summary_text = Some(summary);
+    }
+}
+
 /// Extract timestamp from an already-parsed JSON value.
 /// Handles both ISO8601 strings and Unix integers.
 fn extract_timestamp_from_value(value: &serde_json::Value) -> Option<i64> {
@@ -714,6 +1159,34 @@ fn extract_timestamp_from_value(value: &serde_json::Value) -> Option<i64> {
                 .map(|dt| dt.timestamp())
         })
     })
+}
+
+/// Extract timestamp from raw JSONL bytes without JSON parsing.
+/// Uses memmem::Finder to locate `"timestamp":` then parses the value inline.
+fn extract_timestamp_from_bytes(line: &[u8], finder: &memmem::Finder) -> Option<i64> {
+    let pos = finder.find(line)?;
+    let rest = &line[pos + b"\"timestamp\":".len()..];
+    // Skip whitespace
+    let skip = rest.iter().position(|&b| b != b' ' && b != b'\t')?;
+    let rest = &rest[skip..];
+    match rest.first()? {
+        b'-' | b'0'..=b'9' => {
+            // Integer timestamp
+            let end = rest
+                .iter()
+                .position(|&b| !(b == b'-' || b.is_ascii_digit()))
+                .unwrap_or(rest.len());
+            std::str::from_utf8(&rest[..end]).ok()?.parse().ok()
+        }
+        b'"' => {
+            // ISO8601 string timestamp
+            let s = extract_quoted_string(&rest[1..])?;
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.timestamp())
+        }
+        _ => None,
+    }
 }
 
 /// Count files that appear 2+ times in the files_edited list.
@@ -2198,9 +2671,9 @@ mod tests {
         assert_eq!(diag.lines_user, 1);
         assert_eq!(diag.lines_assistant, 1);
 
-        // JSON parse attempts should be ONLY for user + assistant + system + summary (not progress/queue/snapshot/hook_context)
-        // In this test data: 2 lines need full parse (user + assistant)
-        assert_eq!(diag.json_parse_attempts, 2);
+        // JSON parse attempts should be ONLY for assistant + system + summary (not progress/queue/snapshot/hook_context).
+        // User lines use raw-byte extraction (no JSON parse). In this test data: 1 line needs typed parse (assistant).
+        assert_eq!(diag.json_parse_attempts, 1);
     }
 
     // ============================================================================
