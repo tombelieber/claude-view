@@ -39,10 +39,10 @@ export function ProjectView() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             {project?.displayName ?? decodedProjectId}
           </h1>
-          <p className="text-sm text-gray-500 mt-1" aria-label={`${project?.sessionCount ?? 0} sessions in this project`}>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1" aria-label={`${project?.sessionCount ?? 0} sessions in this project`}>
             {project?.sessionCount ?? 0} sessions
           </p>
         </div>
@@ -59,7 +59,7 @@ export function ProjectView() {
             <DateGroupedList sessions={page.sessions} />
             {page.sessions.length < page.total && (
               <div className="text-center py-6">
-                <span className="px-4 py-2 text-sm text-gray-500 bg-gray-100 rounded-lg" aria-label={`Showing ${page.sessions.length} of ${page.total} sessions`}>
+                <span className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg" aria-label={`Showing ${page.sessions.length} of ${page.total} sessions`}>
                   Showing {page.sessions.length} of {page.total} sessions
                 </span>
               </div>
