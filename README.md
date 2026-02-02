@@ -17,6 +17,23 @@
   <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
+<p align="center">
+  <b>Fast</b> · <b>Lightweight</b> · <b>Private</b> · <b>Zero Config</b>
+</p>
+
+---
+
+## Why claude-view?
+
+| | |
+|---|---|
+| **Blazing fast** | Rust-powered backend with SIMD-accelerated JSONL parsing, memory-mapped I/O, and instant startup — indexes thousands of sessions in seconds |
+| **Tiny footprint** | Single ~15 MB binary. No runtime dependencies, no background daemons, no bloat |
+| **100% private** | All data stays on your machine. No telemetry, no cloud, no network requests. Read-only access to your session files |
+| **Memory safe** | Written in Rust — no buffer overflows, no data races, no GC pauses |
+| **Full-text search** | Powered by Tantivy (Rust search engine) and SQLite — find any conversation instantly |
+| **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
+
 ---
 
 ## 😤 The Problem
