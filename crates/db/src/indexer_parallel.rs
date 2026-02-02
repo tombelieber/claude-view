@@ -15,7 +15,8 @@ use crate::Database;
 
 /// Current parse version. Bump when parser logic changes to trigger re-indexing.
 /// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
-pub const CURRENT_PARSE_VERSION: i32 = 1;
+/// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
+pub const CURRENT_PARSE_VERSION: i32 = 2;
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
@@ -170,6 +171,10 @@ pub struct DeepIndexResult {
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
     pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
+    /// File size in bytes at the time of this parse (for change detection on next startup).
+    pub file_size: i64,
+    /// File mtime as Unix seconds at the time of this parse (for change detection on next startup).
+    pub file_mtime: i64,
 }
 
 /// Parse diagnostic counters — per session, not per line.
@@ -874,10 +879,51 @@ pub async fn pass_2_deep_index<F>(
 where
     F: Fn(usize, usize) + Send + Sync + 'static,
 {
-    let sessions = db
+    let all_sessions = db
         .get_sessions_needing_deep_index()
         .await
         .map_err(|e| format!("Failed to query sessions needing deep index: {}", e))?;
+
+    // Filter sessions that actually need (re-)indexing:
+    // 1. deep_indexed_at IS NULL → new session, never indexed
+    // 2. parse_version < CURRENT → parser upgraded
+    // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
+    // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
+    let sessions: Vec<(String, String)> = all_sessions
+        .into_iter()
+        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version)| {
+            let needs_index = if deep_indexed_at.is_none() {
+                // Never deep-indexed → must index
+                true
+            } else if parse_version < CURRENT_PARSE_VERSION {
+                // Parser upgraded → must re-index
+                true
+            } else if let (Some(sz), Some(mt)) = (stored_size, stored_mtime) {
+                // Has stored metadata → stat the file and compare size + mtime
+                match std::fs::metadata(&file_path) {
+                    Ok(meta) => {
+                        let current_size = meta.len() as i64;
+                        let current_mtime = meta
+                            .modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        current_size != sz || current_mtime != mt
+                    }
+                    Err(_) => false, // File doesn't exist or can't be read, skip
+                }
+            } else {
+                // No stored file metadata → must re-index to populate it
+                true
+            };
+            if needs_index {
+                Some((id, file_path))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     if sessions.is_empty() {
         return Ok(0);
@@ -918,33 +964,42 @@ where
             // Zero-copy mmap + parse in a blocking thread.
             // The mmap stays alive while parse_bytes runs on the mapped pages,
             // then drops after parsing — no heap allocation for the file content.
-            let parse_result = tokio::task::spawn_blocking(move || {
+            // Returns (ParseResult, file_size, file_mtime) so we can store metadata
+            // for change detection on next startup.
+            let (parse_result, file_size, file_mtime) = tokio::task::spawn_blocking(move || {
                 let file = match std::fs::File::open(&path) {
                     Ok(f) => f,
-                    Err(_) => return ParseResult::default(),
+                    Err(_) => return (ParseResult::default(), 0i64, 0i64),
                 };
                 let metadata = match file.metadata() {
                     Ok(m) => m,
-                    Err(_) => return ParseResult::default(),
+                    Err(_) => return (ParseResult::default(), 0, 0),
                 };
+                let fsize = metadata.len() as i64;
+                let fmtime = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
                 let len = metadata.len() as usize;
                 if len == 0 {
-                    return ParseResult::default();
+                    return (ParseResult::default(), fsize, fmtime);
                 }
                 // Small files: regular read (mmap overhead not worth it)
                 if len < 64 * 1024 {
                     match std::fs::read(&path) {
-                        Ok(data) => return parse_bytes(&data),
-                        Err(_) => return ParseResult::default(),
+                        Ok(data) => return (parse_bytes(&data), fsize, fmtime),
+                        Err(_) => return (ParseResult::default(), fsize, fmtime),
                     }
                 }
                 // Large files: zero-copy mmap — parse directly from mapped pages
                 // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
                 match unsafe { memmap2::Mmap::map(&file) } {
-                    Ok(mmap) => parse_bytes(&mmap), // zero-copy! mmap drops after parse
+                    Ok(mmap) => (parse_bytes(&mmap), fsize, fmtime), // zero-copy! mmap drops after parse
                     Err(_) => match std::fs::read(&path) {
-                        Ok(data) => parse_bytes(&data),
-                        Err(_) => ParseResult::default(),
+                        Ok(data) => (parse_bytes(&data), fsize, fmtime),
+                        Err(_) => (ParseResult::default(), fsize, fmtime),
                     },
                 }
             })
@@ -1001,6 +1056,8 @@ where
                 file_path,
                 parse_result,
                 classified_invocations: classified,
+                file_size,
+                file_mtime,
             }))
         });
 
@@ -1107,6 +1164,8 @@ where
                 meta.mcp_progress_count as i32,
                 meta.summary_text.as_deref(),
                 CURRENT_PARSE_VERSION,
+                result.file_size,
+                result.file_mtime,
             )
             .await
             .map_err(|e| {
@@ -2007,6 +2066,87 @@ mod tests {
         // Run Pass 2 again — should skip because deep_indexed_at is set
         let second_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
+    }
+
+    #[tokio::test]
+    async fn test_modified_session_gets_reindexed() {
+        let (_tmp, claude_dir) = setup_test_claude_dir();
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Run Pass 1 to populate sessions from index JSON
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+
+        // Run Pass 2 — should deep-index the 1 session
+        let first_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
+
+        // Verify file_size_at_index and file_mtime_at_index are populated
+        let sessions = db.get_sessions_needing_deep_index().await.unwrap();
+        assert_eq!(sessions.len(), 1);
+        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version) = &sessions[0];
+        assert!(
+            stored_size.is_some(),
+            "file_size_at_index should be populated after deep index"
+        );
+        assert!(
+            stored_mtime.is_some(),
+            "file_mtime_at_index should be populated after deep index"
+        );
+        assert!(
+            deep_indexed_at.is_some(),
+            "deep_indexed_at should be set"
+        );
+        assert_eq!(
+            *parse_version, CURRENT_PARSE_VERSION,
+            "parse_version should match current"
+        );
+
+        // Run Pass 2 again — should skip because file hasn't changed
+        let second_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        assert_eq!(second_run, 0, "Should skip unchanged session");
+
+        // Now append data to the JSONL file (simulates user continuing conversation)
+        let jsonl_path = claude_dir
+            .join("projects")
+            .join("test-project")
+            .join("sess-001.jsonl");
+
+        // Sleep briefly to ensure mtime changes (filesystem granularity is 1 second)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&jsonl_path)
+            .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"user","message":{{"content":"one more question"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"assistant","message":{{"content":"here is my answer"}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        // Run Pass 2 again — should re-index because file size changed
+        let third_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        assert_eq!(third_run, 1, "Should re-index session after file was modified");
+
+        // Verify the updated metrics reflect the new content
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+        assert_eq!(session.turn_count, 3, "Should now have 3 turns after re-index");
+        assert_eq!(
+            session.last_message, "one more question",
+            "Last user message should reflect appended content"
+        );
+
+        // Run Pass 2 one more time — should skip again (file hasn't changed)
+        let fourth_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
     #[tokio::test]
