@@ -1670,6 +1670,17 @@ where
                 let tx = conn.unchecked_transaction()
                     .map_err(|e| format!("rusqlite begin error: {}", e))?;
 
+                // Drop secondary indexes before bulk insert — rebuilding them
+                // in one pass after is far cheaper than maintaining B-trees
+                // during ~56k individual INSERT OR IGNORE statements.
+                // The transaction ensures concurrent WAL readers never see
+                // the intermediate state with missing indexes.
+                tx.execute_batch(
+                    "DROP INDEX IF EXISTS idx_turns_session;
+                     DROP INDEX IF EXISTS idx_turns_model;
+                     DROP INDEX IF EXISTS idx_invocations_invocable;"
+                ).map_err(|e| format!("drop indexes error: {}", e))?;
+
                 let seen_at = chrono::Utc::now().timestamp();
                 let deep_indexed_at = seen_at;
                 let count = results.len();
@@ -1781,6 +1792,14 @@ where
                         }
                     }
                 }
+
+                // Rebuild secondary indexes in one sequential pass —
+                // much faster than ~186k random B-tree insertions.
+                tx.execute_batch(
+                    "CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);
+                     CREATE INDEX IF NOT EXISTS idx_turns_model   ON turns(model_id);
+                     CREATE INDEX IF NOT EXISTS idx_invocations_invocable ON invocations(invocable_id);"
+                ).map_err(|e| format!("recreate indexes error: {}", e))?;
 
                 tx.commit().map_err(|e| format!("rusqlite commit error: {}", e))?;
                 Ok(count)
