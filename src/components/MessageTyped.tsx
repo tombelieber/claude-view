@@ -265,6 +265,9 @@ export function MessageTyped({
 
   // Cap indent at MAX_INDENT_LEVEL
   const clampedIndent = Math.min(Math.max(indent, 0), MAX_INDENT_LEVEL)
+  if (indent > MAX_INDENT_LEVEL) {
+    console.warn(`Max nesting depth (${MAX_INDENT_LEVEL}) exceeded: indent=${indent}, clamped to ${clampedIndent}`)
+  }
   const indentPx = clampedIndent * INDENT_PX
 
   const handleCopyMessage = useCallback(async () => {
