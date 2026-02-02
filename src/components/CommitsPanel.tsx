@@ -30,15 +30,15 @@ function CommitRow({ commit }: CommitRowProps) {
   }
 
   return (
-    <div className="flex items-start gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors group">
+    <div className="flex items-start gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group">
       {/* Hash with copy button */}
       <button
         onClick={handleCopyHash}
         className={cn(
           'flex items-center gap-1 text-xs font-mono px-1.5 py-0.5 rounded transition-colors flex-shrink-0',
           copied
-            ? 'bg-green-100 text-green-700'
-            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
         )}
         title={copied ? 'Copied!' : 'Click to copy full hash'}
       >
@@ -52,7 +52,7 @@ function CommitRow({ commit }: CommitRowProps) {
 
       {/* Message */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-900 truncate" title={commit.message}>
+        <p className="text-sm text-gray-900 dark:text-gray-100 truncate" title={commit.message}>
           {truncateMessage(commit.message, 50)}
         </p>
         {commit.branch && (
@@ -86,8 +86,8 @@ function CommitRow({ commit }: CommitRowProps) {
 export function CommitsPanel({ commits, className }: CommitsPanelProps) {
   if (commits.length === 0) {
     return (
-      <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+      <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+        <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
           <GitCommit className="w-4 h-4" />
           Linked Commits
         </h2>
@@ -101,8 +101,8 @@ export function CommitsPanel({ commits, className }: CommitsPanelProps) {
   }
 
   return (
-    <div className={cn('bg-white rounded-xl border border-gray-200 p-6', className)}>
-      <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
+    <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+      <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
         <GitCommit className="w-4 h-4" />
         Linked Commits
         <span className="ml-auto text-gray-400 normal-case font-normal">

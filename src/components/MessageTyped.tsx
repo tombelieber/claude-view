@@ -21,6 +21,7 @@ import { CodeBlock } from './CodeBlock'
 import { XmlCard, extractXmlBlocks } from './XmlCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { cn } from '../lib/utils'
+import { useThreadHighlight } from '../contexts/ThreadHighlightContext'
 
 // System event cards
 import { TurnDurationCard } from './TurnDurationCard'
@@ -57,48 +58,50 @@ interface MessageTypedProps {
   indent?: number
   /** Whether this message is a child in a thread (shows connector line) */
   isChildMessage?: boolean
+  /** Callback to get the full thread chain for highlighting */
+  onGetThreadChain?: (uuid: string) => Set<string>
 }
 
 const TYPE_CONFIG = {
   user: {
-    accent: 'border-blue-300',
-    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-blue-300 dark:border-blue-700',
+    badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
     icon: User,
     label: 'You'
   },
   assistant: {
-    accent: 'border-orange-300',
-    badge: 'bg-orange-100 text-orange-700',
+    accent: 'border-orange-300 dark:border-orange-700',
+    badge: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
     icon: MessageSquare,
     label: 'Claude'
   },
   tool_use: {
-    accent: 'border-purple-300',
-    badge: 'bg-purple-100 text-purple-700',
+    accent: 'border-purple-300 dark:border-purple-700',
+    badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
     icon: Wrench,
     label: 'Tool'
   },
   tool_result: {
-    accent: 'border-green-300',
-    badge: 'bg-green-100 text-green-700',
+    accent: 'border-green-300 dark:border-green-700',
+    badge: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
     icon: CheckCircle,
     label: 'Result'
   },
   system: {
-    accent: 'border-amber-300',
-    badge: 'bg-amber-100 text-amber-700',
+    accent: 'border-amber-300 dark:border-amber-700',
+    badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
     icon: AlertCircle,
     label: 'System'
   },
   progress: {
-    accent: 'border-indigo-300',
-    badge: 'bg-indigo-100 text-indigo-700',
+    accent: 'border-indigo-300 dark:border-indigo-700',
+    badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
     icon: Zap,
     label: 'Progress'
   },
   summary: {
-    accent: 'border-rose-300',
-    badge: 'bg-rose-100 text-rose-700',
+    accent: 'border-rose-300 dark:border-rose-700',
+    badge: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300',
     icon: BookOpen,
     label: 'Summary'
   }
@@ -170,8 +173,8 @@ function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>
     <div className={cn(
       'mt-3 p-3 rounded-sm text-sm',
       type === 'system'
-        ? 'bg-amber-100/30 border border-amber-200/50'
-        : 'bg-indigo-100/30 border border-indigo-200/50'
+        ? 'bg-amber-100/30 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-700/30'
+        : 'bg-indigo-100/30 dark:bg-indigo-900/20 border border-indigo-200/50 dark:border-indigo-700/30'
     )}>
       <div className="space-y-1 font-mono text-xs">
         {Object.entries(metadata).map(([key, value]) => {
@@ -180,11 +183,11 @@ function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>
             <div key={key} className="flex items-start gap-2">
               <span className={cn(
                 'font-semibold flex-shrink-0',
-                type === 'system' ? 'text-amber-700' : 'text-indigo-700'
+                type === 'system' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'
               )}>
                 {key}:
               </span>
-              <span className="text-gray-700 break-all">{displayValue}</span>
+              <span className="text-gray-700 dark:text-gray-300 break-all">{displayValue}</span>
             </div>
           )
         })}
@@ -256,6 +259,7 @@ export function MessageTyped({
   parentUuid,
   indent = 0,
   isChildMessage = false,
+  onGetThreadChain,
 }: MessageTypedProps) {
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
@@ -280,6 +284,19 @@ export function MessageTyped({
     }
   }, [message.content])
 
+  const { highlightedUuids, setHighlightedUuids, clearHighlight } = useThreadHighlight()
+  const isHighlighted = message.uuid ? highlightedUuids.has(message.uuid) : false
+
+  const handleMouseEnter = useCallback(() => {
+    if (message.uuid && onGetThreadChain) {
+      setHighlightedUuids(onGetThreadChain(message.uuid))
+    }
+  }, [message.uuid, onGetThreadChain, setHighlightedUuids])
+
+  const handleMouseLeave = useCallback(() => {
+    clearHighlight()
+  }, [clearHighlight])
+
   // Memoize content processing to avoid re-running XML extraction on every render
   const contentSegments = useMemo(() => processContent(message.content), [message.content])
 
@@ -292,10 +309,13 @@ export function MessageTyped({
       role="article"
       aria-level={clampedIndent + 1}
       {...(parentUuid ? { 'data-parent-uuid': parentUuid } : {})}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'border-l-4 rounded-r-lg transition-colors',
         config.accent,
-        'bg-white hover:bg-gray-50/50',
+        'bg-white dark:bg-gray-900 hover:bg-gray-50/50 dark:hover:bg-gray-800/50',
+        isHighlighted && 'bg-indigo-50/60 dark:bg-indigo-950/30',
         isChildMessage && 'thread-child'
       )}
       style={{
@@ -320,7 +340,7 @@ export function MessageTyped({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-900 text-sm">
+                <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                   {config.label}
                 </span>
                 {type !== message.role && (
@@ -330,13 +350,13 @@ export function MessageTyped({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopyMessage}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 transition-all"
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
                   title="Copy message"
                 >
                   {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 {time && (
-                  <span className="text-xs text-gray-500 whitespace-nowrap">{time}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{time}</span>
                 )}
               </div>
             </div>
@@ -364,7 +384,7 @@ export function MessageTyped({
                   )
                 }
                 return (
-                  <div key={i} className="prose prose-sm prose-gray max-w-none break-words text-sm">
+                  <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -377,7 +397,7 @@ export function MessageTyped({
                             if (isInline) {
                               return (
                                 <code
-                                  className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono"
+                                  className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono"
                                   {...props}
                                 >
                                   {children}
@@ -427,7 +447,7 @@ export function MessageTyped({
                         },
                         blockquote({ children }) {
                           return (
-                            <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-2">
+                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-2">
                               {children}
                             </blockquote>
                           )
@@ -470,15 +490,15 @@ export function MessageTyped({
 
           {/* Tool calls summary */}
           {message.tool_calls && message.tool_calls.length > 0 && (
-            <div className="mt-2 pt-3 border-t border-gray-200">
-              <div className="text-xs font-semibold text-gray-600 mb-2">
+            <div className="mt-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
                 Tool Calls: {message.tool_calls.length}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {message.tool_calls.map((tool, idx) => (
                   <div
                     key={idx}
-                    className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs font-mono text-gray-700"
+                    className="px-2 py-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs font-mono text-gray-700 dark:text-gray-300"
                   >
                     {tool.name}
                   </div>
