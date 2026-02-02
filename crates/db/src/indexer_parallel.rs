@@ -889,6 +889,8 @@ where
     // 2. parse_version < CURRENT → parser upgraded
     // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
     // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
+    #[cfg(debug_assertions)]
+    let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String)> = all_sessions
         .into_iter()
         .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version)| {
@@ -924,6 +926,11 @@ where
             }
         })
         .collect();
+
+    #[cfg(debug_assertions)]
+    let phase_start = std::time::Instant::now();
+    #[cfg(debug_assertions)]
+    let skipped = all_sessions_count - sessions.len();
 
     if sessions.is_empty() {
         return Ok(0);
@@ -1076,6 +1083,9 @@ where
         }
     }
 
+    #[cfg(debug_assertions)]
+    let parse_elapsed = phase_start.elapsed();
+
     if !parse_errors.is_empty() {
         tracing::warn!(
             "pass_2_deep_index parse phase encountered {} errors: {:?}",
@@ -1225,6 +1235,9 @@ where
             .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
     }
 
+    #[cfg(debug_assertions)]
+    let write_elapsed = phase_start.elapsed() - parse_elapsed;
+
     let indexed = results.len();
 
     if !parse_errors.is_empty() {
@@ -1241,6 +1254,29 @@ where
         parse_version = CURRENT_PARSE_VERSION,
         "Pass 2 deep indexing complete"
     );
+
+    #[cfg(debug_assertions)]
+    {
+        let total_elapsed = phase_start.elapsed();
+        eprintln!(
+            "    [perf] deep index: {} indexed, {} skipped, {} errors",
+            indexed,
+            skipped,
+            parse_errors.len()
+        );
+        eprintln!(
+            "    [perf]   parse phase: {}ms",
+            parse_elapsed.as_millis()
+        );
+        eprintln!(
+            "    [perf]   write phase: {}ms",
+            write_elapsed.as_millis()
+        );
+        eprintln!(
+            "    [perf]   total:       {}ms",
+            total_elapsed.as_millis()
+        );
+    }
 
     Ok(indexed)
 }
