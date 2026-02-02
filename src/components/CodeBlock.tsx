@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Highlight, themes } from 'prism-react-renderer'
 import { Check, Copy } from 'lucide-react'
 import { useExpandContext } from '../contexts/ExpandContext'
+import { useTheme } from '../hooks/use-theme'
 
 interface CodeBlockProps {
   code: string | null | undefined
@@ -15,6 +16,8 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
   const { expandedBlocks, toggleBlock } = useExpandContext()
   const isExpanded = blockId ? expandedBlocks.has(blockId) : false
   const [copied, setCopied] = useState(false)
+  const { resolvedTheme } = useTheme()
+  const codeTheme = resolvedTheme === 'dark' ? themes.nightOwl : themes.github
 
   // Null safety: handle null/undefined code
   const safeCode = code || ''
@@ -55,15 +58,15 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
   const prismLanguage = languageMap[normalizedLanguage] || normalizedLanguage || 'text'
 
   return (
-    <div className="relative my-3 rounded-lg overflow-hidden border border-gray-200">
+    <div className="relative my-3 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 border-b border-gray-200">
-        <span className="text-xs text-gray-500 font-mono">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
           {language || 'text'}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
           title="Copy code"
         >
           {copied ? (
@@ -81,11 +84,11 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
       </div>
 
       {/* Code */}
-      <Highlight theme={themes.github} code={displayCode} language={prismLanguage}>
+      <Highlight theme={codeTheme} code={displayCode} language={prismLanguage}>
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
           <pre
             className={`${className} p-3 text-sm overflow-x-auto`}
-            style={{ ...style, margin: 0, background: '#f9fafb' }}
+            style={{ ...style, margin: 0 }}
           >
             {tokens.map((line, i) => (
               <div key={i} {...getLineProps({ line })}>
@@ -100,10 +103,10 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
 
       {/* Collapse/Expand control */}
       {shouldCollapse && (
-        <div className="border-t border-gray-200">
+        <div className="border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => blockId && toggleBlock(blockId)}
-            className="w-full px-3 py-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors text-center"
+            className="w-full px-3 py-2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-center"
           >
             {isExpanded ? '[ Collapse ]' : `[ Show ${remainingLines} more lines ]`}
           </button>

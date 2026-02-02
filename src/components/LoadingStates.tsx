@@ -25,8 +25,8 @@ export function Skeleton({ label, rows = 3, withHeader = true }: SkeletonProps) 
 
       {withHeader && (
         <div className="mb-4">
-          <div className="h-6 w-48 bg-gray-200 rounded" />
-          <div className="h-4 w-32 bg-gray-100 rounded mt-2" />
+          <div className="h-6 w-48 bg-gray-200 dark:bg-gray-700 rounded" />
+          <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 rounded mt-2" />
         </div>
       )}
 
@@ -34,14 +34,14 @@ export function Skeleton({ label, rows = 3, withHeader = true }: SkeletonProps) 
         {Array.from({ length: rows }).map((_, i) => (
           <div
             key={i}
-            className="p-4 bg-white border border-gray-200 rounded-lg"
+            className="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="h-4 w-24 bg-gray-200 rounded" />
-              <div className="h-4 w-16 bg-gray-100 rounded" />
+              <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+              <div className="h-4 w-16 bg-gray-100 dark:bg-gray-800 rounded" />
             </div>
-            <div className="h-4 w-full bg-gray-100 rounded mb-2" />
-            <div className="h-4 w-3/4 bg-gray-50 rounded" />
+            <div className="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded mb-2" />
+            <div className="h-4 w-3/4 bg-gray-50 dark:bg-gray-800/50 rounded" />
           </div>
         ))}
       </div>
@@ -63,28 +63,28 @@ export function DashboardSkeleton() {
       <span className="sr-only">Loading dashboard...</span>
       <div className="max-w-4xl mx-auto space-y-6 animate-pulse">
         {/* Header card */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="h-5 w-40 bg-gray-200 rounded mb-4" />
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="h-5 w-40 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
           <div className="flex items-center gap-6">
-            <div className="h-8 w-24 bg-gray-100 rounded" />
-            <div className="w-px h-8 bg-gray-200" />
-            <div className="h-8 w-24 bg-gray-100 rounded" />
+            <div className="h-8 w-24 bg-gray-100 dark:bg-gray-800 rounded" />
+            <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
+            <div className="h-8 w-24 bg-gray-100 dark:bg-gray-800 rounded" />
           </div>
         </div>
 
         {/* Stats grid */}
         <div className="grid md:grid-cols-2 gap-6">
           {[1, 2].map(i => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="h-4 w-24 bg-gray-200 rounded mb-4" />
+            <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
               <div className="space-y-3">
                 {[1, 2, 3, 4, 5].map(j => (
                   <div key={j}>
                     <div className="flex justify-between mb-1">
-                      <div className="h-4 w-20 bg-gray-100 rounded" />
-                      <div className="h-4 w-8 bg-gray-50 rounded" />
+                      <div className="h-4 w-20 bg-gray-100 dark:bg-gray-800 rounded" />
+                      <div className="h-4 w-8 bg-gray-50 dark:bg-gray-800/50 rounded" />
                     </div>
-                    <div className="h-2 w-full bg-gray-100 rounded-full" />
+                    <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full" />
                   </div>
                 ))}
               </div>
@@ -93,13 +93,13 @@ export function DashboardSkeleton() {
         </div>
 
         {/* Activity heatmap */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="h-4 w-32 bg-gray-200 rounded mb-4" />
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
           <div className="flex gap-1">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex flex-col gap-1">
                 {Array.from({ length: 7 }).map((_, j) => (
-                  <div key={j} className="w-3 h-3 bg-gray-100 rounded-sm" />
+                  <div key={j} className="w-3 h-3 bg-gray-100 dark:bg-gray-800 rounded-sm" />
                 ))}
               </div>
             ))}
@@ -131,12 +131,12 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
       {icon && (
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 mb-4">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
           {icon}
         </div>
       )}
-      <h2 className="text-base font-semibold text-gray-900 mb-1">{title}</h2>
-      <p className="text-sm text-gray-500 max-w-sm">{description}</p>
+      <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">{title}</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm">{description}</p>
       {action && (
         <button
           type="button"
@@ -169,10 +169,10 @@ export function ErrorState({ message, onRetry, onBack }: ErrorStateProps) {
       role="alert"
       aria-live="assertive"
     >
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
-        <AlertCircle className="w-6 h-6 text-red-600" aria-hidden="true" />
+      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+        <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" aria-hidden="true" />
       </div>
-      <h2 className="text-base font-semibold text-gray-900 mb-1">
+      <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
         Something went wrong
       </h2>
       <p className="text-sm text-red-600 max-w-sm mb-4">{message}</p>
