@@ -6,6 +6,7 @@ import { useSession } from '../hooks/use-session'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { MessageTyped } from './MessageTyped'
+import { ErrorBoundary } from './ErrorBoundary'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
@@ -244,14 +245,15 @@ export function ConversationView() {
               data={filteredMessages}
               itemContent={(index, message) => (
                 <div className="max-w-4xl mx-auto px-6 pb-4">
-                  <MessageTyped
-                    key={message.uuid || index}
-                    message={message}
-                    messageIndex={index}
-                    messageType={message.role}
-                    metadata={message.metadata}
-                    parentUuid={message.parent_uuid ?? undefined}
-                  />
+                  <ErrorBoundary key={message.uuid || index}>
+                    <MessageTyped
+                      message={message}
+                      messageIndex={index}
+                      messageType={message.role}
+                      metadata={message.metadata}
+                      parentUuid={message.parent_uuid ?? undefined}
+                    />
+                  </ErrorBoundary>
                 </div>
               )}
               components={{
