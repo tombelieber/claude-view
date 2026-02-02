@@ -18,6 +18,83 @@ use crate::Database;
 /// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
 pub const CURRENT_PARSE_VERSION: i32 = 2;
 
+// ---------------------------------------------------------------------------
+// SQL constants for rusqlite write-phase prepared statements.
+// These must exactly match the SQL used in the sqlx `_tx` functions in queries.rs.
+// ---------------------------------------------------------------------------
+
+const UPDATE_SESSION_DEEP_SQL: &str = r#"
+    UPDATE sessions SET
+        last_message = ?2,
+        turn_count = ?3,
+        tool_counts_edit = ?4,
+        tool_counts_read = ?5,
+        tool_counts_bash = ?6,
+        tool_counts_write = ?7,
+        files_touched = ?8,
+        skills_used = ?9,
+        deep_indexed_at = ?10,
+        user_prompt_count = ?11,
+        api_call_count = ?12,
+        tool_call_count = ?13,
+        files_read = ?14,
+        files_edited = ?15,
+        files_read_count = ?16,
+        files_edited_count = ?17,
+        reedited_files_count = ?18,
+        duration_seconds = ?19,
+        commit_count = ?20,
+        first_message_at = ?21,
+        total_input_tokens = ?22,
+        total_output_tokens = ?23,
+        cache_read_tokens = ?24,
+        cache_creation_tokens = ?25,
+        thinking_block_count = ?26,
+        turn_duration_avg_ms = ?27,
+        turn_duration_max_ms = ?28,
+        turn_duration_total_ms = ?29,
+        api_error_count = ?30,
+        api_retry_count = ?31,
+        compaction_count = ?32,
+        hook_blocked_count = ?33,
+        agent_spawn_count = ?34,
+        bash_progress_count = ?35,
+        hook_progress_count = ?36,
+        mcp_progress_count = ?37,
+        summary_text = ?38,
+        parse_version = ?39,
+        file_size_at_index = ?40,
+        file_mtime_at_index = ?41
+    WHERE id = ?1
+"#;
+
+const INSERT_TURN_SQL: &str = r#"
+    INSERT OR IGNORE INTO turns (
+        session_id, uuid, seq, model_id, parent_uuid,
+        content_type, input_tokens, output_tokens,
+        cache_read_tokens, cache_creation_tokens,
+        service_tier, timestamp
+    ) VALUES (
+        ?1, ?2, ?3, ?4, ?5,
+        ?6, ?7, ?8,
+        ?9, ?10,
+        ?11, ?12
+    )
+"#;
+
+const INSERT_INVOCATION_SQL: &str = r#"
+    INSERT OR IGNORE INTO invocations
+        (source_file, byte_offset, invocable_id, session_id, project, timestamp)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+"#;
+
+const UPSERT_MODEL_SQL: &str = r#"
+    INSERT INTO models (id, provider, family, first_seen, last_seen)
+    VALUES (?1, ?2, ?3, ?4, ?5)
+    ON CONFLICT(id) DO UPDATE SET
+        last_seen = MAX(models.last_seen, excluded.last_seen)
+"#;
+
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
 #[derive(Debug, Clone, Default)]
