@@ -1308,6 +1308,269 @@ impl Database {
     }
 }
 
+// ============================================================================
+// Transaction-accepting variants for batch writes (collect-then-write pattern)
+// ============================================================================
+
+/// Update extended metadata fields within an existing transaction.
+///
+/// Same SQL as `Database::update_session_deep_fields` but executes on the
+/// provided transaction instead of acquiring a new connection from the pool.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_session_deep_fields_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    id: &str,
+    last_message: &str,
+    turn_count: i32,
+    tool_edit: i32,
+    tool_read: i32,
+    tool_bash: i32,
+    tool_write: i32,
+    files_touched: &str,
+    skills_used: &str,
+    user_prompt_count: i32,
+    api_call_count: i32,
+    tool_call_count: i32,
+    files_read: &str,
+    files_edited: &str,
+    files_read_count: i32,
+    files_edited_count: i32,
+    reedited_files_count: i32,
+    duration_seconds: i32,
+    commit_count: i32,
+    first_message_at: Option<i64>,
+    total_input_tokens: i64,
+    total_output_tokens: i64,
+    cache_read_tokens: i64,
+    cache_creation_tokens: i64,
+    thinking_block_count: i32,
+    turn_duration_avg_ms: Option<i64>,
+    turn_duration_max_ms: Option<i64>,
+    turn_duration_total_ms: Option<i64>,
+    api_error_count: i32,
+    api_retry_count: i32,
+    compaction_count: i32,
+    hook_blocked_count: i32,
+    agent_spawn_count: i32,
+    bash_progress_count: i32,
+    hook_progress_count: i32,
+    mcp_progress_count: i32,
+    summary_text: Option<&str>,
+    parse_version: i32,
+) -> DbResult<()> {
+    let deep_indexed_at = Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        UPDATE sessions SET
+            last_message = ?2,
+            turn_count = ?3,
+            tool_counts_edit = ?4,
+            tool_counts_read = ?5,
+            tool_counts_bash = ?6,
+            tool_counts_write = ?7,
+            files_touched = ?8,
+            skills_used = ?9,
+            deep_indexed_at = ?10,
+            user_prompt_count = ?11,
+            api_call_count = ?12,
+            tool_call_count = ?13,
+            files_read = ?14,
+            files_edited = ?15,
+            files_read_count = ?16,
+            files_edited_count = ?17,
+            reedited_files_count = ?18,
+            duration_seconds = ?19,
+            commit_count = ?20,
+            first_message_at = ?21,
+            total_input_tokens = ?22,
+            total_output_tokens = ?23,
+            cache_read_tokens = ?24,
+            cache_creation_tokens = ?25,
+            thinking_block_count = ?26,
+            turn_duration_avg_ms = ?27,
+            turn_duration_max_ms = ?28,
+            turn_duration_total_ms = ?29,
+            api_error_count = ?30,
+            api_retry_count = ?31,
+            compaction_count = ?32,
+            hook_blocked_count = ?33,
+            agent_spawn_count = ?34,
+            bash_progress_count = ?35,
+            hook_progress_count = ?36,
+            mcp_progress_count = ?37,
+            summary_text = ?38,
+            parse_version = ?39
+        WHERE id = ?1
+        "#,
+    )
+    .bind(id)
+    .bind(last_message)
+    .bind(turn_count)
+    .bind(tool_edit)
+    .bind(tool_read)
+    .bind(tool_bash)
+    .bind(tool_write)
+    .bind(files_touched)
+    .bind(skills_used)
+    .bind(deep_indexed_at)
+    .bind(user_prompt_count)
+    .bind(api_call_count)
+    .bind(tool_call_count)
+    .bind(files_read)
+    .bind(files_edited)
+    .bind(files_read_count)
+    .bind(files_edited_count)
+    .bind(reedited_files_count)
+    .bind(duration_seconds)
+    .bind(commit_count)
+    .bind(first_message_at)
+    .bind(total_input_tokens)
+    .bind(total_output_tokens)
+    .bind(cache_read_tokens)
+    .bind(cache_creation_tokens)
+    .bind(thinking_block_count)
+    .bind(turn_duration_avg_ms)
+    .bind(turn_duration_max_ms)
+    .bind(turn_duration_total_ms)
+    .bind(api_error_count)
+    .bind(api_retry_count)
+    .bind(compaction_count)
+    .bind(hook_blocked_count)
+    .bind(agent_spawn_count)
+    .bind(bash_progress_count)
+    .bind(hook_progress_count)
+    .bind(mcp_progress_count)
+    .bind(summary_text)
+    .bind(parse_version)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// Batch insert invocations within an existing transaction (no BEGIN/COMMIT).
+///
+/// Same SQL as `Database::batch_insert_invocations` but does NOT open its own
+/// transaction — it executes directly on the provided transaction.
+pub async fn batch_insert_invocations_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    invocations: &[(String, i64, String, String, String, i64)],
+) -> DbResult<u64> {
+    let mut inserted: u64 = 0;
+
+    for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in invocations {
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO invocations
+                (source_file, byte_offset, invocable_id, session_id, project, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(source_file)
+        .bind(byte_offset)
+        .bind(invocable_id)
+        .bind(session_id)
+        .bind(project)
+        .bind(timestamp)
+        .execute(&mut **tx)
+        .await?;
+
+        inserted += result.rows_affected();
+    }
+
+    Ok(inserted)
+}
+
+/// Batch upsert models within an existing transaction (no BEGIN/COMMIT).
+///
+/// Same SQL as `Database::batch_upsert_models` but does NOT open its own
+/// transaction — it executes directly on the provided transaction.
+pub async fn batch_upsert_models_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    model_ids: &[String],
+    seen_at: i64,
+) -> DbResult<u64> {
+    if model_ids.is_empty() {
+        return Ok(0);
+    }
+    let mut affected: u64 = 0;
+
+    for model_id in model_ids {
+        let (provider, family) = parse_model_id(model_id);
+        let result = sqlx::query(
+            r#"
+            INSERT INTO models (id, provider, family, first_seen, last_seen)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+                last_seen = MAX(models.last_seen, excluded.last_seen)
+            "#,
+        )
+        .bind(model_id)
+        .bind(provider)
+        .bind(family)
+        .bind(seen_at)
+        .bind(seen_at)
+        .execute(&mut **tx)
+        .await?;
+
+        affected += result.rows_affected();
+    }
+
+    Ok(affected)
+}
+
+/// Batch insert turns within an existing transaction (no BEGIN/COMMIT).
+///
+/// Same SQL as `Database::batch_insert_turns` but does NOT open its own
+/// transaction — it executes directly on the provided transaction.
+pub async fn batch_insert_turns_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    session_id: &str,
+    turns: &[RawTurn],
+) -> DbResult<u64> {
+    if turns.is_empty() {
+        return Ok(0);
+    }
+    let mut inserted: u64 = 0;
+
+    for turn in turns {
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO turns (
+                session_id, uuid, seq, model_id, parent_uuid,
+                content_type, input_tokens, output_tokens,
+                cache_read_tokens, cache_creation_tokens,
+                service_tier, timestamp
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5,
+                ?6, ?7, ?8,
+                ?9, ?10,
+                ?11, ?12
+            )
+            "#,
+        )
+        .bind(session_id)
+        .bind(&turn.uuid)
+        .bind(turn.seq)
+        .bind(&turn.model_id)
+        .bind(&turn.parent_uuid)
+        .bind(&turn.content_type)
+        .bind(turn.input_tokens.map(|v| v as i64))
+        .bind(turn.output_tokens.map(|v| v as i64))
+        .bind(turn.cache_read_tokens.map(|v| v as i64))
+        .bind(turn.cache_creation_tokens.map(|v| v as i64))
+        .bind(&turn.service_tier)
+        .bind(turn.timestamp)
+        .execute(&mut **tx)
+        .await?;
+
+        inserted += result.rows_affected();
+    }
+
+    Ok(inserted)
+}
+
 // Internal row type for reading sessions from SQLite.
 #[derive(Debug)]
 struct SessionRow {
