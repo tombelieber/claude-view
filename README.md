@@ -4,19 +4,6 @@
   <strong>Browse and export your Claude Code sessions</strong>
 </p>
 
-<!-- TODO: Replace YOUTUBE_VIDEO_ID with your actual YouTube video ID -->
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID">
-    <img src="https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg" alt="claude-view demo" width="800" />
-  </a>
-  <br/>
-  <sub>Click to watch the demo</sub>
-</p>
-
-<!-- TODO: Capture a screenshot of the app and save to docs/screenshot.png -->
-<!-- <p align="center">
-  <img src="./docs/screenshot.png" alt="claude-view screenshot" width="800" />
-</p> -->
 
 <p align="center">
   <a href="./README.md">English</a> ·
