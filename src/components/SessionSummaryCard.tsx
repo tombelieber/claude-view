@@ -21,7 +21,7 @@ export function SessionSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-lg border border-gray-200 border-l-4 border-l-rose-300 bg-rose-50 p-3 my-2'
+          'rounded-lg border border-gray-200 dark:border-gray-700 border-l-4 border-l-rose-300 bg-rose-50 dark:bg-rose-950/30 p-3 my-2'
         )}
         aria-label="Session summary"
       >
@@ -30,7 +30,7 @@ export function SessionSummaryCard({
             className="w-4 h-4 text-rose-500 mt-0.5 flex-shrink-0"
             aria-hidden="true"
           />
-          <div className="text-sm text-rose-700">No summary available</div>
+          <div className="text-sm text-rose-700 dark:text-rose-300">No summary available</div>
         </div>
       </div>
     )
@@ -44,14 +44,14 @@ export function SessionSummaryCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-gray-200 border-l-4 border-l-rose-300 overflow-hidden bg-white my-2'
+        'rounded-lg border border-gray-200 dark:border-gray-700 border-l-4 border-l-rose-300 overflow-hidden bg-white dark:bg-gray-900 my-2'
       )}
       aria-label="Session summary"
       data-leaf-uuid={leafUuid}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-start gap-2 px-3 py-2 text-left bg-rose-50 hover:bg-rose-100 transition-colors"
+        className="w-full flex items-start gap-2 px-3 py-2 text-left bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
         aria-expanded={expanded}
       >
         <BookOpen
@@ -59,11 +59,11 @@ export function SessionSummaryCard({
           aria-hidden="true"
         />
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-rose-800">
+          <div className="text-sm text-rose-800 dark:text-rose-200">
             <span className="font-medium">Session summary:</span>{' '}
             {displayText}
           </div>
-          <div className="text-xs text-rose-500 mt-1">
+          <div className="text-xs text-rose-500 dark:text-rose-400 mt-1">
             {wordCount} words
           </div>
         </div>

@@ -22,18 +22,18 @@ export function HookProgressCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-amber-200 border-l-4 border-l-amber-400 bg-amber-50 my-2 overflow-hidden'
+        'rounded-lg border border-amber-200 dark:border-amber-800 border-l-4 border-l-amber-400 bg-amber-50 dark:bg-amber-950/30 my-2 overflow-hidden'
       )}
     >
       {hasOutput ? (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-amber-100 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
           aria-label="Hook event"
           aria-expanded={expanded}
         >
           <GitBranch className="w-4 h-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-          <span className="text-sm text-amber-900 truncate flex-1">
+          <span className="text-sm text-amber-900 dark:text-amber-200 truncate flex-1">
             Hook: {hookEvent} → {command}
           </span>
           {expanded ? (
@@ -45,15 +45,15 @@ export function HookProgressCard({
       ) : (
         <div className="flex items-center gap-2 px-3 py-2">
           <GitBranch className="w-4 h-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-          <span className="text-sm text-amber-900 truncate flex-1">
+          <span className="text-sm text-amber-900 dark:text-amber-200 truncate flex-1">
             Hook: {hookEvent} → {command}
           </span>
         </div>
       )}
 
       {expanded && hasOutput && (
-        <div className="px-3 py-2 border-t border-amber-100 bg-amber-50/50">
-          <pre className="text-xs text-amber-800 font-mono whitespace-pre-wrap break-all">
+        <div className="px-3 py-2 border-t border-amber-100 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+          <pre className="text-xs text-amber-800 dark:text-amber-300 font-mono whitespace-pre-wrap break-all">
             {output}
           </pre>
         </div>

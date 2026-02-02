@@ -118,9 +118,10 @@ export function Header() {
           onClick={cycleTheme}
           aria-label={`Theme: ${THEME_LABELS[theme]}. Click to cycle.`}
           title={`Theme: ${THEME_LABELS[theme]}`}
-          className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
         >
-          <ThemeIcon className="w-5 h-5" aria-hidden="true" />
+          <ThemeIcon className="w-4 h-4" aria-hidden="true" />
+          <span className="text-xs font-medium">{THEME_LABELS[theme]}</span>
         </button>
 
         <button
