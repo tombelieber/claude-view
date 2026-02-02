@@ -21,6 +21,7 @@ import { CodeBlock } from './CodeBlock'
 import { XmlCard, extractXmlBlocks } from './XmlCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { cn } from '../lib/utils'
+import { useThreadHighlight } from '../contexts/ThreadHighlightContext'
 
 // System event cards
 import { TurnDurationCard } from './TurnDurationCard'
@@ -57,6 +58,8 @@ interface MessageTypedProps {
   indent?: number
   /** Whether this message is a child in a thread (shows connector line) */
   isChildMessage?: boolean
+  /** Callback to get the full thread chain for highlighting */
+  onGetThreadChain?: (uuid: string) => Set<string>
 }
 
 const TYPE_CONFIG = {
@@ -256,6 +259,7 @@ export function MessageTyped({
   parentUuid,
   indent = 0,
   isChildMessage = false,
+  onGetThreadChain,
 }: MessageTypedProps) {
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
@@ -277,6 +281,19 @@ export function MessageTyped({
     }
   }, [message.content])
 
+  const { highlightedUuids, setHighlightedUuids, clearHighlight } = useThreadHighlight()
+  const isHighlighted = message.uuid ? highlightedUuids.has(message.uuid) : false
+
+  const handleMouseEnter = useCallback(() => {
+    if (message.uuid && onGetThreadChain) {
+      setHighlightedUuids(onGetThreadChain(message.uuid))
+    }
+  }, [message.uuid, onGetThreadChain, setHighlightedUuids])
+
+  const handleMouseLeave = useCallback(() => {
+    clearHighlight()
+  }, [clearHighlight])
+
   // Memoize content processing to avoid re-running XML extraction on every render
   const contentSegments = useMemo(() => processContent(message.content), [message.content])
 
@@ -289,10 +306,13 @@ export function MessageTyped({
       role="article"
       aria-level={clampedIndent + 1}
       {...(parentUuid ? { 'data-parent-uuid': parentUuid } : {})}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'border-l-4 rounded-r-lg transition-colors',
         config.accent,
         'bg-white dark:bg-gray-900 hover:bg-gray-50/50 dark:hover:bg-gray-800/50',
+        isHighlighted && 'bg-indigo-50/60 dark:bg-indigo-950/30',
         isChildMessage && 'thread-child'
       )}
       style={{
