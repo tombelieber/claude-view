@@ -64,44 +64,44 @@ interface MessageTypedProps {
 
 const TYPE_CONFIG = {
   user: {
-    accent: 'border-blue-300',
-    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-blue-300 dark:border-blue-700',
+    badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
     icon: User,
     label: 'You'
   },
   assistant: {
-    accent: 'border-orange-300',
-    badge: 'bg-orange-100 text-orange-700',
+    accent: 'border-orange-300 dark:border-orange-700',
+    badge: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
     icon: MessageSquare,
     label: 'Claude'
   },
   tool_use: {
-    accent: 'border-purple-300',
-    badge: 'bg-purple-100 text-purple-700',
+    accent: 'border-purple-300 dark:border-purple-700',
+    badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
     icon: Wrench,
     label: 'Tool'
   },
   tool_result: {
-    accent: 'border-green-300',
-    badge: 'bg-green-100 text-green-700',
+    accent: 'border-green-300 dark:border-green-700',
+    badge: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
     icon: CheckCircle,
     label: 'Result'
   },
   system: {
-    accent: 'border-amber-300',
-    badge: 'bg-amber-100 text-amber-700',
+    accent: 'border-amber-300 dark:border-amber-700',
+    badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
     icon: AlertCircle,
     label: 'System'
   },
   progress: {
-    accent: 'border-indigo-300',
-    badge: 'bg-indigo-100 text-indigo-700',
+    accent: 'border-indigo-300 dark:border-indigo-700',
+    badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
     icon: Zap,
     label: 'Progress'
   },
   summary: {
-    accent: 'border-rose-300',
-    badge: 'bg-rose-100 text-rose-700',
+    accent: 'border-rose-300 dark:border-rose-700',
+    badge: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300',
     icon: BookOpen,
     label: 'Summary'
   }
@@ -444,7 +444,7 @@ export function MessageTyped({
                         },
                         blockquote({ children }) {
                           return (
-                            <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-2">
+                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-2">
                               {children}
                             </blockquote>
                           )
