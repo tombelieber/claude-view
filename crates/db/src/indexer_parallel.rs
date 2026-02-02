@@ -159,6 +159,19 @@ pub struct ParseResult {
     pub diagnostics: ParseDiagnostics,
 }
 
+/// Collected results from one session's parse phase, to be written in a single transaction.
+///
+/// This struct holds everything needed to persist a session's deep index data.
+/// Used by the collect-then-write pattern in `pass_2_deep_index`: parallel tasks
+/// return these results, then one transaction writes them all.
+pub struct DeepIndexResult {
+    pub session_id: String,
+    pub file_path: String,
+    pub parse_result: ParseResult,
+    /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
+    pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
+}
+
 /// Parse diagnostic counters — per session, not per line.
 /// Zero per-line overhead: stack-allocated integers incremented in existing branches.
 #[derive(Debug, Clone, Default)]
@@ -269,6 +282,22 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let text_finder = memmem::Finder::new(b"\"text\":\"");
     let skill_name_finder = memmem::Finder::new(b"\"skill\":\"");
 
+    // SIMD type detectors — check raw bytes before JSON parse
+    let type_progress = memmem::Finder::new(b"\"type\":\"progress\"");
+    let type_queue_op = memmem::Finder::new(b"\"type\":\"queue-operation\"");
+    let type_file_snap = memmem::Finder::new(b"\"type\":\"file-history-snapshot\"");
+    let type_hook_ctx = memmem::Finder::new(b"\"type\":\"saved_hook_context\"");
+
+    // Progress subtype detectors
+    let subtype_agent = memmem::Finder::new(b"\"type\":\"agent_progress\"");
+    let subtype_bash = memmem::Finder::new(b"\"type\":\"bash_progress\"");
+    let subtype_hook = memmem::Finder::new(b"\"type\":\"hook_progress\"");
+    let subtype_mcp = memmem::Finder::new(b"\"type\":\"mcp_progress\"");
+
+    // Queue operation detectors
+    let op_enqueue = memmem::Finder::new(b"\"operation\":\"enqueue\"");
+    let op_dequeue = memmem::Finder::new(b"\"operation\":\"dequeue\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -276,9 +305,46 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         }
 
         diag.lines_total += 1;
+
+        // SIMD fast path: lightweight types that don't need full JSON parse
+        if type_progress.find(line).is_some() {
+            diag.lines_progress += 1;
+            if subtype_agent.find(line).is_some() {
+                result.deep.agent_spawn_count += 1;
+            } else if subtype_bash.find(line).is_some() {
+                result.deep.bash_progress_count += 1;
+            } else if subtype_hook.find(line).is_some() {
+                result.deep.hook_progress_count += 1;
+            } else if subtype_mcp.find(line).is_some() {
+                result.deep.mcp_progress_count += 1;
+            }
+            continue;
+        }
+
+        if type_queue_op.find(line).is_some() {
+            diag.lines_queue_op += 1;
+            if op_enqueue.find(line).is_some() {
+                result.deep.queue_enqueue_count += 1;
+            } else if op_dequeue.find(line).is_some() {
+                result.deep.queue_dequeue_count += 1;
+            }
+            continue;
+        }
+
+        if type_file_snap.find(line).is_some() {
+            diag.lines_file_snapshot += 1;
+            result.deep.file_snapshot_count += 1;
+            continue;
+        }
+
+        if type_hook_ctx.find(line).is_some() {
+            diag.lines_hook_context += 1;
+            continue;
+        }
+
+        // Full JSON parse only for user, assistant, system, summary, unknown
         diag.json_parse_attempts += 1;
 
-        // Full JSON parse every line
         let value: serde_json::Value = match serde_json::from_slice(line) {
             Ok(v) => v,
             Err(_) => {
@@ -1695,6 +1761,54 @@ mod tests {
 
         // duration_seconds: 10:00 to 10:25 = 25 minutes = 1500 seconds
         assert_eq!(result.deep.duration_seconds, 1500);
+    }
+
+    // ============================================================================
+    // SIMD Pre-filter Tests
+    // ============================================================================
+
+    #[test]
+    fn test_simd_prefilter_matches_full_parse() {
+        let data = br#"{"type":"progress","uuid":"p1","data":{"type":"agent_progress"}}
+{"type":"progress","uuid":"p2","data":{"type":"bash_progress"}}
+{"type":"progress","uuid":"p3","data":{"type":"hook_progress"}}
+{"type":"progress","uuid":"p4","data":{"type":"mcp_progress"}}
+{"type":"progress","uuid":"p5","data":{"type":"waiting_for_task"}}
+{"type":"queue-operation","uuid":"q1","operation":"enqueue"}
+{"type":"queue-operation","uuid":"q2","operation":"dequeue"}
+{"type":"file-history-snapshot","uuid":"f1","snapshot":{}}
+{"type":"saved_hook_context","uuid":"s1","content":["ctx"]}
+{"type":"user","uuid":"u1","message":{"role":"user","content":"hello"}}
+{"type":"assistant","uuid":"a1","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"hi"}]}}
+"#;
+
+        let result = parse_bytes(data);
+        let diag = &result.diagnostics;
+
+        // Progress subtypes
+        assert_eq!(result.deep.agent_spawn_count, 1);
+        assert_eq!(result.deep.bash_progress_count, 1);
+        assert_eq!(result.deep.hook_progress_count, 1);
+        assert_eq!(result.deep.mcp_progress_count, 1);
+        assert_eq!(diag.lines_progress, 5);
+
+        // Queue
+        assert_eq!(result.deep.queue_enqueue_count, 1);
+        assert_eq!(result.deep.queue_dequeue_count, 1);
+
+        // File snapshot
+        assert_eq!(result.deep.file_snapshot_count, 1);
+
+        // Hook context
+        assert_eq!(diag.lines_hook_context, 1);
+
+        // User + assistant still parsed correctly
+        assert_eq!(diag.lines_user, 1);
+        assert_eq!(diag.lines_assistant, 1);
+
+        // JSON parse attempts should be ONLY for user + assistant + system + summary (not progress/queue/snapshot/hook_context)
+        // In this test data: 2 lines need full parse (user + assistant)
+        assert_eq!(diag.json_parse_attempts, 2);
     }
 
     // ============================================================================
