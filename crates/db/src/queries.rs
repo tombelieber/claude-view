@@ -686,30 +686,11 @@ impl Database {
         &self,
         invocations: &[(String, i64, String, String, String, i64)],
     ) -> DbResult<u64> {
-        let mut tx = self.pool().begin().await?;
-        let mut inserted: u64 = 0;
-
-        for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in invocations
-        {
-            let result = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO invocations
-                    (source_file, byte_offset, invocable_id, session_id, project, timestamp)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                "#,
-            )
-            .bind(source_file)
-            .bind(byte_offset)
-            .bind(invocable_id)
-            .bind(session_id)
-            .bind(project)
-            .bind(timestamp)
-            .execute(&mut *tx)
-            .await?;
-
-            inserted += result.rows_affected();
+        if invocations.is_empty() {
+            return Ok(0);
         }
-
+        let mut tx = self.pool().begin().await?;
+        let inserted = batch_insert_invocations_tx(&mut tx, invocations).await?;
         tx.commit().await?;
         Ok(inserted)
     }
@@ -823,29 +804,7 @@ impl Database {
             return Ok(0);
         }
         let mut tx = self.pool().begin().await?;
-        let mut affected: u64 = 0;
-
-        for model_id in model_ids {
-            let (provider, family) = parse_model_id(model_id);
-            let result = sqlx::query(
-                r#"
-                INSERT INTO models (id, provider, family, first_seen, last_seen)
-                VALUES (?1, ?2, ?3, ?4, ?5)
-                ON CONFLICT(id) DO UPDATE SET
-                    last_seen = MAX(models.last_seen, excluded.last_seen)
-                "#,
-            )
-            .bind(model_id)
-            .bind(provider)
-            .bind(family)
-            .bind(seen_at)
-            .bind(seen_at)
-            .execute(&mut *tx)
-            .await?;
-
-            affected += result.rows_affected();
-        }
-
+        let affected = batch_upsert_models_tx(&mut tx, model_ids, seen_at).await?;
         tx.commit().await?;
         Ok(affected)
     }
@@ -862,42 +821,7 @@ impl Database {
             return Ok(0);
         }
         let mut tx = self.pool().begin().await?;
-        let mut inserted: u64 = 0;
-
-        for turn in turns {
-            let result = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO turns (
-                    session_id, uuid, seq, model_id, parent_uuid,
-                    content_type, input_tokens, output_tokens,
-                    cache_read_tokens, cache_creation_tokens,
-                    service_tier, timestamp
-                ) VALUES (
-                    ?1, ?2, ?3, ?4, ?5,
-                    ?6, ?7, ?8,
-                    ?9, ?10,
-                    ?11, ?12
-                )
-                "#,
-            )
-            .bind(session_id)
-            .bind(&turn.uuid)
-            .bind(turn.seq)
-            .bind(&turn.model_id)
-            .bind(&turn.parent_uuid)
-            .bind(&turn.content_type)
-            .bind(turn.input_tokens.map(|v| v as i64))
-            .bind(turn.output_tokens.map(|v| v as i64))
-            .bind(turn.cache_read_tokens.map(|v| v as i64))
-            .bind(turn.cache_creation_tokens.map(|v| v as i64))
-            .bind(&turn.service_tier)
-            .bind(turn.timestamp)
-            .execute(&mut *tx)
-            .await?;
-
-            inserted += result.rows_affected();
-        }
-
+        let inserted = batch_insert_turns_tx(&mut tx, session_id, turns).await?;
         tx.commit().await?;
         Ok(inserted)
     }
@@ -1467,9 +1391,6 @@ pub async fn update_session_deep_fields_tx(
 }
 
 /// Batch insert invocations within an existing transaction (no BEGIN/COMMIT).
-///
-/// Same SQL as `Database::batch_insert_invocations` but does NOT open its own
-/// transaction — it executes directly on the provided transaction.
 pub async fn batch_insert_invocations_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     invocations: &[(String, i64, String, String, String, i64)],
@@ -1500,9 +1421,6 @@ pub async fn batch_insert_invocations_tx(
 }
 
 /// Batch upsert models within an existing transaction (no BEGIN/COMMIT).
-///
-/// Same SQL as `Database::batch_upsert_models` but does NOT open its own
-/// transaction — it executes directly on the provided transaction.
 pub async fn batch_upsert_models_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     model_ids: &[String],
@@ -1538,9 +1456,6 @@ pub async fn batch_upsert_models_tx(
 }
 
 /// Batch insert turns within an existing transaction (no BEGIN/COMMIT).
-///
-/// Same SQL as `Database::batch_insert_turns` but does NOT open its own
-/// transaction — it executes directly on the provided transaction.
 pub async fn batch_insert_turns_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     session_id: &str,
