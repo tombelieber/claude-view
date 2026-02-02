@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
@@ -17,7 +18,7 @@ import { ExpandProvider } from '../contexts/ExpandContext'
 import { sessionIdFromSlug } from '../lib/url-slugs'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
-import { buildThreadMap } from '../lib/thread-map'
+import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
@@ -105,6 +106,11 @@ export function ConversationView() {
 
   const threadMap = useMemo(
     () => buildThreadMap(filteredMessages),
+    [filteredMessages]
+  )
+
+  const getThreadChainForUuid = useCallback(
+    (uuid: string) => getThreadChain(uuid, filteredMessages),
     [filteredMessages]
   )
 
@@ -246,6 +252,7 @@ export function ConversationView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages */}
         <div className="flex-1 min-w-0">
+          <ThreadHighlightProvider>
           <ExpandProvider>
             <Virtuoso
               data={filteredMessages}
@@ -262,6 +269,7 @@ export function ConversationView() {
                         parentUuid={thread?.parentUuid}
                         indent={thread?.indent ?? 0}
                         isChildMessage={thread?.isChild ?? false}
+                        onGetThreadChain={getThreadChainForUuid}
                       />
                     </ErrorBoundary>
                   </div>
@@ -288,6 +296,7 @@ export function ConversationView() {
               className="h-full overflow-auto"
             />
           </ExpandProvider>
+          </ThreadHighlightProvider>
         </div>
 
         {/* Right: Metrics Sidebar */}

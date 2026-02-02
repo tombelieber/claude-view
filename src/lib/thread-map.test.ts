@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildThreadMap } from './thread-map'
+import { buildThreadMap, getThreadChain } from './thread-map'
 
 interface MockMsg {
   uuid?: string | null
@@ -126,5 +126,45 @@ describe('buildThreadMap', () => {
     const elapsed = performance.now() - start
     expect(map.size).toBe(1000)
     expect(elapsed).toBeLessThan(100)
+  })
+})
+
+describe('getThreadChain', () => {
+  it('returns ancestors and descendants for a mid-chain node', () => {
+    const msgs = [
+      { uuid: 'a', parent_uuid: null },
+      { uuid: 'b', parent_uuid: 'a' },
+      { uuid: 'c', parent_uuid: 'b' },
+      { uuid: 'd', parent_uuid: 'b' },
+    ]
+    const chain = getThreadChain('b', msgs)
+    expect(chain).toEqual(new Set(['a', 'b', 'c', 'd']))
+  })
+
+  it('returns just self for isolated root', () => {
+    const msgs = [
+      { uuid: 'a', parent_uuid: null },
+      { uuid: 'x', parent_uuid: null },
+    ]
+    expect(getThreadChain('a', msgs)).toEqual(new Set(['a']))
+  })
+
+  it('returns full linear chain from leaf', () => {
+    const msgs = [
+      { uuid: 'a', parent_uuid: null },
+      { uuid: 'b', parent_uuid: 'a' },
+      { uuid: 'c', parent_uuid: 'b' },
+    ]
+    expect(getThreadChain('c', msgs)).toEqual(new Set(['a', 'b', 'c']))
+  })
+
+  it('handles circular references without infinite loop', () => {
+    const msgs = [
+      { uuid: 'a', parent_uuid: 'b' },
+      { uuid: 'b', parent_uuid: 'a' },
+    ]
+    const chain = getThreadChain('a', msgs)
+    expect(chain.has('a')).toBe(true)
+    expect(chain.has('b')).toBe(true)
   })
 })
