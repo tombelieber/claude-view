@@ -16,11 +16,11 @@ export function CompactBoundaryCard({ trigger, preTokens, postTokens }: CompactB
     <div
       className={cn(
         'flex items-center gap-2 my-2 px-3 py-2',
-        'border-t border-b border-indigo-300 bg-indigo-50/50'
+        'border-t border-b border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30'
       )}
     >
       <Scissors className="w-4 h-4 text-indigo-500 flex-shrink-0" aria-hidden="true" />
-      <span className="text-sm text-indigo-700">
+      <span className="text-sm text-indigo-700 dark:text-indigo-300">
         Context compacted: {formatNumber(preTokens)}
         {postTokens !== undefined && (
           <> {'\u2192'} {formatNumber(postTokens)}</>
