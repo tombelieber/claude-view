@@ -270,14 +270,14 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const statusColor = isFailed ? 'text-red-500' : isCompleted ? 'text-green-500' : 'text-yellow-500'
 
     return (
-      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white my-2">
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           <Bot className="w-4 h-4 text-gray-400 flex-shrink-0" />
           <StatusIcon className={cn('w-3.5 h-3.5 flex-shrink-0', statusColor)} />
-          <span className="text-sm text-gray-600 truncate flex-1">
+          <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">
             {parsed.summary || 'Agent task'}
           </span>
           {expanded ? (
@@ -287,7 +287,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
           )}
         </button>
         {expanded && parsed.result && (
-          <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 text-sm text-gray-600 whitespace-pre-wrap">
+          <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
             {parsed.result}
           </div>
         )}
@@ -304,7 +304,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const firstLine = hasArgs ? parsed.args.split('\n')[0] : ''
 
     return (
-      <div className="border border-gray-200 border-l-4 border-l-indigo-400 rounded-lg overflow-hidden bg-white my-2">
+      <div className="border border-gray-200 dark:border-gray-700 border-l-4 border-l-indigo-400 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2">
         <button
           onClick={() => hasArgs && shouldCollapse && setExpanded(!expanded)}
           className={cn(
@@ -325,13 +325,13 @@ export function XmlCard({ content, type }: XmlCardProps) {
           )}
         </button>
         {hasArgs && (
-          <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
+          <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
             {shouldCollapse && !expanded ? (
-              <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all font-mono">
+              <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all font-mono">
                 {firstLine}...
               </pre>
             ) : (
-              <pre className="text-xs text-gray-700 whitespace-pre-wrap break-all font-mono">
+              <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all font-mono">
                 {parsed.args}
               </pre>
             )}
@@ -348,14 +348,14 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const errorType = firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine
 
     return (
-      <div className="border border-gray-200 border-l-4 border-l-red-500 rounded-lg overflow-hidden bg-white my-2">
-        <div className="flex items-center gap-2 px-3 py-2 bg-red-50">
+      <div className="border border-gray-200 dark:border-gray-700 border-l-4 border-l-red-500 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2">
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/30">
           <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <span className="text-sm font-medium text-red-700">Tool Error</span>
+          <span className="text-sm font-medium text-red-700 dark:text-red-400">Tool Error</span>
           {errorType && (
             <>
               <span className="text-gray-300">·</span>
-              <span className="text-sm text-red-600 truncate flex-1">{errorType}</span>
+              <span className="text-sm text-red-600 dark:text-red-400 truncate flex-1">{errorType}</span>
             </>
           )}
         </div>
@@ -504,14 +504,14 @@ export function XmlCard({ content, type }: XmlCardProps) {
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white my-2">
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2">
       {/* Header - always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       >
         <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        <span className="text-sm text-gray-600 truncate flex-1">
+        <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">
           {summary}
         </span>
         {expanded ? (
@@ -523,7 +523,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
 
       {/* Expanded content */}
       {expanded && (
-        <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
+        <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           {details}
         </div>
       )}
