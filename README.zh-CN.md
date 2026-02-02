@@ -66,7 +66,6 @@ npx claude-view
 | **npx**（推荐） | `npx claude-view` |
 | **Shell 脚本**（无需 Node） | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
 | **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-| **Homebrew**（即将推出） | `brew install claude-view` |
 
 ---
 
