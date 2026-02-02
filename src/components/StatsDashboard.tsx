@@ -57,20 +57,20 @@ export function StatsDashboard() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Card */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-5 h-5 text-[#7c9885]" />
-          <h1 className="text-xl font-semibold text-gray-900">Your Claude Code Usage</h1>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Your Claude Code Usage</h1>
         </div>
 
-        <div className="flex items-center gap-6 text-sm text-gray-600">
+        <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
           <div>
-            <span className="text-2xl font-bold text-gray-900 tabular-nums">{stats.totalSessions}</span>
+            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{stats.totalSessions}</span>
             <span className="ml-1">sessions</span>
           </div>
-          <div className="w-px h-8 bg-gray-200" />
+          <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
           <div>
-            <span className="text-2xl font-bold text-gray-900 tabular-nums">{stats.totalProjects}</span>
+            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{stats.totalProjects}</span>
             <span className="ml-1">projects</span>
           </div>
         </div>
@@ -86,8 +86,8 @@ export function StatsDashboard() {
         {invocableCategories.map(({ title, icon: Icon, data, color }) => {
           const maxCount = data[0]?.count || 1
           return (
-            <div key={title} className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+            <div key={title} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
                 <Icon className="w-4 h-4" />
                 {title}
               </h2>
@@ -99,12 +99,12 @@ export function StatsDashboard() {
                     className="w-full group text-left focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-mono text-gray-700 group-hover:text-blue-600 transition-colors">
+                      <span className="font-mono text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                         {item.name}
                       </span>
                       <span className="tabular-nums text-gray-400">{item.count}</span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                       <div
                         className={cn('h-full group-hover:bg-blue-500 transition-colors rounded-full', color)}
                         style={{ width: `${(item.count / maxCount) * 100}%` }}
@@ -114,7 +114,7 @@ export function StatsDashboard() {
                 ))}
               </div>
               {/* Hint: items are interactive */}
-              <p className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400 flex items-center gap-1">
+              <p className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400 flex items-center gap-1">
                 <Search className="w-3 h-3" />
                 Click any item to find matching sessions
               </p>
@@ -123,8 +123,8 @@ export function StatsDashboard() {
         })}
 
         {/* Most Active Projects — items link to project pages */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
             <FolderOpen className="w-4 h-4" />
             Most Active Projects
           </h2>
@@ -136,14 +136,14 @@ export function StatsDashboard() {
                 className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
               >
                 <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-gray-700 group-hover:text-blue-600 transition-colors">
+                  <span className="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {project.displayName}
                   </span>
                   <span className="tabular-nums text-gray-400">{project.sessionCount}</span>
                 </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-colors bg-gray-300 group-hover:bg-blue-500"
+                    className="h-full rounded-full transition-colors bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-500"
                     style={{ width: `${(project.sessionCount / maxProjectSessions) * 100}%` }}
                   />
                 </div>
@@ -154,15 +154,15 @@ export function StatsDashboard() {
 
         {/* Longest Sessions — "See all" links to sorted history */}
         {stats.longestSessions.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+              <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-4 h-4" />
                 Longest Sessions
               </h2>
               <Link
                 to="/history?sort=duration"
-                className="text-xs text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-0.5"
+                className="text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-0.5"
               >
                 See all <ArrowRight className="w-3 h-3" />
               </Link>
@@ -177,14 +177,14 @@ export function StatsDashboard() {
                     className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="text-gray-700 group-hover:text-blue-600 transition-colors truncate mr-2">
+                      <span className="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate mr-2">
                         {session.preview || session.projectDisplayName}
                       </span>
                       <span className="tabular-nums text-gray-400 whitespace-nowrap">
                         {formatDuration(session.durationSeconds)}
                       </span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-colors bg-orange-300 group-hover:bg-orange-500"
                         style={{ width: `${(session.durationSeconds / maxDuration) * 100}%` }}
@@ -202,15 +202,15 @@ export function StatsDashboard() {
       <RecentCommits commits={[]} />
 
       {/* Activity Heatmap */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+          <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
             <Calendar className="w-4 h-4" />
             Activity (Last 30 Days)
           </h2>
           <Link
             to="/history"
-            className="text-xs text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-0.5"
+            className="text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-0.5"
           >
             All sessions <ArrowRight className="w-3 h-3" />
           </Link>
@@ -219,8 +219,8 @@ export function StatsDashboard() {
       </div>
 
       {/* Global Tool Usage */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
           Tool Usage
         </h2>
         <div className="grid grid-cols-3 gap-4">
@@ -229,10 +229,10 @@ export function StatsDashboard() {
             { label: 'Reads', value: stats.toolTotals.read, icon: Eye, color: 'text-green-500' },
             { label: 'Bash', value: stats.toolTotals.bash, icon: Terminal, color: 'text-amber-500' },
           ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="text-center p-4 bg-gray-50 rounded-lg">
+            <div key={label} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <Icon className={cn('w-6 h-6 mx-auto mb-2', color)} />
-              <p className="text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
-              <p className="text-xs text-gray-500">{label}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
             </div>
           ))}
         </div>
@@ -261,11 +261,11 @@ function ActivityHeatmap({
   const maxCount = Math.max(...data.map(d => d.count), 1)
 
   const getColor = (count: number) => {
-    if (count === 0) return 'bg-gray-100'
+    if (count === 0) return 'bg-gray-100 dark:bg-gray-800'
     const intensity = count / maxCount
     if (intensity > 0.66) return 'bg-green-500'
-    if (intensity > 0.33) return 'bg-green-300'
-    return 'bg-green-200'
+    if (intensity > 0.33) return 'bg-green-300 dark:bg-green-400'
+    return 'bg-green-200 dark:bg-green-600'
   }
 
   const handleDayClick = (dateStr: string) => {
@@ -310,9 +310,9 @@ function ActivityHeatmap({
       <div className="ml-2 flex items-center gap-2 text-xs text-gray-400">
         <span>Less</span>
         <div className="flex gap-0.5">
-          <div className="w-3 h-3 rounded-sm bg-gray-100" />
-          <div className="w-3 h-3 rounded-sm bg-green-200" />
-          <div className="w-3 h-3 rounded-sm bg-green-300" />
+          <div className="w-3 h-3 rounded-sm bg-gray-100 dark:bg-gray-800" />
+          <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-600" />
+          <div className="w-3 h-3 rounded-sm bg-green-300 dark:bg-green-400" />
           <div className="w-3 h-3 rounded-sm bg-green-500" />
         </div>
         <span>More</span>

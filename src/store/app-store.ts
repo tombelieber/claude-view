@@ -1,11 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type Theme = 'light' | 'dark' | 'system'
+
 interface AppState {
   // Search state
   searchQuery: string
   recentSearches: string[]
   isCommandPaletteOpen: boolean
+
+  // Theme state
+  theme: Theme
 
   // Actions
   setSearchQuery: (query: string) => void
@@ -14,7 +19,11 @@ interface AppState {
   openCommandPalette: () => void
   closeCommandPalette: () => void
   toggleCommandPalette: () => void
+  setTheme: (theme: Theme) => void
+  cycleTheme: () => void
 }
+
+const THEME_CYCLE: Theme[] = ['light', 'dark', 'system']
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -22,6 +31,7 @@ export const useAppStore = create<AppState>()(
       searchQuery: '',
       recentSearches: [],
       isCommandPaletteOpen: false,
+      theme: 'system',
 
       setSearchQuery: (query) => set({ searchQuery: query }),
 
@@ -39,10 +49,19 @@ export const useAppStore = create<AppState>()(
       toggleCommandPalette: () => set((state) => ({
         isCommandPaletteOpen: !state.isCommandPaletteOpen
       })),
+
+      setTheme: (theme) => set({ theme }),
+      cycleTheme: () => set((state) => {
+        const idx = THEME_CYCLE.indexOf(state.theme)
+        return { theme: THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] }
+      }),
     }),
     {
       name: 'claude-view-storage',
-      partialize: (state) => ({ recentSearches: state.recentSearches }),
+      partialize: (state) => ({
+        recentSearches: state.recentSearches,
+        theme: state.theme,
+      }),
     }
   )
 )
