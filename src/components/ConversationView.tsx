@@ -22,11 +22,18 @@ import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
+/** Strings that Claude Code emits as placeholder content (no real text) */
+const EMPTY_CONTENT = new Set(['(no content)', ''])
+
 function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
   if (mode === 'full') return messages
   return messages.filter(msg => {
     if (msg.role === 'user') return true
-    if (msg.role === 'assistant') return true
+    if (msg.role === 'assistant') {
+      // Hide assistant messages with no real content (only tool calls, no text)
+      if (EMPTY_CONTENT.has(msg.content.trim()) && !msg.thinking) return false
+      return true
+    }
     if (msg.role === 'tool_use') return false
     if (msg.role === 'tool_result') return false
     if (msg.role === 'system') return false
