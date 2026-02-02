@@ -133,6 +133,18 @@ impl From<&SessionInfo> for DerivedMetrics {
 }
 
 // ============================================================================
+// Paginated Messages Query
+// ============================================================================
+
+/// Query parameters for GET /api/session/:project_dir/:session_id/messages
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct SessionMessagesQuery {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+// ============================================================================
 // Handlers
 // ============================================================================
 
@@ -314,12 +326,46 @@ pub async fn get_session(
     Ok(Json(session))
 }
 
+/// GET /api/session/:project_dir/:session_id/messages?limit=100&offset=0
+///
+/// Returns a paginated slice of session messages with total count.
+/// The existing GET /api/session/:project_dir/:session_id endpoint
+/// remains unchanged for backward compatibility.
+pub async fn get_session_messages(
+    State(_state): State<Arc<AppState>>,
+    Path((project_dir, session_id)): Path<(String, String)>,
+    Query(query): Query<SessionMessagesQuery>,
+) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+    let project_dir_decoded = urlencoding::decode(&project_dir)
+        .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
+        .into_owned();
+
+    let projects_dir = vibe_recall_core::claude_projects_dir()?;
+    let session_path = projects_dir
+        .join(&project_dir_decoded)
+        .join(&session_id)
+        .with_extension("jsonl");
+
+    if !session_path.exists() {
+        return Err(ApiError::SessionNotFound(format!(
+            "{}/{}",
+            project_dir_decoded, session_id
+        )));
+    }
+
+    let limit = query.limit.unwrap_or(100);
+    let offset = query.offset.unwrap_or(0);
+    let result = vibe_recall_core::parse_session_paginated(&session_path, limit, offset).await?;
+    Ok(Json(result))
+}
+
 /// Create the sessions routes router.
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
         .route("/sessions/{id}", get(get_session_detail))
         .route("/session/{project_dir}/{session_id}", get(get_session))
+        .route("/session/{project_dir}/{session_id}/messages", get(get_session_messages))
 }
 
 #[cfg(test)]
@@ -710,5 +756,27 @@ mod tests {
         assert_eq!(metrics.edit_velocity, Some(0.5));
         // 20 / 5 = 4.0
         assert_eq!(metrics.read_to_edit_ratio, Some(4.0));
+    }
+
+    // ========================================================================
+    // PaginatedMessages serialization test
+    // ========================================================================
+
+    #[test]
+    fn test_paginated_messages_serialization() {
+        use vibe_recall_core::PaginatedMessages;
+        let result = PaginatedMessages {
+            messages: vec![
+                Message::user("Hello"),
+                Message::assistant("Hi"),
+            ],
+            total: 100,
+            offset: 0,
+            limit: 2,
+            has_more: true,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"total\":100"));
+        assert!(json.contains("\"hasMore\":true"));
     }
 }
