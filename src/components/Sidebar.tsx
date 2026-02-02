@@ -98,16 +98,16 @@ export function Sidebar({ projects }: SidebarProps) {
   }, [focusedIndex, projects, expandedProjects, handleRowClick])
 
   return (
-    <aside className="w-72 bg-gray-50/80 border-r border-gray-200 flex flex-col overflow-hidden">
+    <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
       {/* Nav Links */}
-      <div className="px-3 py-2 border-b border-gray-200">
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
         <Link
           to="/history"
           className={cn(
             'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname === '/history'
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 hover:bg-gray-200/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
           )}
         >
           <Clock className="w-4 h-4" />
@@ -143,7 +143,7 @@ export function Sidebar({ projects }: SidebarProps) {
                   'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
                   isSelected
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-700 hover:bg-gray-200/70'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
                 )}
               >
                 {/* Chevron toggle */}
@@ -181,7 +181,7 @@ export function Sidebar({ projects }: SidebarProps) {
                 {/* Session count */}
                 <span className={cn(
                   'text-[11px] tabular-nums flex-shrink-0',
-                  isSelected ? 'text-blue-100' : 'text-gray-400'
+                  isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'
                 )}>
                   {project.sessionCount}
                 </span>
@@ -192,7 +192,7 @@ export function Sidebar({ projects }: SidebarProps) {
                 <div className="pl-10 pr-3 py-1">
                   <span className={cn(
                     'text-[11px]',
-                    isSelected ? 'text-gray-500' : 'text-gray-400'
+                    isSelected ? 'text-gray-500' : 'text-gray-400 dark:text-gray-500'
                   )}>
                     {project.sessionCount} session{project.sessionCount !== 1 ? 's' : ''}
                   </span>
