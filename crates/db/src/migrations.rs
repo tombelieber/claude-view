@@ -225,6 +225,11 @@ CREATE TABLE IF NOT EXISTS api_errors (
     // when a JSONL file has grown (user continued a conversation).
     r#"ALTER TABLE sessions ADD COLUMN file_size_at_index INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN file_mtime_at_index INTEGER;"#,
+    // Migration 12: Drop unused indexes on invocations table.
+    // idx_invocations_session and idx_invocations_timestamp are never queried —
+    // they only slow down bulk writes (~24k unnecessary B-tree ops per reindex).
+    r#"DROP INDEX IF EXISTS idx_invocations_session;"#,
+    r#"DROP INDEX IF EXISTS idx_invocations_timestamp;"#,
 ];
 
 // ============================================================================
@@ -388,6 +393,34 @@ mod tests {
         assert!(index_names.contains(&"idx_sessions_commit_count"), "Missing idx_sessions_commit_count index");
         assert!(index_names.contains(&"idx_sessions_reedit"), "Missing idx_sessions_reedit index");
         assert!(index_names.contains(&"idx_sessions_duration"), "Missing idx_sessions_duration index");
+    }
+
+    #[tokio::test]
+    async fn test_migration12_unused_indexes_dropped() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        // These unused indexes should be dropped by migration 12
+        assert!(!index_names.contains(&"idx_invocations_session"),
+            "idx_invocations_session should be dropped (unused)");
+        assert!(!index_names.contains(&"idx_invocations_timestamp"),
+            "idx_invocations_timestamp should be dropped (unused)");
+
+        // These used indexes must still exist
+        assert!(index_names.contains(&"idx_invocations_invocable"),
+            "idx_invocations_invocable must still exist (used by skills dashboard)");
+        assert!(index_names.contains(&"idx_turns_session"),
+            "idx_turns_session must still exist (used by session listing)");
+        assert!(index_names.contains(&"idx_turns_model"),
+            "idx_turns_model must still exist (used by models API)");
     }
 
     #[tokio::test]
