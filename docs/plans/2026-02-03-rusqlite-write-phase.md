@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-03
 ---
 
@@ -57,7 +57,7 @@ hot batch write path.
 ```toml
 # Cargo.toml (workspace)
 [workspace.dependencies]
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # crates/db/Cargo.toml
 [dependencies]
