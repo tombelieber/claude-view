@@ -4,10 +4,10 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/user/vibe-recall"
+repository = "https://github.com/tombelieber/claude-view"
 
 [workspace.dependencies]
 # Async runtime
@@ -21,7 +21,7 @@ tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 tower = { version = "0.5", features = ["util"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 
 # Search (Phase 2)
 tantivy = "0.22"
