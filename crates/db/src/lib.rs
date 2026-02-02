@@ -46,6 +46,7 @@ pub type DbResult<T> = Result<T, DbError>;
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: SqlitePool,
+    db_path: PathBuf,
 }
 
 impl Database {
@@ -72,7 +73,7 @@ impl Database {
             .connect_with(options)
             .await?;
 
-        let db = Self { pool };
+        let db = Self { pool, db_path: path.to_owned() };
         db.run_migrations().await?;
 
         info!("Database opened at {}", path.display());
@@ -82,7 +83,7 @@ impl Database {
     /// Create an in-memory database (for testing).
     pub async fn new_in_memory() -> DbResult<Self> {
         let pool = SqlitePool::connect("sqlite::memory:").await?;
-        let db = Self { pool };
+        let db = Self { pool, db_path: PathBuf::new() };
         db.run_migrations().await?;
         Ok(db)
     }
@@ -138,6 +139,12 @@ impl Database {
     /// Get a reference to the underlying connection pool.
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    /// Get the path to the database file.
+    /// Returns an empty path for in-memory databases.
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
     }
 }
 
