@@ -81,3 +81,44 @@ export function buildThreadMap(messages: HasUuids[]): Map<string, ThreadInfo> {
 
   return map
 }
+
+/**
+ * Returns the full ancestor + descendant chain for a given uuid.
+ * Used for hover-highlighting an entire thread.
+ */
+export function getThreadChain(uuid: string, messages: { uuid?: string | null; parent_uuid?: string | null }[]): Set<string> {
+  const chain = new Set<string>()
+  const childrenOf = new Map<string, string[]>()
+  const parentOf = new Map<string, string>()
+
+  for (const msg of messages) {
+    if (!msg.uuid) continue
+    if (msg.parent_uuid && msg.parent_uuid !== msg.uuid) {
+      parentOf.set(msg.uuid, msg.parent_uuid)
+      const siblings = childrenOf.get(msg.parent_uuid) || []
+      siblings.push(msg.uuid)
+      childrenOf.set(msg.parent_uuid, siblings)
+    }
+  }
+
+  // Walk up (ancestors) with cycle protection
+  let current: string | undefined = uuid
+  const visited = new Set<string>()
+  while (current && !visited.has(current)) {
+    visited.add(current)
+    chain.add(current)
+    current = parentOf.get(current)
+  }
+
+  // Walk down (descendants) via BFS
+  const queue = [uuid]
+  while (queue.length > 0) {
+    const node = queue.shift()!
+    chain.add(node)
+    for (const child of childrenOf.get(node) || []) {
+      if (!chain.has(child)) queue.push(child)
+    }
+  }
+
+  return chain
+}
