@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-02
+> **Last updated:** 2026-02-03
 
 ---
 
@@ -46,11 +46,14 @@
 | **Phase 4B: Session Parser + UI Wiring** | **DONE** | 4/4 tasks — 7-type parser rewrite, TS types, compact/full toggle, Track 4 wiring | Personal |
 | **Hardening: Security + Robustness** | **DONE** | 7/7 fixes — DOMPurify, XSS, ErrorBoundary, nesting cap, null safety, useEffect cleanup | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
+| **Deep Index Perf (Tasks 1-3)** | **DONE** | 3/3 tasks — tx batching, SIMD pre-filter, mtime re-index | Personal |
+| **Deep Index Perf Instrumentation** | **DONE** | Timing breakdown (parse/write phase) in debug builds | Personal |
+| Deep Index Perf: rusqlite write phase | Pending | — | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
 **Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
 
-**Recently completed:** Hardening — all 7 security + robustness fixes verified (ErrorBoundary wired into ConversationView, nesting depth warnings added)
+**Recently completed:** Deep Index Performance — timing instrumentation added, multi-row VALUES attempted (regressed, reverted), rusqlite write phase plan written
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -253,6 +256,9 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-02-thread-visualization-polish.md` | in-progress | **Thread polish** — thread indent wiring, hover highlighting, dark mode for MessageTyped |
 | `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
+| `2026-02-03-session-loading-perf.md` | done | **Session loading perf** — paginated messages endpoint, tail-first loading |
+| `2026-02-03-deep-index-perf.md` | done | **Deep index perf** — tx batching, SIMD pre-filter, mtime re-index (3 tasks) |
+| `2026-02-03-rusqlite-write-phase.md` | pending | **Perf: rusqlite write** — replace async sqlx with sync rusqlite for hot write path |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
