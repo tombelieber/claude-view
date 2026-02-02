@@ -19,14 +19,26 @@ async function fetchMessages(
 export function useSessionMessages(projectDir: string | null, sessionId: string | null) {
   return useInfiniteQuery({
     queryKey: ['session-messages', projectDir, sessionId],
-    queryFn: ({ pageParam = 0 }) => {
+    queryFn: async ({ pageParam }) => {
       if (!projectDir || !sessionId) throw new Error('projectDir and sessionId are required')
+
+      if (pageParam === -1) {
+        // Initial load: probe for total, then fetch the last PAGE_SIZE messages.
+        // We fetch 1 message just to learn the total count.
+        const probe = await fetchMessages(projectDir, sessionId, 0, 1)
+        const tailOffset = Math.max(0, probe.total - PAGE_SIZE)
+        return fetchMessages(projectDir, sessionId, tailOffset, PAGE_SIZE)
+      }
+
       return fetchMessages(projectDir, sessionId, pageParam, PAGE_SIZE)
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => {
-      if (!lastPage.hasMore) return undefined
-      return lastPage.offset + lastPage.limit
+    initialPageParam: -1 as number,
+    getNextPageParam: () => undefined, // No downward pagination needed — already at the end
+    getPreviousPageParam: (firstPage) => {
+      // Load older messages (lower offsets) when scrolling up
+      if (firstPage.offset === 0) return undefined // Already at the beginning
+      const prevOffset = Math.max(0, firstPage.offset - PAGE_SIZE)
+      return prevOffset
     },
     enabled: !!projectDir && !!sessionId,
   })
