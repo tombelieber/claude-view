@@ -1823,16 +1823,16 @@ where
             parse_errors.len()
         );
         eprintln!(
-            "    [perf]   parse phase: {}ms",
-            parse_elapsed.as_millis()
+            "    [perf]   parse phase: {}",
+            vibe_recall_core::format_duration(parse_elapsed)
         );
         eprintln!(
-            "    [perf]   write phase: {}ms",
-            write_elapsed.as_millis()
+            "    [perf]   write phase: {}",
+            vibe_recall_core::format_duration(write_elapsed)
         );
         eprintln!(
-            "    [perf]   total:       {}ms",
-            total_elapsed.as_millis()
+            "    [perf]   total:       {}",
+            vibe_recall_core::format_duration(total_elapsed)
         );
     }
 
