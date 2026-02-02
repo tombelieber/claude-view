@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-01-31
+> **Last updated:** 2026-02-02
 
 ---
 
@@ -44,16 +44,17 @@
 | **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
 | **Phase 4: Distribution (npx)** | **IN PROGRESS** | 5/7 tasks done — awaiting human setup (npm token) + first release | Personal |
 | **Phase 4B: Session Parser + UI Wiring** | **DONE** | 4/4 tasks — 7-type parser rewrite, TS types, compact/full toggle, Track 4 wiring | Personal |
+| **Hardening: Security + Robustness** | **DONE** | 7/7 fixes — DOMPurify, XSS, ErrorBoundary, nesting cap, null safety, useEffect cleanup | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
 **Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
 
-**Recently completed:** Phase 4B Session Parser + UI Wiring — parser rewrite emits all 7 JSONL types, compact/full toggle in conversation UI
+**Recently completed:** Hardening — all 7 security + robustness fixes verified (ErrorBoundary wired into ConversationView, nesting depth warnings added)
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
-**Code compiles:** Yes (cargo check passes, 577+ backend tests green, TypeScript compiles cleanly)
+**Code compiles:** Yes (cargo check passes, 577+ backend tests green, 578 frontend tests green, TypeScript compiles cleanly)
 
 ---
 
@@ -178,6 +179,24 @@ See `docs/plans/2026-01-31-session-parser-ui-wiring.md` for full plan.
 
 ---
 
+## Hardening: Security + Robustness — DONE
+
+7 TDD-first fixes across security, error handling, and robustness. 578 frontend tests green.
+
+| # | Fix | Status | Notes |
+|---|-----|--------|-------|
+| 1 | DOMPurify + StructuredDataCard | **DONE** | `ALLOWED_TAGS: []`, `<pre>` rendering, 9 tests |
+| 2 | UntrustedData XSS | **DONE** | Plaintext-only via DOMPurify |
+| 3 | AgentProgressCard XSS | **DONE** | React auto-escape verified, JSDoc |
+| 4 | ErrorBoundary integration | **DONE** | Wraps each MessageTyped in ConversationView Virtuoso list |
+| 5 | Max nesting depth warning | **DONE** | Caps at 5 levels, `console.warn` on overflow |
+| 6 | Null/undefined handling (10 components) | **DONE** | All card components handle missing data |
+| 7 | useEffect cleanup | **DONE** | Listener cleanup on unmount verified |
+
+See `docs/plans/2026-02-02-hardening-final.md` for consolidated plan.
+
+---
+
 ## Phase 4: Distribution (npx) — IN PROGRESS
 
 Ship `npx claude-view` with checksum verification, automated npm publish, and provenance attestation.
@@ -229,7 +248,6 @@ Clean 3-tier structure: active work only in main folder.
 |------|--------|------|
 | `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
 | `2026-01-29-phase4-npx-release.md` | pending | **Current work** — checksum verification, npm publish CI, release pipeline |
-| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | done | **Completed** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
 | `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | pending | **Phase 1 UI rebuild** — 4-phase implementation covering message types, XML cards, hierarchy |
 | `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
@@ -253,6 +271,8 @@ All phases completed. Keep for reference only — do not modify.
 | `2026-01-28-rust-ts-type-sync-design.md` | Type Sync |
 | `2026-01-27-history-view-date-grouping-design.md` | UX |
 | `2026-01-29-pre-release-privacy-scrub.md` | Release Prep |
+| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | Hardening |
+| `2026-02-02-hardening-final.md` | Hardening (consolidated) |
 
 ---
 
