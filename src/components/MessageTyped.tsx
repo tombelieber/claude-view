@@ -381,7 +381,7 @@ export function MessageTyped({
                   )
                 }
                 return (
-                  <div key={i} className="prose prose-sm prose-gray max-w-none break-words text-sm">
+                  <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{

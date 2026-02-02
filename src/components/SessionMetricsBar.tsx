@@ -38,11 +38,11 @@ function MetricItem({ icon, label, value, title, vertical }: MetricItemProps) {
         role="group"
         aria-label={`${label}: ${value}`}
       >
-        <div className="flex items-center gap-2 text-gray-500" aria-hidden="true">
+        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400" aria-hidden="true">
           {icon}
           <span className="text-sm">{label}</span>
         </div>
-        <span className="text-sm font-semibold text-gray-900 font-metric-value tabular-nums" aria-hidden="true">
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums" aria-hidden="true">
           {value}
         </span>
         <span className="sr-only">{title}</span>
@@ -56,11 +56,11 @@ function MetricItem({ icon, label, value, title, vertical }: MetricItemProps) {
       role="group"
       aria-label={`${label}: ${value}`}
     >
-      <div className="flex items-center gap-1.5 text-gray-400" aria-hidden="true">
+      <div className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500" aria-hidden="true">
         {icon}
         <span className="text-xs font-metric-label">{label}</span>
       </div>
-      <span className="text-sm font-semibold text-gray-900 font-metric-value tabular-nums" aria-hidden="true">
+      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums" aria-hidden="true">
         {value}
       </span>
       <span className="sr-only">{title}</span>
@@ -98,7 +98,7 @@ export function SessionMetricsBar({
     return (
       <div
         className={cn(
-          'px-4 py-3 bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-100',
+          'px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800',
           className
         )}
         aria-label="Session metrics"
@@ -152,7 +152,7 @@ export function SessionMetricsBar({
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-4 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200',
+        'flex items-center justify-between gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700',
         className
       )}
     >
@@ -162,28 +162,28 @@ export function SessionMetricsBar({
         value={formatNumber(prompts)}
         title="Number of user prompts"
       />
-      <div className="w-px h-8 bg-gray-200" />
+      <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
       <MetricItem
         icon={<Coins className="w-3.5 h-3.5" />}
         label="Tokens"
         value={formatNumber(tokens)}
         title="Total tokens (input + output)"
       />
-      <div className="w-px h-8 bg-gray-200" />
+      <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
       <MetricItem
         icon={<FileText className="w-3.5 h-3.5" />}
         label="Files"
         value={`${filesRead}R/${filesEdited}E`}
         title={`${filesRead} files read, ${filesEdited} files edited`}
       />
-      <div className="w-px h-8 bg-gray-200" />
+      <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
       <MetricItem
         icon={<RefreshCw className="w-3.5 h-3.5" />}
         label="Re-edit"
         value={formatPercent(reeditRate, true)}
         title="Percentage of edited files that were re-edited"
       />
-      <div className="w-px h-8 bg-gray-200" />
+      <div className="w-px h-8 bg-gray-200 dark:bg-gray-700" />
       <MetricItem
         icon={<GitCommit className="w-3.5 h-3.5" />}
         label="Commits"
