@@ -524,6 +524,8 @@ impl Database {
         mcp_progress_count: i32,
         summary_text: Option<&str>,
         parse_version: i32,
+        file_size: i64,
+        file_mtime: i64,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -567,7 +569,9 @@ impl Database {
                 hook_progress_count = ?36,
                 mcp_progress_count = ?37,
                 summary_text = ?38,
-                parse_version = ?39
+                parse_version = ?39,
+                file_size_at_index = ?40,
+                file_mtime_at_index = ?41
             WHERE id = ?1
             "#,
         )
@@ -610,22 +614,29 @@ impl Database {
         .bind(mcp_progress_count)
         .bind(summary_text)
         .bind(parse_version)
+        .bind(file_size)
+        .bind(file_mtime)
         .execute(self.pool())
         .await?;
 
         Ok(())
     }
-
-    /// Get sessions that haven't been deep-indexed yet or have a stale parse version.
-    /// Returns Vec<(id, file_path)> for sessions where deep_indexed_at IS NULL
-    /// or parse_version < CURRENT_PARSE_VERSION.
-    pub async fn get_sessions_needing_deep_index(&self) -> DbResult<Vec<(String, String)>> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, file_path FROM sessions WHERE deep_indexed_at IS NULL OR parse_version < ?1",
-        )
-        .bind(crate::indexer_parallel::CURRENT_PARSE_VERSION)
-        .fetch_all(self.pool())
-        .await?;
+    /// Get all sessions with their file paths and stored file metadata.
+    ///
+    /// Returns all sessions so the caller can decide which ones need re-indexing
+    /// based on: (1) never deep-indexed, (2) stale parse version, (3) file changed
+    /// since last index (size or mtime differs).
+    ///
+    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version)`
+    pub async fn get_sessions_needing_deep_index(
+        &self,
+    ) -> DbResult<Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32)>> {
+        let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32)> =
+            sqlx::query_as(
+                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+            )
+            .fetch_all(self.pool())
+            .await?;
         Ok(rows)
     }
 
@@ -1357,6 +1368,8 @@ pub async fn update_session_deep_fields_tx(
     mcp_progress_count: i32,
     summary_text: Option<&str>,
     parse_version: i32,
+    file_size: i64,
+    file_mtime: i64,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1400,7 +1413,9 @@ pub async fn update_session_deep_fields_tx(
             hook_progress_count = ?36,
             mcp_progress_count = ?37,
             summary_text = ?38,
-            parse_version = ?39
+            parse_version = ?39,
+            file_size_at_index = ?40,
+            file_mtime_at_index = ?41
         WHERE id = ?1
         "#,
     )
@@ -1443,6 +1458,8 @@ pub async fn update_session_deep_fields_tx(
     .bind(mcp_progress_count)
     .bind(summary_text)
     .bind(parse_version)
+    .bind(file_size)
+    .bind(file_mtime)
     .execute(&mut **tx)
     .await?;
 
@@ -2427,6 +2444,8 @@ mod tests {
             1,     // mcp_progress_count
             Some("Session summary text"), // summary_text
             1,     // parse_version
+            5000,  // file_size
+            1706200000, // file_mtime
         )
         .await
         .unwrap();
@@ -2498,6 +2517,8 @@ mod tests {
             0, 0, 0, 0, // progress counts
             None,        // summary_text
             1,           // parse_version
+            1000,        // file_size
+            1706200000,  // file_mtime
         )
         .await
         .unwrap();
