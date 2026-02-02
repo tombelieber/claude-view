@@ -221,9 +221,9 @@ async fn main() -> Result<()> {
                 let deep_elapsed = deep_start.elapsed();
                 let total = tui_state.sessions_found();
                 eprintln!(
-                    "  \u{2713} Deep index complete \u{2014} {} sessions ({:.1}s)\n",
+                    "  \u{2713} Deep index complete \u{2014} {} sessions ({}ms)\n",
                     total,
-                    deep_elapsed.as_secs_f64(),
+                    deep_elapsed.as_millis(),
                 );
             } else if let Some(err) = tui_state.error() {
                 eprintln!("  \u{2717} Indexing error: {}\n", err);
