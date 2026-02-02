@@ -165,6 +165,18 @@ impl ParsedSession {
     }
 }
 
+/// A paginated slice of session messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedMessages {
+    pub messages: Vec<Message>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+}
+
 /// Session info for listing (without full message content)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
