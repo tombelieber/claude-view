@@ -12,16 +12,16 @@ export function TurnDurationCard({ durationMs, startTime, endTime }: TurnDuratio
     <div
       className={cn(
         'flex items-center gap-2 my-2 px-3 py-2 rounded-lg',
-        'border border-amber-300 bg-amber-50'
+        'border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30'
       )}
       role="status"
     >
       <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-      <span className="text-sm font-medium text-amber-800">
+      <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
         Turn completed in {durationMs !== undefined ? `${durationMs}ms` : 'unknown duration'}
       </span>
       {startTime && endTime && (
-        <span className="text-xs text-amber-600 ml-auto">
+        <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
           {startTime} — {endTime}
         </span>
       )}

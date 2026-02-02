@@ -28,10 +28,10 @@ interface SettingsSectionProps {
 
 function SettingsSection({ icon, title, children }: SettingsSectionProps) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <span className="text-gray-500">{icon}</span>
-        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <span className="text-gray-500 dark:text-gray-400">{icon}</span>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
           {title}
         </h2>
       </div>
@@ -49,8 +49,8 @@ interface InfoRowProps {
 function InfoRow({ label, value, className }: InfoRowProps) {
   return (
     <div className={cn('flex items-center justify-between py-1.5', className)}>
-      <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-900 tabular-nums">
+      <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums">
         {value ?? '--'}
       </span>
     </div>
@@ -125,7 +125,7 @@ export function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-6">
-        <h1 className="text-xl font-semibold text-gray-900 mb-6">Settings</h1>
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Settings</h1>
 
         <div className="space-y-4">
           {/* DATA STATUS */}
@@ -155,13 +155,13 @@ export function SettingsPage() {
                 />
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No status data available</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">No status data available</p>
             )}
           </SettingsSection>
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               Scans git history and correlates commits with sessions.
             </p>
 
@@ -185,7 +185,7 @@ export function SettingsPage() {
             {/* Sync interval setting */}
             <div className="mb-4">
               <div className="flex items-center justify-between">
-                <label htmlFor="sync-interval" className="text-sm text-gray-500">
+                <label htmlFor="sync-interval" className="text-sm text-gray-500 dark:text-gray-400">
                   Auto-sync interval
                 </label>
                 <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function SettingsPage() {
                     value={status?.gitSyncIntervalSecs != null ? Number(status.gitSyncIntervalSecs) : 60}
                     onChange={(e) => handleIntervalChange(e.target.value)}
                     disabled={isSavingInterval}
-                    className="text-sm border border-gray-200 rounded px-2 py-1 bg-white text-gray-900 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                    className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
                   >
                     <option value="10">10 seconds</option>
                     <option value="30">30 seconds</option>
@@ -214,19 +214,19 @@ export function SettingsPage() {
 
             {/* Sync status message */}
             {syncStatus === 'success' && (
-              <div className="flex items-center gap-2 text-green-600 mb-3 text-sm">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-3 text-sm">
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Sync started successfully</span>
               </div>
             )}
             {syncStatus === 'conflict' && (
-              <div className="flex items-center gap-2 text-amber-600 mb-3 text-sm">
+              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-3 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 <span>Sync already in progress</span>
               </div>
             )}
             {syncError && (
-              <div className="flex items-center gap-2 text-red-600 mb-3 text-sm">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 <span>{syncError}</span>
               </div>
@@ -240,7 +240,7 @@ export function SettingsPage() {
               className={cn(
                 'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
                 'transition-colors duration-150',
-                'bg-gray-900 text-white hover:bg-gray-800',
+                'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
               )}
@@ -261,13 +261,13 @@ export function SettingsPage() {
 
           {/* EXPORT DATA */}
           <SettingsSection icon={<Download className="w-4 h-4" />} title="Export Data">
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               Export all session data with metrics and commits.
             </p>
 
             {/* Format selection */}
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Format</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Format</label>
               <div className="flex items-center gap-4">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -278,7 +278,7 @@ export function SettingsPage() {
                     onChange={() => setExportFormat('json')}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">JSON</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">JSON</span>
                 </label>
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -289,14 +289,14 @@ export function SettingsPage() {
                     onChange={() => setExportFormat('csv')}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">CSV</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">CSV</span>
                 </label>
               </div>
             </div>
 
             {/* Scope selection */}
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Scope</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Scope</label>
               <div className="flex items-center gap-4">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -307,7 +307,7 @@ export function SettingsPage() {
                     onChange={() => setExportScope('all')}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">All sessions</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">All sessions</span>
                 </label>
                 <label className="inline-flex items-center gap-2 cursor-pointer opacity-50">
                   <input
@@ -319,7 +319,7 @@ export function SettingsPage() {
                     disabled
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Current project only</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Current project only</span>
                   <span className="text-xs text-gray-400">(coming soon)</span>
                 </label>
               </div>
@@ -327,7 +327,7 @@ export function SettingsPage() {
 
             {/* Export error */}
             {exportError && (
-              <div className="flex items-center gap-2 text-red-600 mb-3 text-sm">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 <span>{exportError}</span>
               </div>
@@ -341,7 +341,7 @@ export function SettingsPage() {
               className={cn(
                 'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
                 'transition-colors duration-150',
-                'bg-gray-900 text-white hover:bg-gray-800',
+                'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
               )}
@@ -363,40 +363,40 @@ export function SettingsPage() {
           {/* ABOUT */}
           <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
             <div className="mb-4">
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 Claude View v{APP_VERSION}
               </p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Browse and export Claude Code sessions
               </p>
             </div>
 
-            <div className="border-t border-gray-100 pt-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Keyboard Shortcuts</h3>
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Keyboard Shortcuts</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" />K
                   </kbd>
-                  <span className="text-gray-600">Command palette</span>
+                  <span className="text-gray-600 dark:text-gray-400">Command palette</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" />/
                   </kbd>
-                  <span className="text-gray-600">Focus search</span>
+                  <span className="text-gray-600 dark:text-gray-400">Focus search</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>E
                   </kbd>
-                  <span className="text-gray-600">Export HTML</span>
+                  <span className="text-gray-600 dark:text-gray-400">Export HTML</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
+                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>P
                   </kbd>
-                  <span className="text-gray-600">Export PDF</span>
+                  <span className="text-gray-600 dark:text-gray-400">Export PDF</span>
                 </div>
               </div>
             </div>

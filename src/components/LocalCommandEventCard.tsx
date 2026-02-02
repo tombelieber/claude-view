@@ -13,7 +13,7 @@ export function LocalCommandEventCard({ content }: LocalCommandEventCardProps) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 my-1 px-3 py-1.5 text-gray-500'
+        'flex items-center gap-2 my-1 px-3 py-1.5 text-gray-500 dark:text-gray-400'
       )}
     >
       <Terminal className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
