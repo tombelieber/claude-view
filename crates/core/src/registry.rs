@@ -173,6 +173,8 @@ type McpJson = HashMap<String, serde_json::Value>;
 /// All filesystem operations are graceful — missing files/dirs are logged and skipped.
 pub async fn build_registry(claude_dir: &Path) -> Registry {
     let mut entries: Vec<InvocableInfo> = Vec::new();
+    // Track IDs globally to avoid duplicates when the same plugin is installed at multiple scopes
+    let mut global_seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // 1. Read installed_plugins.json
     let plugins_path = claude_dir.join("plugins/installed_plugins.json");
@@ -202,6 +204,10 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                 // Scan for skills: direct subdirectories containing SKILL.md
                 let skills = scan_skills(&install_path, display_name, plugin_description);
                 for s in skills {
+                    if !global_seen_ids.insert(s.id.clone()) {
+                        debug!("Skipping duplicate invocable (multi-scope): {}", s.id);
+                        continue;
+                    }
                     seen_ids.insert(s.id.clone());
                     entries.push(s);
                 }
@@ -215,6 +221,10 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                 for c in commands {
                     if !seen_ids.insert(c.id.clone()) {
                         debug!("Skipping duplicate invocable from commands: {}", c.id);
+                        continue;
+                    }
+                    if !global_seen_ids.insert(c.id.clone()) {
+                        debug!("Skipping duplicate invocable (multi-scope): {}", c.id);
                         continue;
                     }
                     entries.push(c);
@@ -231,12 +241,22 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                         debug!("Skipping duplicate invocable from agents: {}", a.id);
                         continue;
                     }
+                    if !global_seen_ids.insert(a.id.clone()) {
+                        debug!("Skipping duplicate invocable (multi-scope): {}", a.id);
+                        continue;
+                    }
                     entries.push(a);
                 }
 
                 // Read .mcp.json for MCP tools
                 let mcp_tools = scan_mcp_json(&install_path, display_name);
-                entries.extend(mcp_tools);
+                for t in mcp_tools {
+                    if !global_seen_ids.insert(t.id.clone()) {
+                        debug!("Skipping duplicate MCP tool (multi-scope): {}", t.id);
+                        continue;
+                    }
+                    entries.push(t);
+                }
             }
         }
     }
@@ -451,7 +471,7 @@ fn build_maps(entries: Vec<InvocableInfo>) -> Registry {
     for info in entries {
         // Insert into qualified map (last write wins if duplicate ID)
         if qualified.contains_key(&info.id) {
-            warn!("Duplicate invocable ID: {}", info.id);
+            debug!("Duplicate invocable ID in build_maps: {}", info.id);
         }
         qualified.insert(info.id.clone(), info.clone());
 
