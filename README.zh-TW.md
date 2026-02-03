@@ -14,6 +14,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
+  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -78,6 +79,12 @@ npx claude-view
 ## 🤔 什麼是 Claude Code？
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 是 Anthropic 的 AI 程式設計助手，在終端機中運行。你與它的每次對話都會儲存在本地。**claude-view** 幫助你回顧、搜尋和匯出這些對話。
+
+---
+
+## 💬 社群
+
+加入 [Discord 伺服器](https://discord.gg/G7wdZTpRfu)，取得支援、提出功能建議或參與討論。
 
 ---
 

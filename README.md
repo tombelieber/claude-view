@@ -14,6 +14,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
+  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
@@ -102,6 +103,12 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 ## 🤔 What is Claude Code?
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's AI coding assistant that runs in your terminal. Every conversation you have with it is saved locally. **claude-view** helps you revisit, search, and export those conversations.
+
+---
+
+## 💬 Community
+
+Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature requests, and discussion.
 
 ---
 
