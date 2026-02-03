@@ -42,9 +42,10 @@
 | Phase 2D: Session Health | Merged into Phase 3 | — | — |
 | **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
 | **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
-| **Phase 4: Distribution (npx)** | **IN PROGRESS** | 5/7 tasks done — awaiting human setup (npm token) + first release | Personal |
+| **Phase 4: Distribution (npx)** | **DONE** | 7/7 tasks — checksum, OIDC publish, version guard, 3 releases shipped | Personal |
 | **Phase 4B: Session Parser + UI Wiring** | **DONE** | 4/4 tasks — 7-type parser rewrite, TS types, compact/full toggle, Track 4 wiring | Personal |
 | **Hardening: Security + Robustness** | **DONE** | 7/7 fixes — DOMPurify, XSS, ErrorBoundary, nesting cap, null safety, useEffect cleanup | Personal |
+| **Thread Visualization & Dark Mode** | **DONE** | 5/5 tasks — buildThreadMap, ConversationView wiring, hover highlighting, dark mode, plan status | Personal |
 | Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
 | **Deep Index Perf (Tasks 1-3)** | **DONE** | 3/3 tasks — tx batching, SIMD pre-filter, mtime re-index | Personal |
 | **Deep Index Perf Instrumentation** | **DONE** | Timing breakdown (parse/write phase) in debug builds | Personal |
@@ -52,9 +53,9 @@
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
-**Current focus:** Phase 4 Distribution (npx) — code done, awaiting human setup (npm account + token + GitHub secret) then first release
+**Current focus:** v0.2.4 release — version alignment (Cargo.toml + npm), CI guard, duplicate invocable fix
 
-**Recently completed:** Deep Index Performance — timing instrumentation added, multi-row VALUES attempted (regressed, reverted), rusqlite write phase plan written
+**Recently completed:** Phase 4 Distribution (3 releases shipped), Thread Visualization & Dark Mode (5/5 tasks)
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -207,14 +208,14 @@ Ship `npx claude-view` with checksum verification, automated npm publish, and pr
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| — | Human setup: npm account + token + GitHub secret | **PENDING** | Must be done before Task 7 |
+| — | Human setup: npm account + token + GitHub secret | **DONE** | OIDC trusted publisher configured |
 | 1 | Add SHA256 checksum generation to CI | **DONE** | `checksums.txt` in GitHub Release |
 | 2 | Add checksum verification to npx wrapper | **DONE** | SHA256 verify before execute |
 | 3 | Add automated npm publish to CI | **DONE** | `--provenance --access public` |
 | 4 | Add version sync check to CI | **DONE** | Tag vs package.json guard, `shell: bash` for Windows |
 | 5 | Update release script message | **DONE** | Reflects auto npm publish |
-| 6 | Dry run validation | **PENDING** | `npm pack --dry-run` + local smoke test |
-| 7 | First release | **PENDING** | Tag + push + verify npm + e2e test |
+| 6 | Dry run validation | **DONE** | `npm pack --dry-run` verified |
+| 7 | First release | **DONE** | v0.2.0 → v0.2.3 shipped via OIDC trusted publisher |
 
 See `docs/plans/2026-01-29-phase4-npx-release.md` for full plan.
 
@@ -287,10 +288,10 @@ Clean 3-tier structure: active work only in main folder.
 | File | Status | Role |
 |------|--------|------|
 | `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
-| `2026-01-29-phase4-npx-release.md` | pending | **Current work** — checksum verification, npm publish CI, release pipeline |
+| `2026-01-29-phase4-npx-release.md` | done | **Distribution** — checksum verification, npm publish CI, release pipeline |
 | `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | done | **Pre-release security** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
 | `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | superseded | **Phase 1 UI rebuild** — substance implemented, gaps covered by thread-visualization-polish |
-| `2026-02-02-thread-visualization-polish.md` | in-progress | **Thread polish** — thread indent wiring, hover highlighting, dark mode for MessageTyped |
+| `2026-02-02-thread-visualization-polish.md` | done | **Thread polish** — thread indent wiring, hover highlighting, dark mode for MessageTyped |
 | `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
 | `2026-02-03-session-loading-perf.md` | done | **Session loading perf** — paginated messages endpoint, tail-first loading |
