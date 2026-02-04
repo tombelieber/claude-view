@@ -11,11 +11,14 @@ pub mod trends;
 pub mod snapshots;
 pub mod pricing;
 
+pub use queries::AIGenerationStats;
 pub use queries::BranchCount;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::StatsOverview;
+pub use queries::TokensByModel;
+pub use queries::TokensByProject;
 pub use queries::TokenStats;
 
 // Re-export trends types

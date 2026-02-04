@@ -45,6 +45,11 @@ export type { SyncAcceptedResponse } from './SyncAcceptedResponse'
 // Storage types (Phase 3)
 export type { StorageStats } from './StorageStats'
 
+// AI Generation types (Phase 3)
+export type { AIGenerationStats } from './AIGenerationStats'
+export type { TokensByModel } from './TokensByModel'
+export type { TokensByProject } from './TokensByProject'
+
 // Session detail types (Phase 3)
 export type { CommitWithTier } from './CommitWithTier'
 export type { DerivedMetrics } from './DerivedMetrics'
