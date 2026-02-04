@@ -7,11 +7,13 @@
 pub mod error;
 pub mod indexing_state;
 pub mod insights;
+pub mod metrics;
 pub mod routes;
 pub mod state;
 
 pub use error::*;
 pub use indexing_state::{IndexingState, IndexingStatus};
+pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 

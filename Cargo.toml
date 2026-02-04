@@ -42,6 +42,10 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Metrics (Prometheus)
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
 # Terminal UI
 indicatif = "0.17"
 
