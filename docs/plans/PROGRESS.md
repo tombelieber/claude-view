@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-04
+> **Last updated:** 2026-02-05
 
 ---
 
@@ -55,6 +55,7 @@
 | **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
+| App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 
 **Current focus:** Cold Start UX (pending), UI Testing Strategy (pending), README media (pending)
 
@@ -282,6 +283,36 @@ Plan file: TBD (will be created when Phase 5 begins)
 
 ---
 
+## Deferred: App-Wide UI/UX Polish
+
+**Decision: Batch all cross-cutting UI/UX concerns into a single phase after feature work completes.**
+
+**Context (2026-02-05):** During Theme 3 design review, identified UI/UX polish items that apply across all features. Rather than address piecemeal per-feature, defer to a dedicated polish pass.
+
+**Deferred items:**
+
+| Category | Scope | Notes |
+|----------|-------|-------|
+| **Accessibility (a11y)** | App-wide | WCAG 2.1 AA audit, color contrast, screen reader, keyboard nav |
+| **Internationalization (i18n)** | App-wide | Extract hardcoded strings, locale files, insight templates |
+| **Responsive design** | App-wide | Mobile/tablet breakpoints, touch targets |
+| **Dark mode audit** | App-wide | Verify all new components respect theme |
+| **Loading states** | App-wide | Consistent skeleton/spinner patterns |
+| **Error states** | App-wide | Consistent error message UX |
+
+**When to execute:**
+- After Themes 1-4 feature work ships
+- Before v1.0 release
+- Single dedicated phase with checklist
+
+**Why batch:**
+1. Avoids context-switching during feature dev
+2. Ensures consistency across all features
+3. More efficient to audit once vs per-feature
+4. Can test holistically (e.g., full a11y audit)
+
+---
+
 ## Plan File Index
 
 Clean 3-tier structure: active work only in main folder.
@@ -297,6 +328,10 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
 | `2026-02-03-cold-start-ux.md` | pending | **Cold start UX** — bandwidth progress bar (TUI + frontend SSE overlay), 7 tasks |
 | `2026-02-03-readme-media-guide.md` | pending | **README media** — screenshot + demo GIF preparation guide |
+| `2026-02-04-session-discovery-design.md` | pending | **Theme 1** — Session discovery & navigation enhancements |
+| `2026-02-05-dashboard-analytics-design.md` | pending | **Theme 2** — Dashboard & analytics enhancements |
+| `2026-02-05-theme3-git-ai-contribution-design.md` | pending | **Theme 3** — Git integration & AI contribution tracking page |
+| `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for Theme 4 design |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
