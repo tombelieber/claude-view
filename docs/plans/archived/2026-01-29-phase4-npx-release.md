@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-01-29
 ---
 
