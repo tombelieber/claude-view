@@ -13,6 +13,7 @@ import { SessionToolbar } from './SessionToolbar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort, SessionFilter } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
+import { groupSessions } from '../utils/group-sessions'
 import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
 
@@ -158,7 +159,45 @@ export function HistoryView() {
         if (key !== selectedDate) return false
       }
 
-      // Session filter (from dropdown)
+      // NEW FILTER LOGIC: Branch filter
+      if (filters.branches.length > 0) {
+        if (!s.gitBranch || !filters.branches.includes(s.gitBranch)) return false
+      }
+
+      // NEW FILTER LOGIC: Model filter
+      if (filters.models.length > 0) {
+        if (!s.primaryModel || !filters.models.includes(s.primaryModel)) return false
+      }
+
+      // NEW FILTER LOGIC: Has commits filter
+      if (filters.hasCommits === 'yes' && (s.commitCount ?? 0) === 0) return false
+      if (filters.hasCommits === 'no' && (s.commitCount ?? 0) > 0) return false
+
+      // NEW FILTER LOGIC: Has skills filter
+      if (filters.hasSkills === 'yes' && (s.skillsUsed ?? []).length === 0) return false
+      if (filters.hasSkills === 'no' && (s.skillsUsed ?? []).length > 0) return false
+
+      // NEW FILTER LOGIC: Minimum duration
+      if (filters.minDuration !== null && (s.durationSeconds ?? 0) < filters.minDuration) return false
+
+      // NEW FILTER LOGIC: Minimum files edited
+      if (filters.minFiles !== null && (s.filesEditedCount ?? 0) < filters.minFiles) return false
+
+      // NEW FILTER LOGIC: Minimum tokens
+      if (filters.minTokens !== null) {
+        const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
+        if (totalTokens < filters.minTokens) return false
+      }
+
+      // NEW FILTER LOGIC: High re-edit rate
+      if (filters.highReedit === true) {
+        const filesEdited = s.filesEditedCount ?? 0
+        const reeditedFiles = s.reeditedFilesCount ?? 0
+        const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
+        if (reeditRate <= 0.2) return false
+      }
+
+      // OLD Session filter (from dropdown) - kept for backwards compatibility
       if (filter === 'has_commits' && (s.commitCount ?? 0) === 0) return false
       if (filter === 'high_reedit') {
         const filesEdited = s.filesEditedCount ?? 0
@@ -205,10 +244,18 @@ export function HistoryView() {
     }
 
     return filtered
-  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filter, sort])
+  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filter, sort, filters])
 
   const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filter !== 'all' || sort !== 'recent'
-  const groups = sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
+
+  // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
+  const groups = useMemo(() => {
+    if (filters.groupBy !== 'none') {
+      return groupSessions(filteredSessions, filters.groupBy)
+    }
+    // Default behavior: group by date when sort is 'recent', otherwise single group
+    return sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
+  }, [filteredSessions, filters.groupBy, sort])
 
   // Project list sorted by session count
   const sortedProjects = useMemo(() => {
