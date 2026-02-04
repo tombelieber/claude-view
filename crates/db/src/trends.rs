@@ -164,6 +164,21 @@ pub struct IndexMetadata {
 // ============================================================================
 
 impl Database {
+    /// Get trend metrics for a custom time range.
+    ///
+    /// The comparison period is automatically calculated as the equivalent
+    /// duration immediately preceding the requested period.
+    ///
+    /// For example, if `from` to `to` is 7 days, the comparison period
+    /// is the 7 days before `from`.
+    pub async fn get_trends_with_range(&self, from: i64, to: i64) -> DbResult<WeekTrends> {
+        let duration = to - from;
+        let comp_end = from - 1;
+        let comp_start = comp_end - duration;
+
+        self.get_trends_for_periods(from, to, comp_start, comp_end).await
+    }
+
     /// Get week-over-week trend metrics.
     ///
     /// Computes trends for:
@@ -176,6 +191,18 @@ impl Database {
     pub async fn get_week_trends(&self) -> DbResult<WeekTrends> {
         let (curr_start, curr_end) = current_week_bounds();
         let (prev_start, prev_end) = previous_week_bounds();
+
+        self.get_trends_for_periods(curr_start, curr_end, prev_start, prev_end).await
+    }
+
+    /// Internal: Get trend metrics comparing two arbitrary periods.
+    async fn get_trends_for_periods(
+        &self,
+        curr_start: i64,
+        curr_end: i64,
+        prev_start: i64,
+        prev_end: i64,
+    ) -> DbResult<WeekTrends> {
 
         // Session count
         let (curr_sessions,): (i64,) = sqlx::query_as(
