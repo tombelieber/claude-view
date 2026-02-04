@@ -1,36 +1,41 @@
 // src/hooks/use-branches.ts
 import { useQuery } from '@tanstack/react-query';
+import type { BranchesResponse } from '../types/generated/BranchesResponse';
 
 /**
- * Fetch distinct list of branch names from the backend.
+ * Fetch distinct branches with session counts for a specific project.
  *
- * @returns Promise resolving to array of unique branch names, sorted alphabetically
+ * @param projectId - The project identifier
+ * @returns Promise resolving to BranchesResponse
  */
-async function fetchBranches(): Promise<string[]> {
-  const response = await fetch('/api/branches');
-  if (!response.ok) throw new Error('Failed to fetch branches');
+async function fetchProjectBranches(projectId: string): Promise<BranchesResponse> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/branches`);
+  if (!response.ok) throw new Error('Failed to fetch project branches');
   return response.json();
 }
 
 /**
- * Hook to fetch and cache the list of all unique branch names across sessions.
+ * Hook to fetch and cache the list of branches with session counts for a project.
  *
  * Returns:
- * - data: Array of branch names (sorted alphabetically)
+ * - data: BranchesResponse with array of {branch, count} objects
  * - isLoading: Boolean indicating if the query is in progress
  * - error: Error object if the query failed
+ * - refetch: Function to manually refetch the data
  *
  * @example
  * ```tsx
- * const { data: branches, isLoading } = useBranches();
- * if (isLoading) return <Spinner />;
- * return <BranchFilter branches={branches} />;
+ * const { data, isLoading, error, refetch } = useProjectBranches('my-project');
+ * if (isLoading) return <Skeleton />;
+ * if (error) return <ErrorState onRetry={refetch} />;
+ * return <BranchList branches={data.branches} />;
  * ```
  */
-export function useBranches() {
+export function useProjectBranches(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['branches'],
-    queryFn: fetchBranches,
+    queryKey: ['project-branches', projectId],
+    queryFn: () => fetchProjectBranches(projectId!),
+    enabled: !!projectId,
     // Branches don't change frequently, so we can cache for longer
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
