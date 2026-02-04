@@ -36,6 +36,7 @@ use crate::state::AppState;
 /// - GET /api/status - Index metadata and data freshness
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
+/// - POST /api/sync/deep - Trigger full deep index rebuild
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
