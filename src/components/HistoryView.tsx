@@ -5,8 +5,12 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Search, X, FolderOpen, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
+import { CompactSessionTable } from './CompactSessionTable'
+import type { SortColumn } from './CompactSessionTable'
 import { ActivitySparkline } from './ActivitySparkline'
 import { FilterSortBar, useFilterSort } from './FilterSortBar'
+import { SessionToolbar } from './SessionToolbar'
+import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort, SessionFilter } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { sessionSlug } from '../lib/url-slugs'
@@ -83,6 +87,7 @@ export function HistoryView() {
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
   const { filter, sort, setFilter, setSort } = useFilterSort(searchParams, setSearchParams)
+  const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
 
   const [searchText, setSearchText] = useState('')
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
@@ -318,7 +323,16 @@ export function HistoryView() {
 
           {/* Filter row: session filter/sort + time + project */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Session filter and sort dropdowns */}
+            {/* NEW: SessionToolbar with view mode toggle */}
+            <SessionToolbar
+              filters={filters}
+              onFiltersChange={setFilters}
+              onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+            />
+
+            <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+
+            {/* LEGACY: Old FilterSortBar (can be removed later) */}
             <FilterSortBar
               filter={filter}
               sort={sort}
@@ -415,58 +429,89 @@ export function HistoryView() {
           </div>
         </div>
 
-        {/* Session List */}
+        {/* Session List or Table */}
         <div className="mt-5">
           {filteredSessions.length > 0 ? (
-            <div>
-              {groups.map(group => (
-                <div key={group.label}>
-                  {/* Group header */}
-                  <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3">
-                    <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap">
-                      {group.label}
-                    </span>
-                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                    <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
-                      {group.sessions.length}
-                    </span>
-                  </div>
+            filters.viewMode === 'table' ? (
+              /* Table view */
+              <CompactSessionTable
+                sessions={filteredSessions}
+                onSort={(column) => {
+                  // Map table column to SessionSort
+                  const sortMap: Record<SortColumn, SessionSort> = {
+                    time: 'recent',
+                    branch: 'recent', // No direct branch sort yet
+                    prompts: 'prompts',
+                    tokens: 'tokens',
+                    files: 'files_edited',
+                    loc: 'recent', // No direct LOC sort yet
+                    commits: 'recent', // No direct commits sort yet
+                    duration: 'duration',
+                  }
+                  const newSort = sortMap[column] || 'recent'
+                  setFilters({ ...filters, sort: newSort })
+                }}
+                sortColumn={
+                  filters.sort === 'prompts' ? 'prompts' :
+                  filters.sort === 'tokens' ? 'tokens' :
+                  filters.sort === 'files_edited' ? 'files' :
+                  filters.sort === 'duration' ? 'duration' :
+                  'time'
+                }
+                sortDirection="desc"
+              />
+            ) : (
+              /* Timeline view */
+              <div>
+                {groups.map(group => (
+                  <div key={group.label}>
+                    {/* Group header */}
+                    <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3">
+                      <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap">
+                        {group.label}
+                      </span>
+                      <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                      <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                        {group.sessions.length}
+                      </span>
+                    </div>
 
-                  {/* Cards */}
-                  <div className="space-y-1.5 pb-3">
-                    {group.sessions.map((session, idx) => {
-                      const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
-                      return (
-                        <div key={session.id} className="relative">
-                          {/* Rank badge for non-default sorts */}
-                          {sort !== 'recent' && (
-                            <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                              <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
-                            </div>
-                          )}
-                          <Link
-                            to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
-                            className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
-                          >
-                            <SessionCard
-                              session={session}
-                              isSelected={false}
-                              projectDisplayName={projectDisplayNames.get(session.project)}
-                            />
-                          </Link>
-                          {/* Sort metric badge overlay */}
-                          {metric && (
-                            <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                              {metric}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                    {/* Cards */}
+                    <div className="space-y-1.5 pb-3">
+                      {group.sessions.map((session, idx) => {
+                        const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
+                        return (
+                          <div key={session.id} className="relative">
+                            {/* Rank badge for non-default sorts */}
+                            {sort !== 'recent' && (
+                              <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
+                              </div>
+                            )}
+                            <Link
+                              to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                              className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                            >
+                              <SessionCard
+                                session={session}
+                                isSelected={false}
+                                projectDisplayName={projectDisplayNames.get(session.project)}
+                              />
+                            </Link>
+                            {/* Sort metric badge overlay */}
+                            {metric && (
+                              <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                {metric}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )
           ) : (
             <SessionsEmptyState isFiltered={isFiltered} onClearFilters={clearAll} />
           )}
