@@ -5,6 +5,7 @@ import { useTimeRange } from '../hooks/use-time-range'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
+import { AIGenerationStats } from './AIGenerationStats'
 import { RecentCommits } from './RecentCommits'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { DateRangePicker } from './ui/DateRangePicker'
@@ -152,6 +153,13 @@ export function StatsDashboard() {
       {/* Phase 3: Week-over-week metrics grid */}
       {stats.trends && (
         <DashboardMetricsGrid trends={stats.trends} comparisonLabel={comparisonLabel} />
+      )}
+
+      {/* AI Generation Breakdown (Feature flag gated) */}
+      {FEATURES.aiGeneration && (
+        <AIGenerationStats
+          timeRange={FEATURES.timeRange ? { from: timeRange.fromTimestamp, to: timeRange.toTimestamp } : null}
+        />
       )}
 
       <div className="grid md:grid-cols-2 gap-6">
