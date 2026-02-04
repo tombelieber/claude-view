@@ -47,6 +47,9 @@ fn main() {
         mcp_progress_count: 0,
         summary_text: None,
         parse_version: 0,
+        lines_added: 0,
+        lines_removed: 0,
+        loc_source: 0,
     };
 
     let json = serde_json::to_string_pretty(&session).unwrap();
