@@ -1,4 +1,4 @@
-import { Terminal, Pencil, Eye, MessageSquare, GitCommit } from 'lucide-react'
+import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
@@ -168,6 +168,17 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const endTimestamp = Number(session?.modifiedAt ?? 0)
   const startTimestamp = endTimestamp - durationSeconds
 
+  // Branch badge data
+  const gitBranch = session?.gitBranch ?? null
+
+  // Top files data (show up to 3)
+  const filesEditedPaths = session?.filesEdited ?? []
+  const topFiles = filesEditedPaths.slice(0, 3)
+  const remainingFiles = filesEditedPaths.length - topFiles.length
+
+  // Extract basename from path
+  const basename = (path: string): string => path.split('/').pop() || path
+
   return (
     <article
       className={cn(
@@ -179,12 +190,21 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
-      {/* Header: Project badge + Time range + Duration */}
+      {/* Header: Project badge + Branch badge + Time range + Duration */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           {projectLabel && (
             <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded flex-shrink-0">
               {projectLabel}
+            </span>
+          )}
+          {gitBranch && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded flex-shrink-0 max-w-[160px]"
+              title={gitBranch}
+            >
+              <GitBranch className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{gitBranch}</span>
             </span>
           )}
         </div>
@@ -262,6 +282,47 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           </div>
         )}
       </div>
+
+      {/* LOC Impact */}
+      {(session.linesAdded > 0 || session.linesRemoved > 0) && (
+        <div className="flex items-center gap-2 mt-2 text-xs">
+          {session.locSource === 2 && (
+            <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+          )}
+          <span className="text-green-600 dark:text-green-400">
+            +{formatNumber(session.linesAdded)}
+          </span>
+          <span className="text-gray-400">/</span>
+          <span className="text-red-600 dark:text-red-400">
+            -{formatNumber(session.linesRemoved)}
+          </span>
+        </div>
+      )}
+      {session.linesAdded === 0 && session.linesRemoved === 0 && session.locSource > 0 && (
+        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+          ±0
+        </div>
+      )}
+
+      {/* Top files touched */}
+      {topFiles.length > 0 && (
+        <div className="flex items-center gap-1.5 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
+          <FileEdit className="w-3 h-3 flex-shrink-0" />
+          <div className="flex items-center gap-1 min-w-0">
+            {topFiles.map((file, idx) => (
+              <span key={idx} className="font-mono">
+                {basename(file)}
+                {idx < topFiles.length - 1 && <span className="text-gray-300 dark:text-gray-600 ml-1">·</span>}
+              </span>
+            ))}
+            {remainingFiles > 0 && (
+              <span className="text-gray-400 dark:text-gray-500 ml-1">
+                +{remainingFiles} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Footer: Commits badge + Skills */}
       <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
