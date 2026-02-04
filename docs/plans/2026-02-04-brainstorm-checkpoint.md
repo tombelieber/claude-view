@@ -1,7 +1,7 @@
 ---
-status: draft
+status: done
 date: 2026-02-04
-purpose: Brainstorming checkpoint — resume point for Theme 3 & 4 design sessions
+purpose: Brainstorming checkpoint — all 4 themes designed
 ---
 
 # Brainstorm Checkpoint: Themes 3 & 4
@@ -11,8 +11,10 @@ purpose: Brainstorming checkpoint — resume point for Theme 3 & 4 design sessio
 > **Completed:**
 > - Theme 1 (Session Discovery & Navigation) — `2026-02-04-session-discovery-design.md`
 > - Theme 2 (Dashboard & Analytics) — `2026-02-05-dashboard-analytics-design.md`
+> - Theme 3 (Git Integration & AI Contribution) — `2026-02-05-theme3-git-ai-contribution-design.md`
+> - Theme 4 (Chat Insights & Pattern Discovery) — `2026-02-05-theme4-chat-insights-design.md` + `theme4/` (8 phase plans)
 >
-> **Remaining:** Themes 3 & 4 need their own design documents.
+> **All 4 themes designed.** Ready for implementation prioritization.
 
 ---
 
@@ -37,9 +39,42 @@ Full design with ASCII mockups, API specs, and acceptance criteria in dedicated 
 
 ---
 
-## Theme 3: Git Integration & AI Contribution Tracking
+## Theme 3: Git Integration & AI Contribution Tracking ✅ DESIGNED
 
-### Raw Feedback Items
+> Status: **Design complete** — see `2026-02-05-theme3-git-ai-contribution-design.md`
+> Design session: 2026-02-05
+
+### Summary
+
+Dedicated `/contributions` page answering three questions:
+1. **Fluency** — How skilled is the user with the tool?
+2. **Volume** — How much AI output?
+3. **Effectiveness** — How good is the AI output?
+
+| Section | Description |
+|---------|-------------|
+| Overview Cards | Three pillars: Fluency / Output / Effectiveness |
+| Contribution Trend | Line chart with human-readable insights |
+| Efficiency Metrics | Cost vs output ROI, cost per line |
+| Model Comparison | Which model gives best results |
+| Learning Curve | Re-edit rate over time (improvement tracking) |
+| By Branch | Sessions grouped by git branch with AI share % |
+| Skill Effectiveness | Which skills lead to best outcomes |
+| Uncommitted Work | Alert for AI code not yet committed |
+| Session Drill-down | File-level breakdown, linked commits |
+
+**Key design principles:**
+- Every chart has human-readable insight line ("so what?")
+- Work type badges: Deep Work, Quick Ask, Planning, Bug Fix (rule-based, no LLM)
+- Data model: `ai_lines_added/removed` on sessions, `insertions/deletions` on commits
+
+**Implementation order:** Data collection → API → Overview page → Dashboard card → Branch view → Advanced metrics
+
+Full design with ASCII mockups, API specs, and acceptance criteria in dedicated plan file.
+
+---
+
+### Raw Feedback Items (for reference)
 
 1. **AI coding contribution rate** — "User is very interested in finding the AI coding contribution rate — add/edit/remove lines of code, and files."
 
@@ -74,53 +109,53 @@ Full design with ASCII mockups, API specs, and acceptance criteria in dedicated 
 
 ---
 
-## Theme 4: Chat Insights & Pattern Discovery
+## Theme 4: Chat Insights & Pattern Discovery ✅ DESIGNED
 
-### Raw Feedback Items
+> Status: **Design complete** — see `2026-02-05-theme4-chat-insights-design.md` + `theme4/` directory
+> Design session: 2026-02-05
 
-1. **Session classification** — "Work type: bug, feature, KTLO. Intent distribution: ask, plan, task automation, write code. Categories: doc, feat, architecture, refactor, bug fix, explanation, testing, config, ops & deployment. Task complexity: trivial/low/medium/high. Prompt specificity: high/low/medium."
+### Summary
 
-2. **Chat pattern discovery** — "The main purpose is to find out how I can improve next time. Is there some pattern from my prompts you can tell? By just looking at and analyzing my prompts only (without LLM response), we can have a pretty good intent analysis and pattern insights."
+Two new pages (`/insights` and `/system`) with LLM-powered classification and 60+ pattern detection.
 
-3. **Nerd stats / performance page** — "It only took 3s to do deep index on my work machine, well done. Should we have a page for these nerd numbers? User can check, test, manage — clean cache (the index), re-index, show elapsed time."
+| Component | Description |
+|-----------|-------------|
+| Classification System | LLM-powered (Claude CLI default, BYOK), 30 categories in 3-level hierarchy |
+| Pattern Engine | 60+ patterns across 8 categories (prompt, session, temporal, workflow, model, codebase, outcome, behavioral) |
+| `/insights` Page | Hero insight, quick stats, 4 tabs (Patterns, Categories, Trends, Benchmarks) |
+| `/system` Page | Storage/performance/health stats, index history, classification management |
 
-4. **Time to market is important** — User has free open source models + free GPU for inference. Cost of insight matters but local inference is an option.
+**Key design decisions:**
+- LLM classification via Claude CLI (`claude -p --output-format json`)
+- Background async classification with SSE progress
+- BYOK support (Anthropic API, OpenAI-compatible) for future monetization
+- Every chart has human-readable "so what?" insight line
 
-### Current State (for context when resuming)
+**8 Phase Plans (11,787 lines total):**
 
-- Session `preview` and `lastMessage` already captured — these are the user's first and last prompts.
-- `skills_used` tracked — partially indicates intent (e.g., `tdd`, `brainstorming`, `commit`).
-- `summary_text` field exists on sessions (from full parser) — could contain AI-generated summary.
-- No classification/categorization system exists.
-- No prompt pattern analysis exists.
-- Deep index timing is logged in debug builds but not exposed to users.
-- Index metadata available via `GET /api/status` — `lastIndexedAt`, `sessionsIndexed`, `lastGitSyncAt`, `commitsFound`.
+| Phase | Name | Lines | Parallelizable |
+|-------|------|-------|----------------|
+| 1 | Foundation | 1,060 | — |
+| 2 | Classification System | 1,233 | with 3, 4 |
+| 3 | System Page | 1,405 | with 2, 4 |
+| 4 | Pattern Engine | 1,614 | with 2, 3 |
+| 5 | Insights Core | 975 | — |
+| 6 | Categories Tab | 1,782 | with 7, 8 |
+| 7 | Trends Tab | 2,045 | with 6, 8 |
+| 8 | Benchmarks Tab | 1,673 | with 6, 7 |
 
-### Design Questions to Explore
+**Execution order:** Wave 1 (Phase 1) → Wave 2 (2+3+4 parallel) → Wave 3 (Phase 5) → Wave 4 (6+7+8 parallel)
 
-- **Classification approach:** Rule-based (keyword matching on prompts) vs LLM-based (local inference) vs hybrid? Rule-based is fast and free. LLM-based is more accurate but adds dependency.
-- **Where to classify:** During deep index (backend, Rust) or on-demand (frontend/separate service)?
-- **Pattern discovery:** What patterns are useful? Prompt length trends, time-of-day patterns, session length distribution, skill usage frequency over time, common file types?
-- **Nerd stats page:** Settings subpage or standalone page? What metrics: index time, DB size, session count, JSONL total size, parse throughput (MB/s)?
-
-### User's Key Insight
-
-> "By just looking at and analyzing my prompts only without the response from LLM, actually we can have a pretty good intent analysis."
-
-This suggests a lightweight approach: classify based on the user's prompt text alone, not the full conversation. This is much cheaper computationally and avoids needing to parse assistant responses for classification.
+Full designs with ASCII mockups, API specs, Rust types, React components, and acceptance criteria in `theme4/` directory.
 
 ---
 
-## Process for Resuming
+## All Themes Complete
 
 **Completed:**
 - Theme 1: Session Discovery — `2026-02-04-session-discovery-design.md`
 - Theme 2: Dashboard & Analytics — `2026-02-05-dashboard-analytics-design.md`
+- Theme 3: Git Integration & AI Contribution — `2026-02-05-theme3-git-ai-contribution-design.md`
+- Theme 4: Chat Insights & Pattern Discovery — `2026-02-05-theme4-chat-insights-design.md` + `theme4/`
 
-**Remaining:**
-1. Pick Theme 3 or 4
-2. Use `superpowers:brainstorming` skill — same process as Themes 1 & 2
-3. Ask clarifying questions one at a time
-4. Present design in sections, validate each
-5. Write to dedicated plan file
-6. After all 4 themes designed, prioritize across all plans for implementation order
+**Next step:** Prioritize across all themes for implementation order.

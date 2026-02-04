@@ -56,6 +56,7 @@
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
+| **Theme 4: Chat Insights** | Pending | 0/8 phases, 0/39 tasks — see `theme4/PROGRESS.md` | Personal |
 
 **Current focus:** Cold Start UX (pending), UI Testing Strategy (pending), README media (pending)
 
@@ -331,7 +332,8 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-04-session-discovery-design.md` | pending | **Theme 1** — Session discovery & navigation enhancements |
 | `2026-02-05-dashboard-analytics-design.md` | pending | **Theme 2** — Dashboard & analytics enhancements |
 | `2026-02-05-theme3-git-ai-contribution-design.md` | pending | **Theme 3** — Git integration & AI contribution tracking page |
-| `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for Theme 4 design |
+| `2026-02-05-theme4-chat-insights-design.md` | pending | **Theme 4** — Chat insights & pattern discovery (see `theme4/PROGRESS.md` for detailed tracking) |
+| `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
