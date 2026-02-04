@@ -1,3 +1,8 @@
+---
+status: superseded
+date: 2026-01-29
+---
+
 # Comprehensive Conversation UI Redesign
 ## Full 7-Type JSONL Parser + Hierarchy + Event Rendering
 

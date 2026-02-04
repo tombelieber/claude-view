@@ -1,3 +1,8 @@
+---
+status: done
+date: 2026-01-29
+---
+
 # Bulletproof Hardening Implementation Plan v2.0
 ## 7 Security + Robustness Fixes (TDD-First, Production-Grade)
 
