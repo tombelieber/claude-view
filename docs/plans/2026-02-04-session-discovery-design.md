@@ -419,6 +419,41 @@ pub struct BranchesResponse {
 
 **Performance:** Single query, uses existing `idx_sessions_project_branch` index from Migration 7. Expected <5ms for 1000 sessions.
 
+### New Endpoint: GET /api/branches
+
+**Purpose:** Used by `FilterPopover` to get all branches across all projects for global session filtering (Phase B).
+
+**Location:** `crates/server/src/routes/sessions.rs`
+
+**Request:**
+```
+GET /api/branches
+```
+
+**Response:**
+```json
+["main", "feature/auth-flow", "hardening/security-robustness", "phase4-release"]
+```
+
+**SQL:**
+```sql
+SELECT DISTINCT git_branch
+FROM sessions
+WHERE git_branch IS NOT NULL AND is_sidechain = 0
+ORDER BY git_branch
+```
+
+**Rust signature:**
+```rust
+pub async fn list_branches(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<String>>>
+```
+
+**Performance:** Single query, uses existing `idx_sessions_project_branch` index. Returns deduplicated sorted array.
+
+**Usage distinction:**
+- `/api/branches` — Global list for FilterPopover (all branches across all projects)
+- `/api/projects/:id/branches` — Project-scoped with counts for Sidebar expansion (Phase E)
+
 ### Extended Filter Params on GET /api/sessions
 
 **Current params:** `filter`, `sort`, `limit`, `offset`
@@ -582,23 +617,41 @@ Only run this when a new commit link is created. Don't re-run on every git sync.
 
 ### New Hooks
 
-**`use-branches.ts`** — Fetch branch list for sidebar expansion
+**`use-branches.ts`** — Fetch branch lists (global and project-scoped)
 ```typescript
 import { useQuery } from '@tanstack/react-query'
 import type { BranchesResponse } from '../types/generated'
 
-async function fetchBranches(projectId: string): Promise<BranchesResponse> {
-  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/branches`)
+// Global branches (for FilterPopover - Phase B)
+async function fetchAllBranches(): Promise<string[]> {
+  const res = await fetch('/api/branches')
   if (!res.ok) throw new Error('Failed to fetch branches')
   return res.json()
 }
 
-export function useBranches(projectId: string | undefined) {
+export function useBranches() {
   return useQuery({
-    queryKey: ['branches', projectId],
-    queryFn: () => fetchBranches(projectId!),
+    queryKey: ['branches'],
+    queryFn: fetchAllBranches,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  })
+}
+
+// Project-scoped branches with counts (for Sidebar - Phase E)
+async function fetchProjectBranches(projectId: string): Promise<BranchesResponse> {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/branches`)
+  if (!res.ok) throw new Error('Failed to fetch project branches')
+  return res.json()
+}
+
+export function useProjectBranches(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-branches', projectId],
+    queryFn: () => fetchProjectBranches(projectId!),
     enabled: !!projectId,
-    staleTime: 60_000, // branches don't change often
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   })
 }
 ```
