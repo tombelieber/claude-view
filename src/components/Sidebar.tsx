@@ -337,7 +337,19 @@ export function Sidebar({ projects }: SidebarProps) {
   return (
     <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
       {/* Nav Links */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
+        <Link
+          to="/contributions"
+          className={cn(
+            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/contributions'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+        >
+          <GitBranch className="w-4 h-4" />
+          <span className="font-medium">Contributions</span>
+        </Link>
         <Link
           to="/history"
           className={cn(

@@ -7,6 +7,7 @@ pub mod indexer;
 pub mod indexer_parallel;
 pub mod git_correlation;
 pub mod trends;
+pub mod snapshots;
 
 pub use queries::BranchCount;
 pub use queries::IndexerEntry;
@@ -21,6 +22,23 @@ pub use trends::previous_week_bounds;
 pub use trends::IndexMetadata;
 pub use trends::TrendMetric;
 pub use trends::WeekTrends;
+
+// Re-export snapshots types
+pub use snapshots::AggregatedContributions;
+pub use snapshots::BranchBreakdown;
+pub use snapshots::BranchSession;
+pub use snapshots::ContributionSnapshot;
+pub use snapshots::DailyTrendPoint;
+pub use snapshots::FileImpact;
+pub use snapshots::LearningCurve;
+pub use snapshots::LearningCurvePeriod;
+pub use snapshots::LinkedCommit;
+pub use snapshots::ModelBreakdown;
+pub use snapshots::ModelStats;
+pub use snapshots::SessionContribution;
+pub use snapshots::SkillStats;
+pub use snapshots::TimeRange;
+pub use snapshots::UncommittedWork;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{ConnectOptions, SqlitePool};
