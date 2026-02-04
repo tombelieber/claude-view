@@ -260,7 +260,8 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version
+                s.summary_text, s.parse_version,
+                s.lines_added, s.lines_removed, s.loc_source
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -995,7 +996,8 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version
+                s.summary_text, s.parse_version,
+                s.lines_added, s.lines_removed, s.loc_source
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1294,6 +1296,9 @@ pub async fn update_session_deep_fields_tx(
     parse_version: i32,
     file_size: i64,
     file_mtime: i64,
+    lines_added: i32,
+    lines_removed: i32,
+    loc_source: i32,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1339,7 +1344,10 @@ pub async fn update_session_deep_fields_tx(
             summary_text = ?38,
             parse_version = ?39,
             file_size_at_index = ?40,
-            file_mtime_at_index = ?41
+            file_mtime_at_index = ?41,
+            lines_added = ?42,
+            lines_removed = ?43,
+            loc_source = ?44
         WHERE id = ?1
         "#,
     )
@@ -1384,6 +1392,9 @@ pub async fn update_session_deep_fields_tx(
     .bind(parse_version)
     .bind(file_size)
     .bind(file_mtime)
+    .bind(lines_added)
+    .bind(lines_removed)
+    .bind(loc_source)
     .execute(&mut **tx)
     .await?;
 
@@ -1558,6 +1569,10 @@ struct SessionRow {
     mcp_progress_count: i32,
     summary_text: Option<String>,
     parse_version: i32,
+    // Phase C: LOC estimation
+    lines_added: i32,
+    lines_removed: i32,
+    loc_source: i32,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -1615,6 +1630,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             mcp_progress_count: row.try_get("mcp_progress_count")?,
             summary_text: row.try_get("summary_text")?,
             parse_version: row.try_get("parse_version")?,
+            // Phase C: LOC estimation
+            lines_added: row.try_get("lines_added")?,
+            lines_removed: row.try_get("lines_removed")?,
+            loc_source: row.try_get("loc_source")?,
         })
     }
 }
@@ -1683,6 +1702,10 @@ impl SessionRow {
             mcp_progress_count: self.mcp_progress_count as u32,
             summary_text: self.summary_text,
             parse_version: self.parse_version as u32,
+            // Phase C: LOC estimation
+            lines_added: self.lines_added as u32,
+            lines_removed: self.lines_removed as u32,
+            loc_source: self.loc_source as u8,
         }
     }
 }
@@ -1751,6 +1774,10 @@ mod tests {
             mcp_progress_count: 0,
             summary_text: None,
             parse_version: 0,
+            // Phase C: LOC estimation
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
         }
     }
 
