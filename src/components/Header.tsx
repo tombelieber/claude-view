@@ -59,6 +59,10 @@ export function Header() {
       crumbs.push({ label: 'Settings', path: '/settings' })
     }
 
+    if (location.pathname === '/contributions') {
+      crumbs.push({ label: 'Contributions', path: '/contributions' })
+    }
+
     return crumbs
   }
 
