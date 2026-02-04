@@ -289,6 +289,9 @@ fn a10_3_tier1_match_uses_exact_repo_path() {
         author: None,
         timestamp: 1706400100,
         branch: None,
+        files_changed: None,
+        insertions: None,
+        deletions: None,
     }];
 
     let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -311,6 +314,9 @@ fn a10_3_both_tiers_match_use_tier1() {
         author: None,
         timestamp: 1706400120, // Within Tier 1 window
         branch: None,
+        files_changed: None,
+        insertions: None,
+        deletions: None,
     }];
 
     // Tier 1 match
@@ -342,6 +348,9 @@ fn a10_3_tier1_window_boundaries() {
             author: None,
             timestamp: 1706400100 - 60, // Exactly at lower bound
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         },
         GitCommit {
             hash: "b".repeat(40),
@@ -350,6 +359,9 @@ fn a10_3_tier1_window_boundaries() {
             author: None,
             timestamp: 1706400100 + 300, // Exactly at upper bound
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         },
         GitCommit {
             hash: "c".repeat(40),
@@ -358,6 +370,9 @@ fn a10_3_tier1_window_boundaries() {
             author: None,
             timestamp: 1706400100 - 61, // Just outside
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         },
         GitCommit {
             hash: "d".repeat(40),
@@ -366,6 +381,9 @@ fn a10_3_tier1_window_boundaries() {
             author: None,
             timestamp: 1706400100 + 301, // Just outside
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         },
     ];
 
@@ -468,6 +486,9 @@ async fn a10_5_session_deleted_cascades_session_commits() {
         author: None,
         timestamp: 1706400100,
         branch: None,
+        files_changed: None,
+        insertions: None,
+        deletions: None,
     };
     db.batch_upsert_commits(&[commit]).await.unwrap();
 

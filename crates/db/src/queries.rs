@@ -1294,6 +1294,9 @@ pub async fn update_session_deep_fields_tx(
     parse_version: i32,
     file_size: i64,
     file_mtime: i64,
+    ai_lines_added: i32,
+    ai_lines_removed: i32,
+    work_type: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1339,7 +1342,10 @@ pub async fn update_session_deep_fields_tx(
             summary_text = ?38,
             parse_version = ?39,
             file_size_at_index = ?40,
-            file_mtime_at_index = ?41
+            file_mtime_at_index = ?41,
+            ai_lines_added = ?42,
+            ai_lines_removed = ?43,
+            work_type = ?44
         WHERE id = ?1
         "#,
     )
@@ -1384,6 +1390,9 @@ pub async fn update_session_deep_fields_tx(
     .bind(parse_version)
     .bind(file_size)
     .bind(file_mtime)
+    .bind(ai_lines_added)
+    .bind(ai_lines_removed)
+    .bind(work_type)
     .execute(&mut **tx)
     .await?;
 

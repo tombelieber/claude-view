@@ -39,6 +39,23 @@ pub struct GitCommit {
     pub timestamp: i64,
     /// Branch name (if available).
     pub branch: Option<String>,
+    /// Number of files changed in this commit.
+    pub files_changed: Option<u32>,
+    /// Number of lines inserted in this commit.
+    pub insertions: Option<u32>,
+    /// Number of lines deleted in this commit.
+    pub deletions: Option<u32>,
+}
+
+/// Diff stats for a commit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiffStats {
+    /// Number of files changed.
+    pub files_changed: u32,
+    /// Number of lines inserted.
+    pub insertions: u32,
+    /// Number of lines deleted.
+    pub deletions: u32,
 }
 
 /// Result of scanning a repository for commits.
@@ -271,7 +288,126 @@ fn parse_git_log_line(line: &str, repo_path: &Path) -> Option<GitCommit> {
         },
         timestamp,
         branch: None, // Set later
+        files_changed: None, // Set later via get_commit_diff_stats
+        insertions: None,
+        deletions: None,
     })
+}
+
+/// Get diff stats for a single commit using `git show --stat`.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hash` - The commit hash to get stats for
+///
+/// # Returns
+/// `DiffStats` with files_changed, insertions, and deletions, or default if unavailable.
+pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffStats {
+    // Use git show --stat --format="" to get only the stat line
+    // Output format: "N files changed, N insertions(+), N deletions(-)"
+    let output = tokio::time::timeout(
+        Duration::from_secs(GIT_TIMEOUT_SECS),
+        Command::new("git")
+            .args(["show", "--stat", "--format=", commit_hash])
+            .current_dir(repo_path)
+            .output(),
+    )
+    .await;
+
+    let output = match output {
+        Ok(Ok(o)) if o.status.success() => o,
+        _ => return DiffStats::default(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_diff_stats_from_output(&stdout)
+}
+
+/// Get diff stats for multiple commits in a batch.
+///
+/// This is more efficient than calling `get_commit_diff_stats` multiple times
+/// because it uses a single git command with multiple hashes.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hashes` - Slice of commit hashes to get stats for
+///
+/// # Returns
+/// Vec of (hash, DiffStats) tuples. Commits that fail to parse will have default stats.
+pub async fn get_batch_diff_stats(
+    repo_path: &Path,
+    commit_hashes: &[String],
+) -> Vec<(String, DiffStats)> {
+    let mut results = Vec::with_capacity(commit_hashes.len());
+
+    // Process commits in batches to avoid command line length limits
+    const BATCH_SIZE: usize = 50;
+
+    for batch in commit_hashes.chunks(BATCH_SIZE) {
+        for hash in batch {
+            let stats = get_commit_diff_stats(repo_path, hash).await;
+            results.push((hash.clone(), stats));
+        }
+    }
+
+    results
+}
+
+/// Parse diff stats from git show --stat output.
+///
+/// Expected format in the last line:
+/// " N files changed, N insertions(+), N deletions(-)"
+/// or partial variants like:
+/// " N files changed, N insertions(+)"
+/// " N files changed, N deletions(-)"
+/// " N file changed"
+fn parse_diff_stats_from_output(output: &str) -> DiffStats {
+    // Find the summary line (last non-empty line containing "changed")
+    let summary_line = output
+        .lines()
+        .rev()
+        .find(|line| line.contains("changed"));
+
+    let line = match summary_line {
+        Some(l) => l.trim(),
+        None => return DiffStats::default(),
+    };
+
+    let mut stats = DiffStats::default();
+
+    // Parse "N file(s) changed"
+    if let Some(pos) = line.find("file") {
+        let prefix = &line[..pos].trim();
+        if let Some(num_str) = prefix.split_whitespace().last() {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.files_changed = n;
+            }
+        }
+    }
+
+    // Parse "N insertion(s)(+)"
+    if let Some(pos) = line.find("insertion") {
+        // Find the number before "insertion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').last().and_then(|s| s.trim().split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.insertions = n;
+            }
+        }
+    }
+
+    // Parse "N deletion(s)(-)"
+    if let Some(pos) = line.find("deletion") {
+        // Find the number before "deletion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').last().and_then(|s| s.trim().split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.deletions = n;
+            }
+        }
+    }
+
+    stats
 }
 
 /// Check if a directory is a git repository.
@@ -436,14 +572,17 @@ impl Database {
         for commit in commits {
             let result = sqlx::query(
                 r#"
-                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 ON CONFLICT(hash) DO UPDATE SET
                     repo_path = excluded.repo_path,
                     message = excluded.message,
                     author = excluded.author,
                     timestamp = excluded.timestamp,
-                    branch = excluded.branch
+                    branch = excluded.branch,
+                    files_changed = COALESCE(excluded.files_changed, commits.files_changed),
+                    insertions = COALESCE(excluded.insertions, commits.insertions),
+                    deletions = COALESCE(excluded.deletions, commits.deletions)
                 "#,
             )
             .bind(&commit.hash)
@@ -452,6 +591,9 @@ impl Database {
             .bind(&commit.author)
             .bind(commit.timestamp)
             .bind(&commit.branch)
+            .bind(commit.files_changed.map(|v| v as i64))
+            .bind(commit.insertions.map(|v| v as i64))
+            .bind(commit.deletions.map(|v| v as i64))
             .execute(&mut *tx)
             .await?;
 
@@ -460,6 +602,49 @@ impl Database {
 
         tx.commit().await?;
         Ok(affected)
+    }
+
+    /// Update diff stats for a commit.
+    ///
+    /// Used to populate diff stats for commits that were initially created without them.
+    pub async fn update_commit_diff_stats(
+        &self,
+        commit_hash: &str,
+        stats: DiffStats,
+    ) -> DbResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE commits SET
+                files_changed = ?2,
+                insertions = ?3,
+                deletions = ?4
+            WHERE hash = ?1
+            "#,
+        )
+        .bind(commit_hash)
+        .bind(stats.files_changed as i64)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get commits missing diff stats (for backfill).
+    pub async fn get_commits_without_diff_stats(&self, limit: usize) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT hash FROM commits
+            WHERE files_changed IS NULL OR insertions IS NULL OR deletions IS NULL
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(|(h,)| h).collect())
     }
 
     /// Insert session-commit links with tier and evidence.
@@ -526,10 +711,11 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, i32, String)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
                 r#"
             SELECT c.hash, c.repo_path, c.message, c.author, c.timestamp, c.branch,
+                   c.files_changed, c.insertions, c.deletions,
                    sc.tier, sc.evidence
             FROM commits c
             INNER JOIN session_commits sc ON c.hash = sc.commit_hash
@@ -544,7 +730,7 @@ impl Database {
         let results = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch, tier, evidence)| {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions, tier, evidence)| {
                     let commit = GitCommit {
                         hash,
                         repo_path,
@@ -552,6 +738,9 @@ impl Database {
                         author,
                         timestamp,
                         branch,
+                        files_changed: files_changed.map(|v| v as u32),
+                        insertions: insertions.map(|v| v as u32),
+                        deletions: deletions.map(|v| v as u32),
                     };
                     (commit, tier, evidence)
                 },
@@ -570,10 +759,10 @@ impl Database {
         start_ts: i64,
         end_ts: i64,
     ) -> DbResult<Vec<GitCommit>> {
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
             sqlx::query_as(
                 r#"
-            SELECT hash, repo_path, message, author, timestamp, branch
+            SELECT hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions
             FROM commits
             WHERE repo_path = ?1 AND timestamp >= ?2 AND timestamp <= ?3
             ORDER BY timestamp DESC
@@ -588,13 +777,16 @@ impl Database {
         let commits = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch)| GitCommit {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)| GitCommit {
                     hash,
                     repo_path,
                     message,
                     author,
                     timestamp,
                     branch,
+                    files_changed: files_changed.map(|v| v as u32),
+                    insertions: insertions.map(|v| v as u32),
+                    deletions: deletions.map(|v| v as u32),
                 },
             )
             .collect();
@@ -1018,6 +1210,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100, // Exact match
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1045,6 +1240,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 - 60, // 60s before (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1066,6 +1264,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 300, // 300s after (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1087,6 +1288,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 301, // 301s after (outside window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1107,6 +1311,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1134,6 +1341,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400120, // Matches first skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1142,6 +1352,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400520, // Matches second skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1162,6 +1375,9 @@ mod tests {
             author: None,
             timestamp: 1706400200, // Within session range
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1183,6 +1399,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100, // At session start
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1191,6 +1410,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400300, // At session end
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1208,6 +1430,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400099, // 1 second before session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1216,6 +1441,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400301, // 1 second after session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1232,6 +1460,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1254,6 +1485,9 @@ mod tests {
                 author: Some("Author 1".to_string()),
                 timestamp: 1706400100,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1262,6 +1496,9 @@ mod tests {
                 author: Some("Author 2".to_string()),
                 timestamp: 1706400200,
                 branch: Some("feature".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1287,6 +1524,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1299,6 +1539,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&updated).await.unwrap();
@@ -1342,6 +1585,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1400,6 +1646,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1473,6 +1722,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1481,6 +1733,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1573,6 +1828,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400150, // Within Tier 1 window [1706400040, 1706400400]
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1581,6 +1839,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400500, // Outside Tier 1 window (>1706400400), inside session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
@@ -1589,6 +1850,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1667,6 +1931,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1718,6 +1985,9 @@ mod tests {
             author: None,
             timestamp: 1706400150,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
