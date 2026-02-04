@@ -1,5 +1,6 @@
 //! API route handlers for the vibe-recall server.
 
+pub mod contributions;
 pub mod export;
 pub mod health;
 pub mod indexing;
@@ -36,6 +37,8 @@ use crate::state::AppState;
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
+/// - GET /api/contributions - Contribution metrics and insights
+/// - GET /api/contributions/sessions/:id - Session contribution detail
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -49,6 +52,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", status::router())
         .nest("/api", export::router())
         .nest("/api", sync::router())
+        .nest("/api", contributions::router())
         .with_state(state)
 }
 
