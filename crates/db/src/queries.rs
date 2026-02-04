@@ -1295,6 +1295,59 @@ impl Database {
         tx.commit().await?;
         Ok(result.rows_affected())
     }
+
+    // ========================================================================
+    // Storage statistics queries (for Settings page storage overview)
+    // ========================================================================
+
+    /// Get the total count of sessions (excluding sidechains).
+    pub async fn get_session_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+                .fetch_one(self.pool())
+                .await?;
+        Ok(count)
+    }
+
+    /// Get the total count of projects.
+    pub async fn get_project_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(count)
+    }
+
+    /// Get the total count of linked commits.
+    pub async fn get_commit_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_commits")
+            .fetch_one(self.pool())
+            .await?;
+        Ok(count)
+    }
+
+    /// Get the oldest session date (Unix timestamp).
+    pub async fn get_oldest_session_date(&self) -> DbResult<Option<i64>> {
+        let result: (Option<i64>,) = sqlx::query_as(
+            "SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(result.0)
+    }
+
+    /// Get the SQLite database file size in bytes.
+    /// Uses SQLite pragma to calculate page_count * page_size.
+    pub async fn get_database_size(&self) -> DbResult<i64> {
+        let (page_count,): (i64,) = sqlx::query_as("SELECT page_count FROM pragma_page_count()")
+            .fetch_one(self.pool())
+            .await?;
+        let (page_size,): (i64,) = sqlx::query_as("SELECT page_size FROM pragma_page_size()")
+            .fetch_one(self.pool())
+            .await?;
+        Ok(page_count * page_size)
+    }
 }
 
 // ============================================================================

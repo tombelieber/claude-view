@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Command,
+  HardDrive,
 } from 'lucide-react'
 import { useStatus, formatRelativeTime } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
@@ -16,6 +17,8 @@ import { useExport, type ExportFormat } from '../hooks/use-export'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
+import { StorageOverview } from './StorageOverview'
+import { FEATURES } from '../config/features'
 
 // Hardcoded version - should match package.json
 const APP_VERSION = '0.1.0'
@@ -158,6 +161,13 @@ export function SettingsPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400">No status data available</p>
             )}
           </SettingsSection>
+
+          {/* STORAGE OVERVIEW */}
+          {FEATURES.storageOverview && (
+            <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
+              <StorageOverview />
+            </SettingsSection>
+          )}
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
