@@ -666,6 +666,21 @@ impl Database {
         Ok(rows)
     }
 
+    /// Mark all sessions for re-indexing by clearing their deep_indexed_at timestamps.
+    ///
+    /// This forces the next deep index pass to reprocess all sessions.
+    /// Used by the "Rebuild Index" feature in the Settings UI.
+    ///
+    /// Returns the number of sessions marked for re-indexing.
+    pub async fn mark_all_sessions_for_reindex(&self) -> DbResult<u64> {
+        let result = sqlx::query(
+            "UPDATE sessions SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
+        )
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     // ========================================================================
     // Invocable + Invocation CRUD
     // ========================================================================
