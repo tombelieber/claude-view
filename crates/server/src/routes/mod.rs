@@ -37,6 +37,7 @@ use crate::state::AppState;
 /// - GET /api/status - Index metadata and data freshness
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
+/// - POST /api/sync/deep - Trigger full deep index rebuild
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
 /// - GET /api/contributions - Contribution metrics and insights
 /// - GET /api/contributions/sessions/:id - Session contribution detail
