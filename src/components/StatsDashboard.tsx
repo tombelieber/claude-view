@@ -5,6 +5,7 @@ import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { RecentCommits } from './RecentCommits'
+import { ContributionSummaryCard } from './ContributionSummaryCard'
 
 export function StatsDashboard() {
   const navigate = useNavigate()
@@ -80,6 +81,9 @@ export function StatsDashboard() {
       {stats.trends && (
         <DashboardMetricsGrid trends={stats.trends} />
       )}
+
+      {/* Theme 3: AI Contribution Summary Card */}
+      <ContributionSummaryCard />
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Invocable category cards — self-contained leaderboards, items are clickable */}
