@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-03
+> **Last updated:** 2026-02-04
 
 ---
 
@@ -50,12 +50,15 @@
 | **Deep Index Perf (Tasks 1-3)** | **DONE** | 3/3 tasks — tx batching, SIMD pre-filter, mtime re-index | Personal |
 | **Deep Index Perf Instrumentation** | **DONE** | Timing breakdown (parse/write phase) in debug builds | Personal |
 | **Deep Index Perf: rusqlite write phase** | **DONE** | 4/4 tasks — rusqlite dep, db_path, SQL constants, spawn_blocking write | Personal |
+| **Session Loading Perf** | **DONE** | Paginated messages endpoint, tail-first loading | Personal |
+| **Export Markdown** | **DONE** | Download + clipboard copy for context resumption | Personal |
+| **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 
-**Current focus:** v0.2.4 release — version alignment (Cargo.toml + npm), CI guard, duplicate invocable fix
+**Current focus:** Cold Start UX (pending), UI Testing Strategy (pending), README media (pending)
 
-**Recently completed:** Phase 4 Distribution (3 releases shipped), Thread Visualization & Dark Mode (5/5 tasks)
+**Recently completed:** v0.2.4 shipped, Deep Index Perf (rusqlite write phase), Session Loading Perf, Security Audit (critical/medium/low), Export Markdown
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -155,7 +158,7 @@ Pure facts, no judgment. Collect atomic units, compute derived metrics, let user
 - **Ultra-conservative git** — Only Tier 1-2 (provable evidence), no fuzzy matching
 - **UI/UX Pro Max** — Data-dense dashboard style, Fira fonts, Lucide icons
 
-See `docs/plans/2026-01-28-phase3-metrics-engine.md` for full plan.
+See `docs/plans/archived/2026-01-28-phase3-metrics-engine.md` for full plan.
 
 ---
 
@@ -163,7 +166,7 @@ See `docs/plans/2026-01-28-phase3-metrics-engine.md` for full plan.
 
 Full 7-type extraction (assistant, result, tool_use, tool_result, system, user, summary) with ParseDiagnostics and parse_version-triggered re-indexing. Extended `update_session_deep_fields` from 21 to 39 parameters.
 
-See `docs/plans/2026-01-29-full-jsonl-parser.md` for full plan.
+See `docs/plans/archived/2026-01-29-full-jsonl-parser.md` for full plan.
 
 ---
 
@@ -180,7 +183,7 @@ Upgraded session parser to emit all 7 JSONL line types and wired to frontend con
 | 3 | Regenerate TypeScript types | **DONE** | ts-rs auto-generated Role.ts + Message.ts |
 | 4 | Wire frontend + compact/full toggle | **DONE** | Segmented control, filterMessages, Track 4 cards, dark mode |
 
-See `docs/plans/2026-01-31-session-parser-ui-wiring.md` for full plan.
+See `docs/plans/archived/2026-01-31-session-parser-ui-wiring.md` for full plan.
 
 ---
 
@@ -198,11 +201,11 @@ See `docs/plans/2026-01-31-session-parser-ui-wiring.md` for full plan.
 | 6 | Null/undefined handling (10 components) | **DONE** | All card components handle missing data |
 | 7 | useEffect cleanup | **DONE** | Listener cleanup on unmount verified |
 
-See `docs/plans/2026-02-02-hardening-final.md` for consolidated plan.
+See `docs/plans/archived/2026-02-02-hardening-final.md` for consolidated plan.
 
 ---
 
-## Phase 4: Distribution (npx) — IN PROGRESS
+## Phase 4: Distribution (npx) — DONE
 
 Ship `npx claude-view` with checksum verification, automated npm publish, and provenance attestation.
 
@@ -217,7 +220,7 @@ Ship `npx claude-view` with checksum verification, automated npm publish, and pr
 | 6 | Dry run validation | **DONE** | `npm pack --dry-run` verified |
 | 7 | First release | **DONE** | v0.2.0 → v0.2.3 shipped via OIDC trusted publisher |
 
-See `docs/plans/2026-01-29-phase4-npx-release.md` for full plan.
+See `docs/plans/archived/2026-01-29-phase4-npx-release.md` for full plan.
 
 ---
 
@@ -288,16 +291,12 @@ Clean 3-tier structure: active work only in main folder.
 | File | Status | Role |
 |------|--------|------|
 | `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
-| `2026-01-29-phase4-npx-release.md` | done | **Distribution** — checksum verification, npm publish CI, release pipeline |
-| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | done | **Pre-release security** — 7 TDD-first fixes (DOMPurify, XSS, error boundaries, nesting, null safety) |
-| `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | superseded | **Phase 1 UI rebuild** — substance implemented, gaps covered by thread-visualization-polish |
-| `2026-02-02-thread-visualization-polish.md` | done | **Thread polish** — thread indent wiring, hover highlighting, dark mode for MessageTyped |
-| `2026-01-31-session-parser-ui-wiring.md` | done | **Session parser rewrite** — 7-type parser, compact/full toggle, Track 4 wiring |
+| `2026-01-27-vibe-recall-analytics-design.md` | draft | **Analytics/Insights** — CLI stats, circle-back detection, insights generation (partially shipped via Phase 3, needs consolidation with skills PRD) |
+| `2026-01-27-skills-usage-analytics-prd.md` | draft | **Skills analytics PRD** — to be consolidated into analytics design |
+| `2026-01-27-export-pdf-design.md` | pending | **PDF export** — browser print-to-PDF, zero deps, ~30 lines |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
-| `2026-02-03-session-loading-perf.md` | done | **Session loading perf** — paginated messages endpoint, tail-first loading |
-| `2026-02-03-deep-index-perf.md` | done | **Deep index perf** — tx batching, SIMD pre-filter, mtime re-index (3 tasks) |
-| `2026-02-03-rusqlite-write-phase.md` | done | **Perf: rusqlite write** — replace async sqlx with sync rusqlite for hot write path |
 | `2026-02-03-cold-start-ux.md` | pending | **Cold start UX** — bandwidth progress bar (TUI + frontend SSE overlay), 7 tasks |
+| `2026-02-03-readme-media-guide.md` | pending | **README media** — screenshot + demo GIF preparation guide |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
@@ -320,6 +319,18 @@ All phases completed. Keep for reference only — do not modify.
 | `2026-01-29-pre-release-privacy-scrub.md` | Release Prep |
 | `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | Hardening |
 | `2026-02-02-hardening-final.md` | Hardening (consolidated) |
+| `2026-01-29-phase4-npx-release.md` | Phase 4 Distribution |
+| `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | UI Redesign (superseded) |
+| `2026-02-02-thread-visualization-polish.md` | Thread Visualization |
+| `2026-01-31-session-parser-ui-wiring.md` | Phase 4B Parser |
+| `2026-01-31-export-markdown.md` | Export |
+| `2026-02-02-security-audit-critical.md` | Security Audit |
+| `2026-02-02-security-audit-medium.md` | Security Audit |
+| `2026-02-02-security-audit-low.md` | Security Audit |
+| `2026-02-03-session-loading-perf.md` | Session Loading Perf |
+| `2026-02-03-deep-index-perf.md` | Deep Index Perf |
+| `2026-02-03-rusqlite-write-phase.md` | Perf: rusqlite Write |
+| `2026-01-27-path-resolution-dfs-design.md` | Path Resolution |
 
 ---
 
