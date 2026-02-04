@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { HardDrive, RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   useStorageStats,
   formatBytes,
@@ -50,18 +51,33 @@ export function StorageOverview() {
     setRebuildStatus('idle')
 
     try {
-      // Trigger a git sync which will re-index
-      const response = await fetch('/api/sync/git', { method: 'POST' })
-      if (response.ok || response.status === 409) {
+      // Trigger full Tantivy index rebuild via /api/sync/deep
+      const response = await fetch('/api/sync/deep', { method: 'POST' })
+      if (response.ok || response.status === 202) {
         setRebuildStatus('success')
+        toast.success('Index rebuild started', {
+          description: 'Full Tantivy index rebuild initiated. This may take a moment.',
+        })
         // Invalidate queries to refresh data
         queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
         queryClient.invalidateQueries({ queryKey: ['status'] })
+      } else if (response.status === 409) {
+        // Sync already in progress
+        setRebuildStatus('idle')
+        toast.info('Rebuild in progress', {
+          description: 'An index rebuild is already running. Please wait for it to complete.',
+        })
       } else {
         setRebuildStatus('error')
+        toast.error('Failed to rebuild index', {
+          description: 'An unexpected error occurred. Please try again.',
+        })
       }
     } catch {
       setRebuildStatus('error')
+      toast.error('Failed to rebuild index', {
+        description: 'Network error. Please check your connection and try again.',
+      })
     } finally {
       setIsRebuilding(false)
       setTimeout(() => setRebuildStatus('idle'), 3000)
@@ -162,6 +178,9 @@ export function StorageOverview() {
             Rebuild Index
           </button>
 
+          {/* TODO: Wire up to DELETE /api/cache endpoint when backend implements it.
+              The endpoint should clear the Tantivy index only (SQLite stays).
+              See design doc: docs/plans/2026-02-05-dashboard-analytics-design.md */}
           <button
             type="button"
             disabled
@@ -170,7 +189,7 @@ export function StorageOverview() {
               'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500',
               'opacity-50'
             )}
-            title="Coming soon"
+            title="Clear Cache (endpoint not yet implemented)"
           >
             <Trash2 className="w-4 h-4" />
             Clear Cache
