@@ -3,12 +3,22 @@
 
 use crate::{Database, DbResult};
 use chrono::Utc;
+use serde::Serialize;
 use std::collections::HashMap;
 use ts_rs::TS;
 use vibe_recall_core::{
     parse_model_id, DashboardStats, DayActivity, ProjectInfo, ProjectStat, ProjectSummary,
     RawTurn, SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
+
+/// Branch count for a project.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct BranchCount {
+    pub branch: Option<String>,
+    pub count: i64,
+}
 
 /// Indexer state entry returned from the database.
 #[derive(Debug, Clone)]
@@ -1042,6 +1052,33 @@ impl Database {
             sessions,
             total: total as usize,
         })
+    }
+
+    /// List distinct branches with session counts for a project.
+    ///
+    /// Returns branches sorted by session count DESC.
+    /// Includes sessions with `git_branch = NULL` as a separate entry.
+    pub async fn list_branches_for_project(
+        &self,
+        project_id: &str,
+    ) -> DbResult<Vec<crate::BranchCount>> {
+        let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+            r#"
+            SELECT git_branch as branch, COUNT(*) as count
+            FROM sessions
+            WHERE project_id = ?1 AND is_sidechain = 0
+            GROUP BY git_branch
+            ORDER BY count DESC
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(branch, count)| crate::BranchCount { branch, count })
+            .collect())
     }
 
     /// Fetch top 10 invocables by kind from the invocations table.
