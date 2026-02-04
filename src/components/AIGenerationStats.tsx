@@ -1,7 +1,8 @@
-import { Sparkles, FileCode2, Coins } from 'lucide-react'
+import { Sparkles, FileCode2 } from 'lucide-react'
 import { useAIGenerationStats, formatTokens, formatLineCount, type TimeRangeParams } from '../hooks/use-ai-generation'
 import { MetricCard } from './ui/MetricCard'
 import { ProgressBar } from './ui/ProgressBar'
+import { useIsMobile } from '../hooks/use-media-query'
 
 interface AIGenerationStatsProps {
   /** Optional time range filter */
@@ -18,6 +19,7 @@ interface AIGenerationStatsProps {
  */
 export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
   const { data: stats, isLoading, error } = useAIGenerationStats(timeRange)
+  const isMobile = useIsMobile()
 
   if (isLoading) {
     return <AIGenerationStatsSkeleton />
@@ -50,9 +52,9 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Metric Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Lines Generated Card */}
         <MetricCard
           label="Lines Generated"
@@ -78,15 +80,15 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
       </div>
 
       {/* Token Usage Breakdowns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         {/* Token Usage by Model */}
         {stats.tokensByModel.length > 0 && (
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+            <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4" />
               Token Usage by Model
             </h2>
-            <div className="space-y-1">
+            <div className={isMobile ? 'space-y-2' : 'space-y-1'}>
               {stats.tokensByModel.map((model) => {
                 const modelTotal = model.inputTokens + model.outputTokens
                 return (
@@ -96,6 +98,7 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
                     value={modelTotal}
                     max={totalModelTokens}
                     suffix={formatTokens(modelTotal)}
+                    stacked={isMobile}
                   />
                 )
               })}
@@ -105,12 +108,12 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
 
         {/* Top Projects by Token Usage */}
         {stats.tokensByProject.length > 0 && (
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+            <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 sm:mb-4 flex items-center gap-1.5">
               <FileCode2 className="w-4 h-4" />
               Top Projects by Token Usage
             </h2>
-            <div className="space-y-1">
+            <div className={isMobile ? 'space-y-2' : 'space-y-1'}>
               {stats.tokensByProject.map((project) => {
                 const projectTotal = project.inputTokens + project.outputTokens
                 return (
@@ -120,6 +123,7 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
                     value={projectTotal}
                     max={totalProjectTokens}
                     suffix={formatTokens(projectTotal)}
+                    stacked={isMobile}
                   />
                 )
               })}
