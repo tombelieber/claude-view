@@ -1,6 +1,7 @@
 //! Dashboard statistics endpoint.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
@@ -9,6 +10,7 @@ use vibe_recall_core::DashboardStats;
 use vibe_recall_db::trends::{TrendMetric, WeekTrends};
 
 use crate::error::ApiResult;
+use crate::metrics::record_request;
 use crate::state::AppState;
 
 /// Current week metrics for dashboard (Step 22).
@@ -81,11 +83,35 @@ impl From<WeekTrends> for DashboardTrends {
 pub async fn dashboard_stats(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ExtendedDashboardStats>> {
+    let start = Instant::now();
+
     // Get base dashboard stats
-    let base = state.db.get_dashboard_stats().await?;
+    let base = match state.db.get_dashboard_stats().await {
+        Ok(stats) => stats,
+        Err(e) => {
+            tracing::error!(
+                endpoint = "dashboard_stats",
+                error = %e,
+                "Failed to fetch dashboard stats"
+            );
+            record_request("dashboard_stats", "500", start.elapsed());
+            return Err(e.into());
+        }
+    };
 
     // Get week trends
-    let week_trends = state.db.get_week_trends().await?;
+    let week_trends = match state.db.get_week_trends().await {
+        Ok(trends) => trends,
+        Err(e) => {
+            tracing::error!(
+                endpoint = "dashboard_stats",
+                error = %e,
+                "Failed to fetch week trends"
+            );
+            record_request("dashboard_stats", "500", start.elapsed());
+            return Err(e.into());
+        }
+    };
 
     // Build current week metrics from trends
     let current_week = CurrentWeekMetrics {
@@ -96,6 +122,9 @@ pub async fn dashboard_stats(
     };
 
     let trends = DashboardTrends::from(week_trends);
+
+    // Record successful request metrics
+    record_request("dashboard_stats", "200", start.elapsed());
 
     Ok(Json(ExtendedDashboardStats {
         base,
