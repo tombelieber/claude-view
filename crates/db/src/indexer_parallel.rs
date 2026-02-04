@@ -368,6 +368,8 @@ pub struct ParseResult {
     pub turns: Vec<vibe_recall_core::RawTurn>,
     pub models_seen: Vec<String>,
     pub diagnostics: ParseDiagnostics,
+    pub lines_added: u32,
+    pub lines_removed: u32,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -468,6 +470,39 @@ pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
     }
 }
 
+/// Extract lines added/removed from Edit or Write tool_use blocks.
+///
+/// For Edit: counts lines in old_string (removed) and new_string (added).
+/// For Write: counts lines in content (all added, none removed).
+///
+/// Returns (lines_added, lines_removed).
+fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
+    // Parse as JSON Value to access input fields
+    let value: serde_json::Value = match serde_json::from_slice(line) {
+        Ok(v) => v,
+        Err(_) => return (0, 0),
+    };
+
+    let input = match value.get("input") {
+        Some(inp) => inp,
+        None => return (0, 0),
+    };
+
+    if is_edit {
+        // Edit tool: old_string → removed, new_string → added
+        let old = input.get("old_string").and_then(|s| s.as_str()).unwrap_or("");
+        let new = input.get("new_string").and_then(|s| s.as_str()).unwrap_or("");
+        let old_lines = old.lines().count() as u32;
+        let new_lines = new.lines().count() as u32;
+        (new_lines, old_lines)
+    } else {
+        // Write tool: all lines are added
+        let content = input.get("content").and_then(|c| c.as_str()).unwrap_or("");
+        let lines = content.lines().count() as u32;
+        (lines, 0)
+    }
+}
+
 /// Full JSON parser that extracts all 7 JSONL line types.
 ///
 /// Returns a `ParseResult` containing deep metadata (tool counts, skills, token usage,
@@ -519,6 +554,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let type_system = memmem::Finder::new(b"\"type\":\"system\"");
     let type_summary = memmem::Finder::new(b"\"type\":\"summary\"");
     let timestamp_finder = memmem::Finder::new(b"\"timestamp\":");
+
+    // Phase C: LOC estimation - SIMD finders for Edit/Write tool_use blocks
+    let tool_use_finder = memmem::Finder::new(b"\"type\":\"tool_use\"");
+    let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
+    let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
@@ -607,6 +647,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         &mut first_timestamp,
                         &mut last_timestamp,
                     );
+
+                    // Phase C: LOC estimation from Edit/Write tool_use blocks
+                    // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                    if tool_use_finder.find(line).is_some() {
+                        let is_edit = edit_finder.find(line).is_some();
+                        let is_write = write_finder.find(line).is_some();
+                        if is_edit || is_write {
+                            let (added, removed) = extract_loc_from_tool_use(line, is_edit);
+                            result.lines_added = result.lines_added.saturating_add(added);
+                            result.lines_removed = result.lines_removed.saturating_add(removed);
+                        }
+                    }
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
@@ -691,6 +743,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     &mut files_read_all,
                     &mut files_edited_all,
                 );
+
+                // Phase C: LOC estimation from Edit/Write tool_use blocks
+                // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                if tool_use_finder.find(line).is_some() {
+                    let is_edit = edit_finder.find(line).is_some();
+                    let is_write = write_finder.find(line).is_some();
+                    if is_edit || is_write {
+                        let (added, removed) = extract_loc_from_tool_use(line, is_edit);
+                        result.lines_added = result.lines_added.saturating_add(added);
+                        result.lines_removed = result.lines_removed.saturating_add(removed);
+                    }
+                }
             }
             "system" => {
                 diag.lines_system += 1;
@@ -1920,6 +1984,9 @@ async fn write_results_sqlx(
             CURRENT_PARSE_VERSION,
             result.file_size,
             result.file_mtime,
+            result.parse_result.lines_added as i32,
+            result.parse_result.lines_removed as i32,
+            1, // loc_source = 1 (tool-call estimate)
         )
         .await
         .map_err(|e| {
