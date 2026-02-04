@@ -16,7 +16,7 @@ use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 use vibe_recall_db::indexer_parallel::run_background_index;
 use vibe_recall_db::Database;
-use vibe_recall_server::{create_app_full, IndexingState, IndexingStatus};
+use vibe_recall_server::{create_app_full, init_metrics, record_sync, IndexingState, IndexingStatus};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -48,26 +48,49 @@ fn get_static_dir() -> Option<PathBuf> {
 
 /// Run git sync with structured logging. Used by both initial and periodic sync.
 async fn run_git_sync_logged(db: &Database, label: &str) {
-    tracing::info!("Starting {} git sync...", label);
+    let start = Instant::now();
+    tracing::info!(sync_type = label, "Starting git sync");
+
     match vibe_recall_db::git_correlation::run_git_sync(db).await {
         Ok(r) => {
+            let duration = start.elapsed();
             if r.repos_scanned > 0 || r.links_created > 0 {
                 tracing::info!(
-                    "{} git sync: {} repos, {} commits, {} links",
-                    label, r.repos_scanned, r.commits_found, r.links_created,
+                    sync_type = label,
+                    repos_scanned = r.repos_scanned,
+                    commits_found = r.commits_found,
+                    links_created = r.links_created,
+                    duration_secs = duration.as_secs_f64(),
+                    "Git sync complete"
                 );
             } else {
-                tracing::debug!("{} git sync: no changes", label);
+                tracing::debug!(
+                    sync_type = label,
+                    duration_secs = duration.as_secs_f64(),
+                    "Git sync: no changes"
+                );
             }
             if !r.errors.is_empty() {
                 tracing::warn!(
-                    "{} git sync had {} errors: {:?}",
-                    label, r.errors.len(), r.errors,
+                    sync_type = label,
+                    error_count = r.errors.len(),
+                    errors = ?r.errors,
+                    "Git sync had errors"
                 );
             }
+            // Record sync metrics
+            record_sync("git", duration, Some(r.commits_found as u64));
         }
         Err(e) => {
-            tracing::warn!("{} git sync failed (non-fatal): {}", label, e);
+            let duration = start.elapsed();
+            tracing::warn!(
+                sync_type = label,
+                error = %e,
+                duration_secs = duration.as_secs_f64(),
+                "Git sync failed (non-fatal)"
+            );
+            // Still record metrics for failed syncs
+            record_sync("git", duration, None);
         }
     }
 }
@@ -100,6 +123,9 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let startup_start = Instant::now();
+
+    // Initialize Prometheus metrics
+    init_metrics();
 
     // Print banner
     eprintln!("\n\u{1f50d} vibe-recall v{}\n", env!("CARGO_PKG_VERSION"));
