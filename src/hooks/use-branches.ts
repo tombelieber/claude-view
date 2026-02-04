@@ -15,6 +15,40 @@ async function fetchProjectBranches(projectId: string): Promise<BranchesResponse
 }
 
 /**
+ * Fetch all distinct branches across all projects.
+ *
+ * @returns Promise resolving to array of branch name strings
+ */
+async function fetchAllBranches(): Promise<string[]> {
+  const response = await fetch('/api/branches');
+  if (!response.ok) throw new Error('Failed to fetch branches');
+  return response.json();
+}
+
+/**
+ * Hook to fetch and cache the list of all branches across all projects.
+ *
+ * Returns:
+ * - data: Array of branch name strings
+ * - isLoading: Boolean indicating if the query is in progress
+ * - error: Error object if the query failed
+ * - refetch: Function to manually refetch the data
+ *
+ * @example
+ * ```tsx
+ * const { data: branches = [], isLoading } = useBranches();
+ * ```
+ */
+export function useBranches() {
+  return useQuery({
+    queryKey: ['branches'],
+    queryFn: fetchAllBranches,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+/**
  * Hook to fetch and cache the list of branches with session counts for a project.
  *
  * Returns:
