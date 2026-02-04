@@ -1,12 +1,16 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
+import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
+import { buildFlatList, buildProjectTree, type ProjectTreeNode } from '../utils/build-project-tree'
 
 interface SidebarProps {
   projects: ProjectSummary[]
 }
+
+type ProjectViewMode = 'list' | 'tree'
 
 export function Sidebar({ projects }: SidebarProps) {
   const params = useParams()
@@ -15,16 +19,38 @@ export function Sidebar({ projects }: SidebarProps) {
 
   const selectedProjectId = params.projectId ? decodeURIComponent(params.projectId) : null
 
+  const [viewMode, setViewMode] = useState<ProjectViewMode>('list')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [focusedIndex, setFocusedIndex] = useState<number>(-1)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  // Sync refs array length with projects
-  useEffect(() => {
-    itemRefs.current = itemRefs.current.slice(0, projects.length)
-  }, [projects.length])
+  // Build tree structure based on view mode
+  const treeNodes = useMemo(() => {
+    return viewMode === 'tree' ? buildProjectTree(projects) : buildFlatList(projects)
+  }, [projects, viewMode])
 
-  const toggleExpand = useCallback((projectName: string, e?: React.MouseEvent) => {
+  // Flatten tree nodes for keyboard navigation
+  const flattenedNodes = useMemo(() => {
+    const result: ProjectTreeNode[] = []
+    function traverse(nodes: ProjectTreeNode[]) {
+      for (const node of nodes) {
+        result.push(node)
+        if (node.type === 'group' && node.children && expandedGroups.has(node.name)) {
+          traverse(node.children)
+        }
+      }
+    }
+    traverse(treeNodes)
+    return result
+  }, [treeNodes, expandedGroups])
+
+  // Sync refs array length with flattened nodes
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, flattenedNodes.length)
+  }, [flattenedNodes.length])
+
+  const toggleExpandProject = useCallback((projectName: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -37,65 +63,251 @@ export function Sidebar({ projects }: SidebarProps) {
     })
   }, [])
 
-  const handleRowClick = useCallback((project: ProjectSummary) => {
+  const toggleExpandGroup = useCallback((groupName: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupName)) {
+        next.delete(groupName)
+      } else {
+        next.add(groupName)
+      }
+      return next
+    })
+  }, [])
+
+  const handleProjectClick = useCallback((node: ProjectTreeNode) => {
+    if (node.type !== 'project') return
+
     // Navigate and expand
-    if (!expandedProjects.has(project.name)) {
-      setExpandedProjects((prev) => new Set(prev).add(project.name))
+    if (!expandedProjects.has(node.name)) {
+      setExpandedProjects((prev) => new Set(prev).add(node.name))
     }
-    navigate(`/project/${encodeURIComponent(project.name)}`)
+    navigate(`/project/${encodeURIComponent(node.name)}`)
   }, [expandedProjects, navigate])
 
+  const handleGroupClick = useCallback((node: ProjectTreeNode) => {
+    if (node.type !== 'group') return
+    toggleExpandGroup(node.name)
+  }, [toggleExpandGroup])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (projects.length === 0) return
+    if (flattenedNodes.length === 0) return
+
+    const currentNode = flattenedNodes[focusedIndex]
 
     switch (e.key) {
       case 'ArrowDown': {
         e.preventDefault()
-        const next = focusedIndex < projects.length - 1 ? focusedIndex + 1 : 0
+        const next = focusedIndex < flattenedNodes.length - 1 ? focusedIndex + 1 : 0
         setFocusedIndex(next)
         itemRefs.current[next]?.focus()
         break
       }
       case 'ArrowUp': {
         e.preventDefault()
-        const prev = focusedIndex > 0 ? focusedIndex - 1 : projects.length - 1
+        const prev = focusedIndex > 0 ? focusedIndex - 1 : flattenedNodes.length - 1
         setFocusedIndex(prev)
         itemRefs.current[prev]?.focus()
         break
       }
       case 'Enter': {
         e.preventDefault()
-        if (focusedIndex >= 0 && focusedIndex < projects.length) {
-          handleRowClick(projects[focusedIndex])
+        if (focusedIndex >= 0 && focusedIndex < flattenedNodes.length) {
+          const node = flattenedNodes[focusedIndex]
+          if (node.type === 'project') {
+            handleProjectClick(node)
+          } else {
+            handleGroupClick(node)
+          }
         }
         break
       }
       case 'ArrowRight': {
         e.preventDefault()
-        if (focusedIndex >= 0 && focusedIndex < projects.length) {
-          const name = projects[focusedIndex].name
-          if (!expandedProjects.has(name)) {
-            setExpandedProjects((prev) => new Set(prev).add(name))
+        if (currentNode) {
+          if (currentNode.type === 'project') {
+            if (!expandedProjects.has(currentNode.name)) {
+              setExpandedProjects((prev) => new Set(prev).add(currentNode.name))
+            }
+          } else if (currentNode.type === 'group') {
+            if (!expandedGroups.has(currentNode.name)) {
+              setExpandedGroups((prev) => new Set(prev).add(currentNode.name))
+            }
           }
         }
         break
       }
       case 'ArrowLeft': {
         e.preventDefault()
-        if (focusedIndex >= 0 && focusedIndex < projects.length) {
-          const name = projects[focusedIndex].name
-          if (expandedProjects.has(name)) {
-            setExpandedProjects((prev) => {
-              const next = new Set(prev)
-              next.delete(name)
-              return next
-            })
+        if (currentNode) {
+          if (currentNode.type === 'project') {
+            if (expandedProjects.has(currentNode.name)) {
+              setExpandedProjects((prev) => {
+                const next = new Set(prev)
+                next.delete(currentNode.name)
+                return next
+              })
+            }
+          } else if (currentNode.type === 'group') {
+            if (expandedGroups.has(currentNode.name)) {
+              setExpandedGroups((prev) => {
+                const next = new Set(prev)
+                next.delete(currentNode.name)
+                return next
+              })
+            }
           }
         }
         break
       }
     }
-  }, [focusedIndex, projects, expandedProjects, handleRowClick])
+  }, [focusedIndex, flattenedNodes, expandedProjects, expandedGroups, handleProjectClick, handleGroupClick])
+
+  // Render tree node recursively
+  const renderTreeNode = useCallback((node: ProjectTreeNode, index: number) => {
+    if (node.type === 'group') {
+      const isExpanded = expandedGroups.has(node.name)
+      const paddingLeft = node.depth * 12 + 8
+
+      return (
+        <div key={`group-${node.name}`}>
+          <div
+            ref={(el) => { itemRefs.current[index] = el }}
+            role="treeitem"
+            aria-expanded={isExpanded}
+            tabIndex={focusedIndex === index ? 0 : -1}
+            onClick={() => handleGroupClick(node)}
+            onFocus={() => setFocusedIndex(index)}
+            style={{ paddingLeft: `${paddingLeft}px` }}
+            className={cn(
+              'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
+              'transition-colors duration-150',
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
+              'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+            )}
+          >
+            {/* Chevron toggle */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              onClick={(e) => toggleExpandGroup(node.name, e)}
+              className={cn(
+                'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
+                isExpanded && 'rotate-90'
+              )}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Folder icon */}
+            {isExpanded ? (
+              <FolderOpen className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+            ) : (
+              <Folder className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+            )}
+
+            {/* Group name */}
+            <span className="flex-1 truncate font-medium text-[13px] ml-1 text-gray-600 dark:text-gray-400">
+              {node.displayName}
+            </span>
+
+            {/* Session count */}
+            <span className="text-[11px] tabular-nums flex-shrink-0 text-gray-400 dark:text-gray-500">
+              {node.sessionCount}
+            </span>
+          </div>
+        </div>
+      )
+    } else {
+      // Project node
+      const isSelected = selectedProjectId === node.name
+      const isExpanded = expandedProjects.has(node.name)
+      const paddingLeft = node.depth * 12 + 8
+
+      return (
+        <div key={`project-${node.name}`}>
+          <div
+            ref={(el) => { itemRefs.current[index] = el }}
+            role="treeitem"
+            aria-selected={isSelected}
+            aria-expanded={isExpanded}
+            aria-current={isSelected ? 'page' : undefined}
+            tabIndex={focusedIndex === index ? 0 : -1}
+            onClick={() => handleProjectClick(node)}
+            onFocus={() => setFocusedIndex(index)}
+            style={{ paddingLeft: `${paddingLeft}px` }}
+            className={cn(
+              'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
+              'transition-colors duration-150',
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
+              isSelected
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+            )}
+          >
+            {/* Chevron toggle */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              onClick={(e) => toggleExpandProject(node.name, e)}
+              className={cn(
+                'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
+                isExpanded && 'rotate-90'
+              )}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Folder icon */}
+            {isExpanded ? (
+              <FolderOpen className={cn(
+                'w-4 h-4 flex-shrink-0',
+                isSelected ? 'text-white' : 'text-blue-400'
+              )} />
+            ) : (
+              <Folder className={cn(
+                'w-4 h-4 flex-shrink-0',
+                isSelected ? 'text-white' : 'text-blue-400'
+              )} />
+            )}
+
+            {/* Project name */}
+            <span className="flex-1 truncate font-medium text-[13px] ml-1">
+              {node.displayName}
+            </span>
+
+            {/* Session count */}
+            <span className={cn(
+              'text-[11px] tabular-nums flex-shrink-0',
+              isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'
+            )}>
+              {node.sessionCount}
+            </span>
+          </div>
+
+          {/* Expanded content - Branch list */}
+          {isExpanded && (
+            <BranchList
+              projectName={node.name}
+              isSelected={isSelected}
+            />
+          )}
+        </div>
+      )
+    }
+  }, [
+    selectedProjectId,
+    expandedProjects,
+    expandedGroups,
+    focusedIndex,
+    toggleExpandProject,
+    toggleExpandGroup,
+    handleProjectClick,
+    handleGroupClick,
+  ])
 
   return (
     <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
@@ -115,6 +327,42 @@ export function Sidebar({ projects }: SidebarProps) {
         </Link>
       </div>
 
+      {/* View Mode Toggle */}
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={cn(
+              'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+              viewMode === 'list'
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            )}
+            aria-label="List view"
+            aria-pressed={viewMode === 'list'}
+          >
+            <List className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('tree')}
+            className={cn(
+              'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+              viewMode === 'tree'
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            )}
+            aria-label="Tree view"
+            aria-pressed={viewMode === 'tree'}
+          >
+            <FolderTree className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
       {/* Project Tree */}
       <div
         className="flex-1 overflow-y-auto py-1"
@@ -122,86 +370,112 @@ export function Sidebar({ projects }: SidebarProps) {
         aria-label="Projects"
         onKeyDown={handleKeyDown}
       >
-        {projects.map((project, i) => {
-          const isSelected = selectedProjectId === project.name
-          const isExpanded = expandedProjects.has(project.name)
-
-          return (
-            <div key={project.name}>
-              <div
-                ref={(el) => { itemRefs.current[i] = el }}
-                role="treeitem"
-                aria-selected={isSelected}
-                aria-expanded={isExpanded}
-                aria-current={isSelected ? 'page' : undefined}
-                tabIndex={focusedIndex === i ? 0 : -1}
-                onClick={() => handleRowClick(project)}
-                onFocus={() => setFocusedIndex(i)}
-                className={cn(
-                  'w-full flex items-center gap-1 px-2 py-1 h-7 cursor-pointer select-none',
-                  'transition-colors duration-150',
-                  'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
-                  isSelected
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-                )}
-              >
-                {/* Chevron toggle */}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                  onClick={(e) => toggleExpand(project.name, e)}
-                  className={cn(
-                    'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
-                    isExpanded && 'rotate-90'
-                  )}
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Folder icon */}
-                {isExpanded ? (
-                  <FolderOpen className={cn(
-                    'w-4 h-4 flex-shrink-0',
-                    isSelected ? 'text-white' : 'text-blue-400'
-                  )} />
-                ) : (
-                  <Folder className={cn(
-                    'w-4 h-4 flex-shrink-0',
-                    isSelected ? 'text-white' : 'text-blue-400'
-                  )} />
-                )}
-
-                {/* Project name */}
-                <span className="flex-1 truncate font-medium text-[13px] ml-1">
-                  {project.displayName}
-                </span>
-
-                {/* Session count */}
-                <span className={cn(
-                  'text-[11px] tabular-nums flex-shrink-0',
-                  isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'
-                )}>
-                  {project.sessionCount}
-                </span>
-              </div>
-
-              {/* Expanded content */}
-              {isExpanded && (
-                <div className="pl-10 pr-3 py-1">
-                  <span className={cn(
-                    'text-[11px]',
-                    isSelected ? 'text-gray-500' : 'text-gray-400 dark:text-gray-500'
-                  )}>
-                    {project.sessionCount} session{project.sessionCount !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
       </div>
     </aside>
+  )
+}
+
+interface BranchListProps {
+  projectName: string
+  isSelected: boolean
+}
+
+function BranchList({ projectName, isSelected }: BranchListProps) {
+  const navigate = useNavigate()
+  const { data, isLoading, error, refetch } = useProjectBranches(projectName)
+
+  const handleBranchClick = useCallback((branch: string | null) => {
+    const params = new URLSearchParams()
+    if (branch) params.set('branches', branch)
+    navigate(`/project/${encodeURIComponent(projectName)}?${params}`)
+  }, [projectName, navigate])
+
+  if (isLoading) {
+    return (
+      <div className="pl-10 pr-3 py-2 space-y-1">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-5 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"
+            style={{ width: `${60 + i * 10}%` }}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="pl-10 pr-3 py-2">
+        <div className="flex items-center gap-2 text-[11px] text-red-600 dark:text-red-400">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Failed to load branches</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (!data || data.branches.length === 0) {
+    return (
+      <div className="pl-10 pr-3 py-1">
+        <span className={cn(
+          'text-[11px]',
+          isSelected ? 'text-gray-500' : 'text-gray-400 dark:text-gray-500'
+        )}>
+          No branches
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="pl-8 pr-2 py-1">
+      {data.branches.map((branchItem) => {
+        const displayName = branchItem.branch || '(no branch)'
+        const isNoBranch = !branchItem.branch
+
+        return (
+          <button
+            key={branchItem.branch || '__no_branch__'}
+            type="button"
+            onClick={() => handleBranchClick(branchItem.branch)}
+            title={branchItem.branch || 'Sessions without a git branch'}
+            className={cn(
+              'w-full flex items-center gap-1.5 px-2 py-1 h-6 rounded',
+              'transition-colors duration-150 cursor-pointer',
+              'hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none'
+            )}
+          >
+            <GitBranch className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+            <span
+              className={cn(
+                'flex-1 truncate text-[11px] text-left',
+                isNoBranch && 'italic',
+                isSelected
+                  ? 'text-gray-600 dark:text-gray-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              )}
+            >
+              {displayName}
+            </span>
+            <span className={cn(
+              'text-[10px] tabular-nums flex-shrink-0',
+              isSelected ? 'text-gray-400 dark:text-gray-500' : 'text-gray-400 dark:text-gray-500'
+            )}>
+              {branchItem.count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
