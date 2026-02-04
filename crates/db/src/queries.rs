@@ -113,6 +113,50 @@ pub struct TokenStats {
     pub sessions_count: u64,
 }
 
+/// Token usage breakdown by model.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct TokensByModel {
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+/// Token usage breakdown by project.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct TokensByProject {
+    pub project: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+/// AI Generation statistics (for GET /api/stats/ai-generation).
+///
+/// Note: lines_added and lines_removed are currently not tracked in the database.
+/// They will return 0 until a future migration adds these columns to the sessions table.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct AIGenerationStats {
+    /// Total lines of code added (currently not tracked, returns 0)
+    pub lines_added: i64,
+    /// Total lines of code removed (currently not tracked, returns 0)
+    pub lines_removed: i64,
+    /// Total files created/edited by AI (based on files_edited_count)
+    pub files_created: i64,
+    /// Total input tokens consumed
+    pub total_input_tokens: i64,
+    /// Total output tokens generated
+    pub total_output_tokens: i64,
+    /// Token usage breakdown by model
+    pub tokens_by_model: Vec<TokensByModel>,
+    /// Token usage breakdown by project (top 5, rest aggregated as "Others")
+    pub tokens_by_project: Vec<TokensByProject>,
+}
+
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -1593,6 +1637,162 @@ impl Database {
             .fetch_one(self.pool())
             .await?;
         Ok(page_count * page_size)
+    }
+
+    /// Set the primary model for a session (used for testing and indexing).
+    pub async fn set_session_primary_model(&self, session_id: &str, model: &str) -> DbResult<()> {
+        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
+            .bind(model)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    // ========================================================================
+    // AI Generation Statistics (for dashboard AI generation breakdown)
+    // ========================================================================
+
+    /// Get AI generation statistics with optional time range filter.
+    ///
+    /// Returns:
+    /// - lines_added/lines_removed: Currently not tracked, returns 0
+    /// - files_created: Sum of files_edited_count
+    /// - total_input_tokens/total_output_tokens: Aggregate token usage
+    /// - tokens_by_model: Breakdown by model (from sessions.primary_model)
+    /// - tokens_by_project: Top 5 projects by token usage + "Others"
+    pub async fn get_ai_generation_stats(
+        &self,
+        from: Option<i64>,
+        to: Option<i64>,
+    ) -> DbResult<AIGenerationStats> {
+        let from = from.unwrap_or(0);
+        let to = to.unwrap_or(i64::MAX);
+
+        // Note: lines_added and lines_removed columns don't exist in the schema yet.
+        // This is intentional - they will be added in a future migration when we have
+        // proper line counting from git diffs or tool call analysis.
+        // For now, we return 0 for both fields.
+
+        // Get aggregate file stats and tokens from sessions table
+        // Using sessions.total_input_tokens/total_output_tokens which are denormalized from turns
+        let (files_created, total_input_tokens, total_output_tokens): (i64, i64, i64) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COALESCE(SUM(files_edited_count), 0),
+                    COALESCE(SUM(total_input_tokens), 0),
+                    COALESCE(SUM(total_output_tokens), 0)
+                FROM sessions
+                WHERE is_sidechain = 0
+                  AND first_message_at >= ?1
+                  AND first_message_at <= ?2
+                "#,
+            )
+            .bind(from)
+            .bind(to)
+            .fetch_one(self.pool())
+            .await?;
+
+        // Token usage by model (from sessions.primary_model)
+        let model_rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                primary_model,
+                COALESCE(SUM(total_input_tokens), 0) as input_tokens,
+                COALESCE(SUM(total_output_tokens), 0) as output_tokens
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND first_message_at >= ?1
+              AND first_message_at <= ?2
+              AND primary_model IS NOT NULL
+            GROUP BY primary_model
+            ORDER BY (input_tokens + output_tokens) DESC
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.pool())
+        .await?;
+
+        let tokens_by_model: Vec<TokensByModel> = model_rows
+            .into_iter()
+            .filter_map(|(model, input_tokens, output_tokens)| {
+                model.map(|m| TokensByModel {
+                    model: m,
+                    input_tokens,
+                    output_tokens,
+                })
+            })
+            .collect();
+
+        // Token usage by project (top 5 + "Others")
+        let project_rows: Vec<(String, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(project_display_name, project_id) as project,
+                COALESCE(SUM(total_input_tokens), 0) as input_tokens,
+                COALESCE(SUM(total_output_tokens), 0) as output_tokens
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND first_message_at >= ?1
+              AND first_message_at <= ?2
+            GROUP BY project_id
+            ORDER BY (input_tokens + output_tokens) DESC
+            LIMIT 6
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.pool())
+        .await?;
+
+        // If we have more than 5 projects, aggregate the 6th+ as "Others"
+        let tokens_by_project: Vec<TokensByProject> = if project_rows.len() > 5 {
+            let mut result: Vec<TokensByProject> = project_rows
+                .iter()
+                .take(5)
+                .map(|(project, input_tokens, output_tokens)| TokensByProject {
+                    project: project.clone(),
+                    input_tokens: *input_tokens,
+                    output_tokens: *output_tokens,
+                })
+                .collect();
+
+            // Calculate "Others" by subtracting top 5 from total
+            let top5_input: i64 = result.iter().map(|p| p.input_tokens).sum();
+            let top5_output: i64 = result.iter().map(|p| p.output_tokens).sum();
+            let others_input = total_input_tokens - top5_input;
+            let others_output = total_output_tokens - top5_output;
+
+            if others_input > 0 || others_output > 0 {
+                result.push(TokensByProject {
+                    project: "Others".to_string(),
+                    input_tokens: others_input,
+                    output_tokens: others_output,
+                });
+            }
+            result
+        } else {
+            project_rows
+                .into_iter()
+                .map(|(project, input_tokens, output_tokens)| TokensByProject {
+                    project,
+                    input_tokens,
+                    output_tokens,
+                })
+                .collect()
+        };
+
+        Ok(AIGenerationStats {
+            lines_added: 0,    // Not tracked yet
+            lines_removed: 0,  // Not tracked yet
+            files_created,
+            total_input_tokens,
+            total_output_tokens,
+            tokens_by_model,
+            tokens_by_project,
+        })
     }
 }
 
