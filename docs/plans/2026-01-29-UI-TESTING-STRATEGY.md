@@ -1,3 +1,8 @@
+---
+status: pending
+date: 2026-01-29
+---
+
 # UI Testing Strategy for 7-Type Conversation Redesign
 ## Solo Dev Testing Framework (Jest + RTL + CI/CD)
 
