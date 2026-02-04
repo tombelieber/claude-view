@@ -9,9 +9,10 @@ import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { AIGenerationStats } from './AIGenerationStats'
 import { RecentCommits } from './RecentCommits'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
-import { SegmentedControl } from './ui/SegmentedControl'
+import { TimeRangeSelector } from './ui/TimeRangeSelector'
 import { DateRangePicker } from './ui/DateRangePicker'
 import { FEATURES } from '../config/features'
+import { useIsMobile } from '../hooks/use-media-query'
 
 /** Format a timestamp to a human-readable date */
 function formatTimestampDate(ts: number | null | undefined): string {
@@ -37,6 +38,7 @@ export function StatsDashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const projectFilter = searchParams.get("project") || undefined
   const branchFilter = searchParams.get("branch") || undefined
+  const isMobile = useIsMobile()
 
   // Time range state
   const { state: timeRange, setPreset, setCustomRange, comparisonLabel } = useTimeRange()
@@ -97,11 +99,11 @@ export function StatsDashboard() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Card */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[#7c9885]" />
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
               {projectFilter
                 ? `${projectFilter} Usage`
                 : "Your Claude Code Usage"}
@@ -124,14 +126,14 @@ export function StatsDashboard() {
           {/* Time Range Selector (Feature flag gated) */}
           {FEATURES.timeRange && (
             <div className="flex items-center gap-2">
-              <SegmentedControl
+              <TimeRangeSelector
                 value={timeRange.preset}
                 onChange={setPreset}
                 options={[
-                  { value: '7d', label: '7d' },
-                  { value: '30d', label: '30d' },
-                  { value: '90d', label: '90d' },
-                  { value: 'all', label: 'All' },
+                  { value: '7d', label: isMobile ? '7 days' : '7d' },
+                  { value: '30d', label: isMobile ? '30 days' : '30d' },
+                  { value: '90d', label: isMobile ? '90 days' : '90d' },
+                  { value: 'all', label: isMobile ? 'All time' : 'All' },
                   { value: 'custom', label: 'Custom' },
                 ]}
               />
@@ -204,13 +206,13 @@ export function StatsDashboard() {
                   <button
                     key={item.name}
                     onClick={() => handleInvocableClick(item.name)}
-                    className="w-full group text-left focus-visible:ring-2 focus-visible:ring-blue-400"
+                    className="w-full min-h-[44px] group text-left py-2 focus-visible:ring-2 focus-visible:ring-blue-400 rounded-md"
                   >
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-mono text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      <span className="font-mono text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate mr-2">
                         {item.name}
                       </span>
-                      <span className="tabular-nums text-gray-400">{item.count}</span>
+                      <span className="tabular-nums text-gray-400 shrink-0">{item.count}</span>
                     </div>
                     <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                       <div
@@ -329,23 +331,23 @@ export function StatsDashboard() {
             All sessions <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        <ActivityHeatmap data={stats.heatmap} navigate={navigate} />
+        <ActivityHeatmap data={stats.heatmap} navigate={navigate} isMobile={isMobile} />
       </div>
 
       {/* Global Tool Usage */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
         <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
           Tool Usage
         </h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           {[
             { label: 'Edits', value: stats.toolTotals.edit + stats.toolTotals.write, icon: Pencil, color: 'text-blue-500' },
             { label: 'Reads', value: stats.toolTotals.read, icon: Eye, color: 'text-green-500' },
             { label: 'Bash', value: stats.toolTotals.bash, icon: Terminal, color: 'text-amber-500' },
           ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <Icon className={cn('w-6 h-6 mx-auto mb-2', color)} />
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</p>
+            <div key={label} className="text-center p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <Icon className={cn('w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-1 sm:mb-2', color)} />
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
             </div>
           ))}
@@ -367,10 +369,12 @@ function formatDuration(seconds: number): string {
 // Activity Heatmap Component
 function ActivityHeatmap({
   data,
-  navigate
+  navigate,
+  isMobile,
 }: {
   data: { date: string; count: number }[]
   navigate: (path: string) => void
+  isMobile: boolean
 }) {
   const maxCount = Math.max(...data.map(d => d.count), 1)
 
@@ -403,34 +407,56 @@ function ActivityHeatmap({
   }
   if (currentWeek.length > 0) weeks.push(currentWeek)
 
+  // On mobile, limit to last 12 weeks for better UX
+  const displayWeeks = isMobile ? weeks.slice(-12) : weeks
+  const showScrollIndicator = isMobile && weeks.length > 12
+
   return (
-    <div className="flex gap-1">
-      {weeks.map((week, wi) => (
-        <div key={wi} className="flex flex-col gap-1">
-          {week.map((day) => (
-            <button
-              key={day.date}
-              onClick={() => handleDayClick(day.date)}
-              className={cn(
-                'w-3 h-3 rounded-sm transition-colors hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-400',
-                getColor(day.count)
-              )}
-              title={`${day.date}: ${day.count} sessions`}
-              aria-label={`${day.date}: ${day.count} sessions`}
-            />
-          ))}
+    <div className="relative">
+      {/* Mobile: horizontally scrollable container */}
+      <div className={cn(
+        'flex gap-1',
+        isMobile && 'overflow-x-auto pb-2 -mx-1 px-1'
+      )}>
+        {displayWeeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-1 shrink-0">
+            {week.map((day) => (
+              <button
+                key={day.date}
+                onClick={() => handleDayClick(day.date)}
+                className={cn(
+                  // Larger touch targets on mobile (min 44x44 tap area with spacing)
+                  isMobile ? 'w-4 h-4' : 'w-3 h-3',
+                  'rounded-sm transition-colors hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-400',
+                  getColor(day.count)
+                )}
+                title={`${day.date}: ${day.count} sessions`}
+                aria-label={`${day.date}: ${day.count} sessions`}
+              />
+            ))}
+          </div>
+        ))}
+        {/* Legend - sticky on mobile scroll */}
+        <div className={cn(
+          'flex items-center gap-2 text-xs text-gray-400',
+          isMobile ? 'sticky right-0 bg-white dark:bg-gray-900 pl-2' : 'ml-2'
+        )}>
+          <span>Less</span>
+          <div className="flex gap-0.5">
+            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-gray-100 dark:bg-gray-800')} />
+            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-200 dark:bg-green-600')} />
+            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-300 dark:bg-green-400')} />
+            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-500')} />
+          </div>
+          <span>More</span>
         </div>
-      ))}
-      <div className="ml-2 flex items-center gap-2 text-xs text-gray-400">
-        <span>Less</span>
-        <div className="flex gap-0.5">
-          <div className="w-3 h-3 rounded-sm bg-gray-100 dark:bg-gray-800" />
-          <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-600" />
-          <div className="w-3 h-3 rounded-sm bg-green-300 dark:bg-green-400" />
-          <div className="w-3 h-3 rounded-sm bg-green-500" />
-        </div>
-        <span>More</span>
       </div>
+      {/* Scroll indicator for mobile */}
+      {showScrollIndicator && (
+        <p className="text-xs text-gray-400 mt-1 text-center">
+          Swipe to see more weeks
+        </p>
+      )}
     </div>
   )
 }
