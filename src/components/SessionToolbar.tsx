@@ -1,9 +1,9 @@
 // src/components/SessionToolbar.tsx
 import { useState, useRef, useEffect } from 'react';
-import { SortDesc, ChevronDown, Check } from 'lucide-react';
+import { SortDesc, ChevronDown, Check, LayoutList, Table } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { FilterPopover } from './FilterPopover';
-import type { SessionFilters, SessionSort, GroupBy } from '../hooks/use-session-filters';
+import type { SessionFilters, SessionSort, GroupBy, ViewMode } from '../hooks/use-session-filters';
 import { countActiveFilters } from '../hooks/use-session-filters';
 
 interface SessionToolbarProps {
@@ -168,35 +168,78 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters }: Ses
     onFiltersChange({ ...filters, groupBy: groupBy as GroupBy });
   };
 
+  const handleViewModeChange = (viewMode: ViewMode) => {
+    onFiltersChange({ ...filters, viewMode });
+  };
+
   return (
-    <div className="flex items-center gap-2">
-      {/* Group by dropdown */}
-      <Dropdown
-        label="Group by"
-        icon={<div className="w-3.5 h-3.5 flex items-center justify-center text-xs">⊞</div>}
-        value={filters.groupBy}
-        options={GROUP_BY_OPTIONS}
-        onChange={handleGroupByChange}
-        isActive={filters.groupBy !== 'none'}
-      />
+    <div className="flex items-center justify-between gap-2">
+      {/* Left side: Group by, Filter, Sort */}
+      <div className="flex items-center gap-2">
+        {/* Group by dropdown */}
+        <Dropdown
+          label="Group by"
+          icon={<div className="w-3.5 h-3.5 flex items-center justify-center text-xs">⊞</div>}
+          value={filters.groupBy}
+          options={GROUP_BY_OPTIONS}
+          onChange={handleGroupByChange}
+          isActive={filters.groupBy !== 'none'}
+        />
 
-      {/* Filter popover */}
-      <FilterPopover
-        filters={filters}
-        onChange={onFiltersChange}
-        onClear={onClearFilters}
-        activeCount={activeFilterCount}
-      />
+        {/* Filter popover */}
+        <FilterPopover
+          filters={filters}
+          onChange={onFiltersChange}
+          onClear={onClearFilters}
+          activeCount={activeFilterCount}
+        />
 
-      {/* Sort dropdown */}
-      <Dropdown
-        label="Sort"
-        icon={<SortDesc className="w-3.5 h-3.5" />}
-        value={filters.sort}
-        options={SORT_OPTIONS}
-        onChange={handleSortChange}
-        isActive={filters.sort !== 'recent'}
-      />
+        {/* Sort dropdown */}
+        <Dropdown
+          label="Sort"
+          icon={<SortDesc className="w-3.5 h-3.5" />}
+          value={filters.sort}
+          options={SORT_OPTIONS}
+          onChange={handleSortChange}
+          isActive={filters.sort !== 'recent'}
+        />
+      </div>
+
+      {/* Right side: View mode toggle */}
+      <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
+        <button
+          type="button"
+          onClick={() => handleViewModeChange('timeline')}
+          className={cn(
+            'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            filters.viewMode === 'timeline'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          )}
+          aria-label="Timeline view"
+          aria-pressed={filters.viewMode === 'timeline'}
+        >
+          <LayoutList className="w-3.5 h-3.5" />
+          <span>List</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleViewModeChange('table')}
+          className={cn(
+            'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            filters.viewMode === 'table'
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          )}
+          aria-label="Table view"
+          aria-pressed={filters.viewMode === 'table'}
+        >
+          <Table className="w-3.5 h-3.5" />
+          <span>Table</span>
+        </button>
+      </div>
     </div>
   );
 }
