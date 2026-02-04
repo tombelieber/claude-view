@@ -134,8 +134,8 @@ export function StorageOverview() {
         </span>
       </div>
 
-      {/* Counts Grid */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Counts Grid - Responsive: 2 cols mobile, 3 cols tablet, 6 cols desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <StatCard label="Sessions" value={formatNumber(stats?.sessionCount ?? 0)} />
         <StatCard label="Projects" value={formatNumber(stats?.projectCount ?? 0)} />
         <StatCard label="Commits" value={formatNumber(stats?.commitCount ?? 0)} />
@@ -152,13 +152,15 @@ export function StorageOverview() {
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
           Actions
         </h4>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={handleRebuildIndex}
             disabled={isRebuilding}
             className={cn(
-              'inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer',
+              // Touch target: min 44x44px
+              'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
+              'text-sm font-medium rounded-md cursor-pointer',
               'transition-colors duration-150',
               'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
               'hover:bg-gray-200 dark:hover:bg-gray-700',
@@ -185,7 +187,9 @@ export function StorageOverview() {
             type="button"
             disabled
             className={cn(
-              'inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md cursor-not-allowed',
+              // Touch target: min 44x44px
+              'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
+              'text-sm font-medium rounded-md cursor-not-allowed',
               'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500',
               'opacity-50'
             )}
