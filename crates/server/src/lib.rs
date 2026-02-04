@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod indexing_state;
+pub mod insights;
 pub mod routes;
 pub mod state;
 

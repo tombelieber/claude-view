@@ -2689,6 +2689,7 @@ dependencies = [
  "async-stream",
  "axum 0.8.8",
  "axum-test",
+ "chrono",
  "dirs",
  "indicatif",
  "pretty_assertions",
