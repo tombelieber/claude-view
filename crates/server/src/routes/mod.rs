@@ -4,6 +4,7 @@ pub mod export;
 pub mod health;
 pub mod indexing;
 pub mod invocables;
+pub mod metrics;
 pub mod models;
 pub mod projects;
 pub mod sessions;
@@ -36,6 +37,7 @@ use crate::state::AppState;
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
+/// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -49,6 +51,8 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", status::router())
         .nest("/api", export::router())
         .nest("/api", sync::router())
+        // Metrics endpoint at root level (Prometheus convention)
+        .merge(metrics::router())
         .with_state(state)
 }
 
