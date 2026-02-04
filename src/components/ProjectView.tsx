@@ -2,23 +2,32 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { FolderOpen } from 'lucide-react'
 import { useProjectSummaries, useProjectSessions } from '../hooks/use-projects'
 import { DateGroupedList } from './DateGroupedList'
+import { CompactSessionTable } from './CompactSessionTable'
+import type { SortColumn } from './CompactSessionTable'
+import { SessionToolbar } from './SessionToolbar'
+import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
+import type { SessionSort } from '../hooks/use-session-filters'
+import { groupSessionsByDate } from '../lib/date-groups'
 import { Skeleton, EmptyState, ErrorState } from './LoadingStates'
 
 export function ProjectView() {
   const { projectId } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: summaries } = useProjectSummaries()
 
   const decodedProjectId = projectId ? decodeURIComponent(projectId) : null
   const project = summaries?.find(p => p.name === decodedProjectId)
 
-  const sort = searchParams.get('sort') || 'recent'
+  // Use the useSessionFilters hook for URL-persisted filter state
+  const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
+
+  // Legacy params for backward compatibility
   const branch = searchParams.get('branch') || undefined
   const includeSidechains = searchParams.get('sidechains') === 'true'
 
   const { data: page, isLoading, error, refetch } = useProjectSessions(decodedProjectId ?? undefined, {
     limit: 50,
-    sort,
+    sort: filters.sort,
     branch,
     includeSidechains,
   })
@@ -34,6 +43,9 @@ export function ProjectView() {
       </div>
     )
   }
+
+  // Group sessions by date for timeline view
+  const groups = page?.sessions ? groupSessionsByDate(page.sessions) : []
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -56,7 +68,67 @@ export function ProjectView() {
           />
         ) : page && page.sessions.length > 0 ? (
           <>
-            <DateGroupedList sessions={page.sessions} />
+            {/* SessionToolbar with view mode toggle */}
+            <SessionToolbar
+              filters={filters}
+              onFiltersChange={setFilters}
+              onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+            />
+
+            {/* Session List or Table */}
+            <div className="mt-5">
+              {filters.viewMode === 'table' ? (
+                /* Table view */
+                <CompactSessionTable
+                  sessions={page.sessions}
+                  onSort={(column) => {
+                    // Map table column to SessionSort
+                    const sortMap: Record<SortColumn, SessionSort> = {
+                      time: 'recent',
+                      branch: 'recent', // No direct branch sort yet
+                      prompts: 'prompts',
+                      tokens: 'tokens',
+                      files: 'files_edited',
+                      loc: 'recent', // No direct LOC sort yet
+                      commits: 'recent', // No direct commits sort yet
+                      duration: 'duration',
+                    }
+                    const newSort = sortMap[column] || 'recent'
+                    setFilters({ ...filters, sort: newSort })
+                  }}
+                  sortColumn={
+                    filters.sort === 'prompts' ? 'prompts' :
+                    filters.sort === 'tokens' ? 'tokens' :
+                    filters.sort === 'files_edited' ? 'files' :
+                    filters.sort === 'duration' ? 'duration' :
+                    'time'
+                  }
+                  sortDirection="desc"
+                />
+              ) : (
+                /* Timeline view */
+                <div>
+                  {groups.map(group => (
+                    <div key={group.label}>
+                      {/* Group header */}
+                      <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3">
+                        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap">
+                          {group.label}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                          {group.sessions.length}
+                        </span>
+                      </div>
+
+                      {/* Cards */}
+                      <DateGroupedList sessions={group.sessions} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {page.sessions.length < page.total && (
               <div className="text-center py-6">
                 <span className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg" aria-label={`Showing ${page.sessions.length} of ${page.total} sessions`}>
