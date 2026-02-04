@@ -4,8 +4,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{extract::State, routing::get, Json, Router};
-use serde::Serialize;
+use axum::{
+    extract::{Query, State},
+    routing::get,
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use vibe_recall_core::{claude_projects_dir, DashboardStats};
 use vibe_recall_db::trends::{TrendMetric, WeekTrends};
@@ -13,6 +17,17 @@ use vibe_recall_db::trends::{TrendMetric, WeekTrends};
 use crate::error::ApiResult;
 use crate::metrics::record_request;
 use crate::state::AppState;
+
+/// Query parameters for dashboard stats endpoint.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DashboardQuery {
+    /// Period start timestamp (Unix seconds, inclusive).
+    /// If omitted along with `to`, returns all-time stats with no trends.
+    pub from: Option<i64>,
+    /// Period end timestamp (Unix seconds, inclusive).
+    /// If omitted along with `from`, returns all-time stats with no trends.
+    pub to: Option<i64>,
+}
 
 /// Current week metrics for dashboard (Step 22).
 #[derive(Debug, Clone, Serialize, TS)]
@@ -29,7 +44,7 @@ pub struct CurrentWeekMetrics {
     pub commit_count: u64,
 }
 
-/// Extended dashboard stats with current week and trends.
+/// Extended dashboard stats with current period and trends.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
@@ -37,10 +52,27 @@ pub struct ExtendedDashboardStats {
     /// Base dashboard stats
     #[serde(flatten)]
     pub base: DashboardStats,
-    /// Current week metrics
+    /// Current period metrics (adapts to selected time range)
     pub current_week: CurrentWeekMetrics,
-    /// Week-over-week trends
-    pub trends: DashboardTrends,
+    /// Period-over-period trends (None if viewing all-time)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trends: Option<DashboardTrends>,
+    /// Start of the requested period (Unix timestamp).
+    #[ts(type = "number | null")]
+    pub period_start: Option<i64>,
+    /// End of the requested period (Unix timestamp).
+    #[ts(type = "number | null")]
+    pub period_end: Option<i64>,
+    /// Start of the comparison period (Unix timestamp).
+    #[ts(type = "number | null")]
+    pub comparison_period_start: Option<i64>,
+    /// End of the comparison period (Unix timestamp).
+    #[ts(type = "number | null")]
+    pub comparison_period_end: Option<i64>,
+    /// Earliest session date in the database (Unix timestamp).
+    /// Used to display "since [date]" in the UI.
+    #[ts(type = "number | null")]
+    pub data_start_date: Option<i64>,
 }
 
 /// Simplified trends for dashboard display.
@@ -108,19 +140,39 @@ pub struct StorageStats {
     pub last_git_sync_repo_count: i64,
 }
 
-/// GET /api/stats/dashboard - Pre-computed dashboard statistics (Step 22 extended).
+/// GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.
+///
+/// Query params:
+/// - `from`: Period start (Unix timestamp, optional)
+/// - `to`: Period end (Unix timestamp, optional)
+///
+/// If `from` and `to` are omitted, returns all-time stats with no trends.
+/// If provided, returns stats filtered to that period with comparison to the equivalent previous period.
 ///
 /// Returns:
 /// - Base stats: total_sessions, total_projects, heatmap, top_skills, top_projects, tool_totals
-/// - Current week: session_count, total_tokens, total_files_edited, commit_count
-/// - Trends: week-over-week changes for key metrics
+/// - Current period: session_count, total_tokens, total_files_edited, commit_count
+/// - Trends: period-over-period changes for key metrics (None if viewing all-time)
+/// - Period bounds: periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
+/// - dataStartDate: earliest session in database
 pub async fn dashboard_stats(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<DashboardQuery>,
 ) -> ApiResult<Json<ExtendedDashboardStats>> {
     let start = Instant::now();
 
-    // Get base dashboard stats
-    let base = match state.db.get_dashboard_stats().await {
+    // Get earliest session date for "since [date]" display
+    let data_start_date = state.db.get_oldest_session_date().await.ok().flatten();
+
+    // Determine if we have a time range filter
+    let has_time_range = query.from.is_some() && query.to.is_some();
+
+    // Get base dashboard stats (always includes heatmap which is fixed at 90 days)
+    let base = match if has_time_range {
+        state.db.get_dashboard_stats_with_range(query.from, query.to).await
+    } else {
+        state.db.get_dashboard_stats().await
+    } {
         Ok(stats) => stats,
         Err(e) => {
             tracing::error!(
@@ -133,29 +185,70 @@ pub async fn dashboard_stats(
         }
     };
 
-    // Get week trends
-    let week_trends = match state.db.get_week_trends().await {
-        Ok(trends) => trends,
-        Err(e) => {
-            tracing::error!(
-                endpoint = "dashboard_stats",
-                error = %e,
-                "Failed to fetch week trends"
-            );
-            record_request("dashboard_stats", "500", start.elapsed());
-            return Err(e.into());
+    // Calculate period bounds and comparison period
+    let (period_start, period_end, comparison_start, comparison_end) = if has_time_range {
+        let from = query.from.unwrap();
+        let to = query.to.unwrap();
+        let duration = to - from;
+        // Previous period is the same duration immediately before
+        let comp_end = from - 1;
+        let comp_start = comp_end - duration;
+        (Some(from), Some(to), Some(comp_start), Some(comp_end))
+    } else {
+        (None, None, None, None)
+    };
+
+    // Get trends (either for custom period or default week-over-week)
+    let (current_week, trends) = if has_time_range {
+        let from = query.from.unwrap();
+        let to = query.to.unwrap();
+
+        // Get trends for the specified period
+        match state.db.get_trends_with_range(from, to).await {
+            Ok(period_trends) => {
+                let current = CurrentWeekMetrics {
+                    session_count: period_trends.session_count.current as u64,
+                    total_tokens: period_trends.total_tokens.current as u64,
+                    total_files_edited: period_trends.total_files_edited.current as u64,
+                    commit_count: period_trends.commit_link_count.current as u64,
+                };
+                let trends = DashboardTrends::from(period_trends);
+                (current, Some(trends))
+            }
+            Err(e) => {
+                tracing::error!(
+                    endpoint = "dashboard_stats",
+                    error = %e,
+                    "Failed to fetch period trends"
+                );
+                record_request("dashboard_stats", "500", start.elapsed());
+                return Err(e.into());
+            }
+        }
+    } else {
+        // All-time view: show aggregate stats but no trends
+        match state.db.get_all_time_metrics().await {
+            Ok((session_count, total_tokens, total_files_edited, commit_count)) => {
+                let current = CurrentWeekMetrics {
+                    session_count,
+                    total_tokens,
+                    total_files_edited,
+                    commit_count,
+                };
+                // No trends for all-time view
+                (current, None)
+            }
+            Err(e) => {
+                tracing::error!(
+                    endpoint = "dashboard_stats",
+                    error = %e,
+                    "Failed to fetch all-time metrics"
+                );
+                record_request("dashboard_stats", "500", start.elapsed());
+                return Err(e.into());
+            }
         }
     };
-
-    // Build current week metrics from trends
-    let current_week = CurrentWeekMetrics {
-        session_count: week_trends.session_count.current as u64,
-        total_tokens: week_trends.total_tokens.current as u64,
-        total_files_edited: week_trends.total_files_edited.current as u64,
-        commit_count: week_trends.commit_link_count.current as u64,
-    };
-
-    let trends = DashboardTrends::from(week_trends);
 
     // Record successful request metrics
     record_request("dashboard_stats", "200", start.elapsed());
@@ -164,6 +257,11 @@ pub async fn dashboard_stats(
         base,
         current_week,
         trends,
+        period_start,
+        period_end,
+        comparison_period_start: comparison_start,
+        comparison_period_end: comparison_end,
+        data_start_date,
     }))
 }
 
@@ -324,8 +422,92 @@ mod tests {
         // Check extended fields
         assert!(json["currentWeek"].is_object());
         assert_eq!(json["currentWeek"]["sessionCount"], 0);
+        // All-time view (no time range params) should NOT include trends
+        assert!(json.get("trends").is_none() || json["trends"].is_null());
+        // dataStartDate should be null for empty DB
+        assert!(json["dataStartDate"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_with_time_range() {
+        let db = test_db().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let session = SessionInfo {
+            id: "sess-range-1".to_string(),
+            project: "project-a".to_string(),
+            project_path: "/home/user/project-a".to_string(),
+            file_path: "/path/sess-range-1.jsonl".to_string(),
+            modified_at: now - 86400, // 1 day ago
+            size_bytes: 2048,
+            preview: "Test".to_string(),
+            last_message: "Test msg".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 10,
+            turn_count: 5,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 5,
+            api_call_count: 10,
+            tool_call_count: 20,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 10,
+            files_edited_count: 3,
+            reedited_files_count: 1,
+            duration_seconds: 300,
+            commit_count: 1,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
+        };
+        db.insert_session(&session, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+
+        // Query with time range (7 days)
+        let seven_days_ago = now - (7 * 86400);
+        let uri = format!("/api/stats/dashboard?from={}&to={}", seven_days_ago, now);
+        let (status, body) = do_get(app, &uri).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // With time range params, trends should be present
         assert!(json["trends"].is_object());
         assert!(json["trends"]["sessions"].is_object());
+        assert!(json["trends"]["sessions"]["current"].is_number());
+        assert!(json["trends"]["sessions"]["previous"].is_number());
+
+        // Period bounds should be present
+        assert!(json["periodStart"].is_number());
+        assert!(json["periodEnd"].is_number());
+        assert!(json["comparisonPeriodStart"].is_number());
+        assert!(json["comparisonPeriodEnd"].is_number());
+
+        // dataStartDate should be set
+        assert!(json["dataStartDate"].is_number());
     }
 
     #[tokio::test]
@@ -396,13 +578,14 @@ mod tests {
         assert_eq!(json["totalProjects"], 1);
         assert!(!json["heatmap"].as_array().unwrap().is_empty());
 
-        // Check current week metrics
+        // Check current week metrics (all-time view)
         assert!(json["currentWeek"]["sessionCount"].is_number());
 
-        // Check trends structure
-        assert!(json["trends"]["sessions"]["current"].is_number());
-        assert!(json["trends"]["sessions"]["previous"].is_number());
-        assert!(json["trends"]["sessions"]["delta"].is_number());
+        // All-time view should not include trends
+        assert!(json.get("trends").is_none() || json["trends"].is_null());
+
+        // dataStartDate should be set when there's data
+        assert!(json["dataStartDate"].is_number());
     }
 
     #[tokio::test]

@@ -1250,6 +1250,237 @@ impl Database {
         })
     }
 
+    /// Get dashboard statistics filtered by a time range.
+    ///
+    /// Stats are filtered to sessions with `last_message_at` within [from, to].
+    /// Heatmap always shows the last 90 days regardless of the filter.
+    pub async fn get_dashboard_stats_with_range(
+        &self,
+        from: Option<i64>,
+        to: Option<i64>,
+    ) -> DbResult<DashboardStats> {
+        let from = from.unwrap_or(0);
+        let to = to.unwrap_or(i64::MAX);
+
+        // Total sessions and projects (filtered)
+        let (total_sessions,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_one(self.pool())
+        .await?;
+
+        let (total_projects,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_one(self.pool())
+        .await?;
+
+        // Heatmap: always 90 days (not affected by time range filter)
+        let now = Utc::now().timestamp();
+        let ninety_days_ago = now - (90 * 86400);
+        let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
+            FROM sessions
+            WHERE last_message_at >= ?1 AND is_sidechain = 0
+            GROUP BY day
+            ORDER BY day ASC
+            "#,
+        )
+        .bind(ninety_days_ago)
+        .fetch_all(self.pool())
+        .await?;
+
+        let heatmap: Vec<DayActivity> = heatmap_rows
+            .into_iter()
+            .map(|(date, count)| DayActivity {
+                date,
+                count: count as usize,
+            })
+            .collect();
+
+        // Top invocables by kind (filtered by time range via invocations table)
+        let top_skills = self.top_invocables_by_kind_with_range("skill", from, to).await?;
+        let top_commands = self.top_invocables_by_kind_with_range("command", from, to).await?;
+        let top_mcp_tools = self.top_invocables_by_kind_with_range("mcp_tool", from, to).await?;
+        let top_agents = self.top_invocables_by_kind_with_range("agent", from, to).await?;
+
+        // Top 5 projects by session count (filtered)
+        let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
+            FROM sessions
+            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            GROUP BY project_id
+            ORDER BY cnt DESC
+            LIMIT 5
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.pool())
+        .await?;
+
+        let top_projects: Vec<ProjectStat> = project_rows
+            .into_iter()
+            .map(|(name, display_name, session_count)| ProjectStat {
+                name,
+                display_name,
+                session_count: session_count as usize,
+            })
+            .collect();
+
+        // Top 5 longest sessions by duration (filtered)
+        let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
+            r#"
+            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
+            FROM sessions
+            WHERE is_sidechain = 0 AND duration_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            ORDER BY duration_seconds DESC
+            LIMIT 5
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.pool())
+        .await?;
+
+        let longest_sessions: Vec<SessionDurationStat> = longest_rows
+            .into_iter()
+            .map(|(id, preview, project_name, project_display_name, duration_seconds)| {
+                SessionDurationStat {
+                    id,
+                    preview,
+                    project_name,
+                    project_display_name,
+                    duration_seconds: duration_seconds as u32,
+                }
+            })
+            .collect();
+
+        // Tool totals (filtered)
+        let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(SUM(tool_counts_edit), 0),
+                COALESCE(SUM(tool_counts_read), 0),
+                COALESCE(SUM(tool_counts_bash), 0),
+                COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(DashboardStats {
+            total_sessions: total_sessions as usize,
+            total_projects: total_projects as usize,
+            heatmap,
+            top_skills,
+            top_commands,
+            top_mcp_tools,
+            top_agents,
+            top_projects,
+            tool_totals: ToolCounts {
+                edit: edit as usize,
+                read: read as usize,
+                bash: bash as usize,
+                write: write as usize,
+            },
+            longest_sessions,
+        })
+    }
+
+    /// Get all-time aggregate metrics for the dashboard.
+    ///
+    /// Returns (session_count, total_tokens, total_files_edited, commit_count).
+    pub async fn get_all_time_metrics(&self) -> DbResult<(u64, u64, u64, u64)> {
+        // Session count
+        let (session_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+                .fetch_one(self.pool())
+                .await?;
+
+        // Total tokens (from turns table)
+        let (total_tokens,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
+            FROM turns t
+            INNER JOIN sessions s ON t.session_id = s.id
+            WHERE s.is_sidechain = 0
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Total files edited
+        let (total_files_edited,): (i64,) = sqlx::query_as(
+            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Total commits linked
+        let (commit_count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM session_commits sc
+            INNER JOIN sessions s ON sc.session_id = s.id
+            WHERE s.is_sidechain = 0
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok((
+            session_count as u64,
+            total_tokens as u64,
+            total_files_edited as u64,
+            commit_count as u64,
+        ))
+    }
+
+    /// Helper: Get top invocables by kind within a time range.
+    async fn top_invocables_by_kind_with_range(
+        &self,
+        kind: &str,
+        from: i64,
+        to: i64,
+    ) -> DbResult<Vec<SkillStat>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT i.name, COUNT(*) as cnt
+            FROM invocations inv
+            INNER JOIN invocables i ON inv.invocable_id = i.id
+            INNER JOIN sessions s ON inv.session_id = s.id
+            WHERE i.kind = ?1 AND s.is_sidechain = 0 AND s.last_message_at >= ?2 AND s.last_message_at <= ?3
+            GROUP BY i.name
+            ORDER BY cnt DESC
+            LIMIT 10
+            "#,
+        )
+        .bind(kind)
+        .bind(from)
+        .bind(to)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(name, count)| SkillStat {
+                name,
+                count: count as usize,
+            })
+            .collect())
+    }
+
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
     /// Also cleans up corresponding indexer_state entries.
     /// Both deletes run in a transaction for consistency.
