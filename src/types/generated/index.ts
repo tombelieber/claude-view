@@ -42,6 +42,9 @@ export type { ExportResponse } from './ExportResponse'
 // Sync types (Phase 3)
 export type { SyncAcceptedResponse } from './SyncAcceptedResponse'
 
+// Storage types (Phase 3)
+export type { StorageStats } from './StorageStats'
+
 // Session detail types (Phase 3)
 export type { CommitWithTier } from './CommitWithTier'
 export type { DerivedMetrics } from './DerivedMetrics'
