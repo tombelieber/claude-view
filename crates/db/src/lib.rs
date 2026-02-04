@@ -8,6 +8,7 @@ pub mod indexer_parallel;
 pub mod git_correlation;
 pub mod trends;
 
+pub use queries::BranchCount;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;

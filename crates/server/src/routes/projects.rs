@@ -7,8 +7,10 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use vibe_recall_core::{ProjectSummary, SessionsPage};
+use vibe_recall_db::BranchCount;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -41,6 +43,13 @@ pub struct SessionsQuery {
 fn default_limit() -> i64 { 50 }
 fn default_sort() -> String { "recent".to_string() }
 
+/// Response from GET /api/projects/:id/branches
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+pub struct BranchesResponse {
+    pub branches: Vec<BranchCount>,
+}
+
 /// GET /api/projects/:id/sessions - Paginated sessions for a project.
 pub async fn list_project_sessions(
     State(state): State<Arc<AppState>>,
@@ -61,11 +70,24 @@ pub async fn list_project_sessions(
     Ok(Json(page))
 }
 
+/// GET /api/projects/:id/branches - List distinct branches with session counts.
+///
+/// Returns all unique git_branch values for sessions in this project,
+/// sorted by session count descending.
+pub async fn list_project_branches(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+) -> ApiResult<Json<BranchesResponse>> {
+    let branches = state.db.list_branches_for_project(&project_id).await?;
+    Ok(Json(BranchesResponse { branches }))
+}
+
 /// Create the projects routes router.
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/projects", get(list_projects))
         .route("/projects/{id}/sessions", get(list_project_sessions))
+        .route("/projects/{id}/branches", get(list_project_branches))
 }
 
 #[cfg(test)]
@@ -256,5 +278,95 @@ mod tests {
         let (_, body) = do_get(app, "/api/projects/project-a/sessions?includeSidechains=true").await;
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["total"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_project_branches_returns_counts() {
+        let db = test_db().await;
+
+        // Create sessions with different branches
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-1", "project-a", 1000)
+        };
+        let s2 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-2", "project-a", 2000)
+        };
+        let s3 = SessionInfo {
+            git_branch: Some("feature/auth".to_string()),
+            ..make_session("sess-3", "project-a", 3000)
+        };
+        let s4 = SessionInfo {
+            git_branch: None,
+            ..make_session("sess-4", "project-a", 4000)
+        };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s3, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s4, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/projects/project-a/branches").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let branches = json["branches"].as_array().expect("should have branches array");
+
+        assert_eq!(branches.len(), 3, "should have 3 distinct branches");
+
+        // First should be main with count 2 (sorted by count DESC)
+        assert_eq!(branches[0]["branch"], "main");
+        assert_eq!(branches[0]["count"], 2);
+
+        // Second and third are both count 1, so order may vary
+        // Just verify they exist
+        let has_feature_auth = branches.iter().any(|b| b["branch"] == "feature/auth" && b["count"] == 1);
+        let has_null = branches.iter().any(|b| b["branch"].is_null() && b["count"] == 1);
+
+        assert!(has_feature_auth, "should have feature/auth branch with count 1");
+        assert!(has_null, "should have null branch with count 1");
+    }
+
+    #[tokio::test]
+    async fn test_project_branches_empty_project() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/projects/nonexistent/branches").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let branches = json["branches"].as_array().expect("should have branches array");
+        assert_eq!(branches.len(), 0, "should return empty array for nonexistent project");
+    }
+
+    #[tokio::test]
+    async fn test_project_branches_excludes_sidechains() {
+        let db = test_db().await;
+
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-1", "project-a", 1000)
+        };
+        let s2 = SessionInfo {
+            git_branch: Some("feature/sidechain".to_string()),
+            is_sidechain: true,
+            ..make_session("sess-2", "project-a", 2000)
+        };
+
+        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+        let (_, body) = do_get(app, "/api/projects/project-a/branches").await;
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let branches = json["branches"].as_array().expect("should have branches array");
+
+        // Should only see main, not the sidechain branch
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0]["branch"], "main");
+        assert_eq!(branches[0]["count"], 1);
     }
 }
