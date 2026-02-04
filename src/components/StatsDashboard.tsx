@@ -6,6 +6,7 @@ import { useTimeRange } from '../hooks/use-time-range'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
+import { AIGenerationStats } from './AIGenerationStats'
 import { RecentCommits } from './RecentCommits'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
 import { SegmentedControl } from './ui/SegmentedControl'
@@ -180,6 +181,13 @@ export function StatsDashboard() {
 
       {/* Theme 3: AI Contribution Summary Card */}
       <ContributionSummaryCard />
+
+      {/* AI Generation Breakdown (Feature flag gated) */}
+      {FEATURES.aiGeneration && (
+        <AIGenerationStats
+          timeRange={FEATURES.timeRange ? { from: timeRange.fromTimestamp, to: timeRange.toTimestamp } : null}
+        />
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Invocable category cards — self-contained leaderboards, items are clickable */}
