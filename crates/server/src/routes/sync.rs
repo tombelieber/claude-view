@@ -1,4 +1,4 @@
-//! Git sync endpoint for triggering git commit scanning.
+//! Sync endpoints for triggering git commit scanning and deep index rebuilds.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,8 +22,15 @@ use crate::state::AppState;
 /// Uses a lazy static pattern via std::sync::OnceLock.
 static GIT_SYNC_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
+/// Global mutex to prevent concurrent deep index rebuilds.
+static DEEP_INDEX_MUTEX: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+
 fn get_sync_mutex() -> &'static Mutex<()> {
     GIT_SYNC_MUTEX.get_or_init(|| Mutex::new(()))
+}
+
+fn get_deep_index_mutex() -> &'static Mutex<()> {
+    DEEP_INDEX_MUTEX.get_or_init(|| Mutex::new(()))
 }
 
 /// Response for successful sync initiation.
@@ -98,9 +105,103 @@ pub async fn trigger_git_sync(
     }
 }
 
+/// POST /api/sync/deep - Trigger a full deep index rebuild.
+///
+/// This endpoint:
+/// 1. Marks all sessions for re-indexing (clears deep_indexed_at)
+/// 2. Runs Pass 2 deep indexing on all sessions
+///
+/// Returns:
+/// - 202 Accepted: Deep index rebuild started
+/// - 409 Conflict: A rebuild is already in progress
+///
+/// The rebuild runs in the background. Poll /api/status or /api/indexing/progress for completion.
+pub async fn trigger_deep_index(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Response> {
+    let mutex = get_deep_index_mutex();
+
+    match mutex.try_lock() {
+        Ok(guard) => {
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                // Hold the mutex guard for the entire duration of the rebuild.
+                let _guard = guard;
+                let start = Instant::now();
+
+                tracing::info!("Deep index rebuild triggered via API");
+
+                // Step 1: Mark all sessions for re-indexing
+                match db.mark_all_sessions_for_reindex().await {
+                    Ok(count) => {
+                        tracing::info!(
+                            sessions_marked = count,
+                            "Marked sessions for re-indexing"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            "Failed to mark sessions for re-indexing"
+                        );
+                        return;
+                    }
+                }
+
+                // Step 2: Run deep indexing pass
+                let result = vibe_recall_db::indexer_parallel::pass_2_deep_index(
+                    &db,
+                    None, // No registry needed for rebuild
+                    |_indexed, _total| {
+                        // Progress callback - could be wired to SSE in the future
+                    },
+                )
+                .await;
+
+                match result {
+                    Ok(indexed_count) => {
+                        let duration = start.elapsed();
+                        tracing::info!(
+                            sessions_indexed = indexed_count,
+                            duration_secs = duration.as_secs_f64(),
+                            "Deep index rebuild complete"
+                        );
+                        // Record sync metrics
+                        record_sync("deep", duration, Some(indexed_count as u64));
+                    }
+                    Err(e) => {
+                        let duration = start.elapsed();
+                        tracing::error!(
+                            error = %e,
+                            duration_secs = duration.as_secs_f64(),
+                            "Deep index rebuild failed"
+                        );
+                        // Still record duration for failed rebuilds
+                        record_sync("deep", duration, None);
+                    }
+                }
+            });
+
+            let response = SyncAcceptedResponse {
+                message: "Deep index rebuild initiated".to_string(),
+                status: "accepted".to_string(),
+            };
+
+            Ok((StatusCode::ACCEPTED, Json(response)).into_response())
+        }
+        Err(_) => {
+            Err(ApiError::Conflict(
+                "Deep index rebuild already in progress. Please wait for it to complete.".to_string(),
+            ))
+        }
+    }
+}
+
 /// Create the sync routes router.
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/sync/git", post(trigger_git_sync))
+    Router::new()
+        .route("/sync/git", post(trigger_git_sync))
+        .route("/sync/deep", post(trigger_deep_index))
 }
 
 #[cfg(test)]
@@ -148,6 +249,18 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["status"], "accepted");
         assert!(json["message"].as_str().unwrap().contains("initiated"));
+    }
+
+    #[tokio::test]
+    async fn test_sync_deep_accepted() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_post(app, "/api/sync/deep").await;
+
+        assert_eq!(status, StatusCode::ACCEPTED);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["status"], "accepted");
+        assert!(json["message"].as_str().unwrap().contains("Deep index"));
     }
 
     // Note: Testing the 409 Conflict case requires holding the mutex during the test,
