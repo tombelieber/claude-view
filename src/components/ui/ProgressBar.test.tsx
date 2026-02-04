@@ -206,4 +206,61 @@ describe('ProgressBar', () => {
       expect(progressbar).toBeInTheDocument()
     })
   })
+
+  describe('stacked layout (mobile)', () => {
+    it('should render label on its own line when stacked', () => {
+      const { container } = render(
+        <ProgressBar
+          label="Token Usage"
+          value={50}
+          max={100}
+          suffix="500K"
+          stacked
+        />
+      )
+
+      // In stacked mode, label should be block display
+      const label = container.querySelector('.block')
+      expect(label).toBeInTheDocument()
+      expect(label).toHaveTextContent('Token Usage')
+    })
+
+    it('should render percentage and suffix below label when stacked', () => {
+      render(
+        <ProgressBar
+          label="Token Usage"
+          value={50}
+          max={100}
+          suffix="500K"
+          stacked
+        />
+      )
+
+      expect(screen.getByText('50%')).toBeInTheDocument()
+      expect(screen.getByText('500K')).toBeInTheDocument()
+    })
+
+    it('should have proper spacing in stacked mode', () => {
+      const { container } = render(
+        <ProgressBar
+          label="Test"
+          value={50}
+          max={100}
+          stacked
+        />
+      )
+
+      // Stacked layout has mb-3 class for more spacing
+      expect(container.firstChild).toHaveClass('mb-3')
+    })
+
+    it('should default to non-stacked layout', () => {
+      const { container } = render(
+        <ProgressBar label="Test" value={50} max={100} />
+      )
+
+      // Default layout has mb-2 class
+      expect(container.firstChild).toHaveClass('mb-2')
+    })
+  })
 })
