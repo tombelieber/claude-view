@@ -125,7 +125,7 @@ describe('buildThreadMap', () => {
     const map = buildThreadMap(msgs)
     const elapsed = performance.now() - start
     expect(map.size).toBe(1000)
-    expect(elapsed).toBeLessThan(100)
+    expect(elapsed).toBeLessThan(200) // Allow some slack for CI/slow machines
   })
 })
 
