@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use vibe_recall_core::{claude_projects_dir, DashboardStats};
 use vibe_recall_db::trends::{TrendMetric, WeekTrends};
+use vibe_recall_db::AIGenerationStats;
 
 use crate::error::ApiResult;
 use crate::metrics::record_request;
@@ -367,11 +368,47 @@ async fn calculate_directory_jsonl_size(dir: &Path) -> u64 {
     total
 }
 
+/// GET /api/stats/ai-generation - AI generation statistics with time range filtering.
+///
+/// Query params:
+/// - `from`: Period start (Unix timestamp, optional)
+/// - `to`: Period end (Unix timestamp, optional)
+///
+/// Returns:
+/// - linesAdded, linesRemoved: Currently not tracked, returns 0 (future migration needed)
+/// - filesCreated: Files edited/created by AI
+/// - totalInputTokens, totalOutputTokens: Aggregate token usage
+/// - tokensByModel: Token breakdown by AI model
+/// - tokensByProject: Top 5 projects by token usage + "Others"
+pub async fn ai_generation_stats(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<DashboardQuery>,
+) -> ApiResult<Json<AIGenerationStats>> {
+    let start = Instant::now();
+
+    match state.db.get_ai_generation_stats(query.from, query.to).await {
+        Ok(stats) => {
+            record_request("ai_generation_stats", "200", start.elapsed());
+            Ok(Json(stats))
+        }
+        Err(e) => {
+            tracing::error!(
+                endpoint = "ai_generation_stats",
+                error = %e,
+                "Failed to fetch AI generation stats"
+            );
+            record_request("ai_generation_stats", "500", start.elapsed());
+            Err(e.into())
+        }
+    }
+}
+
 /// Create the stats routes router.
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/stats/dashboard", get(dashboard_stats))
         .route("/stats/storage", get(storage_stats))
+        .route("/stats/ai-generation", get(ai_generation_stats))
 }
 
 #[cfg(test)]
@@ -699,5 +736,260 @@ mod tests {
 
         // SQLite size should be > 0 for non-empty db
         assert!(json["sqliteBytes"].as_u64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_stats_empty_db() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/ai-generation").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // All values should be 0 for empty DB
+        assert_eq!(json["linesAdded"], 0);
+        assert_eq!(json["linesRemoved"], 0);
+        assert_eq!(json["filesCreated"], 0);
+        assert_eq!(json["totalInputTokens"], 0);
+        assert_eq!(json["totalOutputTokens"], 0);
+
+        // Arrays should be empty
+        assert!(json["tokensByModel"].as_array().unwrap().is_empty());
+        assert!(json["tokensByProject"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_stats_with_data() {
+        let db = test_db().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Insert a session with token data
+        // Use update_session_deep_fields to set token data since insert_session doesn't handle tokens
+        let session = SessionInfo {
+            id: "sess-ai-1".to_string(),
+            project: "project-ai".to_string(),
+            project_path: "/home/user/project-ai".to_string(),
+            file_path: "/path/sess-ai-1.jsonl".to_string(),
+            modified_at: now - 86400,
+            size_bytes: 2048,
+            preview: "AI Test".to_string(),
+            last_message: "Test msg".to_string(),
+            files_touched: vec!["src/main.rs".to_string()],
+            skills_used: vec![],
+            tool_counts: ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            message_count: 20,
+            turn_count: 8,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 10,
+            api_call_count: 20,
+            tool_call_count: 50,
+            files_read: vec![],
+            files_edited: vec!["src/main.rs".to_string()],
+            files_read_count: 15,
+            files_edited_count: 5,
+            reedited_files_count: 2,
+            duration_seconds: 600,
+            commit_count: 3,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
+        };
+        db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
+
+        // Update with token data and first_message_at
+        db.update_session_deep_fields(
+            "sess-ai-1",
+            "Test msg",
+            8,   // turn_count
+            5,   // tool_edit
+            10,  // tool_read
+            3,   // tool_bash
+            2,   // tool_write
+            r#"["src/main.rs"]"#,  // files_touched
+            "[]",                   // skills_used
+            10,  // user_prompt_count
+            20,  // api_call_count
+            50,  // tool_call_count
+            "[]",                   // files_read
+            r#"["src/main.rs"]"#,  // files_edited
+            15,  // files_read_count
+            5,   // files_edited_count
+            2,   // reedited_files_count
+            600, // duration_seconds
+            3,   // commit_count
+            Some(now - 86400),      // first_message_at
+            150000,  // total_input_tokens
+            250000,  // total_output_tokens
+            10000,   // cache_read_tokens
+            5000,    // cache_creation_tokens
+            2,       // thinking_block_count
+            Some(500),  // turn_duration_avg_ms
+            Some(2000), // turn_duration_max_ms
+            Some(4000), // turn_duration_total_ms
+            0,       // api_error_count
+            0,       // api_retry_count
+            0,       // compaction_count
+            0,       // hook_blocked_count
+            0,       // agent_spawn_count
+            0,       // bash_progress_count
+            0,       // hook_progress_count
+            0,       // mcp_progress_count
+            None,    // summary_text
+            1,       // parse_version
+            2048,    // file_size
+            now - 86400,  // file_mtime
+        ).await.unwrap();
+
+        // Update the primary_model column using the db pool directly
+        db.set_session_primary_model("sess-ai-1", "claude-3-5-sonnet-20241022")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/ai-generation").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // Lines are not tracked yet, should be 0
+        assert_eq!(json["linesAdded"], 0);
+        assert_eq!(json["linesRemoved"], 0);
+
+        // Files created should match files_edited_count
+        assert_eq!(json["filesCreated"], 5);
+
+        // Token totals
+        assert_eq!(json["totalInputTokens"], 150000);
+        assert_eq!(json["totalOutputTokens"], 250000);
+
+        // Token by model should have our model
+        let models = json["tokensByModel"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["model"], "claude-3-5-sonnet-20241022");
+        assert_eq!(models[0]["inputTokens"], 150000);
+        assert_eq!(models[0]["outputTokens"], 250000);
+
+        // Token by project should have our project
+        let projects = json["tokensByProject"].as_array().unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0]["project"], "Project AI");
+        assert_eq!(projects[0]["inputTokens"], 150000);
+        assert_eq!(projects[0]["outputTokens"], 250000);
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_stats_with_time_range() {
+        let db = test_db().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Insert a session with a known first_message_at
+        let session = SessionInfo {
+            id: "sess-range".to_string(),
+            project: "project-range".to_string(),
+            project_path: "/home/user/project-range".to_string(),
+            file_path: "/path/sess-range.jsonl".to_string(),
+            modified_at: now - 86400,
+            size_bytes: 2048,
+            preview: "Range Test".to_string(),
+            last_message: "Test msg".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 10,
+            turn_count: 5,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 5,
+            api_call_count: 10,
+            tool_call_count: 20,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 10,
+            files_edited_count: 3,
+            reedited_files_count: 1,
+            duration_seconds: 300,
+            commit_count: 1,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: 0,
+        };
+        db.insert_session(&session, "project-range", "Project Range").await.unwrap();
+
+        // Update with token data and first_message_at
+        db.update_session_deep_fields(
+            "sess-range",
+            "Test msg",
+            5, 0, 0, 0, 0,
+            "[]", "[]",
+            5, 10, 20,
+            "[]", "[]",
+            10, 3, 1, 300, 1,
+            Some(now - 86400),  // first_message_at: 1 day ago
+            100000, 200000, 0, 0,
+            0, None, None, None,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            None, 1, 2048, now - 86400,
+        ).await.unwrap();
+
+        let app = build_app(db);
+
+        // Query with time range that includes the session
+        let seven_days_ago = now - (7 * 86400);
+        let uri = format!("/api/stats/ai-generation?from={}&to={}", seven_days_ago, now);
+        let (status, body) = do_get(app.clone(), &uri).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalInputTokens"], 100000);
+        assert_eq!(json["totalOutputTokens"], 200000);
+
+        // Query with time range that excludes the session (future)
+        let uri = format!("/api/stats/ai-generation?from={}&to={}", now + 86400, now + 172800);
+        let (status, body) = do_get(app, &uri).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalInputTokens"], 0);
+        assert_eq!(json["totalOutputTokens"], 0);
     }
 }
