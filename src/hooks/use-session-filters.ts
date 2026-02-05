@@ -2,6 +2,11 @@
 /**
  * Extended session filter state management with URL persistence.
  *
+ * IMPORTANT: The returned `filters` object is memoized via useMemo keyed on
+ * the URL string — it keeps a stable reference across re-renders when the URL
+ * hasn't changed. This is critical: any child component that puts `filters`
+ * in a useEffect dependency array would otherwise reset on every parent render.
+ *
  * Manages all session filter parameters including:
  * - Sort order (recent/tokens/prompts/files_edited/duration)
  * - Group by (none/branch/project/model/day/week/month)
@@ -14,6 +19,8 @@
  * - Token usage minimum (null/10000/50000/100000)
  * - High re-edit rate filter (null/true for >20%)
  */
+
+import { useMemo, useCallback } from 'react';
 
 export type SessionSort = 'recent' | 'tokens' | 'prompts' | 'files_edited' | 'duration';
 export type GroupBy = 'none' | 'branch' | 'project' | 'model' | 'day' | 'week' | 'month';
@@ -81,11 +88,26 @@ function parseFilters(searchParams: URLSearchParams): SessionFilters {
   };
 }
 
+/** Keys managed by this module — used to clean stale params before merging. */
+const FILTER_KEYS = [
+  'sort', 'groupBy', 'viewMode',
+  'branches', 'models',
+  'hasCommits', 'hasSkills',
+  'minDuration', 'minFiles', 'minTokens',
+  'highReedit',
+] as const;
+
 /**
- * Serialize filters to URL search params.
+ * Serialize filters into an existing URLSearchParams, preserving any
+ * params that belong to other systems (e.g. the legacy "filter" param).
  */
-function serializeFilters(filters: SessionFilters): URLSearchParams {
-  const params = new URLSearchParams();
+function serializeFilters(filters: SessionFilters, existing: URLSearchParams): URLSearchParams {
+  const params = new URLSearchParams(existing);
+
+  // Clear all keys we own so stale values don't linger
+  for (const key of FILTER_KEYS) {
+    params.delete(key);
+  }
 
   // Only set non-default values
   if (filters.sort !== 'recent') {
@@ -171,12 +193,20 @@ export function useSessionFilters(
   searchParams: URLSearchParams,
   setSearchParams: (params: URLSearchParams, opts?: { replace?: boolean }) => void
 ): [SessionFilters, (filters: SessionFilters) => void] {
-  const filters = parseFilters(searchParams);
+  // Memoize on the URL string so `filters` keeps a stable reference across
+  // re-renders that don't change the URL. Without this, every parent render
+  // would produce a new object, breaking any useEffect([..., filters]) in
+  // child components (e.g. FilterPopover's draft-reset effect).
+  const urlKey = searchParams.toString();
+  const filters = useMemo(() => parseFilters(searchParams), [urlKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setFilters = (newFilters: SessionFilters) => {
-    const params = serializeFilters(newFilters);
-    setSearchParams(params, { replace: true });
-  };
+  const setFilters = useCallback(
+    (newFilters: SessionFilters) => {
+      const params = serializeFilters(newFilters, searchParams);
+      setSearchParams(params, { replace: true });
+    },
+    [urlKey, setSearchParams], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return [filters, setFilters];
 }
