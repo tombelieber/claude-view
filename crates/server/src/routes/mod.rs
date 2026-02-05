@@ -1,15 +1,19 @@
 //! API route handlers for the vibe-recall server.
 
+pub mod classify;
 pub mod export;
 pub mod health;
 pub mod indexing;
+pub mod insights;
 pub mod invocables;
+pub mod jobs;
 pub mod models;
 pub mod projects;
 pub mod sessions;
 pub mod stats;
 pub mod status;
 pub mod sync;
+pub mod system;
 pub mod trends;
 
 use std::sync::Arc;
@@ -36,6 +40,16 @@ use crate::state::AppState;
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
+/// - GET /api/system - Comprehensive system status
+/// - POST /api/system/reindex - Trigger full re-index
+/// - POST /api/system/clear-cache - Clear search index and cache
+/// - POST /api/system/git-resync - Trigger full git re-sync
+/// - POST /api/system/reset - Factory reset all data
+/// - POST /api/classify - Trigger classification job
+/// - GET  /api/classify/status - Get classification status
+/// - GET  /api/classify/stream - SSE stream of classification progress
+/// - POST /api/classify/cancel - Cancel running classification
+/// - GET  /api/insights - Computed behavioral insights and patterns
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -49,6 +63,10 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", status::router())
         .nest("/api", export::router())
         .nest("/api", sync::router())
+        .nest("/api", jobs::router())
+        .nest("/api", system::router())
+        .nest("/api", classify::router())
+        .nest("/api", insights::router())
         .with_state(state)
 }
 

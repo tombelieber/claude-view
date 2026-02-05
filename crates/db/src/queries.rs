@@ -91,6 +91,57 @@ pub struct TokenStats {
     pub sessions_count: u64,
 }
 
+/// Storage statistics for the system page.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct StorageStats {
+    pub jsonl_bytes: u64,
+    pub index_bytes: u64,
+    pub db_bytes: u64,
+    pub cache_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// Health status enum for the system page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum HealthStatus {
+    Healthy,
+    Warning,
+    Error,
+}
+
+/// Health statistics for the system page.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct HealthStats {
+    pub sessions_count: i64,
+    pub commits_count: i64,
+    pub projects_count: i64,
+    pub errors_count: i64,
+    pub last_sync_at: Option<i64>,
+    pub status: HealthStatus,
+}
+
+/// Classification status summary for the system page.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ClassificationStatus {
+    pub classified_count: i64,
+    pub unclassified_count: i64,
+    pub last_run_at: Option<String>,
+    pub last_run_duration_ms: Option<i64>,
+    pub last_run_cost_cents: Option<i64>,
+    pub provider: String,
+    pub model: String,
+    pub is_running: bool,
+    pub progress: Option<i64>,
+}
+
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -260,7 +311,10 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version
+                s.summary_text, s.parse_version,
+                s.category_l1, s.category_l2, s.category_l3,
+                s.category_confidence, s.category_source, s.classified_at,
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -995,7 +1049,10 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version
+                s.summary_text, s.parse_version,
+                s.category_l1, s.category_l2, s.category_l3,
+                s.category_confidence, s.category_source, s.classified_at,
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count
             FROM sessions s
             LEFT JOIN (
                 SELECT session_id,
@@ -1240,6 +1297,783 @@ impl Database {
 
         tx.commit().await?;
         Ok(result.rows_affected())
+    }
+
+    // ========================================================================
+    // Theme 4: Classification Job CRUD
+    // ========================================================================
+
+    /// Create a new classification job. Returns the new job ID.
+    pub async fn create_classification_job(
+        &self,
+        total_sessions: i64,
+        provider: &str,
+        model: &str,
+        cost_estimate_cents: Option<i64>,
+    ) -> DbResult<i64> {
+        let started_at = Utc::now().to_rfc3339();
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            INSERT INTO classification_jobs (started_at, total_sessions, provider, model, cost_estimate_cents)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            RETURNING id
+            "#,
+        )
+        .bind(&started_at)
+        .bind(total_sessions)
+        .bind(provider)
+        .bind(model)
+        .bind(cost_estimate_cents)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Get the currently running classification job, if any.
+    pub async fn get_active_classification_job(&self) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+        let row: Option<ClassificationJobRow> = sqlx::query_as(
+            "SELECT * FROM classification_jobs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1",
+        )
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|r| r.into_classification_job()))
+    }
+
+    /// Update classification job progress counters.
+    pub async fn update_classification_job_progress(
+        &self,
+        job_id: i64,
+        classified_count: i64,
+        skipped_count: i64,
+        failed_count: i64,
+        tokens_used: Option<i64>,
+    ) -> DbResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE classification_jobs SET
+                classified_count = ?2,
+                skipped_count = ?3,
+                failed_count = ?4,
+                tokens_used = ?5
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(classified_count)
+        .bind(skipped_count)
+        .bind(failed_count)
+        .bind(tokens_used)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Mark a classification job as completed.
+    pub async fn complete_classification_job(
+        &self,
+        job_id: i64,
+        actual_cost_cents: Option<i64>,
+    ) -> DbResult<()> {
+        let completed_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE classification_jobs SET
+                status = 'completed',
+                completed_at = ?2,
+                actual_cost_cents = ?3
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(&completed_at)
+        .bind(actual_cost_cents)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Cancel a running classification job.
+    pub async fn cancel_classification_job(&self, job_id: i64) -> DbResult<()> {
+        let completed_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE classification_jobs SET
+                status = 'cancelled',
+                completed_at = ?2
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(&completed_at)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Fail a classification job with an error message.
+    pub async fn fail_classification_job(&self, job_id: i64, error: &str) -> DbResult<()> {
+        let completed_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE classification_jobs SET
+                status = 'failed',
+                completed_at = ?2,
+                error_message = ?3
+            WHERE id = ?1
+            "#,
+        )
+        .bind(job_id)
+        .bind(&completed_at)
+        .bind(error)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Get recent classification jobs (last 10).
+    pub async fn get_recent_classification_jobs(&self) -> DbResult<Vec<vibe_recall_core::ClassificationJob>> {
+        let rows: Vec<ClassificationJobRow> = sqlx::query_as(
+            "SELECT * FROM classification_jobs ORDER BY started_at DESC LIMIT 10",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|r| r.into_classification_job()).collect())
+    }
+
+    // ========================================================================
+    // Theme 4: Index Run CRUD
+    // ========================================================================
+
+    /// Create a new index run. Returns the new run ID.
+    pub async fn create_index_run(
+        &self,
+        run_type: &str,
+        sessions_before: Option<i64>,
+    ) -> DbResult<i64> {
+        let started_at = Utc::now().to_rfc3339();
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            INSERT INTO index_runs (started_at, type, sessions_before)
+            VALUES (?1, ?2, ?3)
+            RETURNING id
+            "#,
+        )
+        .bind(&started_at)
+        .bind(run_type)
+        .bind(sessions_before)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Mark an index run as completed.
+    pub async fn complete_index_run(
+        &self,
+        run_id: i64,
+        sessions_after: Option<i64>,
+        duration_ms: i64,
+        throughput_mb_per_sec: Option<f64>,
+    ) -> DbResult<()> {
+        let completed_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE index_runs SET
+                status = 'completed',
+                completed_at = ?2,
+                sessions_after = ?3,
+                duration_ms = ?4,
+                throughput_mb_per_sec = ?5
+            WHERE id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .bind(&completed_at)
+        .bind(sessions_after)
+        .bind(duration_ms)
+        .bind(throughput_mb_per_sec)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Fail an index run with an error message.
+    pub async fn fail_index_run(&self, run_id: i64, error: &str) -> DbResult<()> {
+        let completed_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE index_runs SET
+                status = 'failed',
+                completed_at = ?2,
+                error_message = ?3
+            WHERE id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .bind(&completed_at)
+        .bind(error)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// Get recent index runs (last 20).
+    pub async fn get_recent_index_runs(&self) -> DbResult<Vec<vibe_recall_core::IndexRun>> {
+        let rows: Vec<IndexRunRow> = sqlx::query_as(
+            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|r| r.into_index_run()).collect())
+    }
+
+    /// Get unclassified sessions (id + preview + skills_used) for classification.
+    /// Returns sessions where category_l1 IS NULL, limited to `limit` rows.
+    pub async fn get_unclassified_sessions(
+        &self,
+        limit: i64,
+    ) -> DbResult<Vec<(String, String, String)>> {
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT id, preview, skills_used
+            FROM sessions
+            WHERE category_l1 IS NULL
+            ORDER BY last_message_at DESC
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get ALL sessions (id + preview + skills_used) for reclassification.
+    /// Returns all sessions, limited to `limit` rows.
+    pub async fn get_all_sessions_for_classification(
+        &self,
+        limit: i64,
+    ) -> DbResult<Vec<(String, String, String)>> {
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT id, preview, skills_used
+            FROM sessions
+            ORDER BY last_message_at DESC
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    /// Count unclassified sessions.
+    pub async fn count_unclassified_sessions(&self) -> DbResult<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE category_l1 IS NULL",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Count all sessions.
+    pub async fn count_all_sessions(&self) -> DbResult<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Count classified sessions.
+    pub async fn count_classified_sessions(&self) -> DbResult<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE category_l1 IS NOT NULL",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Batch update session classifications (within a single transaction).
+    pub async fn batch_update_session_classifications(
+        &self,
+        updates: &[(String, String, String, String, f64, String)],
+    ) -> DbResult<()> {
+        let classified_at = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        for (session_id, l1, l2, l3, confidence, source) in updates {
+            sqlx::query(
+                r#"
+                UPDATE sessions SET
+                    category_l1 = ?2,
+                    category_l2 = ?3,
+                    category_l3 = ?4,
+                    category_confidence = ?5,
+                    category_source = ?6,
+                    classified_at = ?7
+                WHERE id = ?1
+                "#,
+            )
+            .bind(session_id)
+            .bind(l1)
+            .bind(l2)
+            .bind(l3)
+            .bind(confidence)
+            .bind(source)
+            .bind(&classified_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Get a classification job by ID.
+    pub async fn get_classification_job(&self, job_id: i64) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+        let row: Option<ClassificationJobRow> = sqlx::query_as(
+            "SELECT * FROM classification_jobs WHERE id = ?1",
+        )
+        .bind(job_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|r| r.into_classification_job()))
+    }
+
+    /// Get the most recent completed/cancelled/failed classification job.
+    pub async fn get_last_completed_classification_job(&self) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+        let row: Option<ClassificationJobRow> = sqlx::query_as(
+            "SELECT * FROM classification_jobs WHERE status IN ('completed', 'cancelled', 'failed') ORDER BY completed_at DESC LIMIT 1",
+        )
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|r| r.into_classification_job()))
+    }
+
+    /// Mark stale running classification jobs as failed (for server restart recovery).
+    pub async fn recover_stale_classification_jobs(&self) -> DbResult<u64> {
+        let result = sqlx::query(
+            r#"
+            UPDATE classification_jobs
+            SET status = 'failed',
+                error_message = 'Server restart interrupted job',
+                completed_at = datetime('now')
+            WHERE status = 'running'
+            "#,
+        )
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    // ========================================================================
+    // Theme 4 Phase 3: System Page Queries
+    // ========================================================================
+
+    /// Get storage statistics for the system page.
+    ///
+    /// Returns sizes for JSONL files (from indexer_state), database file,
+    /// and computed totals. Index and cache sizes are set to 0 here and
+    /// can be augmented by the server layer with filesystem checks.
+    pub async fn get_storage_stats(&self) -> DbResult<StorageStats> {
+        // Sum of JSONL file sizes from indexer_state
+        let (jsonl_bytes,): (i64,) = sqlx::query_as(
+            "SELECT COALESCE(SUM(file_size), 0) FROM indexer_state",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Database file size
+        let db_bytes = if self.db_path().exists() && !self.db_path().as_os_str().is_empty() {
+            std::fs::metadata(self.db_path())
+                .map(|m| m.len())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Index and cache sizes are computed at the server layer via filesystem
+        let index_bytes: u64 = 0;
+        let cache_bytes: u64 = 0;
+
+        let total_bytes = jsonl_bytes as u64 + index_bytes + db_bytes + cache_bytes;
+
+        Ok(StorageStats {
+            jsonl_bytes: jsonl_bytes as u64,
+            index_bytes,
+            db_bytes,
+            cache_bytes,
+            total_bytes,
+        })
+    }
+
+    /// Get health statistics for the system page.
+    pub async fn get_health_stats(&self) -> DbResult<HealthStats> {
+        // Count sessions (excluding sidechains)
+        let (sessions_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Count unique commits
+        let (commits_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM commits")
+                .fetch_one(self.pool())
+                .await?;
+
+        // Count unique projects
+        let (projects_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT project_id) FROM sessions",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Count parsing errors from last index run (failed index_runs entries)
+        let (errors_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM index_runs WHERE status = 'failed'",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Get last sync timestamp
+        let metadata = self.get_index_metadata().await?;
+        let last_sync_at = metadata.last_indexed_at;
+
+        // Determine status
+        let status = Self::calculate_health_status(errors_count, last_sync_at);
+
+        Ok(HealthStats {
+            sessions_count,
+            commits_count,
+            projects_count,
+            errors_count,
+            last_sync_at,
+            status,
+        })
+    }
+
+    /// Calculate health status based on errors and staleness.
+    fn calculate_health_status(
+        errors_count: i64,
+        last_sync_at: Option<i64>,
+    ) -> HealthStatus {
+        // Error: 10+ errors or index stale > 24 hours
+        if errors_count >= 10 {
+            return HealthStatus::Error;
+        }
+
+        if let Some(ts) = last_sync_at {
+            let now = Utc::now().timestamp();
+            let hours_stale = (now - ts) / 3600;
+            if hours_stale >= 24 {
+                return HealthStatus::Error;
+            }
+        }
+
+        // Warning: any errors
+        if errors_count > 0 {
+            return HealthStatus::Warning;
+        }
+
+        HealthStatus::Healthy
+    }
+
+    /// Get classification status summary for the system page.
+    pub async fn get_classification_status(&self) -> DbResult<ClassificationStatus> {
+        // Count classified sessions
+        let (classified_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE classified_at IS NOT NULL AND is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Count unclassified sessions
+        let (unclassified_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE classified_at IS NULL AND is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+
+        // Get the most recent completed job
+        let last_job: Option<(String, Option<String>, Option<i64>, String, String)> = sqlx::query_as(
+            r#"
+            SELECT started_at, completed_at, actual_cost_cents, provider, model
+            FROM classification_jobs
+            WHERE status = 'completed'
+            ORDER BY started_at DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        // Check for active job
+        let active_job = self.get_active_classification_job().await?;
+
+        let (last_run_at, last_run_duration_ms, last_run_cost_cents, provider, model) =
+            if let Some((started, completed, cost, prov, mdl)) = last_job {
+                // Calculate duration from started_at to completed_at
+                let duration = if let Some(ref completed_at) = completed {
+                    // Both are RFC3339 strings; parse and compute diff
+                    let start = chrono::DateTime::parse_from_rfc3339(&started).ok();
+                    let end = chrono::DateTime::parse_from_rfc3339(completed_at).ok();
+                    match (start, end) {
+                        (Some(s), Some(e)) => Some((e - s).num_milliseconds()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                (Some(started), duration, cost, prov, mdl)
+            } else {
+                (
+                    None,
+                    None,
+                    None,
+                    "claude-cli".to_string(),
+                    "claude-3-haiku-20240307".to_string(),
+                )
+            };
+
+        let is_running = active_job.is_some();
+        let progress = active_job.as_ref().map(|j| {
+            if j.total_sessions > 0 {
+                ((j.classified_count as f64 / j.total_sessions as f64) * 100.0) as i64
+            } else {
+                0
+            }
+        });
+
+        Ok(ClassificationStatus {
+            classified_count,
+            unclassified_count,
+            last_run_at,
+            last_run_duration_ms,
+            last_run_cost_cents,
+            provider,
+            model,
+            is_running,
+            progress,
+        })
+    }
+
+    /// Reset all application data (factory reset).
+    /// Clears sessions, commits, invocables, index runs, etc.
+    /// Does NOT delete original JSONL files.
+    pub async fn reset_all_data(&self) -> DbResult<()> {
+        // Use a single transaction for atomicity
+        let mut tx = self.pool().begin().await?;
+
+        // Order matters due to foreign key constraints
+        sqlx::query("DELETE FROM session_commits")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM turn_metrics")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM api_errors")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM turns")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM invocations")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM invocables")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM commits")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM sessions")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM models")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM indexer_state")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM classification_jobs")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM index_runs")
+            .execute(&mut *tx)
+            .await?;
+
+        // Reset index_metadata to defaults
+        sqlx::query(
+            r#"
+            UPDATE index_metadata SET
+                last_indexed_at = NULL,
+                last_index_duration_ms = NULL,
+                sessions_indexed = 0,
+                projects_indexed = 0,
+                last_git_sync_at = NULL,
+                commits_found = 0,
+                links_created = 0,
+                updated_at = strftime('%s', 'now')
+            WHERE id = 1
+            "#,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Update session classification fields.
+    pub async fn update_session_classification(
+        &self,
+        session_id: &str,
+        category_l1: &str,
+        category_l2: &str,
+        category_l3: &str,
+        confidence: f64,
+        source: &str,
+    ) -> DbResult<()> {
+        let classified_at = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE sessions SET
+                category_l1 = ?2,
+                category_l2 = ?3,
+                category_l3 = ?4,
+                category_confidence = ?5,
+                category_source = ?6,
+                classified_at = ?7
+            WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .bind(category_l1)
+        .bind(category_l2)
+        .bind(category_l3)
+        .bind(confidence)
+        .bind(source)
+        .bind(&classified_at)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Theme 4: Internal row types for classification_jobs and index_runs
+// ============================================================================
+
+#[derive(Debug)]
+struct ClassificationJobRow {
+    id: i64,
+    started_at: String,
+    completed_at: Option<String>,
+    total_sessions: i64,
+    classified_count: i64,
+    skipped_count: i64,
+    failed_count: i64,
+    provider: String,
+    model: String,
+    status: String,
+    error_message: Option<String>,
+    cost_estimate_cents: Option<i64>,
+    actual_cost_cents: Option<i64>,
+    tokens_used: Option<i64>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ClassificationJobRow {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            id: row.try_get("id")?,
+            started_at: row.try_get("started_at")?,
+            completed_at: row.try_get("completed_at")?,
+            total_sessions: row.try_get("total_sessions")?,
+            classified_count: row.try_get("classified_count")?,
+            skipped_count: row.try_get("skipped_count")?,
+            failed_count: row.try_get("failed_count")?,
+            provider: row.try_get("provider")?,
+            model: row.try_get("model")?,
+            status: row.try_get("status")?,
+            error_message: row.try_get("error_message")?,
+            cost_estimate_cents: row.try_get("cost_estimate_cents")?,
+            actual_cost_cents: row.try_get("actual_cost_cents")?,
+            tokens_used: row.try_get("tokens_used")?,
+        })
+    }
+}
+
+impl ClassificationJobRow {
+    fn into_classification_job(self) -> vibe_recall_core::ClassificationJob {
+        vibe_recall_core::ClassificationJob {
+            id: self.id,
+            started_at: self.started_at,
+            completed_at: self.completed_at,
+            total_sessions: self.total_sessions,
+            classified_count: self.classified_count,
+            skipped_count: self.skipped_count,
+            failed_count: self.failed_count,
+            provider: self.provider,
+            model: self.model,
+            status: vibe_recall_core::ClassificationJobStatus::from_db_str(&self.status),
+            error_message: self.error_message,
+            cost_estimate_cents: self.cost_estimate_cents,
+            actual_cost_cents: self.actual_cost_cents,
+            tokens_used: self.tokens_used,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct IndexRunRow {
+    id: i64,
+    started_at: String,
+    completed_at: Option<String>,
+    run_type: String,
+    sessions_before: Option<i64>,
+    sessions_after: Option<i64>,
+    duration_ms: Option<i64>,
+    throughput_mb_per_sec: Option<f64>,
+    status: String,
+    error_message: Option<String>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for IndexRunRow {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            id: row.try_get("id")?,
+            started_at: row.try_get("started_at")?,
+            completed_at: row.try_get("completed_at")?,
+            run_type: row.try_get("type")?,
+            sessions_before: row.try_get("sessions_before")?,
+            sessions_after: row.try_get("sessions_after")?,
+            duration_ms: row.try_get("duration_ms")?,
+            throughput_mb_per_sec: row.try_get("throughput_mb_per_sec")?,
+            status: row.try_get("status")?,
+            error_message: row.try_get("error_message")?,
+        })
+    }
+}
+
+impl IndexRunRow {
+    fn into_index_run(self) -> vibe_recall_core::IndexRun {
+        vibe_recall_core::IndexRun {
+            id: self.id,
+            started_at: self.started_at,
+            completed_at: self.completed_at,
+            run_type: vibe_recall_core::IndexRunType::from_db_str(&self.run_type),
+            sessions_before: self.sessions_before,
+            sessions_after: self.sessions_after,
+            duration_ms: self.duration_ms,
+            throughput_mb_per_sec: self.throughput_mb_per_sec,
+            status: vibe_recall_core::IndexRunStatus::from_db_str(&self.status),
+            error_message: self.error_message,
+        }
     }
 }
 
@@ -1558,6 +2392,17 @@ struct SessionRow {
     mcp_progress_count: i32,
     summary_text: Option<String>,
     parse_version: i32,
+    // Theme 4: Classification
+    category_l1: Option<String>,
+    category_l2: Option<String>,
+    category_l3: Option<String>,
+    category_confidence: Option<f64>,
+    category_source: Option<String>,
+    classified_at: Option<String>,
+    // Theme 4: Behavioral metrics
+    prompt_word_count: Option<i32>,
+    correction_count: i32,
+    same_file_edit_count: i32,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -1615,6 +2460,17 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             mcp_progress_count: row.try_get("mcp_progress_count")?,
             summary_text: row.try_get("summary_text")?,
             parse_version: row.try_get("parse_version")?,
+            // Theme 4: Classification
+            category_l1: row.try_get("category_l1").ok().flatten(),
+            category_l2: row.try_get("category_l2").ok().flatten(),
+            category_l3: row.try_get("category_l3").ok().flatten(),
+            category_confidence: row.try_get("category_confidence").ok().flatten(),
+            category_source: row.try_get("category_source").ok().flatten(),
+            classified_at: row.try_get("classified_at").ok().flatten(),
+            // Theme 4: Behavioral metrics
+            prompt_word_count: row.try_get("prompt_word_count").ok().flatten(),
+            correction_count: row.try_get("correction_count").unwrap_or(0),
+            same_file_edit_count: row.try_get("same_file_edit_count").unwrap_or(0),
         })
     }
 }
@@ -1683,6 +2539,17 @@ impl SessionRow {
             mcp_progress_count: self.mcp_progress_count as u32,
             summary_text: self.summary_text,
             parse_version: self.parse_version as u32,
+            // Theme 4: Classification
+            category_l1: self.category_l1,
+            category_l2: self.category_l2,
+            category_l3: self.category_l3,
+            category_confidence: self.category_confidence,
+            category_source: self.category_source,
+            classified_at: self.classified_at,
+            // Theme 4: Behavioral metrics
+            prompt_word_count: self.prompt_word_count.map(|v| v as u32),
+            correction_count: self.correction_count as u32,
+            same_file_edit_count: self.same_file_edit_count as u32,
         }
     }
 }
@@ -1751,6 +2618,16 @@ mod tests {
             mcp_progress_count: 0,
             summary_text: None,
             parse_version: 0,
+            // Theme 4: Classification
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         }
     }
 

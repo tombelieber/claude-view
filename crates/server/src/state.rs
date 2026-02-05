@@ -1,7 +1,9 @@
 // crates/server/src/state.rs
 //! Application state for the Axum server.
 
+use crate::classify_state::ClassifyState;
 use crate::indexing_state::IndexingState;
+use crate::jobs::JobRunner;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use vibe_recall_core::Registry;
@@ -27,6 +29,10 @@ pub struct AppState {
     /// Invocable registry (skills, commands, MCP tools, built-in tools).
     /// `None` until background indexing completes registry build.
     pub registry: RegistryHolder,
+    /// Background job runner for long-running async tasks (classification, etc.)
+    pub jobs: Arc<JobRunner>,
+    /// Classification progress state (lock-free atomics for SSE streaming).
+    pub classify: Arc<ClassifyState>,
 }
 
 impl AppState {
@@ -39,6 +45,8 @@ impl AppState {
             db,
             indexing: Arc::new(IndexingState::new()),
             registry: Arc::new(RwLock::new(None)),
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
         })
     }
 
@@ -50,6 +58,8 @@ impl AppState {
             db,
             indexing,
             registry: Arc::new(RwLock::new(None)),
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
         })
     }
 
@@ -64,6 +74,8 @@ impl AppState {
             db,
             indexing,
             registry,
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
         })
     }
 
