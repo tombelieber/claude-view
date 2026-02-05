@@ -1,8 +1,8 @@
 // src/components/HistoryView.tsx
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Search, X, FolderOpen, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins } from 'lucide-react'
+import { Search, X, FolderOpen, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
@@ -16,6 +16,7 @@ import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions } from '../utils/group-sessions'
 import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
+import { cn } from '../lib/utils'
 
 type TimeFilter = 'all' | 'today' | '7d' | '30d'
 
@@ -256,6 +257,21 @@ export function HistoryView() {
     // Default behavior: group by date when sort is 'recent', otherwise single group
     return sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
   }, [filteredSessions, filters.groupBy, sort])
+
+  // Collapse state for group headers
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }, []);
 
   // Project list sorted by session count
   const sortedProjects = useMemo(() => {
@@ -510,53 +526,69 @@ export function HistoryView() {
             ) : (
               /* Timeline view */
               <div>
-                {groups.map(group => (
-                  <div key={group.label}>
-                    {/* Group header */}
-                    <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3">
-                      <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap">
-                        {group.label}
-                      </span>
-                      <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                      <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
-                        {group.sessions.length}
-                      </span>
-                    </div>
+                {groups.map(group => {
+                  const isCollapsed = collapsedGroups.has(group.label);
+                  return (
+                    <div key={group.label}>
+                      {/* Group header (collapsible) */}
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.label)}
+                        className="sticky top-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3 cursor-pointer group/header"
+                        aria-expanded={!isCollapsed}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
+                            isCollapsed && '-rotate-90'
+                          )}
+                        />
+                        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
+                          {group.label}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                          {group.sessions.length}
+                        </span>
+                      </button>
 
-                    {/* Cards */}
-                    <div className="space-y-1.5 pb-3">
-                      {group.sessions.map((session, idx) => {
-                        const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
-                        return (
-                          <div key={session.id} className="relative">
-                            {/* Rank badge for non-default sorts */}
-                            {sort !== 'recent' && (
-                              <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
+                      {/* Cards (hidden when collapsed) */}
+                      {!isCollapsed && (
+                        <div className="space-y-1.5 pb-3">
+                          {group.sessions.map((session, idx) => {
+                            const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
+                            return (
+                              <div key={session.id} className="relative">
+                                {/* Rank badge for non-default sorts */}
+                                {sort !== 'recent' && (
+                                  <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
+                                  </div>
+                                )}
+                                <Link
+                                  to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                  className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                                >
+                                  <SessionCard
+                                    session={session}
+                                    isSelected={false}
+                                    projectDisplayName={projectDisplayNames.get(session.project)}
+                                  />
+                                </Link>
+                                {/* Sort metric badge overlay */}
+                                {metric && (
+                                  <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                    {metric}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            <Link
-                              to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
-                              className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
-                            >
-                              <SessionCard
-                                session={session}
-                                isSelected={false}
-                                projectDisplayName={projectDisplayNames.get(session.project)}
-                              />
-                            </Link>
-                            {/* Sort metric badge overlay */}
-                            {metric && (
-                              <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                                {metric}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           ) : (
