@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
@@ -105,6 +105,16 @@ export function Sidebar({ projects }: SidebarProps) {
     if (node.type !== 'group') return
     toggleExpandGroup(node.name)
   }, [toggleExpandGroup])
+
+  const handleExpandAll = useCallback(() => {
+    setExpandedGroups(new Set(collectGroupNames(treeNodes)))
+    setExpandedProjects(new Set(projects.map((p) => p.name)))
+  }, [treeNodes, projects])
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedGroups(new Set())
+    setExpandedProjects(new Set())
+  }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (flattenedNodes.length === 0) return
@@ -342,8 +352,8 @@ export function Sidebar({ projects }: SidebarProps) {
         </Link>
       </div>
 
-      {/* View Mode Toggle */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+      {/* View Mode Toggle + Expand/Collapse */}
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
         <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
           <button
             type="button"
@@ -374,6 +384,34 @@ export function Sidebar({ projects }: SidebarProps) {
             aria-pressed={viewMode === 'tree'}
           >
             <FolderTree className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-0.5 ml-auto">
+          <button
+            type="button"
+            onClick={handleExpandAll}
+            title="Expand All"
+            className={cn(
+              'p-1 rounded transition-colors',
+              'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+              'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+            )}
+          >
+            <ChevronsUpDown className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleCollapseAll}
+            title="Collapse All"
+            className={cn(
+              'p-1 rounded transition-colors',
+              'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+              'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+            )}
+          >
+            <ChevronsDownUp className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
