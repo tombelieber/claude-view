@@ -3,4 +3,4 @@
 /**
  * Storage statistics for the system page.
  */
-export type StorageStats = { jsonlBytes: bigint, indexBytes: bigint, dbBytes: bigint, cacheBytes: bigint, totalBytes: bigint, };
+export type StorageStats = { jsonlBytes: number, indexBytes: number, dbBytes: number, cacheBytes: number, totalBytes: number, };

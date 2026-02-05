@@ -186,7 +186,9 @@ pub struct SessionInfo {
     pub project: String,
     pub project_path: String,
     pub file_path: String,
+    #[ts(type = "number")]
     pub modified_at: i64,
+    #[ts(type = "number")]
     pub size_bytes: u64,
     pub preview: String,
     pub last_message: String,
@@ -204,14 +206,19 @@ pub struct SessionInfo {
     #[serde(default)]
     pub deep_indexed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_input_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_cache_read_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_cache_creation_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_count_api: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_model: Option<String>,
@@ -240,8 +247,10 @@ pub struct SessionInfo {
     #[serde(default)]
     pub thinking_block_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_duration_avg_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_duration_max_ms: Option<u64>,
     #[serde(default)]
     pub api_error_count: u32,
@@ -353,6 +362,7 @@ pub struct ProjectSummary {
     pub session_count: usize,
     pub active_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub last_activity_at: Option<i64>,
 }
 
@@ -566,19 +576,27 @@ impl ClassificationJobStatus {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationJob {
+    #[ts(type = "number")]
     pub id: i64,
     pub started_at: String,
     pub completed_at: Option<String>,
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub classified_count: i64,
+    #[ts(type = "number")]
     pub skipped_count: i64,
+    #[ts(type = "number")]
     pub failed_count: i64,
     pub provider: String,
     pub model: String,
     pub status: ClassificationJobStatus,
     pub error_message: Option<String>,
+    #[ts(type = "number | null")]
     pub cost_estimate_cents: Option<i64>,
+    #[ts(type = "number | null")]
     pub actual_cost_cents: Option<i64>,
+    #[ts(type = "number | null")]
     pub tokens_used: Option<i64>,
 }
 
@@ -653,12 +671,16 @@ impl IndexRunStatus {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRun {
+    #[ts(type = "number")]
     pub id: i64,
     pub started_at: String,
     pub completed_at: Option<String>,
     pub run_type: IndexRunType,
+    #[ts(type = "number | null")]
     pub sessions_before: Option<i64>,
+    #[ts(type = "number | null")]
     pub sessions_after: Option<i64>,
+    #[ts(type = "number | null")]
     pub duration_ms: Option<i64>,
     pub throughput_mb_per_sec: Option<f64>,
     pub status: IndexRunStatus,
@@ -763,7 +785,9 @@ pub struct SkillAdoption {
 pub struct ReportSummary {
     pub month: String,
     pub session_count: u32,
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub lines_removed: i64,
     pub commit_count: u32,
     pub estimated_cost: f64,

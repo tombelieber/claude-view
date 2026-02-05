@@ -3,4 +3,4 @@
 /**
  * Information about the last completed classification run.
  */
-export type ClassifyLastRun = { jobId: bigint, completedAt: string | null, sessionsClassified: bigint, costCents: bigint | null, errorCount: bigint, status: string, };
+export type ClassifyLastRun = { jobId: number, completedAt: string | null, sessionsClassified: number, costCents: number | null, errorCount: number, status: string, };
