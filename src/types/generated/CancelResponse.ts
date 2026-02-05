@@ -3,4 +3,4 @@
 /**
  * Response for POST /api/classify/cancel.
  */
-export type CancelResponse = { jobId: bigint, classified: bigint, status: string, };
+export type CancelResponse = { jobId: number, classified: number, status: string, };

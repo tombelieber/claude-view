@@ -1,47 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import type {
+  ClassifyProgressInfo,
+  ClassifyLastRun,
+  ClassifyStatusResponse,
+  ClassifyResponse,
+  CancelResponse,
+} from '../types/generated'
 
-export interface ClassifyProgress {
-  classified: number
-  total: number
-  percentage: number
-  eta: string
-  currentBatch?: string
-}
+// Re-export generated types for consumers
+export type { ClassifyProgressInfo, ClassifyLastRun, ClassifyStatusResponse, ClassifyResponse, CancelResponse }
 
-export interface ClassifyLastRun {
-  jobId: number
-  completedAt?: string
-  sessionsClassified: number
-  costCents?: number
-  errorCount: number
-  status: string
-}
-
-export interface ClassifyStatusResponse {
-  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
-  jobId?: number
-  progress?: ClassifyProgress
-  lastRun?: ClassifyLastRun
-  error?: { message: string; retryable: boolean }
-  totalSessions: number
-  classifiedSessions: number
-  unclassifiedSessions: number
-}
-
-export interface ClassifyResponse {
-  jobId: number
-  totalSessions: number
-  estimatedCostCents: number
-  estimatedDurationSecs: number
-  status: string
-}
-
-export interface CancelResponse {
-  jobId: number
-  classified: number
-  status: string
-}
+// Alias for backward compat — components reference ClassifyProgress
+export type ClassifyProgress = ClassifyProgressInfo
 
 export type ClassifyMode = 'unclassified' | 'all'
 
@@ -58,7 +29,7 @@ export interface UseClassificationResult {
 
   // SSE
   isStreaming: boolean
-  sseProgress: ClassifyProgress | null
+  sseProgress: ClassifyProgressInfo | null
 
   // Refresh
   refreshStatus: () => void
@@ -79,7 +50,7 @@ export function useClassification(): UseClassificationResult {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [sseProgress, setSseProgress] = useState<ClassifyProgress | null>(null)
+  const [sseProgress, setSseProgress] = useState<ClassifyProgressInfo | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
 
   // Fetch status on mount and periodically
@@ -131,7 +102,7 @@ export function useClassification(): UseClassificationResult {
 
     es.addEventListener('progress', (event: MessageEvent) => {
       try {
-        const data = JSON.parse(event.data) as ClassifyProgress
+        const data = JSON.parse(event.data) as ClassifyProgressInfo
         setSseProgress(data)
       } catch {
         // ignore parse errors

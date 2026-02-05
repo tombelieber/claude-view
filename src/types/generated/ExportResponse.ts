@@ -4,4 +4,4 @@ import type { ExportedSession } from "./ExportedSession";
 /**
  * JSON export response wrapper.
  */
-export type ExportResponse = { sessions: Array<ExportedSession>, exportedAt: bigint, totalCount: number, };
+export type ExportResponse = { sessions: Array<ExportedSession>, exportedAt: number, totalCount: number, };

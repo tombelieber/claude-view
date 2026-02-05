@@ -40,6 +40,7 @@ pub struct CategoryDataPoint {
 pub struct HeatmapCell {
     pub day_of_week: u8,
     pub hour_of_day: u8,
+    #[ts(type = "number")]
     pub sessions: i64,
     pub avg_reedit_rate: f64,
 }
@@ -65,6 +66,7 @@ pub struct InsightsTrendsResponse {
 
     pub period_start: String,
     pub period_end: String,
+    #[ts(type = "number")]
     pub total_sessions: i64,
 }
 

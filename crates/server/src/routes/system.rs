@@ -44,10 +44,15 @@ pub struct SystemResponse {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StorageInfo {
+    #[ts(type = "number")]
     pub jsonl_bytes: u64,
+    #[ts(type = "number")]
     pub index_bytes: u64,
+    #[ts(type = "number")]
     pub db_bytes: u64,
+    #[ts(type = "number")]
     pub cache_bytes: u64,
+    #[ts(type = "number")]
     pub total_bytes: u64,
 }
 
@@ -69,8 +74,10 @@ impl From<StorageStats> for StorageInfo {
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceInfo {
     /// Duration of last successful index in milliseconds.
+    #[ts(type = "number | null")]
     pub last_index_duration_ms: Option<i64>,
     /// Throughput: bytes processed per second during last index.
+    #[ts(type = "number | null")]
     pub throughput_bytes_per_sec: Option<u64>,
     /// Sessions indexed per second during last index.
     pub sessions_per_sec: Option<f64>,
@@ -81,9 +88,13 @@ pub struct PerformanceInfo {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct HealthInfo {
+    #[ts(type = "number")]
     pub sessions_count: i64,
+    #[ts(type = "number")]
     pub commits_count: i64,
+    #[ts(type = "number")]
     pub projects_count: i64,
+    #[ts(type = "number")]
     pub errors_count: i64,
     pub last_sync_at: Option<String>,
     pub status: HealthStatus,
@@ -115,7 +126,9 @@ pub struct IndexRunInfo {
     pub timestamp: String,
     #[serde(rename = "type")]
     pub run_type: String,
+    #[ts(type = "number | null")]
     pub sessions_count: Option<i64>,
+    #[ts(type = "number | null")]
     pub duration_ms: Option<i64>,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,14 +140,19 @@ pub struct IndexRunInfo {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationInfo {
+    #[ts(type = "number")]
     pub classified_count: i64,
+    #[ts(type = "number")]
     pub unclassified_count: i64,
     pub last_run_at: Option<String>,
+    #[ts(type = "number | null")]
     pub last_run_duration_ms: Option<i64>,
+    #[ts(type = "number | null")]
     pub last_run_cost_cents: Option<i64>,
     pub provider: String,
     pub model: String,
     pub is_running: bool,
+    #[ts(type = "number | null")]
     pub progress: Option<i64>,
 }
 
@@ -170,6 +188,7 @@ pub struct ActionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ClearCacheResponse {
     pub status: String,
+    #[ts(type = "number")]
     pub cleared_bytes: u64,
 }
 

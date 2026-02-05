@@ -6,4 +6,4 @@ import type { ClassifyProgressInfo } from "./ClassifyProgressInfo";
 /**
  * Response for GET /api/classify/status.
  */
-export type ClassifyStatusResponse = { status: string, jobId: bigint | null, progress: ClassifyProgressInfo | null, lastRun: ClassifyLastRun | null, error: ClassifyErrorInfo | null, totalSessions: bigint, classifiedSessions: bigint, unclassifiedSessions: bigint, };
+export type ClassifyStatusResponse = { status: string, jobId: number | null, progress: ClassifyProgressInfo | null, lastRun: ClassifyLastRun | null, error: ClassifyErrorInfo | null, totalSessions: number, classifiedSessions: number, unclassifiedSessions: number, };

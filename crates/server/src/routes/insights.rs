@@ -188,8 +188,11 @@ pub struct ClassificationStatus {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsMeta {
+    #[ts(type = "number")]
     pub computed_at: i64,
+    #[ts(type = "number")]
     pub time_range_start: i64,
+    #[ts(type = "number")]
     pub time_range_end: i64,
     pub patterns_evaluated: u32,
     pub patterns_returned: u32,
