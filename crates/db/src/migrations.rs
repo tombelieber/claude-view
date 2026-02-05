@@ -230,6 +230,19 @@ CREATE TABLE IF NOT EXISTS api_errors (
     // they only slow down bulk writes (~24k unnecessary B-tree ops per reindex).
     r#"DROP INDEX IF EXISTS idx_invocations_session;"#,
     r#"DROP INDEX IF EXISTS idx_invocations_timestamp;"#,
+    // Migration 13: Dashboard analytics indexes (Phase 2A time-range filtering)
+    // 13a: Add primary_model column for efficient model-based grouping
+    // This denormalizes the most-used model from turns table to avoid expensive subqueries.
+    r#"ALTER TABLE sessions ADD COLUMN primary_model TEXT;"#,
+    // 13b: Index for time-range queries on first_message_at
+    // Supports "sessions started in date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);"#,
+    // 13c: Composite index for time-range queries scoped to project
+    // Supports "sessions in project X during date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);"#,
+    // 13d: Index for model-based grouping and filtering
+    // Supports "token usage by model" queries in AI Generation Breakdown.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
 ];
 
 // ============================================================================
@@ -633,5 +646,61 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count.0, 0, "session_commits should be deleted via CASCADE");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_dashboard_analytics_indexes() {
+        let pool = setup_db().await;
+
+        // Verify primary_model column was added
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
+
+        // Verify new indexes were created
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_sessions_first_message"),
+            "Missing idx_sessions_first_message index");
+        assert!(index_names.contains(&"idx_sessions_project_first_message"),
+            "Missing idx_sessions_project_first_message index");
+        assert!(index_names.contains(&"idx_sessions_primary_model"),
+            "Missing idx_sessions_primary_model index");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_primary_model_can_be_set() {
+        let pool = setup_db().await;
+
+        // Insert a session with primary_model
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, primary_model) VALUES ('pm-test', 'proj', '/tmp/pm.jsonl', 'Test', 'claude-sonnet-4')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Verify the value
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT primary_model FROM sessions WHERE id = 'pm-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, Some("claude-sonnet-4".to_string()));
     }
 }
