@@ -8,10 +8,9 @@ import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
 import { ActivitySparkline } from './ActivitySparkline'
-import { FilterSortBar, useFilterSort } from './FilterSortBar'
 import { SessionToolbar } from './SessionToolbar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
-import type { SessionSort, SessionFilter } from './FilterSortBar'
+import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
 import { sessionSlug } from '../lib/url-slugs'
@@ -35,13 +34,6 @@ const SORT_ICONS: Record<SessionSort, React.ReactNode> = {
   prompts: <MessageSquare className="w-3.5 h-3.5" />,
   files_edited: <FileEdit className="w-3.5 h-3.5" />,
   duration: <Clock className="w-3.5 h-3.5" />,
-}
-
-const FILTER_LABELS: Record<SessionFilter, string> = {
-  all: 'All sessions',
-  has_commits: 'Sessions with commits',
-  high_reedit: 'High re-edit rate sessions',
-  long_session: 'Long sessions (>30 min)',
 }
 
 /** Format duration in human-readable form */
@@ -88,7 +80,6 @@ export function HistoryView() {
 
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
-  const { filter, sort, setFilter, setSort } = useFilterSort(searchParams, setSearchParams)
   const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
 
   const [searchText, setSearchText] = useState('')
@@ -100,8 +91,8 @@ export function HistoryView() {
   const filterRef = useRef<HTMLDivElement>(null)
 
   // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
-  const hasDeepLinkSort = sort !== 'recent'
-  const hasDeepLinkFilter = filter !== 'all'
+  const hasDeepLinkSort = filters.sort !== 'recent'
+  const hasDeepLinkFilter = filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null
   const hasDeepLink = hasDeepLinkSort || hasDeepLinkFilter
 
   // Focus search on mount (only if not deep-linked)
@@ -198,16 +189,6 @@ export function HistoryView() {
         if (reeditRate <= 0.2) return false
       }
 
-      // OLD Session filter (from dropdown) - kept for backwards compatibility
-      if (filter === 'has_commits' && (s.commitCount ?? 0) === 0) return false
-      if (filter === 'high_reedit') {
-        const filesEdited = s.filesEditedCount ?? 0
-        const reeditedFiles = s.reeditedFilesCount ?? 0
-        const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
-        if (reeditRate <= 0.2) return false
-      }
-      if (filter === 'long_session' && (s.durationSeconds ?? 0) <= 1800) return false
-
       // Text search
       if (query) {
         const haystack = [
@@ -224,9 +205,9 @@ export function HistoryView() {
     })
 
     // Apply sorting
-    if (sort !== 'recent') {
+    if (filters.sort !== 'recent') {
       filtered = [...filtered].sort((a, b) => {
-        switch (sort) {
+        switch (filters.sort) {
           case 'tokens': {
             const aTokens = Number((a.totalInputTokens ?? 0n) + (a.totalOutputTokens ?? 0n))
             const bTokens = Number((b.totalInputTokens ?? 0n) + (b.totalOutputTokens ?? 0n))
@@ -245,9 +226,9 @@ export function HistoryView() {
     }
 
     return filtered
-  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filter, sort, filters])
+  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filters])
 
-  const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filter !== 'all' || sort !== 'recent'
+  const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
 
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
 
@@ -257,8 +238,8 @@ export function HistoryView() {
       return groupSessions(filteredSessions, filters.groupBy)
     }
     // Default behavior: group by date when sort is 'recent', otherwise single group
-    return sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
-  }, [filteredSessions, filters.groupBy, sort, tooManyToGroup])
+    return filters.sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[filters.sort], sessions: filteredSessions }]
+  }, [filteredSessions, filters.groupBy, filters.sort, tooManyToGroup])
 
   // Collapse state for group headers
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -297,8 +278,7 @@ export function HistoryView() {
     setSelectedProjects(new Set())
     setTimeFilter('all')
     setSelectedDate(null)
-    setFilter('all')
-    setSort('recent')
+    setFilters(DEFAULT_FILTERS)
   }
 
   const timeOptions: { value: TimeFilter; label: string }[] = [
@@ -335,14 +315,14 @@ export function HistoryView() {
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               {hasDeepLinkSort && (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {SORT_ICONS[sort]}
-                  {SORT_LABELS[sort]}
+                  {SORT_ICONS[filters.sort]}
+                  {SORT_LABELS[filters.sort]}
                 </span>
               )}
               {hasDeepLinkFilter && (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-300">
                   <TrendingUp className="w-3.5 h-3.5" />
-                  {FILTER_LABELS[filter]}
+                  Filtered
                 </span>
               )}
               <span className="text-gray-400 tabular-nums">{filteredSessions.length} sessions</span>
@@ -394,16 +374,6 @@ export function HistoryView() {
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
-            />
-
-            <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
-
-            {/* LEGACY: Old FilterSortBar (can be removed later) */}
-            <FilterSortBar
-              filter={filter}
-              sort={sort}
-              onFilterChange={setFilter}
-              onSortChange={setSort}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
@@ -566,11 +536,11 @@ export function HistoryView() {
                       {!isCollapsed && (
                         <div className="space-y-1.5 pb-3">
                           {group.sessions.map((session, idx) => {
-                            const metric = sort !== 'recent' ? formatSortMetric(session, sort) : null
+                            const metric = filters.sort !== 'recent' ? formatSortMetric(session, filters.sort) : null
                             return (
                               <div key={session.id} className="relative">
                                 {/* Rank badge for non-default sorts */}
-                                {sort !== 'recent' && (
+                                {filters.sort !== 'recent' && (
                                   <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
                                     <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
                                   </div>
