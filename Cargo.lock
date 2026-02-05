@@ -2629,6 +2629,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vibe-recall-core"
 version = "0.2.4"
 dependencies = [
+ "async-trait",
  "chrono",
  "dirs",
  "pretty_assertions",
@@ -2689,11 +2690,13 @@ dependencies = [
  "async-stream",
  "axum 0.8.8",
  "axum-test",
+ "chrono",
  "dirs",
  "indicatif",
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
