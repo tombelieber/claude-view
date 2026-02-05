@@ -1,7 +1,6 @@
 import { Sparkles, FileCode2 } from 'lucide-react'
 import { useAIGenerationStats, formatTokens, formatLineCount, type TimeRangeParams } from '../hooks/use-ai-generation'
-import { MetricCard } from './ui/MetricCard'
-import { ProgressBar } from './ui/ProgressBar'
+import { MetricCard, ProgressBar } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
 
 interface AIGenerationStatsProps {
