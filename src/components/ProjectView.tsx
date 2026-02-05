@@ -11,7 +11,7 @@ import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
 import { sessionSlug } from '../lib/url-slugs'
-import { Skeleton, EmptyState, ErrorState } from './LoadingStates'
+import { Skeleton, EmptyState, SessionsEmptyState, ErrorState } from './LoadingStates'
 import { cn } from '../lib/utils'
 
 /** Human-readable labels for sort options */
@@ -173,9 +173,9 @@ export function ProjectView() {
             message={error.message}
             onRetry={() => refetch()}
           />
-        ) : page && filteredSessions.length > 0 ? (
+        ) : page && page.sessions.length > 0 ? (
           <>
-            {/* SessionToolbar with view mode toggle */}
+            {/* SessionToolbar with view mode toggle — always visible when sessions exist */}
             <SessionToolbar
               filters={filters}
               onFiltersChange={setFilters}
@@ -193,88 +193,90 @@ export function ProjectView() {
 
             {/* Session List or Table */}
             <div className="mt-5">
-              {filters.viewMode === 'table' ? (
-                /* Table view */
-                <CompactSessionTable
-                  sessions={filteredSessions}
-                  onSort={(column) => {
-                    // Map table column to SessionSort
-                    const sortMap: Record<SortColumn, SessionSort> = {
-                      time: 'recent',
-                      branch: 'recent', // No direct branch sort yet
-                      prompts: 'prompts',
-                      tokens: 'tokens',
-                      files: 'files_edited',
-                      loc: 'recent', // No direct LOC sort yet
-                      commits: 'recent', // No direct commits sort yet
-                      duration: 'duration',
+              {filteredSessions.length > 0 ? (
+                filters.viewMode === 'table' ? (
+                  /* Table view */
+                  <CompactSessionTable
+                    sessions={filteredSessions}
+                    onSort={(column) => {
+                      // Map table column to SessionSort
+                      const sortMap: Record<SortColumn, SessionSort> = {
+                        time: 'recent',
+                        branch: 'recent', // No direct branch sort yet
+                        prompts: 'prompts',
+                        files: 'files_edited',
+                        commits: 'recent', // No direct commits sort yet
+                        duration: 'duration',
+                      }
+                      const newSort = sortMap[column] || 'recent'
+                      setFilters({ ...filters, sort: newSort })
+                    }}
+                    sortColumn={
+                      filters.sort === 'prompts' ? 'prompts' :
+                      filters.sort === 'tokens' ? 'prompts' :
+                      filters.sort === 'files_edited' ? 'files' :
+                      filters.sort === 'duration' ? 'duration' :
+                      'time'
                     }
-                    const newSort = sortMap[column] || 'recent'
-                    setFilters({ ...filters, sort: newSort })
-                  }}
-                  sortColumn={
-                    filters.sort === 'prompts' ? 'prompts' :
-                    filters.sort === 'tokens' ? 'tokens' :
-                    filters.sort === 'files_edited' ? 'files' :
-                    filters.sort === 'duration' ? 'duration' :
-                    'time'
-                  }
-                  sortDirection="desc"
-                />
-              ) : (
-                /* Timeline view with collapsible group headers */
-                <div>
-                  {groups.map(group => {
-                    const isCollapsed = collapsedGroups.has(group.label);
-                    return (
-                      <div key={group.label}>
-                        {/* Group header (collapsible) */}
-                        <button
-                          type="button"
-                          onClick={() => toggleGroup(group.label)}
-                          className="sticky top-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3 cursor-pointer group/header"
-                          aria-expanded={!isCollapsed}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
-                              isCollapsed && '-rotate-90'
-                            )}
-                          />
-                          <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
-                            {group.label}
-                          </span>
-                          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                          <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
-                            {group.sessions.length}
-                          </span>
-                        </button>
+                    sortDirection="desc"
+                  />
+                ) : (
+                  /* Timeline view with collapsible group headers */
+                  <div>
+                    {groups.map(group => {
+                      const isCollapsed = collapsedGroups.has(group.label);
+                      return (
+                        <div key={group.label}>
+                          {/* Group header (collapsible) */}
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.label)}
+                            className="sticky top-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3 cursor-pointer group/header"
+                            aria-expanded={!isCollapsed}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
+                                isCollapsed && '-rotate-90'
+                              )}
+                            />
+                            <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
+                              {group.label}
+                            </span>
+                            <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                            <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                              {group.sessions.length}
+                            </span>
+                          </button>
 
-                        {/* Cards (hidden when collapsed) */}
-                        {!isCollapsed && (
-                          <div className="space-y-1.5 pb-3">
-                            {group.sessions.map((session) => (
-                              <Link
-                                key={session.id}
-                                to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
-                                className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
-                              >
-                                <SessionCard
-                                  session={session}
-                                  isSelected={false}
-                                />
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {/* Cards (hidden when collapsed) */}
+                          {!isCollapsed && (
+                            <div className="space-y-1.5 pb-3">
+                              {group.sessions.map((session) => (
+                                <Link
+                                  key={session.id}
+                                  to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                  className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                                >
+                                  <SessionCard
+                                    session={session}
+                                    isSelected={false}
+                                  />
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              ) : (
+                <SessionsEmptyState isFiltered={true} onClearFilters={() => setFilters(DEFAULT_FILTERS)} />
               )}
             </div>
 
-            {filteredSessions.length < page.total && (
+            {filteredSessions.length > 0 && filteredSessions.length < page.total && (
               <div className="text-center py-6">
                 <span className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg" aria-label={`Showing ${filteredSessions.length} of ${page.total} sessions`}>
                   Showing {filteredSessions.length} of {page.total} sessions
