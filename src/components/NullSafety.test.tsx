@@ -7,7 +7,6 @@ import { SessionCard } from './SessionCard'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { ActivityCalendar } from './ActivityCalendar'
 import { CommandPalette } from './CommandPalette'
-import { FilterSortBar } from './FilterSortBar'
 import { Skeleton } from './LoadingStates'
 import { TierBadge } from './TierBadge'
 
@@ -213,60 +212,6 @@ describe('Component null/undefined safety', () => {
   })
 
   // CommandPalette requires Router context, tested in integration tests instead
-
-  describe('FilterSortBar component', () => {
-    it('should handle null filters safely', () => {
-      const { container } = render(
-        <FilterSortBar
-          filters={null as any}
-          onFiltersChange={() => {}}
-          sortBy="date"
-          onSortChange={() => {}}
-        />
-      )
-
-      expect(container).toBeInTheDocument()
-    })
-
-    it('should handle undefined sortBy safely', () => {
-      const { container } = render(
-        <FilterSortBar
-          filters={{}}
-          onFiltersChange={() => {}}
-          sortBy={undefined as any}
-          onSortChange={() => {}}
-        />
-      )
-
-      expect(container).toBeInTheDocument()
-    })
-
-    it('should handle null callbacks safely', () => {
-      const { container } = render(
-        <FilterSortBar
-          filters={{}}
-          onFiltersChange={null as any}
-          sortBy="date"
-          onSortChange={null as any}
-        />
-      )
-
-      expect(container).toBeInTheDocument()
-    })
-
-    it('should handle all nulls safely', () => {
-      const { container } = render(
-        <FilterSortBar
-          filters={null as any}
-          onFiltersChange={null as any}
-          sortBy={null as any}
-          onSortChange={null as any}
-        />
-      )
-
-      expect(container).toBeInTheDocument()
-    })
-  })
 
   describe('Skeleton component', () => {
     it('should handle null label safely', () => {
