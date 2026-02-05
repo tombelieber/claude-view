@@ -115,6 +115,15 @@ export function HistoryView() {
     }
   }, [showProjectFilter])
 
+  // Extract unique branches from sessions for the filter popover
+  const availableBranches = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of allSessions) {
+      if (s.gitBranch) set.add(s.gitBranch)
+    }
+    return [...set].sort()
+  }, [allSessions])
+
   // Map session IDs to project display names
   const projectDisplayNames = useMemo(() => {
     if (!summaries) return new Map<string, string>()
@@ -231,6 +240,17 @@ export function HistoryView() {
   const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
 
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
+
+  // Auto-reset groupBy when session count exceeds the limit
+  const [groupByAutoReset, setGroupByAutoReset] = useState(false);
+  useEffect(() => {
+    if (tooManyToGroup && filters.groupBy !== 'none') {
+      setFilters({ ...filters, groupBy: 'none' });
+      setGroupByAutoReset(true);
+    } else if (!tooManyToGroup) {
+      setGroupByAutoReset(false);
+    }
+  }, [tooManyToGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
@@ -374,6 +394,7 @@ export function HistoryView() {
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
+              branches={availableBranches}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
@@ -466,7 +487,7 @@ export function HistoryView() {
         </div>
 
         {/* Grouping safeguard warning */}
-        {tooManyToGroup && filters.groupBy !== 'none' && (
+        {tooManyToGroup && groupByAutoReset && (
           <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
             Grouping disabled — {filteredSessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
           </div>

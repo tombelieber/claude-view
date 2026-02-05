@@ -14,6 +14,49 @@ body {
   font-family: var(--font-sans);
 }
 
+/* ── Custom Scrollbars ── */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+:where(.dark, .dark *) * {
+  scrollbar-color: #4b5563 transparent;
+}
+
+/* Webkit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:where(.dark, .dark *) ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+:where(.dark, .dark *) ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
 /* Utility classes for metric typography */
 .font-metric-value {
   font-family: var(--font-mono);
