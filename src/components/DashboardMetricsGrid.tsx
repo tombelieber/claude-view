@@ -1,4 +1,4 @@
-import { MetricCard } from './ui/MetricCard'
+import { MetricCard } from './ui'
 import { formatNumber } from '../lib/format-utils'
 import type { DashboardTrends, TrendMetric } from '../types/generated'
 

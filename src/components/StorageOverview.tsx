@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -8,8 +8,7 @@ import {
   formatTimestamp,
   formatDurationMs,
 } from '../hooks/use-storage-stats'
-import { ProgressBar } from './ui/ProgressBar'
-import { StatCard } from './ui/StatCard'
+import { ProgressBar, StatCard } from './ui'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 
@@ -180,24 +179,6 @@ export function StorageOverview() {
             Rebuild Index
           </button>
 
-          {/* TODO: Wire up to DELETE /api/cache endpoint when backend implements it.
-              The endpoint should clear the Tantivy index only (SQLite stays).
-              See design doc: docs/plans/2026-02-05-dashboard-analytics-design.md */}
-          <button
-            type="button"
-            disabled
-            className={cn(
-              // Touch target: min 44x44px
-              'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
-              'text-sm font-medium rounded-md cursor-not-allowed',
-              'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500',
-              'opacity-50'
-            )}
-            title="Clear Cache (endpoint not yet implemented)"
-          >
-            <Trash2 className="w-4 h-4" />
-            Clear Cache
-          </button>
         </div>
       </div>
 
