@@ -1,6 +1,6 @@
 // src/utils/group-sessions.test.ts
 import { describe, it, expect } from 'vitest';
-import { groupSessions, type SessionInfo, type SessionGroup } from './group-sessions';
+import { groupSessions, shouldDisableGrouping, type SessionInfo, type SessionGroup } from './group-sessions';
 import type { ToolCounts } from '../types/generated/ToolCounts';
 
 // Helper to create a test session
@@ -49,6 +49,19 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     ...overrides,
   };
 }
+
+describe('shouldDisableGrouping', () => {
+  it('returns false for <= 500 sessions', () => {
+    expect(shouldDisableGrouping(0)).toBe(false);
+    expect(shouldDisableGrouping(250)).toBe(false);
+    expect(shouldDisableGrouping(500)).toBe(false);
+  });
+
+  it('returns true for > 500 sessions', () => {
+    expect(shouldDisableGrouping(501)).toBe(true);
+    expect(shouldDisableGrouping(1000)).toBe(true);
+  });
+});
 
 describe('groupSessions', () => {
   describe('none grouping', () => {
