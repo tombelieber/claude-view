@@ -1,6 +1,6 @@
 // src/components/SessionToolbar.tsx
 import { useState, useRef, useEffect } from 'react';
-import { SortDesc, ChevronDown, Check, LayoutList, Table } from 'lucide-react';
+import { SortDesc, ChevronDown, Check, LayoutList, Table, RotateCcw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { FilterPopover } from './FilterPopover';
 import type { SessionFilters, SessionSort, GroupBy, ViewMode } from '../hooks/use-session-filters';
@@ -174,6 +174,7 @@ const GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string; description?: str
  */
 export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled, branches = [] }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters);
+  const hasNonDefaults = activeFilterCount > 0 || filters.sort !== 'recent' || filters.groupBy !== 'none';
 
   const handleSortChange = (sort: string) => {
     onFiltersChange({ ...filters, sort: sort as SessionSort });
@@ -221,6 +222,24 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters, group
           onChange={handleSortChange}
           isActive={filters.sort !== 'recent'}
         />
+
+        {/* Reset all filters/sort/grouping */}
+        {hasNonDefaults && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-md',
+              'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+              'hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1'
+            )}
+            aria-label="Reset all filters"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Reset</span>
+          </button>
+        )}
       </div>
 
       {/* Right side: View mode toggle */}
