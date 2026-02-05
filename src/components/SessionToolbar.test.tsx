@@ -135,7 +135,7 @@ describe('SessionToolbar', () => {
 
     const groupByButton = screen.getByRole('button', { name: /group by/i });
     const sortButton = screen.getByRole('button', { name: /sort/i });
-    const filterButton = screen.getByRole('button', { name: /filters/i });
+    const filterButton = screen.getByRole('button', { name: /^filters/i });
 
     // Check that active controls have the active styling class
     expect(groupByButton.className).toContain('bg-blue');
