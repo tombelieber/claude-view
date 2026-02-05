@@ -10,6 +10,7 @@ interface SessionToolbarProps {
   filters: SessionFilters;
   onFiltersChange: (filters: SessionFilters) => void;
   onClearFilters: () => void;
+  groupByDisabled?: boolean;
 }
 
 interface DropdownProps {
@@ -157,7 +158,7 @@ const GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string; description?: str
  * />
  * ```
  */
-export function SessionToolbar({ filters, onFiltersChange, onClearFilters }: SessionToolbarProps) {
+export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters);
 
   const handleSortChange = (sort: string) => {
@@ -180,10 +181,10 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters }: Ses
         <Dropdown
           label="Group by"
           icon={<div className="w-3.5 h-3.5 flex items-center justify-center text-xs">⊞</div>}
-          value={filters.groupBy}
+          value={groupByDisabled ? 'none' : filters.groupBy}
           options={GROUP_BY_OPTIONS}
-          onChange={handleGroupByChange}
-          isActive={filters.groupBy !== 'none'}
+          onChange={groupByDisabled ? () => {} : handleGroupByChange}
+          isActive={!groupByDisabled && filters.groupBy !== 'none'}
         />
 
         {/* Filter popover */}
