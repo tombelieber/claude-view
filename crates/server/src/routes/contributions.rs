@@ -171,7 +171,6 @@ pub struct ContributionsResponse {
     /// Global uncommitted insight
     pub uncommitted_insight: String,
     /// Warnings if data is incomplete
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<ContributionWarning>,
 }
 
@@ -384,12 +383,21 @@ pub async fn get_contributions(
     };
 
     // Build cache headers
-    let cache_seconds = range.cache_seconds();
+    // Don't cache empty responses — the server may still be generating snapshots
+    // and a cached empty response would hide data for up to 30 minutes.
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_str(&format!("max-age={}", cache_seconds)).unwrap(),
-    );
+    if agg.sessions_count == 0 {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache, no-store"),
+        );
+    } else {
+        let cache_seconds = range.cache_seconds();
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_str(&format!("max-age={}", cache_seconds)).unwrap(),
+        );
+    }
 
     Ok((headers, Json(response)))
 }
@@ -737,9 +745,9 @@ mod tests {
         assert!(json["efficiency"].is_object());
         assert!(json["byBranch"].is_array());
 
-        // Check cache header
+        // Empty responses should not be cached (server may still be generating snapshots)
         let cache_control = headers.get("cache-control").unwrap().to_str().unwrap();
-        assert!(cache_control.contains("max-age="));
+        assert!(cache_control.contains("no-cache"));
     }
 
     #[tokio::test]
@@ -750,9 +758,9 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
 
-        // Today should have 60 second cache
+        // Empty DB: should get no-cache (not range-based caching)
         let cache_control = headers.get("cache-control").unwrap().to_str().unwrap();
-        assert!(cache_control.contains("60"));
+        assert!(cache_control.contains("no-cache"));
     }
 
     #[tokio::test]
@@ -763,9 +771,9 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
 
-        // Week should have 300 second cache
+        // Empty DB: should get no-cache (not range-based caching)
         let cache_control = headers.get("cache-control").unwrap().to_str().unwrap();
-        assert!(cache_control.contains("300"));
+        assert!(cache_control.contains("no-cache"));
     }
 
     #[tokio::test]
