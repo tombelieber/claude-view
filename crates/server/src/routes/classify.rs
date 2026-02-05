@@ -45,9 +45,13 @@ pub struct ClassifyRequest {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyResponse {
+    #[ts(type = "number")]
     pub job_id: i64,
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub estimated_cost_cents: i64,
+    #[ts(type = "number")]
     pub estimated_duration_secs: i64,
     pub status: String,
 }
@@ -57,7 +61,9 @@ pub struct ClassifyResponse {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct CancelResponse {
+    #[ts(type = "number")]
     pub job_id: i64,
+    #[ts(type = "number")]
     pub classified: u64,
     pub status: String,
 }
@@ -69,6 +75,7 @@ pub struct CancelResponse {
 pub struct ClassifyStatusResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub job_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<ClassifyProgressInfo>,
@@ -76,8 +83,11 @@ pub struct ClassifyStatusResponse {
     pub last_run: Option<ClassifyLastRun>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ClassifyErrorInfo>,
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub classified_sessions: i64,
+    #[ts(type = "number")]
     pub unclassified_sessions: i64,
 }
 
@@ -86,7 +96,9 @@ pub struct ClassifyStatusResponse {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyProgressInfo {
+    #[ts(type = "number")]
     pub classified: u64,
+    #[ts(type = "number")]
     pub total: u64,
     pub percentage: f64,
     pub eta: String,
@@ -99,12 +111,16 @@ pub struct ClassifyProgressInfo {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyLastRun {
+    #[ts(type = "number")]
     pub job_id: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
+    #[ts(type = "number")]
     pub sessions_classified: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub cost_cents: Option<i64>,
+    #[ts(type = "number")]
     pub error_count: i64,
     pub status: String,
 }

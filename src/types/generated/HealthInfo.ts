@@ -4,4 +4,4 @@ import type { HealthStatus } from "./HealthStatus";
 /**
  * Health section of system response.
  */
-export type HealthInfo = { sessionsCount: bigint, commitsCount: bigint, projectsCount: bigint, errorsCount: bigint, lastSyncAt: string | null, status: HealthStatus, };
+export type HealthInfo = { sessionsCount: number, commitsCount: number, projectsCount: number, errorsCount: number, lastSyncAt: string | null, status: HealthStatus, };

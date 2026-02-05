@@ -6,4 +6,4 @@ import type { MetricDataPoint } from "./MetricDataPoint";
 /**
  * Full trends response.
  */
-export type InsightsTrendsResponse = { metric: string, dataPoints: Array<MetricDataPoint>, average: number, trend: number, trendDirection: string, insight: string, categoryEvolution: Array<CategoryDataPoint> | null, categoryInsight: string | null, classificationRequired: boolean, activityHeatmap: Array<HeatmapCell>, heatmapInsight: string, periodStart: string, periodEnd: string, totalSessions: bigint, };
+export type InsightsTrendsResponse = { metric: string, dataPoints: Array<MetricDataPoint>, average: number, trend: number, trendDirection: string, insight: string, categoryEvolution: Array<CategoryDataPoint> | null, categoryInsight: string | null, classificationRequired: boolean, activityHeatmap: Array<HeatmapCell>, heatmapInsight: string, periodStart: string, periodEnd: string, totalSessions: number, };

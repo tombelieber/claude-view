@@ -4,4 +4,4 @@ import type { ClassificationJobStatus } from "./ClassificationJobStatus";
 /**
  * A classification job record.
  */
-export type ClassificationJob = { id: bigint, startedAt: string, completedAt: string | null, totalSessions: bigint, classifiedCount: bigint, skippedCount: bigint, failedCount: bigint, provider: string, model: string, status: ClassificationJobStatus, errorMessage: string | null, costEstimateCents: bigint | null, actualCostCents: bigint | null, tokensUsed: bigint | null, };
+export type ClassificationJob = { id: number, startedAt: string, completedAt: string | null, totalSessions: number, classifiedCount: number, skippedCount: number, failedCount: number, provider: string, model: string, status: ClassificationJobStatus, errorMessage: string | null, costEstimateCents: number | null, actualCostCents: number | null, tokensUsed: number | null, };

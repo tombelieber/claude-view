@@ -5,4 +5,4 @@ import type { IndexRunType } from "./IndexRunType";
 /**
  * An index run record.
  */
-export type IndexRun = { id: bigint, startedAt: string, completedAt: string | null, runType: IndexRunType, sessionsBefore: bigint | null, sessionsAfter: bigint | null, durationMs: bigint | null, throughputMbPerSec: number | null, status: IndexRunStatus, errorMessage: string | null, };
+export type IndexRun = { id: number, startedAt: string, completedAt: string | null, runType: IndexRunType, sessionsBefore: number | null, sessionsAfter: number | null, durationMs: number | null, throughputMbPerSec: number | null, status: IndexRunStatus, errorMessage: string | null, };
