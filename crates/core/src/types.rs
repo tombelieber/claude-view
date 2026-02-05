@@ -259,6 +259,26 @@ pub struct SessionInfo {
     pub summary_text: Option<String>,
     #[serde(default)]
     pub parse_version: u32,
+    // Theme 4: Classification
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_l1: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_l2: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_l3: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_confidence: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classified_at: Option<String>,
+    // Theme 4: Behavioral metrics
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_word_count: Option<u32>,
+    #[serde(default)]
+    pub correction_count: u32,
+    #[serde(default)]
+    pub same_file_edit_count: u32,
 }
 
 impl SessionInfo {
@@ -504,6 +524,267 @@ pub enum ContentBlock {
 }
 
 // ============================================================================
+// Theme 4: Classification Job Types
+// ============================================================================
+
+/// Status of a classification job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum ClassificationJobStatus {
+    Running,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+impl ClassificationJobStatus {
+    /// Parse a status string from the database.
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "running" => Self::Running,
+            "completed" => Self::Completed,
+            "cancelled" => Self::Cancelled,
+            "failed" => Self::Failed,
+            _ => Self::Failed,
+        }
+    }
+
+    /// Convert to database string representation.
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Cancelled => "cancelled",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// A classification job record.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ClassificationJob {
+    pub id: i64,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub total_sessions: i64,
+    pub classified_count: i64,
+    pub skipped_count: i64,
+    pub failed_count: i64,
+    pub provider: String,
+    pub model: String,
+    pub status: ClassificationJobStatus,
+    pub error_message: Option<String>,
+    pub cost_estimate_cents: Option<i64>,
+    pub actual_cost_cents: Option<i64>,
+    pub tokens_used: Option<i64>,
+}
+
+// ============================================================================
+// Theme 4: Index Run Types
+// ============================================================================
+
+/// Type of index run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum IndexRunType {
+    Full,
+    Incremental,
+    Deep,
+}
+
+impl IndexRunType {
+    /// Parse a type string from the database.
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "full" => Self::Full,
+            "incremental" => Self::Incremental,
+            "deep" => Self::Deep,
+            _ => Self::Full,
+        }
+    }
+
+    /// Convert to database string representation.
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Incremental => "incremental",
+            Self::Deep => "deep",
+        }
+    }
+}
+
+/// Status of an index run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum IndexRunStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+impl IndexRunStatus {
+    /// Parse a status string from the database.
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "running" => Self::Running,
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            _ => Self::Failed,
+        }
+    }
+
+    /// Convert to database string representation.
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// An index run record.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct IndexRun {
+    pub id: i64,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub run_type: IndexRunType,
+    pub sessions_before: Option<i64>,
+    pub sessions_after: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub throughput_mb_per_sec: Option<f64>,
+    pub status: IndexRunStatus,
+    pub error_message: Option<String>,
+}
+
+// ============================================================================
+// Theme 4 Phase 8: Benchmark Types
+// ============================================================================
+
+/// Metrics for a time period (used in Then vs Now comparison).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct PeriodMetrics {
+    /// Re-edit rate: files re-edited / files edited (0.0-1.0)
+    pub reedit_rate: f64,
+    /// Average edit operations per file
+    pub edits_per_file: f64,
+    /// Average user prompts per session
+    pub prompts_per_task: f64,
+    /// Percentage of sessions with commits (0.0-1.0)
+    pub commit_rate: f64,
+}
+
+/// Improvement percentages between two periods.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ImprovementMetrics {
+    /// Re-edit rate change (negative = improvement)
+    pub reedit_rate: f64,
+    /// Edits per file change (negative = improvement)
+    pub edits_per_file: f64,
+    /// Prompts per task change (negative = improvement)
+    pub prompts_per_task: f64,
+    /// Commit rate change (positive = improvement)
+    pub commit_rate: f64,
+}
+
+/// Progress comparison between first and last month.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressComparison {
+    pub first_month: Option<PeriodMetrics>,
+    pub last_month: PeriodMetrics,
+    pub improvement: Option<ImprovementMetrics>,
+    pub insight: String,
+}
+
+/// Verdict for category performance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "snake_case")]
+pub enum CategoryVerdict {
+    Excellent,
+    Good,
+    Average,
+    NeedsWork,
+}
+
+/// Performance metrics for a single category.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryPerformance {
+    pub category: String,
+    pub reedit_rate: f64,
+    /// Difference from user's overall average (negative = better)
+    pub vs_average: f64,
+    pub verdict: CategoryVerdict,
+    pub insight: String,
+}
+
+/// Learning curve data point.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct LearningCurvePoint {
+    pub session: u32,
+    pub reedit_rate: f64,
+}
+
+/// Skill adoption with impact metrics.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillAdoption {
+    pub skill: String,
+    pub adopted_at: String,
+    pub session_count: u32,
+    /// Percentage improvement in re-edit rate after adoption
+    pub impact_on_reedit: f64,
+    pub learning_curve: Vec<LearningCurvePoint>,
+}
+
+/// Monthly report summary.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSummary {
+    pub month: String,
+    pub session_count: u32,
+    pub lines_added: i64,
+    pub lines_removed: i64,
+    pub commit_count: u32,
+    pub estimated_cost: f64,
+    pub top_wins: Vec<String>,
+    pub focus_areas: Vec<String>,
+}
+
+/// Full benchmarks response.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarksResponse {
+    pub progress: ProgressComparison,
+    pub by_category: Vec<CategoryPerformance>,
+    /// User's overall average re-edit rate
+    pub user_average_reedit_rate: f64,
+    pub skill_adoption: Vec<SkillAdoption>,
+    pub report_summary: ReportSummary,
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -732,6 +1013,16 @@ mod tests {
             mcp_progress_count: 0,
             summary_text: None,
             parse_version: 0,
+            // Theme 4: Classification
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -841,6 +1132,16 @@ mod tests {
             mcp_progress_count: 0,
             summary_text: None,
             parse_version: 0,
+            // Theme 4: Classification
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         }
     }
 

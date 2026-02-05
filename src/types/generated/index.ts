@@ -48,6 +48,42 @@ export type { DerivedMetrics } from './DerivedMetrics'
 export type { SessionDetail } from './SessionDetail'
 export type { SessionsListResponse } from './SessionsListResponse'
 
+// Insights types (Phase 4/5)
+export type { GeneratedInsight } from './GeneratedInsight'
+export type { InsightEvidence } from './InsightEvidence'
+export type { InsightsResponse } from './InsightsResponse'
+export type { InsightsOverview } from './InsightsOverview'
+export type { InsightsMeta } from './InsightsMeta'
+export type { PatternGroups } from './PatternGroups'
+export type { WorkBreakdown } from './WorkBreakdown'
+export type { EfficiencyStats } from './EfficiencyStats'
+export type { BestTimeStats } from './BestTimeStats'
+export type { ClassificationStatus } from './ClassificationStatus'
+
+// Categories types (Phase 6)
+export type { CategorySummary } from './CategorySummary'
+export type { CategoryBreakdown } from './CategoryBreakdown'
+export type { CategoryNode } from './CategoryNode'
+export type { OverallAverages } from './OverallAverages'
+export type { CategoriesResponse } from './CategoriesResponse'
+
+// Trends types (Phase 7)
+export type { MetricDataPoint } from './MetricDataPoint'
+export type { CategoryDataPoint } from './CategoryDataPoint'
+export type { HeatmapCell } from './HeatmapCell'
+export type { InsightsTrendsResponse } from './InsightsTrendsResponse'
+
+// Benchmarks types (Phase 8)
+export type { PeriodMetrics } from './PeriodMetrics'
+export type { ImprovementMetrics } from './ImprovementMetrics'
+export type { ProgressComparison } from './ProgressComparison'
+export type { CategoryVerdict } from './CategoryVerdict'
+export type { CategoryPerformance } from './CategoryPerformance'
+export type { LearningCurvePoint } from './LearningCurvePoint'
+export type { SkillAdoption } from './SkillAdoption'
+export type { ReportSummary } from './ReportSummary'
+export type { BenchmarksResponse } from './BenchmarksResponse'
+
 // API response types
 export type { ErrorResponse } from './ErrorResponse'
 export type { ProjectSummary } from './ProjectSummary'

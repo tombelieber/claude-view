@@ -137,6 +137,15 @@ mod tests {
             mcp_progress_count: 0,
             summary_text: None,
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         }
     }
 
