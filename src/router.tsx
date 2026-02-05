@@ -6,6 +6,8 @@ import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
+import { SystemPage } from './components/SystemPage'
+import { InsightsPage } from './components/InsightsPage'
 
 /** Redirect legacy /session/:projectId/:sessionId to /project/:projectId/session/:sessionId */
 function LegacySessionRedirect() {
@@ -20,7 +22,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <StatsDashboard /> },
       { path: 'history', element: <HistoryView /> },
+      { path: 'insights', element: <InsightsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'system', element: <SystemPage /> },
       { path: 'project/:projectId', element: <ProjectView /> },
       { path: 'project/:projectId/session/:slug', element: <ConversationView /> },
       { path: 'search', element: <SearchResults /> },

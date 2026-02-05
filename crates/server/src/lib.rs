@@ -4,8 +4,10 @@
 //! This crate provides the Axum-based HTTP server for the vibe-recall application.
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
+pub mod classify_state;
 pub mod error;
 pub mod indexing_state;
+pub mod jobs;
 pub mod routes;
 pub mod state;
 

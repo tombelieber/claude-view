@@ -140,6 +140,21 @@ impl IndexingState {
     pub fn error(&self) -> Option<String> {
         self.error.read().ok().and_then(|g| g.clone())
     }
+
+    /// Signal that a re-index should be triggered.
+    ///
+    /// Resets all counters and sets status back to ReadingIndexes,
+    /// which the background indexer should detect and act upon.
+    pub fn trigger_reindex(&self) {
+        self.indexed.store(0, Ordering::Relaxed);
+        self.total.store(0, Ordering::Relaxed);
+        self.projects_found.store(0, Ordering::Relaxed);
+        self.sessions_found.store(0, Ordering::Relaxed);
+        if let Ok(mut guard) = self.error.write() {
+            *guard = None;
+        }
+        self.set_status(IndexingStatus::ReadingIndexes);
+    }
 }
 
 impl Default for IndexingState {

@@ -7,12 +7,17 @@ pub mod indexer;
 pub mod indexer_parallel;
 pub mod git_correlation;
 pub mod trends;
+pub mod insights_trends;
 
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::StatsOverview;
 pub use queries::TokenStats;
+pub use queries::StorageStats;
+pub use queries::HealthStats;
+pub use queries::HealthStatus;
+pub use queries::ClassificationStatus;
 
 // Re-export trends types
 pub use trends::current_week_bounds;

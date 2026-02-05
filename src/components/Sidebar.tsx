@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, Server, Lightbulb } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { cn } from '../lib/utils'
 
@@ -112,6 +112,30 @@ export function Sidebar({ projects }: SidebarProps) {
         >
           <Clock className="w-4 h-4" />
           <span className="font-medium">History</span>
+        </Link>
+        <Link
+          to="/insights"
+          className={cn(
+            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/insights'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+        >
+          <Lightbulb className="w-4 h-4" />
+          <span className="font-medium">Insights</span>
+        </Link>
+        <Link
+          to="/system"
+          className={cn(
+            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/system'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+        >
+          <Server className="w-4 h-4" />
+          <span className="font-medium">System</span>
         </Link>
       </div>
 
