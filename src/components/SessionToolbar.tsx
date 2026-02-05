@@ -11,6 +11,8 @@ interface SessionToolbarProps {
   onFiltersChange: (filters: SessionFilters) => void;
   onClearFilters: () => void;
   groupByDisabled?: boolean;
+  /** Available branch names derived from loaded sessions */
+  branches?: string[];
 }
 
 interface DropdownProps {
@@ -20,9 +22,11 @@ interface DropdownProps {
   options: Array<{ value: string; label: string; description?: string }>;
   onChange: (value: string) => void;
   isActive?: boolean;
+  disabled?: boolean;
+  disabledTitle?: string;
 }
 
-function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownProps) {
+function Dropdown({ label, icon, value, options, onChange, isActive, disabled, disabledTitle }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,17 +49,21 @@ function Dropdown({ label, icon, value, options, onChange, isActive }: DropdownP
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        title={disabled ? disabledTitle : undefined}
         className={cn(
-          'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border cursor-pointer',
+          'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border',
           'transition-all duration-150 ease-out',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-          isActive
-            ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-750'
+          disabled
+            ? 'opacity-50 cursor-not-allowed bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+            : isActive
+              ? 'cursor-pointer bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+              : 'cursor-pointer bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-750'
         )}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
+        aria-disabled={disabled}
         aria-label={`${label}: ${selectedOption?.label}`}
       >
         {icon}
@@ -158,7 +166,7 @@ const GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string; description?: str
  * />
  * ```
  */
-export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled }: SessionToolbarProps) {
+export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled, branches = [] }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters);
 
   const handleSortChange = (sort: string) => {
@@ -183,8 +191,10 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters, group
           icon={<div className="w-3.5 h-3.5 flex items-center justify-center text-xs">⊞</div>}
           value={groupByDisabled ? 'none' : filters.groupBy}
           options={GROUP_BY_OPTIONS}
-          onChange={groupByDisabled ? () => {} : handleGroupByChange}
+          onChange={handleGroupByChange}
           isActive={!groupByDisabled && filters.groupBy !== 'none'}
+          disabled={groupByDisabled}
+          disabledTitle="Grouping disabled — too many sessions. Use filters to narrow results."
         />
 
         {/* Filter popover */}
@@ -193,6 +203,7 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters, group
           onChange={onFiltersChange}
           onClear={onClearFilters}
           activeCount={activeFilterCount}
+          branches={branches}
         />
 
         {/* Sort dropdown */}
