@@ -2,6 +2,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { FolderOpen } from 'lucide-react'
 import { useProjectSummaries, useProjectSessions } from '../hooks/use-projects'
 import { DateGroupedList } from './DateGroupedList'
+import { ActivityCalendar } from './ActivityCalendar'
 import { Skeleton, EmptyState, ErrorState } from './LoadingStates'
 
 export function ProjectView() {
@@ -56,6 +57,9 @@ export function ProjectView() {
           />
         ) : page && page.sessions.length > 0 ? (
           <>
+            <div className="mb-6">
+              <ActivityCalendar sessions={page.sessions} />
+            </div>
             <DateGroupedList sessions={page.sessions} />
             {page.sessions.length < page.total && (
               <div className="text-center py-6">

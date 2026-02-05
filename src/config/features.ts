@@ -6,8 +6,6 @@
  *
  * Environment Variables (set to 'false' to disable):
  * - VITE_FEATURE_TIME_RANGE: Dashboard time range selector (7d/30d/90d/all-time)
- * - VITE_FEATURE_HEATMAP_TOOLTIP: Enhanced heatmap with detailed tooltips
- * - VITE_FEATURE_SYNC_REDESIGN: Redesigned sync UI with progress indicators
  * - VITE_FEATURE_AI_GENERATION: AI generation stats display
  * - VITE_FEATURE_STORAGE_OVERVIEW: Storage overview display
  *
@@ -39,18 +37,6 @@ export const FEATURES = {
    * Allows users to filter dashboard metrics by time period.
    */
   timeRange: import.meta.env.VITE_FEATURE_TIME_RANGE !== 'false',
-
-  /**
-   * Enhanced heatmap with detailed tooltips
-   * Shows additional context when hovering over heatmap cells.
-   */
-  heatmapTooltip: import.meta.env.VITE_FEATURE_HEATMAP_TOOLTIP !== 'false',
-
-  /**
-   * Redesigned sync UI with progress indicators
-   * New visual design for git sync operations.
-   */
-  syncRedesign: import.meta.env.VITE_FEATURE_SYNC_REDESIGN !== 'false',
 
   /**
    * AI generation stats display
