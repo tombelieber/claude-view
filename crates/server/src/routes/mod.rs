@@ -50,6 +50,9 @@ use crate::state::AppState;
 /// - GET  /api/classify/stream - SSE stream of classification progress
 /// - POST /api/classify/cancel - Cancel running classification
 /// - GET  /api/insights - Computed behavioral insights and patterns
+///
+/// Note: /api/jobs routes are defined but not registered (no frontend consumer).
+/// The job runner infrastructure is used internally by classification.
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -63,7 +66,6 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", status::router())
         .nest("/api", export::router())
         .nest("/api", sync::router())
-        .nest("/api", jobs::router())
         .nest("/api", system::router())
         .nest("/api", classify::router())
         .nest("/api", insights::router())

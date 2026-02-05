@@ -3,4 +3,4 @@
 /**
  * Progress information for a running classification.
  */
-export type ClassifyProgressInfo = { classified: bigint, total: bigint, percentage: number, eta: string, currentBatch: string | null, };
+export type ClassifyProgressInfo = { classified: number, total: number, percentage: number, eta: string, currentBatch: string | null, };

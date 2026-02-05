@@ -1,78 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type {
+  SystemResponse,
+  StorageInfo,
+  PerformanceInfo,
+  HealthInfo,
+  IndexRunInfo,
+  ClassificationInfo,
+  ClaudeCliStatus,
+  ActionResponse,
+  ClearCacheResponse,
+} from '../types/generated'
 
-// ============================================================================
-// Types matching the Rust SystemResponse
-// ============================================================================
-
-export interface StorageInfo {
-  jsonlBytes: number
-  indexBytes: number
-  dbBytes: number
-  cacheBytes: number
-  totalBytes: number
+// Re-export generated types for consumers
+export type {
+  SystemResponse,
+  StorageInfo,
+  PerformanceInfo,
+  HealthInfo,
+  IndexRunInfo,
+  ClassificationInfo,
+  ActionResponse,
+  ClearCacheResponse,
 }
 
-export interface PerformanceInfo {
-  lastIndexDurationMs: number | null
-  throughputBytesPerSec: number | null
-  sessionsPerSec: number | null
-}
-
-export interface HealthInfo {
-  sessionsCount: number
-  commitsCount: number
-  projectsCount: number
-  errorsCount: number
-  lastSyncAt: string | null
-  status: 'healthy' | 'warning' | 'error'
-}
-
-export interface IndexRunInfo {
-  timestamp: string
-  type: 'full' | 'incremental' | 'deep'
-  sessionsCount: number | null
-  durationMs: number | null
-  status: 'completed' | 'failed' | 'running'
-  errorMessage?: string
-}
-
-export interface ClassificationInfo {
-  classifiedCount: number
-  unclassifiedCount: number
-  lastRunAt: string | null
-  lastRunDurationMs: number | null
-  lastRunCostCents: number | null
-  provider: string
-  model: string
-  isRunning: boolean
-  progress: number | null
-}
-
-export interface ClaudeCliInfo {
-  path: string | null
-  version: string | null
-  authenticated: boolean
-  subscriptionType: string | null
-}
-
-export interface SystemResponse {
-  storage: StorageInfo
-  performance: PerformanceInfo
-  health: HealthInfo
-  indexHistory: IndexRunInfo[]
-  classification: ClassificationInfo
-  claudeCli: ClaudeCliInfo
-}
-
-export interface ActionResponse {
-  status: string
-  message?: string
-}
-
-export interface ClearCacheResponse {
-  status: string
-  clearedBytes: number
-}
+// Alias for backward compat — SystemPage references ClaudeCliInfo
+export type ClaudeCliInfo = ClaudeCliStatus
+export type { ClaudeCliStatus }
 
 // ============================================================================
 // Fetch functions

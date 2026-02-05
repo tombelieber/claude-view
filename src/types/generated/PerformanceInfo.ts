@@ -7,11 +7,11 @@ export type PerformanceInfo = {
 /**
  * Duration of last successful index in milliseconds.
  */
-lastIndexDurationMs: bigint | null, 
+lastIndexDurationMs: number | null, 
 /**
  * Throughput: bytes processed per second during last index.
  */
-throughputBytesPerSec: bigint | null, 
+throughputBytesPerSec: number | null, 
 /**
  * Sessions indexed per second during last index.
  */

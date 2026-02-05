@@ -29,7 +29,9 @@ pub struct InvocableWithCount {
     pub name: String,
     pub kind: String,
     pub description: String,
+    #[ts(type = "number")]
     pub invocation_count: i64,
+    #[ts(type = "number | null")]
     pub last_used_at: Option<i64>,
 }
 
@@ -56,9 +58,13 @@ pub struct ModelWithStats {
     pub id: String,
     pub provider: Option<String>,
     pub family: Option<String>,
+    #[ts(type = "number | null")]
     pub first_seen: Option<i64>,
+    #[ts(type = "number | null")]
     pub last_seen: Option<i64>,
+    #[ts(type = "number")]
     pub total_turns: i64,
+    #[ts(type = "number")]
     pub total_sessions: i64,
 }
 
@@ -82,12 +88,18 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
+    #[ts(type = "number")]
     pub total_input_tokens: u64,
+    #[ts(type = "number")]
     pub total_output_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_read_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_creation_tokens: u64,
     pub cache_hit_ratio: f64,
+    #[ts(type = "number")]
     pub turns_count: u64,
+    #[ts(type = "number")]
     pub sessions_count: u64,
 }
 
@@ -96,10 +108,15 @@ pub struct TokenStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StorageStats {
+    #[ts(type = "number")]
     pub jsonl_bytes: u64,
+    #[ts(type = "number")]
     pub index_bytes: u64,
+    #[ts(type = "number")]
     pub db_bytes: u64,
+    #[ts(type = "number")]
     pub cache_bytes: u64,
+    #[ts(type = "number")]
     pub total_bytes: u64,
 }
 
@@ -118,10 +135,15 @@ pub enum HealthStatus {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct HealthStats {
+    #[ts(type = "number")]
     pub sessions_count: i64,
+    #[ts(type = "number")]
     pub commits_count: i64,
+    #[ts(type = "number")]
     pub projects_count: i64,
+    #[ts(type = "number")]
     pub errors_count: i64,
+    #[ts(type = "number | null")]
     pub last_sync_at: Option<i64>,
     pub status: HealthStatus,
 }
@@ -131,14 +153,19 @@ pub struct HealthStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationStatus {
+    #[ts(type = "number")]
     pub classified_count: i64,
+    #[ts(type = "number")]
     pub unclassified_count: i64,
     pub last_run_at: Option<String>,
+    #[ts(type = "number | null")]
     pub last_run_duration_ms: Option<i64>,
+    #[ts(type = "number | null")]
     pub last_run_cost_cents: Option<i64>,
     pub provider: String,
     pub model: String,
     pub is_running: bool,
+    #[ts(type = "number | null")]
     pub progress: Option<i64>,
 }
 
@@ -147,8 +174,11 @@ pub struct ClassificationStatus {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub total_invocations: i64,
+    #[ts(type = "number")]
     pub unique_invocables_used: i64,
     pub top_invocables: Vec<InvocableWithCount>,
 }
