@@ -506,9 +506,7 @@ export function HistoryView() {
                     time: 'recent',
                     branch: 'recent', // No direct branch sort yet
                     prompts: 'prompts',
-                    tokens: 'tokens',
                     files: 'files_edited',
-                    loc: 'recent', // No direct LOC sort yet
                     commits: 'recent', // No direct commits sort yet
                     duration: 'duration',
                   }
@@ -517,7 +515,7 @@ export function HistoryView() {
                 }}
                 sortColumn={
                   filters.sort === 'prompts' ? 'prompts' :
-                  filters.sort === 'tokens' ? 'tokens' :
+                  filters.sort === 'tokens' ? 'prompts' :
                   filters.sort === 'files_edited' ? 'files' :
                   filters.sort === 'duration' ? 'duration' :
                   'time'
