@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { FolderOpen } from 'lucide-react'
 import { useProjectSummaries, useProjectSessions } from '../hooks/use-projects'
@@ -21,16 +22,68 @@ export function ProjectView() {
   // Use the useSessionFilters hook for URL-persisted filter state
   const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
 
-  // Legacy params for backward compatibility
-  const branch = searchParams.get('branch') || undefined
   const includeSidechains = searchParams.get('sidechains') === 'true'
+
+  // Derive API branch param from filters.branches (set by sidebar click or FilterPopover)
+  const apiBranch = filters.branches.length > 0 ? filters.branches[0] : undefined
 
   const { data: page, isLoading, error, refetch } = useProjectSessions(decodedProjectId ?? undefined, {
     limit: 50,
     sort: filters.sort,
-    branch,
+    branch: apiBranch,
     includeSidechains,
   })
+
+  // Apply client-side filters (branch multi-select, model, commits, etc.)
+  // Must be before any early returns to satisfy React hooks rules.
+  const filteredSessions = useMemo(() => {
+    if (!page?.sessions) return []
+
+    return page.sessions.filter(s => {
+      // Branch filter (multi-select; API only filters by first branch)
+      if (filters.branches.length > 1) {
+        if (!s.gitBranch || !filters.branches.includes(s.gitBranch)) return false
+      }
+
+      // Model filter
+      if (filters.models.length > 0) {
+        if (!s.primaryModel || !filters.models.includes(s.primaryModel)) return false
+      }
+
+      // Has commits filter
+      if (filters.hasCommits === 'yes' && (s.commitCount ?? 0) === 0) return false
+      if (filters.hasCommits === 'no' && (s.commitCount ?? 0) > 0) return false
+
+      // Has skills filter
+      if (filters.hasSkills === 'yes' && (s.skillsUsed ?? []).length === 0) return false
+      if (filters.hasSkills === 'no' && (s.skillsUsed ?? []).length > 0) return false
+
+      // Minimum duration
+      if (filters.minDuration !== null && (s.durationSeconds ?? 0) < filters.minDuration) return false
+
+      // Minimum files edited
+      if (filters.minFiles !== null && (s.filesEditedCount ?? 0) < filters.minFiles) return false
+
+      // Minimum tokens
+      if (filters.minTokens !== null) {
+        const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
+        if (totalTokens < filters.minTokens) return false
+      }
+
+      // High re-edit rate
+      if (filters.highReedit === true) {
+        const filesEdited = s.filesEditedCount ?? 0
+        const reeditedFiles = s.reeditedFilesCount ?? 0
+        const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
+        if (reeditRate <= 0.2) return false
+      }
+
+      return true
+    })
+  }, [page?.sessions, filters])
+
+  // Group sessions by date for timeline view
+  const groups = filteredSessions.length > 0 ? groupSessionsByDate(filteredSessions) : []
 
   if (!decodedProjectId || (!project && !isLoading)) {
     return (
@@ -43,9 +96,6 @@ export function ProjectView() {
       </div>
     )
   }
-
-  // Group sessions by date for timeline view
-  const groups = page?.sessions ? groupSessionsByDate(page.sessions) : []
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -66,7 +116,7 @@ export function ProjectView() {
             message={error.message}
             onRetry={() => refetch()}
           />
-        ) : page && page.sessions.length > 0 ? (
+        ) : page && filteredSessions.length > 0 ? (
           <>
             {/* SessionToolbar with view mode toggle */}
             <SessionToolbar
@@ -80,7 +130,7 @@ export function ProjectView() {
               {filters.viewMode === 'table' ? (
                 /* Table view */
                 <CompactSessionTable
-                  sessions={page.sessions}
+                  sessions={filteredSessions}
                   onSort={(column) => {
                     // Map table column to SessionSort
                     const sortMap: Record<SortColumn, SessionSort> = {
@@ -129,10 +179,10 @@ export function ProjectView() {
               )}
             </div>
 
-            {page.sessions.length < page.total && (
+            {filteredSessions.length < page.total && (
               <div className="text-center py-6">
-                <span className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg" aria-label={`Showing ${page.sessions.length} of ${page.total} sessions`}>
-                  Showing {page.sessions.length} of {page.total} sessions
+                <span className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg" aria-label={`Showing ${filteredSessions.length} of ${page.total} sessions`}>
+                  Showing {filteredSessions.length} of {page.total} sessions
                 </span>
               </div>
             )}
