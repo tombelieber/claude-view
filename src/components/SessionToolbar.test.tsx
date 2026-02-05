@@ -3,37 +3,20 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SessionToolbar } from './SessionToolbar';
 import { DEFAULT_FILTERS } from '../hooks/use-session-filters';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Mock the useBranches hook
-vi.mock('../hooks/use-branches', () => ({
-  useBranches: () => ({
-    data: ['main', 'dev'],
-    isLoading: false,
-  }),
-}));
-
-function renderWithQueryClient(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-      },
-    },
-  });
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
-}
+const TEST_BRANCHES = ['main', 'dev'];
 
 describe('SessionToolbar', () => {
   it('renders all toolbar controls', () => {
     const onFiltersChange = vi.fn();
     const onClearFilters = vi.fn();
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={DEFAULT_FILTERS}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -47,11 +30,12 @@ describe('SessionToolbar', () => {
     const onFiltersChange = vi.fn();
     const onClearFilters = vi.fn();
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={DEFAULT_FILTERS}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -63,11 +47,12 @@ describe('SessionToolbar', () => {
     const onFiltersChange = vi.fn();
     const onClearFilters = vi.fn();
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={DEFAULT_FILTERS}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -79,11 +64,12 @@ describe('SessionToolbar', () => {
     const onFiltersChange = vi.fn();
     const onClearFilters = vi.fn();
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={DEFAULT_FILTERS}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -105,11 +91,12 @@ describe('SessionToolbar', () => {
     const onFiltersChange = vi.fn();
     const onClearFilters = vi.fn();
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={DEFAULT_FILTERS}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -137,11 +124,12 @@ describe('SessionToolbar', () => {
       hasCommits: 'yes' as const,
     };
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={activeFilters}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
@@ -164,11 +152,12 @@ describe('SessionToolbar', () => {
       branches: ['main'],
     };
 
-    renderWithQueryClient(
+    render(
       <SessionToolbar
         filters={activeFilters}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
+        branches={TEST_BRANCHES}
       />
     );
 
