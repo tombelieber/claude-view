@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "fmt": "cargo fmt --all",
     "test": "cargo test --workspace",
+    "bench": "vitest bench",
     "test:client": "vitest",
     "test:client:ui": "vitest --ui",
     "test:e2e": "playwright test",
