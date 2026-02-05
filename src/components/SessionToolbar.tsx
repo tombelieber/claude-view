@@ -46,11 +46,10 @@ function Dropdown({ label, icon, value, options, onChange, isActive, disabled, d
   const selectedOption = options.find((o) => o.value === value);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative group/dropdown" ref={ref}>
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        title={disabled ? disabledTitle : undefined}
         className={cn(
           'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border',
           'transition-all duration-150 ease-out',
@@ -70,6 +69,13 @@ function Dropdown({ label, icon, value, options, onChange, isActive, disabled, d
         <span className="max-w-[120px] truncate">{selectedOption?.label || label}</span>
         <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', isOpen && 'rotate-180')} />
       </button>
+
+      {/* Styled tooltip for disabled state */}
+      {disabled && disabledTitle && (
+        <div className="absolute left-0 top-full mt-1.5 w-52 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-lg shadow-lg z-50 pointer-events-none opacity-0 group-hover/dropdown:opacity-100 transition-opacity duration-150">
+          {disabledTitle}
+        </div>
+      )}
 
       {isOpen && (
         <div
