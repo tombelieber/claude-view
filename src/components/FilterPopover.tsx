@@ -43,12 +43,17 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
     return () => clearTimeout(timer);
   }, [branchSearch]);
 
-  // Reset draft filters when popover opens
+  // Reset draft filters ONLY on the false→true transition of isOpen.
+  // The prevIsOpenRef guard prevents resetting the user's in-progress
+  // selections if the effect re-fires for other reasons (defense-in-depth
+  // alongside the useMemo stabilization in useSessionFilters).
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setDraftFilters(filters);
       setBranchSearch('');
     }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen, filters]);
 
   // Close on outside click
