@@ -10,7 +10,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use vibe_recall_core::{
-    read_all_session_indexes, resolve_project_path, ClassifyResult, Registry, ToolCounts,
+    classify_work_type, count_ai_lines, read_all_session_indexes, resolve_project_path,
+    ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 
 use crate::Database;
@@ -66,7 +67,10 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         summary_text = ?38,
         parse_version = ?39,
         file_size_at_index = ?40,
-        file_mtime_at_index = ?41
+        file_mtime_at_index = ?41,
+        ai_lines_added = ?42,
+        ai_lines_removed = ?43,
+        work_type = ?44
     WHERE id = ?1
 "#;
 
@@ -159,6 +163,12 @@ pub struct ExtendedMetadata {
 
     // File history snapshots
     pub file_snapshot_count: u32,
+
+    // Theme 3: AI contribution tracking
+    /// Lines added by AI (from Edit/Write tool_use)
+    pub ai_lines_added: u32,
+    /// Lines removed by AI (from Edit tool_use)
+    pub ai_lines_removed: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -841,6 +851,14 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     files_edited_unique.dedup();
     result.deep.files_edited_count = files_edited_unique.len() as u32;
     result.deep.reedited_files_count = count_reedited_files(&files_edited_all);
+
+    // AI contribution tracking: count lines added/removed from Edit/Write tool_use
+    let ai_line_count = count_ai_lines(
+        result.raw_invocations.iter().map(|inv| (inv.name.as_str(), &inv.input))
+            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i)))
+    );
+    result.deep.ai_lines_added = ai_line_count.lines_added;
+    result.deep.ai_lines_removed = ai_line_count.lines_removed;
 
     // Duration
     result.deep.first_timestamp = first_timestamp;
@@ -1766,7 +1784,17 @@ where
                         (Some(avg as i64), Some(max as i64), Some(total as i64))
                     };
 
-                    // UPDATE session deep fields (41 params: ?1=id, ?2-?41=fields)
+                    // Classify work type
+                    let work_type_input = ClassificationInput::new(
+                        meta.duration_seconds,
+                        meta.turn_count as u32,
+                        meta.files_edited_count,
+                        meta.ai_lines_added,
+                        meta.skills_used.clone(),
+                    );
+                    let work_type = classify_work_type(&work_type_input);
+
+                    // UPDATE session deep fields (44 params: ?1=id, ?2-?44=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1809,6 +1837,9 @@ where
                         CURRENT_PARSE_VERSION,            // ?39
                         result.file_size,                 // ?40
                         result.file_mtime,                // ?41
+                        meta.ai_lines_added as i32,       // ?42
+                        meta.ai_lines_removed as i32,     // ?43
+                        work_type.as_str(),               // ?44
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // INSERT invocations
@@ -1942,6 +1973,16 @@ async fn write_results_sqlx(
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
 
+        // Classify work type for Theme 3
+        let work_type_input = ClassificationInput::new(
+            meta.duration_seconds,
+            meta.turn_count as u32,
+            meta.files_edited_count,
+            meta.ai_lines_added,
+            meta.skills_used.clone(),
+        );
+        let work_type = classify_work_type(&work_type_input);
+
         crate::queries::update_session_deep_fields_tx(
             &mut tx,
             &result.session_id,
@@ -1984,9 +2025,9 @@ async fn write_results_sqlx(
             CURRENT_PARSE_VERSION,
             result.file_size,
             result.file_mtime,
-            result.parse_result.lines_added as i32,
-            result.parse_result.lines_removed as i32,
-            1, // loc_source = 1 (tool-call estimate)
+            meta.ai_lines_added as i32,
+            meta.ai_lines_removed as i32,
+            Some(work_type.as_str()),
         )
         .await
         .map_err(|e| {
