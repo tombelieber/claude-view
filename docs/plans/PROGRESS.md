@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-05
+> **Last updated:** 2026-02-06
 
 ---
 
@@ -53,6 +53,7 @@
 | **Session Loading Perf** | **DONE** | Paginated messages endpoint, tail-first loading | Personal |
 | **Export Markdown** | **DONE** | Download + clipboard copy for context resumption | Personal |
 | **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
+| **Session Discovery & Navigation** | **DONE** | 6/6 phases (A-F) — sidebar tree, project view, branch filters, expand/collapse, 438 tests | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
@@ -60,7 +61,7 @@
 
 **Current focus:** Cold Start UX (pending), UI Testing Strategy (pending), README media (pending)
 
-**Recently completed:** v0.2.4 shipped, Deep Index Perf (rusqlite write phase), Session Loading Perf, Security Audit (critical/medium/low), Export Markdown
+**Recently completed:** Session Discovery & Navigation (6 phases, 438 tests), v0.2.4 shipped, Deep Index Perf (rusqlite write phase), Session Loading Perf, Security Audit (critical/medium/low), Export Markdown
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
