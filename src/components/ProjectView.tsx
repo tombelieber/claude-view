@@ -6,6 +6,7 @@ import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
 import { SessionToolbar } from './SessionToolbar'
+import { ActivityCalendar } from './ActivityCalendar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
@@ -175,6 +176,11 @@ export function ProjectView() {
           />
         ) : page && page.sessions.length > 0 ? (
           <>
+            {/* Activity Calendar */}
+            <div className="mb-6">
+              <ActivityCalendar sessions={page.sessions} />
+            </div>
+
             {/* SessionToolbar with view mode toggle — always visible when sessions exist */}
             <SessionToolbar
               filters={filters}
