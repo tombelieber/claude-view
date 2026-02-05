@@ -109,6 +109,9 @@ function serializeFilters(filters: SessionFilters, existing: URLSearchParams): U
     params.delete(key);
   }
 
+  // Clean up legacy 'filter' param if present
+  params.delete('filter');
+
   // Only set non-default values
   if (filters.sort !== 'recent') {
     params.set('sort', filters.sort);
