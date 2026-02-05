@@ -42,11 +42,11 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Migration & Backfill Strategy (line 857)
 
 **Deliverables:**
-- [ ] `crates/core/src/contribution.rs` — AI line counting from JSONL
-- [ ] `crates/core/src/work_type.rs` — Work type classification
-- [ ] `crates/db/migrations/NNNN_add_contribution_fields.sql`
-- [ ] `crates/core/src/git_sync.rs` — Diff stats extraction
-- [ ] Unit tests per Test Strategy
+- [x] `crates/core/src/contribution.rs` — AI line counting from JSONL
+- [x] `crates/core/src/work_type.rs` — Work type classification
+- [x] `crates/db/migrations/NNNN_add_contribution_fields.sql`
+- [x] `crates/core/src/git_sync.rs` — Diff stats extraction
+- [x] Unit tests per Test Strategy
 
 **Exit criteria:**
 - `cargo test -p core -- contribution` passes
@@ -76,11 +76,11 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Caching Strategy (line 1087)
 
 **Deliverables:**
-- [ ] `crates/server/src/routes/contributions.rs`
-- [ ] `crates/server/src/insights.rs`
-- [ ] `crates/db/src/snapshots.rs` — Snapshot table + queries
-- [ ] `crates/db/migrations/NNNN_create_contribution_snapshots.sql`
-- [ ] Integration tests per Test Strategy
+- [x] `crates/server/src/routes/contributions.rs`
+- [x] `crates/server/src/insights.rs`
+- [x] `crates/db/src/snapshots.rs` — Snapshot table + queries
+- [x] `crates/db/migrations/NNNN_create_contribution_snapshots.sql`
+- [x] Integration tests per Test Strategy
 
 **Exit criteria:**
 - `GET /api/contributions?range=week` returns correct structure
@@ -112,15 +112,15 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Error States UX (line 1168)
 
 **Deliverables:**
-- [ ] `frontend/src/pages/ContributionsPage.tsx`
-- [ ] `frontend/src/components/contributions/ContributionsHeader.tsx`
-- [ ] `frontend/src/components/contributions/TimeRangeFilter.tsx`
-- [ ] `frontend/src/components/contributions/OverviewCards.tsx`
-- [ ] `frontend/src/components/contributions/TrendChart.tsx`
-- [ ] `frontend/src/components/contributions/InsightLine.tsx`
-- [ ] `frontend/src/components/contributions/ContributionsEmptyState.tsx`
-- [ ] `frontend/src/hooks/useContributions.ts`
-- [ ] Route registration in app router
+- [x] `frontend/src/pages/ContributionsPage.tsx`
+- [x] `frontend/src/components/contributions/ContributionsHeader.tsx`
+- [x] `frontend/src/components/contributions/TimeRangeFilter.tsx`
+- [x] `frontend/src/components/contributions/OverviewCards.tsx`
+- [x] `frontend/src/components/contributions/TrendChart.tsx`
+- [x] `frontend/src/components/contributions/InsightLine.tsx`
+- [x] `frontend/src/components/contributions/ContributionsEmptyState.tsx`
+- [x] `frontend/src/hooks/useContributions.ts`
+- [x] Route registration in app router
 
 **Exit criteria:**
 - `/contributions` renders with mock data
@@ -149,10 +149,10 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Work Type Classification (line 48)
 
 **Deliverables:**
-- [ ] `frontend/src/components/dashboard/ContributionSummaryCard.tsx`
-- [ ] `frontend/src/components/sessions/WorkTypeBadge.tsx`
-- [ ] Update `SessionListItem` to show LOC column
-- [ ] Update Dashboard to include summary card
+- [x] `frontend/src/components/dashboard/ContributionSummaryCard.tsx`
+- [x] `frontend/src/components/sessions/WorkTypeBadge.tsx`
+- [x] Update `SessionListItem` to show LOC column
+- [x] Update Dashboard to include summary card
 
 **Exit criteria:**
 - Dashboard shows contribution summary card
@@ -183,12 +183,12 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Section 10: Session Detail Expansion (line 312)
 
 **Deliverables:**
-- [ ] `frontend/src/components/contributions/BranchList.tsx`
-- [ ] `frontend/src/components/contributions/BranchCard.tsx`
-- [ ] `frontend/src/components/contributions/SessionDrillDown.tsx`
-- [ ] `frontend/src/components/contributions/UncommittedWork.tsx`
-- [ ] `frontend/src/components/contributions/EfficiencyMetrics.tsx`
-- [ ] `frontend/src/components/contributions/ModelComparison.tsx`
+- [x] `frontend/src/components/contributions/BranchList.tsx`
+- [x] `frontend/src/components/contributions/BranchCard.tsx`
+- [x] `frontend/src/components/contributions/SessionDrillDown.tsx`
+- [x] `frontend/src/components/contributions/UncommittedWork.tsx`
+- [x] `frontend/src/components/contributions/EfficiencyMetrics.tsx`
+- [x] `frontend/src/components/contributions/ModelComparison.tsx`
 
 **Exit criteria:**
 - Branch list renders with expand/collapse
@@ -218,10 +218,10 @@ parent: ../2026-02-05-theme3-git-ai-contribution-design.md
 - Snapshot Retention Policy (line 1131)
 
 **Deliverables:**
-- [ ] `frontend/src/components/contributions/LearningCurve.tsx`
-- [ ] `frontend/src/components/contributions/SkillEffectiveness.tsx`
-- [ ] Warning banner component for partial data
-- [ ] Snapshot rollup job (weekly aggregation)
+- [x] `frontend/src/components/contributions/LearningCurve.tsx`
+- [x] `frontend/src/components/contributions/SkillEffectiveness.tsx`
+- [x] Warning banner component for partial data
+- [x] Snapshot rollup job (weekly aggregation)
 
 **Exit criteria:**
 - Learning curve chart shows re-edit rate over time
