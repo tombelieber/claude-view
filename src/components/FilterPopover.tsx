@@ -1,41 +1,23 @@
 // src/components/FilterPopover.tsx
 import { useState, useRef, useEffect } from 'react';
-import { Filter, X, Search } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { SessionFilters } from '../hooks/use-session-filters';
-import { useBranches } from '../hooks/use-branches';
 
 interface FilterPopoverProps {
   filters: SessionFilters;
   onChange: (filters: SessionFilters) => void;
   onClear: () => void;
   activeCount: number;
+  /** Available branch names derived from loaded sessions */
+  branches: string[];
 }
 
-/**
- * Extended filter popover panel with all session filter options.
- *
- * Features:
- * - Commits filter (radio: any/has/none)
- * - Duration filter (radio: any/>30m/>1h/>2h)
- * - Branch filter (searchable checkboxes with 150ms debounce)
- * - Model filter (checkboxes)
- * - Has skills filter (radio: any/yes/no)
- * - Re-edit rate filter (radio: any/high >20%)
- * - Files edited filter (radio: any/>5/>10/>20)
- * - Token usage filter (radio: any/>10K/>50K/>100K)
- * - Apply button (filters don't apply until clicked)
- * - Clear link to reset all filters
- * - Escape key closes without applying
- */
-export function FilterPopover({ filters, onChange, onClear, activeCount }: FilterPopoverProps) {
+export function FilterPopover({ filters, onChange, onClear, activeCount, branches = [] }: FilterPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState<SessionFilters>(filters);
   const [branchSearch, setBranchSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
-
-  const { data: allBranches = [], isLoading: branchesLoading } = useBranches();
 
   // Debounce branch search (150ms)
   useEffect(() => {
@@ -43,18 +25,14 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
     return () => clearTimeout(timer);
   }, [branchSearch]);
 
-  // Reset draft filters ONLY on the false→true transition of isOpen.
-  // The prevIsOpenRef guard prevents resetting the user's in-progress
-  // selections if the effect re-fires for other reasons (defense-in-depth
-  // alongside the useMemo stabilization in useSessionFilters).
+  // Reset branch search when popover opens
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
-      setDraftFilters(filters);
       setBranchSearch('');
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, filters]);
+  }, [isOpen]);
 
   // Close on outside click
   useEffect(() => {
@@ -80,22 +58,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
 
-  const handleApply = () => {
-    onChange(draftFilters);
-    setIsOpen(false);
-  };
+  // Filter branches by debounced search query (exclude unnamed/empty branches)
+  const filteredBranches = branches
+    .filter((branch) => branch !== '')
+    .filter((branch) => branch.toLowerCase().includes(debouncedSearch.toLowerCase()));
 
-  const handleClear = () => {
-    onClear();
-    setIsOpen(false);
-  };
-
-  // Filter branches by debounced search query
-  const filteredBranches = allBranches.filter((branch) =>
-    branch.toLowerCase().includes(debouncedSearch.toLowerCase())
-  );
-
-  // Model options (hardcoded for now - could be fetched from API like branches)
+  // Model options (hardcoded for now)
   const modelOptions = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4'];
 
   const hasAnyFiltersSet = activeCount > 0;
@@ -134,14 +102,9 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              disabled={!hasAnyFiltersSet}
-            >
-              Clear
-            </button>
+            {hasAnyFiltersSet && (
+              <span className="text-[10px] text-gray-400 tabular-nums">{activeCount} active</span>
+            )}
           </div>
 
           {/* Filter options */}
@@ -157,11 +120,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={option}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, hasCommits: option as 'any' | 'yes' | 'no' })
+                      onChange({ ...filters, hasCommits: option as 'any' | 'yes' | 'no' })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.hasCommits === option
+                      filters.hasCommits === option
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -188,11 +151,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={option.label}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, minDuration: option.value })
+                      onChange({ ...filters, minDuration: option.value })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.minDuration === option.value
+                      filters.minDuration === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -208,20 +171,20 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Branch
               </label>
-              <div className="relative mb-2">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search branches..."
-                  value={branchSearch}
-                  onChange={(e) => setBranchSearch(e.target.value)}
-                  className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-              <div className="max-h-[200px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded">
-                {branchesLoading ? (
-                  <div className="px-3 py-2 text-xs text-gray-500">Loading branches...</div>
-                ) : filteredBranches.length === 0 ? (
+              {branches.length > 5 && (
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search branches..."
+                    value={branchSearch}
+                    onChange={(e) => setBranchSearch(e.target.value)}
+                    className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+              )}
+              <div className="max-h-[160px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded">
+                {filteredBranches.length === 0 ? (
                   <div className="px-3 py-2 text-xs text-gray-500">No branches found</div>
                 ) : (
                   filteredBranches.map((branch) => (
@@ -231,16 +194,16 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     >
                       <input
                         type="checkbox"
-                        checked={draftFilters.branches.includes(branch)}
+                        checked={filters.branches.includes(branch)}
                         onChange={(e) => {
                           const newBranches = e.target.checked
-                            ? [...draftFilters.branches, branch]
-                            : draftFilters.branches.filter((b) => b !== branch);
-                          setDraftFilters({ ...draftFilters, branches: newBranches });
+                            ? [...filters.branches, branch]
+                            : filters.branches.filter((b) => b !== branch);
+                          onChange({ ...filters, branches: newBranches });
                         }}
                         className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">{branch}</span>
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300 truncate">{branch}</span>
                     </label>
                   ))
                 )}
@@ -260,12 +223,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                   >
                     <input
                       type="checkbox"
-                      checked={draftFilters.models.includes(model)}
+                      checked={filters.models.includes(model)}
                       onChange={(e) => {
                         const newModels = e.target.checked
-                          ? [...draftFilters.models, model]
-                          : draftFilters.models.filter((m) => m !== model);
-                        setDraftFilters({ ...draftFilters, models: newModels });
+                          ? [...filters.models, model]
+                          : filters.models.filter((m) => m !== model);
+                        onChange({ ...filters, models: newModels });
                       }}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
@@ -288,11 +251,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={option}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, hasSkills: option as 'any' | 'yes' | 'no' })
+                      onChange({ ...filters, hasSkills: option as 'any' | 'yes' | 'no' })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.hasSkills === option
+                      filters.hasSkills === option
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -317,11 +280,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={String(option.value)}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, highReedit: option.value })
+                      onChange({ ...filters, highReedit: option.value })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.highReedit === option.value
+                      filters.highReedit === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -348,11 +311,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={String(option.value)}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, minFiles: option.value })
+                      onChange({ ...filters, minFiles: option.value })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.minFiles === option.value
+                      filters.minFiles === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -379,11 +342,11 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
                     key={String(option.value)}
                     type="button"
                     onClick={() =>
-                      setDraftFilters({ ...draftFilters, minTokens: option.value })
+                      onChange({ ...filters, minTokens: option.value })
                     }
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
-                      draftFilters.minTokens === option.value
+                      filters.minTokens === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     )}
@@ -396,16 +359,19 @@ export function FilterPopover({ filters, onChange, onClear, activeCount }: Filte
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-            <div className="text-xs text-gray-500">
-              {activeCount > 0 ? `${activeCount} active` : 'No filters'}
-            </div>
+          <div className="flex items-center justify-end px-4 py-3 border-t border-gray-200 dark:border-gray-700">
             <button
               type="button"
-              onClick={handleApply}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+              onClick={() => { onClear(); }}
+              disabled={!hasAnyFiltersSet}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded transition-colors',
+                hasAnyFiltersSet
+                  ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50 cursor-pointer'
+                  : 'text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-not-allowed'
+              )}
             >
-              Apply
+              Reset all
             </button>
           </div>
         </div>
