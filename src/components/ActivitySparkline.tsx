@@ -184,7 +184,6 @@ export function ActivitySparkline({
         <div
           ref={scrollRef}
           className="overflow-x-auto"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: isDark ? '#4b5563 transparent' : '#d1d5db transparent' }}
         >
           <div style={{ minWidth: chartWidth, width: '100%' }}>
             <ResponsiveContainer width="100%" height={140}>
