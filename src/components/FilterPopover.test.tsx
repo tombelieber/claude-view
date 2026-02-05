@@ -3,34 +3,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FilterPopover } from './FilterPopover';
 import { DEFAULT_FILTERS } from '../hooks/use-session-filters';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Mock the useBranches hook
-vi.mock('../hooks/use-branches', () => ({
-  useBranches: () => ({
-    data: ['main', 'dev', 'feature/auth'],
-    isLoading: false,
-  }),
-}));
-
-function renderWithQueryClient(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-      },
-    },
-  });
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
-}
+const TEST_BRANCHES = ['main', 'dev', 'feature/auth'];
 
 describe('FilterPopover', () => {
   it('renders trigger button with filter count', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     expect(screen.getByRole('button', { name: /filters/i })).toBeInTheDocument();
@@ -41,8 +23,8 @@ describe('FilterPopover', () => {
     const onClear = vi.fn();
     const filters = { ...DEFAULT_FILTERS, hasCommits: 'yes' as const };
 
-    renderWithQueryClient(
-      <FilterPopover filters={filters} onChange={onChange} onClear={onClear} activeCount={1} />
+    render(
+      <FilterPopover filters={filters} onChange={onChange} onClear={onClear} activeCount={1} branches={TEST_BRANCHES} />
     );
 
     expect(screen.getByText('1')).toBeInTheDocument();
@@ -52,8 +34,8 @@ describe('FilterPopover', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
@@ -66,8 +48,8 @@ describe('FilterPopover', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
@@ -84,75 +66,88 @@ describe('FilterPopover', () => {
     expect(screen.getByText('Token usage')).toBeInTheDocument();
   });
 
-  it('calls onChange when Apply is clicked', () => {
+  it('calls onChange immediately when a filter option is clicked', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    const applyButton = screen.getByRole('button', { name: /apply/i });
-    fireEvent.click(applyButton);
+    // Click "Has" under Commits
+    const hasButton = screen.getByText('Has');
+    fireEvent.click(hasButton);
 
-    expect(onChange).toHaveBeenCalledWith(DEFAULT_FILTERS);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_FILTERS, hasCommits: 'yes' });
   });
 
-  it('calls onClear when Clear is clicked', () => {
+  it('calls onClear when Reset all is clicked', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
     const filters = { ...DEFAULT_FILTERS, hasCommits: 'yes' as const };
 
-    renderWithQueryClient(
-      <FilterPopover filters={filters} onChange={onChange} onClear={onClear} activeCount={1} />
+    render(
+      <FilterPopover filters={filters} onChange={onChange} onClear={onClear} activeCount={1} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    const clearButton = screen.getByRole('button', { name: /clear/i });
-    fireEvent.click(clearButton);
+    const resetButton = screen.getByRole('button', { name: /reset all/i });
+    fireEvent.click(resetButton);
 
     expect(onClear).toHaveBeenCalled();
   });
 
-  it('allows searching branches', async () => {
+  it('shows branch checkboxes from passed branches prop', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    const searchInput = screen.getByPlaceholderText(/search branches/i);
-    fireEvent.change(searchInput, { target: { value: 'feature' } });
-
-    // Wait for debounce (150ms)
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // Should show only matching branch
+    // All branches should be visible as checkbox labels
+    expect(screen.getByText('main')).toBeInTheDocument();
+    expect(screen.getByText('dev')).toBeInTheDocument();
     expect(screen.getByText('feature/auth')).toBeInTheDocument();
-    expect(screen.queryByText('main')).not.toBeInTheDocument();
+  });
+
+  it('calls onChange when branch checkbox is toggled', () => {
+    const onChange = vi.fn();
+    const onClear = vi.fn();
+
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
+    );
+
+    const trigger = screen.getByRole('button', { name: /filters/i });
+    fireEvent.click(trigger);
+
+    // Check the "main" branch checkbox
+    const mainCheckbox = screen.getByLabelText('main');
+    fireEvent.click(mainCheckbox);
+
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_FILTERS, branches: ['main'] });
   });
 
   it('shows >2h option in duration filter', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    // Check for all duration options including >2h
     expect(screen.getByText('>30m')).toBeInTheDocument();
     expect(screen.getByText('>1h')).toBeInTheDocument();
     expect(screen.getByText('>2h')).toBeInTheDocument();
@@ -162,14 +157,13 @@ describe('FilterPopover', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    // Check for re-edit rate options
     expect(screen.getByText('Re-edit rate')).toBeInTheDocument();
     expect(screen.getByText('High (>20%)')).toBeInTheDocument();
   });
@@ -178,14 +172,13 @@ describe('FilterPopover', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    // Check for file count options
     expect(screen.getByText('Files edited')).toBeInTheDocument();
     expect(screen.getByText('>5')).toBeInTheDocument();
     expect(screen.getByText('>10')).toBeInTheDocument();
@@ -196,17 +189,31 @@ describe('FilterPopover', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
 
-    renderWithQueryClient(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} />
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
     fireEvent.click(trigger);
 
-    // Check for token range options
     expect(screen.getByText('Token usage')).toBeInTheDocument();
     expect(screen.getByText('>10K')).toBeInTheDocument();
     expect(screen.getByText('>50K')).toBeInTheDocument();
     expect(screen.getByText('>100K')).toBeInTheDocument();
+  });
+
+  it('only shows search input when more than 5 branches', () => {
+    const onChange = vi.fn();
+    const onClear = vi.fn();
+
+    // 3 branches - no search
+    render(
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
+    );
+
+    const trigger = screen.getByRole('button', { name: /filters/i });
+    fireEvent.click(trigger);
+
+    expect(screen.queryByPlaceholderText(/search branches/i)).not.toBeInTheDocument();
   });
 });
