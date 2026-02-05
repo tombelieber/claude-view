@@ -33,108 +33,153 @@ export function buildFlatList(projects: ProjectSummary[]): ProjectTreeNode[] {
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
+/** Internal trie node for building hierarchical tree from paths. */
+interface TrieNode {
+  segment: string;
+  children: Map<string, TrieNode>;
+  project?: ProjectSummary;
+}
+
 /**
- * Build a tree structure from flat project list based on directory structure.
+ * Build a hierarchical tree from flat project list using a trie (prefix tree).
  *
  * Algorithm:
- * 1. For each project, get the parent directory (last segment before project name)
- * 2. Group projects by their immediate parent directory
- * 3. If multiple projects share a parent, create a group
- * 4. If a parent has only one project, flatten it (no group)
- * 5. Session counts are shown on every row (groups show sum of children)
- *
- * @param projects - Array of project summaries
- * @returns Array of tree nodes (hierarchical structure)
+ * 1. Build trie from project paths (split on '/')
+ * 2. Collapse common single-child prefix from root (collecting any projects encountered)
+ * 3. Emit tree from the first branching point:
+ *    - Non-project directory with >1 child → group
+ *    - Leaf → project
+ *    - Project with sub-projects → project + flattened sub-projects as siblings
+ *    - Single-child non-project chains → collapsed into one group name
  */
 export function buildProjectTree(projects: ProjectSummary[]): ProjectTreeNode[] {
   if (projects.length === 0) return [];
 
-  // Group projects by their immediate parent directory
-  const byParent = new Map<string | null, ProjectSummary[]>();
-
+  // Step 1: Build trie from project paths
+  const root: TrieNode = { segment: '', children: new Map() };
   for (const project of projects) {
-    if (!project.path) {
-      // No path = add to root with null parent
-      const existing = byParent.get(null) || [];
-      existing.push(project);
-      byParent.set(null, existing);
-      continue;
-    }
-
-    // Get the immediate parent directory name
-    const segments = project.path.split('/').filter(Boolean);
-    if (segments.length < 2) {
-      // Single segment = no parent, add to root
-      const existing = byParent.get(null) || [];
-      existing.push(project);
-      byParent.set(null, existing);
-      continue;
-    }
-
-    // Parent is the second-to-last segment
-    const parent = segments[segments.length - 2];
-    const existing = byParent.get(parent) || [];
-    existing.push(project);
-    byParent.set(parent, existing);
-  }
-
-  const result: ProjectTreeNode[] = [];
-
-  // Process each parent group
-  for (const [parent, groupProjects] of byParent.entries()) {
-    if (parent === null) {
-      // Projects without a parent go directly to root
-      for (const project of groupProjects) {
-        result.push({
-          type: 'project',
-          name: project.name,
-          displayName: project.displayName,
-          path: project.path,
-          sessionCount: project.sessionCount,
-          depth: 0,
-        });
+    const segments = (project.path || '').split('/').filter(Boolean);
+    let node = root;
+    for (const seg of segments) {
+      if (!node.children.has(seg)) {
+        node.children.set(seg, { segment: seg, children: new Map() });
       }
-    } else if (groupProjects.length === 1) {
-      // Single child = flatten (no group)
-      const project = groupProjects[0];
-      result.push({
-        type: 'project',
-        name: project.name,
-        displayName: project.displayName,
-        path: project.path,
-        sessionCount: project.sessionCount,
-        depth: 0,
-      });
-    } else {
-      // Multiple children = create a group
-      const sessionCount = groupProjects.reduce((sum, p) => sum + p.sessionCount, 0);
-      const children = groupProjects
-        .map((project) => ({
-          type: 'project' as const,
-          name: project.name,
-          displayName: project.displayName,
-          path: project.path,
-          sessionCount: project.sessionCount,
-          depth: 1,
-        }))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-      result.push({
-        type: 'group',
-        name: parent,
-        displayName: parent,
-        sessionCount,
-        depth: 0,
-        children,
-      });
+      node = node.children.get(seg)!;
     }
+    node.project = project;
   }
 
-  // Sort: groups first, then projects, both alphabetically
-  return result.sort((a, b) => {
-    if (a.type !== b.type) {
-      return a.type === 'group' ? -1 : 1;
+  // Step 2: Collapse single-child prefix, collecting projects along the way
+  const rootProjects: ProjectSummary[] = [];
+  let displayRoot = root;
+  while (displayRoot.children.size === 1) {
+    if (displayRoot.project) {
+      rootProjects.push(displayRoot.project);
     }
+    displayRoot = [...displayRoot.children.values()][0];
+  }
+  // If display root is a project with children, collect it as root-level
+  if (displayRoot.project && displayRoot.children.size > 0) {
+    rootProjects.push(displayRoot.project);
+  }
+
+  // Step 3: If display root has no children, it's a leaf
+  if (displayRoot.children.size === 0) {
+    if (displayRoot.project && !rootProjects.includes(displayRoot.project)) {
+      rootProjects.push(displayRoot.project);
+    }
+    return sortNodes(rootProjects.map((p) => toProjectNode(p, 0)));
+  }
+
+  // Step 4: Build tree from display root's children
+  const result: ProjectTreeNode[] = rootProjects.map((p) => toProjectNode(p, 0));
+  result.push(...emitTrieChildren(displayRoot, 0));
+  return sortNodes(result);
+}
+
+function toProjectNode(project: ProjectSummary, depth: number): ProjectTreeNode {
+  return {
+    type: 'project',
+    name: project.name,
+    displayName: project.displayName,
+    path: project.path,
+    sessionCount: project.sessionCount,
+    depth,
+  };
+}
+
+function sortNodes(nodes: ProjectTreeNode[]): ProjectTreeNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'group' ? -1 : 1;
     return a.displayName.localeCompare(b.displayName);
   });
+}
+
+function emitTrieChildren(parent: TrieNode, depth: number): ProjectTreeNode[] {
+  const result: ProjectTreeNode[] = [];
+
+  for (const child of parent.children.values()) {
+    // Collapse single-child non-project chain
+    let current = child;
+    const nameParts: string[] = [child.segment];
+    while (current.children.size === 1 && !current.project) {
+      current = [...current.children.values()][0];
+      nameParts.push(current.segment);
+    }
+    const collapsedName = nameParts.join('/');
+
+    if (current.children.size === 0) {
+      // Leaf project
+      if (current.project) {
+        result.push(toProjectNode(current.project, depth));
+      }
+    } else if (current.project) {
+      // Project with sub-projects: emit project + flatten descendants as siblings
+      result.push(toProjectNode(current.project, depth));
+      result.push(...collectDescendantProjects(current, depth));
+    } else {
+      // Non-project branching node: create group
+      const children = emitTrieChildren(current, depth + 1);
+      const sessionCount = children.reduce((sum, n) => sum + n.sessionCount, 0);
+      result.push({
+        type: 'group',
+        name: collapsedName,
+        displayName: collapsedName,
+        sessionCount,
+        depth,
+        children: sortNodes(children),
+      });
+    }
+  }
+
+  return sortNodes(result);
+}
+
+/** Collect all projects from a node's descendants (not the node itself). */
+function collectDescendantProjects(node: TrieNode, depth: number): ProjectTreeNode[] {
+  const result: ProjectTreeNode[] = [];
+  function recurse(n: TrieNode): void {
+    for (const child of n.children.values()) {
+      if (child.project) {
+        result.push(toProjectNode(child.project, depth));
+      }
+      recurse(child);
+    }
+  }
+  recurse(node);
+  return result;
+}
+
+/** Collect all group names from a tree (for auto-expand). */
+export function collectGroupNames(nodes: ProjectTreeNode[]): string[] {
+  const names: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'group') {
+      names.push(node.name);
+      if (node.children) {
+        names.push(...collectGroupNames(node.children));
+      }
+    }
+  }
+  return names;
 }

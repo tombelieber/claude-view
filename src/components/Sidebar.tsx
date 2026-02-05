@@ -4,7 +4,7 @@ import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, 
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
-import { buildFlatList, buildProjectTree, type ProjectTreeNode } from '../utils/build-project-tree'
+import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNode } from '../utils/build-project-tree'
 
 interface SidebarProps {
   projects: ProjectSummary[]
@@ -29,6 +29,15 @@ export function Sidebar({ projects }: SidebarProps) {
   const treeNodes = useMemo(() => {
     return viewMode === 'tree' ? buildProjectTree(projects) : buildFlatList(projects)
   }, [projects, viewMode])
+
+  // Auto-expand all groups when switching to tree mode
+  const prevViewModeRef = useRef(viewMode)
+  useEffect(() => {
+    if (viewMode === 'tree' && prevViewModeRef.current !== 'tree') {
+      setExpandedGroups(new Set(collectGroupNames(treeNodes)))
+    }
+    prevViewModeRef.current = viewMode
+  }, [viewMode, treeNodes])
 
   // Flatten tree nodes for keyboard navigation
   const flattenedNodes = useMemo(() => {
