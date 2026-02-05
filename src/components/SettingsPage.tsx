@@ -16,6 +16,8 @@ import { useExport, type ExportFormat } from '../hooks/use-export'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
+import { ClassificationStatus } from './ClassificationStatus'
+import { ProviderSettings } from './ProviderSettings'
 
 // Hardcoded version - should match package.json
 const APP_VERSION = '0.1.0'
@@ -64,9 +66,10 @@ function InfoRow({ label, value, className }: InfoRowProps) {
  *
  * Sections:
  * 1. DATA STATUS: Last indexed, duration, sessions, projects
- * 2. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
- * 3. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
- * 4. ABOUT: Version, keyboard shortcuts
+ * 2. CLASSIFICATION: Classification status card + provider settings
+ * 3. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
+ * 4. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
+ * 5. ABOUT: Version, keyboard shortcuts
  */
 export function SettingsPage() {
   const { data: status, isLoading: isStatusLoading } = useStatus()
@@ -78,6 +81,7 @@ export function SettingsPage() {
   const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [showProviderSettings, setShowProviderSettings] = useState(false)
 
   const handleIntervalChange = useCallback(async (value: string) => {
     const secs = parseInt(value, 10)
@@ -158,6 +162,14 @@ export function SettingsPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400">No status data available</p>
             )}
           </SettingsSection>
+
+          {/* CLASSIFICATION */}
+          <ClassificationStatus
+            onConfigure={() => setShowProviderSettings((v) => !v)}
+          />
+
+          {/* CLASSIFICATION PROVIDER SETTINGS */}
+          {showProviderSettings && <ProviderSettings />}
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
