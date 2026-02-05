@@ -88,12 +88,18 @@ export function Sidebar({ projects }: SidebarProps) {
   const handleProjectClick = useCallback((node: ProjectTreeNode) => {
     if (node.type !== 'project') return
 
-    // Navigate and expand
-    if (!expandedProjects.has(node.name)) {
-      setExpandedProjects((prev) => new Set(prev).add(node.name))
-    }
+    // Toggle expand/collapse
+    setExpandedProjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(node.name)) {
+        next.delete(node.name)
+      } else {
+        next.add(node.name)
+      }
+      return next
+    })
     navigate(`/project/${encodeURIComponent(node.name)}`)
-  }, [expandedProjects, navigate])
+  }, [navigate])
 
   const handleGroupClick = useCallback((node: ProjectTreeNode) => {
     if (node.type !== 'group') return
