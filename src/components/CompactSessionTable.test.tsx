@@ -82,20 +82,24 @@ function renderTable(sessions: SessionInfo[] = mockSessions, onSort?: (column: s
 }
 
 describe('CompactSessionTable', () => {
-  describe('AC-7.3: Table structure and columns', () => {
-    it('renders table with all 9 required columns', () => {
+  describe('Table structure and columns', () => {
+    it('renders table with all 7 required columns', () => {
       renderTable()
 
-      // Check for all column headers
       expect(screen.getByRole('columnheader', { name: /time/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /branch/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /preview/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /prompts/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /tokens/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /files/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /loc/i })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /activity/i })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /changes/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /commits/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /duration/i })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /dur/i })).toBeInTheDocument()
+    })
+
+    it('does not render old Tokens or LOC columns', () => {
+      renderTable()
+
+      expect(screen.queryByRole('columnheader', { name: /^tokens$/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('columnheader', { name: /^loc$/i })).not.toBeInTheDocument()
     })
 
     it('renders correct number of data rows', () => {
@@ -107,37 +111,33 @@ describe('CompactSessionTable', () => {
     })
   })
 
-  describe('AC-7.4: Row navigation', () => {
+  describe('Row navigation', () => {
     it('navigates to session detail on row click', () => {
-      renderTable()
-
-      const rows = screen.getAllByRole('row')
-      const firstDataRow = rows[1] // Skip header row
-
-      // Row should be clickable
-      expect(firstDataRow).toHaveClass('cursor-pointer')
-
-      // Row should have links (accessibility) - each cell has a link
-      const links = within(firstDataRow).getAllByRole('link')
-      expect(links.length).toBeGreaterThan(0)
-      // All links should point to the same session
-      links.forEach(link => {
-        expect(link).toHaveAttribute('href', expect.stringContaining('/project/test-project/session/'))
-      })
-    })
-
-    it('highlights row on hover', () => {
       renderTable()
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
 
-      // Should have hover classes
-      expect(firstDataRow).toHaveClass('hover:bg-gray-50')
+      expect(firstDataRow).toHaveClass('cursor-pointer')
+
+      const links = within(firstDataRow).getAllByRole('link')
+      expect(links.length).toBeGreaterThan(0)
+      links.forEach(link => {
+        expect(link).toHaveAttribute('href', expect.stringContaining('/project/test-project/session/'))
+      })
+    })
+
+    it('highlights row on hover with blue tint', () => {
+      renderTable()
+
+      const rows = screen.getAllByRole('row')
+      const firstDataRow = rows[1]
+
+      expect(firstDataRow).toHaveClass('hover:bg-blue-50/50')
     })
   })
 
-  describe('AC-7.5: Column sorting', () => {
+  describe('Column sorting', () => {
     it('calls onSort when clicking sortable column header', () => {
       const onSort = vi.fn()
       renderTable(mockSessions, onSort)
@@ -156,16 +156,14 @@ describe('CompactSessionTable', () => {
           <CompactSessionTable
             sessions={mockSessions}
             onSort={vi.fn()}
-            sortColumn="tokens"
+            sortColumn="prompts"
             sortDirection="asc"
           />
         </BrowserRouter>
       )
 
-      const tokensHeader = screen.getByRole('columnheader', { name: /tokens/i })
-
-      // Should have aria-sort attribute
-      expect(tokensHeader).toHaveAttribute('aria-sort', 'ascending')
+      const activityHeader = screen.getByRole('columnheader', { name: /activity/i })
+      expect(activityHeader).toHaveAttribute('aria-sort', 'ascending')
     })
 
     it('Preview column is not sortable', () => {
@@ -173,30 +171,48 @@ describe('CompactSessionTable', () => {
 
       const previewHeader = screen.getByRole('columnheader', { name: /preview/i })
 
-      // Should not have a button inside
       expect(within(previewHeader).queryByRole('button')).not.toBeInTheDocument()
-
-      // Should have aria-sort="none" to indicate it's not sortable
       expect(previewHeader).toHaveAttribute('aria-sort', 'none')
+    })
+
+    it('Activity column sorts by prompts key', () => {
+      const onSort = vi.fn()
+      renderTable(mockSessions, onSort)
+
+      const activityHeader = screen.getByRole('columnheader', { name: /activity/i })
+      const button = within(activityHeader).getByRole('button')
+
+      fireEvent.click(button)
+
+      expect(onSort).toHaveBeenCalledWith('prompts')
+    })
+
+    it('Changes column sorts by files key', () => {
+      const onSort = vi.fn()
+      renderTable(mockSessions, onSort)
+
+      const changesHeader = screen.getByRole('columnheader', { name: /changes/i })
+      const button = within(changesHeader).getByRole('button')
+
+      fireEvent.click(button)
+
+      expect(onSort).toHaveBeenCalledWith('files')
     })
   })
 
   describe('Data formatting', () => {
-    it('formats time as date + time range', () => {
+    it('formats time as date + time', () => {
       renderTable([mockSession])
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
 
-      // Should show date prefix (Today, Yesterday, or Jan 26)
       const timeCell = within(firstDataRow).getAllByRole('cell')[0]
-      expect(timeCell.textContent).toMatch(/(Today|Yesterday|\w+ \d+)/)
-
-      // Should show time range
+      expect(timeCell.textContent).toMatch(/(Today|Yest\.|\w+ \d+)/)
       expect(timeCell.textContent).toMatch(/\d+:\d+ (AM|PM)/)
     })
 
-    it('formats branch with truncation', () => {
+    it('formats branch as pill badge', () => {
       renderTable([mockSession])
 
       const rows = screen.getAllByRole('row')
@@ -204,28 +220,36 @@ describe('CompactSessionTable', () => {
       const branchCell = within(firstDataRow).getAllByRole('cell')[1]
 
       expect(branchCell.textContent).toContain('feature/test')
+
+      // Branch pill should have rounded-md and bg-gray-100 classes
+      const pill = branchCell.querySelector('.rounded-md')
+      expect(pill).toBeInTheDocument()
+      expect(pill).toHaveClass('bg-gray-100')
     })
 
-    it('formats tokens with K suffix', () => {
+    it('formats activity as prompts/tokens inline', () => {
       renderTable([mockSession])
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const tokensCell = within(firstDataRow).getAllByRole('cell')[4]
+      const activityCell = within(firstDataRow).getAllByRole('cell')[3]
 
-      // 25000 + 20000 = 45000 -> "45K"
-      expect(tokensCell.textContent).toBe('45K')
+      // "8/45K" — prompt count, separator, token count
+      expect(activityCell.textContent).toContain('8')
+      expect(activityCell.textContent).toContain('45K')
     })
 
-    it('formats LOC as +N / -N', () => {
+    it('formats changes as files + LOC inline', () => {
       renderTable([mockSession])
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const locCell = within(firstDataRow).getAllByRole('cell')[6]
+      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
 
-      expect(locCell.textContent).toContain('+150')
-      expect(locCell.textContent).toContain('-45')
+      // "2f +150/-45"
+      expect(changesCell.textContent).toContain('2f')
+      expect(changesCell.textContent).toContain('+150')
+      expect(changesCell.textContent).toContain('-45')
     })
 
     it('formats duration in minutes', () => {
@@ -233,7 +257,7 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const durationCell = within(firstDataRow).getAllByRole('cell')[8]
+      const durationCell = within(firstDataRow).getAllByRole('cell')[6]
 
       // 2700 seconds = 45 minutes
       expect(durationCell.textContent).toBe('45m')
@@ -247,10 +271,21 @@ describe('CompactSessionTable', () => {
       const firstDataRow = rows[1]
       const previewCell = within(firstDataRow).getAllByRole('cell')[2]
 
-      // Should have truncation class on span inside link
       const link = previewCell.firstElementChild as HTMLElement
       const span = link.firstElementChild as HTMLElement
       expect(span).toHaveClass('truncate')
+    })
+
+    it('shows commit badge with green background when commits > 0', () => {
+      renderTable([mockSession])
+
+      const rows = screen.getAllByRole('row')
+      const firstDataRow = rows[1]
+      const commitsCell = within(firstDataRow).getAllByRole('cell')[5]
+
+      const badge = commitsCell.querySelector('.bg-emerald-50')
+      expect(badge).toBeInTheDocument()
+      expect(commitsCell.textContent).toContain('2')
     })
   })
 
@@ -261,13 +296,13 @@ describe('CompactSessionTable', () => {
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
 
-      // Check prompts column (index 3)
-      const promptsCell = within(firstDataRow).getAllByRole('cell')[3]
-      expect(promptsCell).toHaveClass('tabular-nums')
+      // Check Activity column (index 3)
+      const activityCell = within(firstDataRow).getAllByRole('cell')[3]
+      expect(activityCell).toHaveClass('tabular-nums')
 
-      // Check tokens column (index 4)
-      const tokensCell = within(firstDataRow).getAllByRole('cell')[4]
-      expect(tokensCell).toHaveClass('tabular-nums')
+      // Check Changes column (index 4)
+      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+      expect(changesCell).toHaveClass('tabular-nums')
     })
 
     it('table has proper semantic structure', () => {
@@ -276,7 +311,6 @@ describe('CompactSessionTable', () => {
       const table = screen.getByRole('table')
       expect(table).toBeInTheDocument()
 
-      // Should have thead and tbody
       const thead = table.querySelector('thead')
       const tbody = table.querySelector('tbody')
       expect(thead).toBeInTheDocument()
@@ -300,15 +334,22 @@ describe('CompactSessionTable', () => {
     })
   })
 
-  describe('Edge cases', () => {
-    it('handles empty sessions array', () => {
+  describe('Empty state', () => {
+    it('renders empty state when sessions array is empty', () => {
       renderTable([])
 
-      const rows = screen.getAllByRole('row')
-      // Only header row
-      expect(rows).toHaveLength(1)
+      expect(screen.getByText('No sessions found')).toBeInTheDocument()
+      expect(screen.getByText('Try adjusting your filters')).toBeInTheDocument()
     })
 
+    it('does not render table when sessions array is empty', () => {
+      renderTable([])
+
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Edge cases', () => {
     it('handles session without branch', () => {
       renderTable([{ ...mockSession, gitBranch: null }])
 
@@ -316,7 +357,6 @@ describe('CompactSessionTable', () => {
       const firstDataRow = rows[1]
       const branchCell = within(firstDataRow).getAllByRole('cell')[1]
 
-      // Should show placeholder
       expect(branchCell.textContent).toBe('--')
     })
 
@@ -325,9 +365,10 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const locCell = within(firstDataRow).getAllByRole('cell')[6]
+      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
 
-      expect(locCell.textContent).toBe('--')
+      // Should still show file count but no LOC breakdown
+      expect(changesCell.textContent).toContain('2f')
     })
 
     it('handles session without commits', () => {
@@ -335,9 +376,29 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const commitsCell = within(firstDataRow).getAllByRole('cell')[7]
+      const commitsCell = within(firstDataRow).getAllByRole('cell')[5]
 
       expect(commitsCell.textContent).toBe('--')
+    })
+
+    it('handles session with no files edited', () => {
+      renderTable([{ ...mockSession, filesEditedCount: 0, linesAdded: 0, linesRemoved: 0 }])
+
+      const rows = screen.getAllByRole('row')
+      const firstDataRow = rows[1]
+      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+
+      expect(changesCell.textContent).toBe('--')
+    })
+
+    it('applies zebra striping on odd rows', () => {
+      renderTable()
+
+      const rows = screen.getAllByRole('row')
+      // First data row (index 0) should not have zebra class
+      expect(rows[1]).not.toHaveClass('bg-gray-50/40')
+      // Second data row (index 1) should have zebra class
+      expect(rows[2]).toHaveClass('bg-gray-50/40')
     })
   })
 })
