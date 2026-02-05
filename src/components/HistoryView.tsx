@@ -13,7 +13,7 @@ import { SessionToolbar } from './SessionToolbar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort, SessionFilter } from './FilterSortBar'
 import { groupSessionsByDate } from '../lib/date-groups'
-import { groupSessions } from '../utils/group-sessions'
+import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
 import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
@@ -249,14 +249,16 @@ export function HistoryView() {
 
   const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filter !== 'all' || sort !== 'recent'
 
+  const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
+
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
-    if (filters.groupBy !== 'none') {
+    if (filters.groupBy !== 'none' && !tooManyToGroup) {
       return groupSessions(filteredSessions, filters.groupBy)
     }
     // Default behavior: group by date when sort is 'recent', otherwise single group
     return sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[sort], sessions: filteredSessions }]
-  }, [filteredSessions, filters.groupBy, sort])
+  }, [filteredSessions, filters.groupBy, sort, tooManyToGroup])
 
   // Collapse state for group headers
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -391,6 +393,7 @@ export function HistoryView() {
               filters={filters}
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+              groupByDisabled={tooManyToGroup}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
@@ -491,6 +494,13 @@ export function HistoryView() {
             )}
           </div>
         </div>
+
+        {/* Grouping safeguard warning */}
+        {tooManyToGroup && filters.groupBy !== 'none' && (
+          <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+            Grouping disabled — {filteredSessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
+          </div>
+        )}
 
         {/* Session List or Table */}
         <div className="mt-5">
