@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-07
+> **Last updated:** 2026-02-09
 
 ---
 
@@ -54,6 +54,7 @@
 | **Export Markdown** | **DONE** | Download + clipboard copy for context resumption | Personal |
 | **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
 | **Session Discovery & Navigation** | **DONE** | 6/6 phases (A-F) — sidebar tree, project view, branch filters, expand/collapse, 438 tests | Personal |
+| **Theme 2: Dashboard Analytics** | **DONE** | 5/5 features — time range filter, heatmap tooltips, sync redesign, AI generation breakdown, storage overview + responsive + observability + feature flags | Personal |
 | **GTM Launch** | **In Progress** | README rewrite done, GTM strategy doc done, AI Fluency Score in progress (separate branch) | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
@@ -63,11 +64,11 @@
 
 **Current focus:** GTM Launch (README repositioning, AI Fluency Score, demo GIF, Show HN prep)
 
-**Recently completed:** GTM README rewrite (repositioned from "session browser" to "AI fluency tracker"), Session Discovery & Navigation (6 phases, 438 tests), v0.2.4 shipped
+**Recently completed:** Theme 2 Dashboard Analytics (5 features, 15 commits, 922 tests), GTM README rewrite, Session Discovery & Navigation (6 phases, 438 tests), v0.2.4 shipped
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
-**Code compiles:** Yes (cargo check passes, 577+ backend tests green, 578 frontend tests green, TypeScript compiles cleanly)
+**Code compiles:** Yes (cargo check passes, 548+ backend tests green, 552 frontend tests green, TypeScript compiles cleanly)
 
 ---
 
@@ -352,7 +353,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-03-cold-start-ux.md` | pending | **Cold start UX** — bandwidth progress bar (TUI + frontend SSE overlay), 7 tasks |
 | `2026-02-03-readme-media-guide.md` | pending | **README media** — screenshot + demo GIF preparation guide |
 | `2026-02-04-session-discovery-design.md` | pending | **Theme 1** — Session discovery & navigation enhancements |
-| `2026-02-05-dashboard-analytics-design.md` | in-progress | **Theme 2** — Dashboard & analytics enhancements |
+| `2026-02-05-dashboard-analytics-design.md` | done | **Theme 2** — Dashboard & analytics enhancements (5 features, responsive, observability) |
 | `2026-02-05-theme3-git-ai-contribution-design.md` | pending | **Theme 3** — Git integration & AI contribution tracking page |
 | `2026-02-05-theme4-chat-insights-design.md` | pending | **Theme 4** — Chat insights & pattern discovery (see `theme4/PROGRESS.md` for detailed tracking) |
 | `2026-02-07-gtm-launch-strategy.md` | in-progress | **GTM Launch** — positioning, competitive landscape, content strategy, Show HN plan |
