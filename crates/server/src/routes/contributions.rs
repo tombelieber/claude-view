@@ -291,10 +291,13 @@ pub async fn get_contributions(
         .get_reedit_rate(range, from_date, to_date, project_id)
         .await?;
 
-    // Calculate derived metrics
+    // Calculate derived metrics using real prompt counts from sessions
+    let total_prompts = state
+        .db
+        .get_total_prompts(range, from_date, to_date, project_id)
+        .await?;
     let prompts_per_session = if agg.sessions_count > 0 {
-        // This would need prompts data - for now estimate from tokens
-        (agg.tokens_used as f64 / agg.sessions_count as f64 / 1000.0).min(50.0)
+        total_prompts as f64 / agg.sessions_count as f64
     } else {
         0.0
     };
