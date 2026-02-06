@@ -32,6 +32,7 @@ pub struct ExportedSession {
     pub id: String,
     pub project: String,
     pub project_path: String,
+    #[ts(type = "number")]
     pub modified_at: i64,
     pub duration_seconds: u32,
     pub user_prompt_count: u32,
@@ -42,8 +43,10 @@ pub struct ExportedSession {
     pub reedited_files_count: u32,
     pub commit_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_input_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reedit_rate: Option<f64>,
@@ -80,6 +83,7 @@ impl From<&SessionInfo> for ExportedSession {
 #[serde(rename_all = "camelCase")]
 pub struct ExportResponse {
     pub sessions: Vec<ExportedSession>,
+    #[ts(type = "number")]
     pub exported_at: i64,
     pub total_count: usize,
 }

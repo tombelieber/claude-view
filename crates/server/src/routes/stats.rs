@@ -16,9 +16,13 @@ use crate::state::AppState;
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentWeekMetrics {
+    #[ts(type = "number")]
     pub session_count: u64,
+    #[ts(type = "number")]
     pub total_tokens: u64,
+    #[ts(type = "number")]
     pub total_files_edited: u64,
+    #[ts(type = "number")]
     pub commit_count: u64,
 }
 
