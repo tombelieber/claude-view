@@ -62,8 +62,7 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))
-            .map_err(sqlx::Error::from)?
+        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)

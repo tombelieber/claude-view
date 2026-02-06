@@ -151,7 +151,7 @@ pub async fn scan_repo_commits(
     // Format: hash|author|timestamp|message
     let mut cmd = Command::new("git");
     cmd.arg("log")
-        .arg(format!("--format=%H|%an|%at|%s"))
+        .arg("--format=%H|%an|%at|%s")
         .arg(format!("-n{}", limit))
         .current_dir(repo_path)
         .stdout(Stdio::piped())
@@ -526,6 +526,7 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, i32, String)> =
             sqlx::query_as(
                 r#"
@@ -570,6 +571,7 @@ impl Database {
         start_ts: i64,
         end_ts: i64,
     ) -> DbResult<Vec<GitCommit>> {
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, String, Option<String>, i64, Option<String>)> =
             sqlx::query_as(
                 r#"
@@ -808,7 +810,7 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
     let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
         std::collections::HashMap::new();
 
-    for (project_path, _sessions) in &sessions_by_repo {
+    for project_path in sessions_by_repo.keys() {
         let path = std::path::Path::new(project_path.as_str());
         let scan = scan_repo_commits(path, None, None).await;
 
