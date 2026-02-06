@@ -296,13 +296,13 @@ fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Opti
             0.0
         };
         let bucket = if s.files_read_count == 0 {
-            "no_reads"
+            "zero"
         } else if ratio < 1.0 {
-            "low_reads"
+            "low"
         } else if ratio < 3.0 {
-            "moderate_reads"
+            "moderate"
         } else {
-            "high_reads"
+            "high"
         };
         let reedit_rate = s.reedited_files_count as f64 / s.files_edited_count as f64;
         buckets.entry(bucket).or_default().push(reedit_rate);
