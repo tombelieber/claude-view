@@ -30,7 +30,7 @@ impl CategoryL1 {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "code_work" | "code" => Some(Self::Code),
             "support_work" | "support" => Some(Self::Support),
@@ -73,7 +73,7 @@ impl CategoryL2 {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "feature" => Some(Self::Feature),
             "bug_fix" | "bugfix" => Some(Self::Bugfix),
@@ -182,7 +182,7 @@ impl CategoryL3 {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "new-component" => Some(Self::NewComponent),
             "add-functionality" => Some(Self::AddFunctionality),
@@ -417,7 +417,7 @@ pub fn parse_batch_response(raw: &str) -> Result<Vec<ValidatedClassification>, S
                 serde_json::from_str(&inner_cleaned)
                     .map_err(|e| format!("Inner JSON parse failed: {}", e))
             } else {
-                Err(format!("Not a valid classification response"))
+                Err("Not a valid classification response".to_string())
             }
         })
         .map_err(|e| format!("Failed to parse classification response: {}", e))?;
@@ -462,19 +462,13 @@ pub fn parse_category_string(category: &str) -> Option<(&str, &str, &str)> {
     let l3 = parts[2];
 
     // Validate L1
-    if CategoryL1::from_str(l1).is_none() {
-        return None;
-    }
+    CategoryL1::parse(l1)?;
 
     // Validate L2
-    if CategoryL2::from_str(l2).is_none() {
-        return None;
-    }
+    CategoryL2::parse(l2)?;
 
     // Validate L3
-    if CategoryL3::from_str(l3).is_none() {
-        return None;
-    }
+    CategoryL3::parse(l3)?;
 
     Some((l1, l2, l3))
 }
@@ -553,14 +547,14 @@ mod tests {
     #[test]
     fn test_category_l1_roundtrip() {
         // New canonical form
-        assert_eq!(CategoryL1::from_str("code_work"), Some(CategoryL1::Code));
-        assert_eq!(CategoryL1::from_str("support_work"), Some(CategoryL1::Support));
-        assert_eq!(CategoryL1::from_str("thinking_work"), Some(CategoryL1::Thinking));
+        assert_eq!(CategoryL1::parse("code_work"), Some(CategoryL1::Code));
+        assert_eq!(CategoryL1::parse("support_work"), Some(CategoryL1::Support));
+        assert_eq!(CategoryL1::parse("thinking_work"), Some(CategoryL1::Thinking));
         // Backwards compat: old form still accepted
-        assert_eq!(CategoryL1::from_str("code"), Some(CategoryL1::Code));
-        assert_eq!(CategoryL1::from_str("support"), Some(CategoryL1::Support));
-        assert_eq!(CategoryL1::from_str("thinking"), Some(CategoryL1::Thinking));
-        assert_eq!(CategoryL1::from_str("invalid"), None);
+        assert_eq!(CategoryL1::parse("code"), Some(CategoryL1::Code));
+        assert_eq!(CategoryL1::parse("support"), Some(CategoryL1::Support));
+        assert_eq!(CategoryL1::parse("thinking"), Some(CategoryL1::Thinking));
+        assert_eq!(CategoryL1::parse("invalid"), None);
         // as_str outputs the new canonical form
         assert_eq!(CategoryL1::Code.as_str(), "code_work");
         assert_eq!(CategoryL1::Support.as_str(), "support_work");

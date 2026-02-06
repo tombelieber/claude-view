@@ -754,6 +754,7 @@ async fn fetch_category_counts(
     from: Option<i64>,
     to: Option<i64>,
 ) -> ApiResult<Vec<CategoryCountRow>> {
+    #[allow(clippy::type_complexity)]
     let rows: Vec<(String, Option<String>, Option<String>, i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>)> =
         sqlx::query_as(
             r#"
@@ -994,7 +995,7 @@ fn calculate_breakdown(
 
 /// Format a snake_case/kebab-case slug into title case.
 fn format_category_name(slug: &str) -> String {
-    slug.split(|c: char| c == '_' || c == '-')
+    slug.split(['_', '-'])
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {

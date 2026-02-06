@@ -13,6 +13,7 @@ const CLI_TIMEOUT: Duration = Duration::from_secs(3);
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ClaudeCliStatus {
     /// Path to claude binary, None if not found.
     pub path: Option<String>,
@@ -22,17 +23,6 @@ pub struct ClaudeCliStatus {
     pub authenticated: bool,
     /// Subscription type if authenticated.
     pub subscription_type: Option<String>,
-}
-
-impl Default for ClaudeCliStatus {
-    fn default() -> Self {
-        Self {
-            path: None,
-            version: None,
-            authenticated: false,
-            subscription_type: None,
-        }
-    }
 }
 
 impl ClaudeCliStatus {
