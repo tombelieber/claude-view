@@ -1,15 +1,27 @@
-import { useMemo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
-import { FolderOpen } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { FolderOpen, ChevronDown } from 'lucide-react'
 import { useProjectSummaries, useProjectSessions } from '../hooks/use-projects'
-import { DateGroupedList } from './DateGroupedList'
+import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
 import { SessionToolbar } from './SessionToolbar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
+import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
+import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, EmptyState, ErrorState } from './LoadingStates'
+import { cn } from '../lib/utils'
+
+/** Human-readable labels for sort options */
+const SORT_LABELS: Record<SessionSort, string> = {
+  recent: 'Most recent',
+  tokens: 'Most tokens',
+  prompts: 'Most prompts',
+  files_edited: 'Most files edited',
+  duration: 'Longest duration',
+}
 
 export function ProjectView() {
   const { projectId } = useParams()
@@ -82,8 +94,53 @@ export function ProjectView() {
     })
   }, [page?.sessions, filters])
 
-  // Group sessions by date for timeline view
-  const groups = filteredSessions.length > 0 ? groupSessionsByDate(filteredSessions) : []
+  // Extract unique branches from sessions for the filter popover
+  const availableBranches = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of page?.sessions ?? []) {
+      if (s.gitBranch) set.add(s.gitBranch)
+    }
+    return [...set].sort()
+  }, [page?.sessions])
+
+  // Grouping safeguard
+  const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
+
+  // Auto-reset groupBy when session count exceeds the limit
+  const [groupByAutoReset, setGroupByAutoReset] = useState(false);
+  useEffect(() => {
+    if (tooManyToGroup && filters.groupBy !== 'none') {
+      setFilters({ ...filters, groupBy: 'none' });
+      setGroupByAutoReset(true);
+    } else if (!tooManyToGroup) {
+      setGroupByAutoReset(false);
+    }
+  }, [tooManyToGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
+  const groups = useMemo(() => {
+    if (filters.groupBy !== 'none' && !tooManyToGroup) {
+      return groupSessions(filteredSessions, filters.groupBy)
+    }
+    return filters.sort === 'recent'
+      ? groupSessionsByDate(filteredSessions)
+      : [{ label: SORT_LABELS[filters.sort], sessions: filteredSessions }]
+  }, [filteredSessions, filters.groupBy, filters.sort, tooManyToGroup])
+
+  // Collapse state for group headers
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }, []);
 
   if (!decodedProjectId || (!project && !isLoading)) {
     return (
@@ -123,7 +180,16 @@ export function ProjectView() {
               filters={filters}
               onFiltersChange={setFilters}
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+              groupByDisabled={tooManyToGroup}
+              branches={availableBranches}
             />
+
+            {/* Grouping safeguard warning */}
+            {tooManyToGroup && groupByAutoReset && (
+              <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                Grouping disabled — {filteredSessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
+              </div>
+            )}
 
             {/* Session List or Table */}
             <div className="mt-5">
@@ -156,25 +222,54 @@ export function ProjectView() {
                   sortDirection="desc"
                 />
               ) : (
-                /* Timeline view */
+                /* Timeline view with collapsible group headers */
                 <div>
-                  {groups.map(group => (
-                    <div key={group.label}>
-                      {/* Group header */}
-                      <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3">
-                        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap">
-                          {group.label}
-                        </span>
-                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                        <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
-                          {group.sessions.length}
-                        </span>
-                      </div>
+                  {groups.map(group => {
+                    const isCollapsed = collapsedGroups.has(group.label);
+                    return (
+                      <div key={group.label}>
+                        {/* Group header (collapsible) */}
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.label)}
+                          className="sticky top-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3 cursor-pointer group/header"
+                          aria-expanded={!isCollapsed}
+                        >
+                          <ChevronDown
+                            className={cn(
+                              'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
+                              isCollapsed && '-rotate-90'
+                            )}
+                          />
+                          <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
+                            {group.label}
+                          </span>
+                          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                          <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                            {group.sessions.length}
+                          </span>
+                        </button>
 
-                      {/* Cards */}
-                      <DateGroupedList sessions={group.sessions} />
-                    </div>
-                  ))}
+                        {/* Cards (hidden when collapsed) */}
+                        {!isCollapsed && (
+                          <div className="space-y-1.5 pb-3">
+                            {group.sessions.map((session) => (
+                              <Link
+                                key={session.id}
+                                to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                              >
+                                <SessionCard
+                                  session={session}
+                                  isSelected={false}
+                                />
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
