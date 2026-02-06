@@ -24,17 +24,17 @@ pub enum CategoryL1 {
 impl CategoryL1 {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Code => "code",
-            Self::Support => "support",
-            Self::Thinking => "thinking",
+            Self::Code => "code_work",
+            Self::Support => "support_work",
+            Self::Thinking => "thinking_work",
         }
     }
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "code" => Some(Self::Code),
-            "support" => Some(Self::Support),
-            "thinking" => Some(Self::Thinking),
+            "code_work" | "code" => Some(Self::Code),
+            "support_work" | "support" => Some(Self::Support),
+            "thinking_work" | "thinking" => Some(Self::Thinking),
             _ => None,
         }
     }
@@ -61,7 +61,7 @@ impl CategoryL2 {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Feature => "feature",
-            Self::Bugfix => "bugfix",
+            Self::Bugfix => "bug_fix",
             Self::Refactor => "refactor",
             Self::Testing => "testing",
             Self::Docs => "docs",
@@ -76,7 +76,7 @@ impl CategoryL2 {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "feature" => Some(Self::Feature),
-            "bugfix" => Some(Self::Bugfix),
+            "bug_fix" | "bugfix" => Some(Self::Bugfix),
             "refactor" => Some(Self::Refactor),
             "testing" => Some(Self::Testing),
             "docs" => Some(Self::Docs),
@@ -552,11 +552,19 @@ mod tests {
 
     #[test]
     fn test_category_l1_roundtrip() {
+        // New canonical form
+        assert_eq!(CategoryL1::from_str("code_work"), Some(CategoryL1::Code));
+        assert_eq!(CategoryL1::from_str("support_work"), Some(CategoryL1::Support));
+        assert_eq!(CategoryL1::from_str("thinking_work"), Some(CategoryL1::Thinking));
+        // Backwards compat: old form still accepted
         assert_eq!(CategoryL1::from_str("code"), Some(CategoryL1::Code));
         assert_eq!(CategoryL1::from_str("support"), Some(CategoryL1::Support));
         assert_eq!(CategoryL1::from_str("thinking"), Some(CategoryL1::Thinking));
         assert_eq!(CategoryL1::from_str("invalid"), None);
-        assert_eq!(CategoryL1::Code.as_str(), "code");
+        // as_str outputs the new canonical form
+        assert_eq!(CategoryL1::Code.as_str(), "code_work");
+        assert_eq!(CategoryL1::Support.as_str(), "support_work");
+        assert_eq!(CategoryL1::Thinking.as_str(), "thinking_work");
     }
 
     #[test]
