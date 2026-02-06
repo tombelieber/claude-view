@@ -13,9 +13,14 @@ import { TimeRangeFilter } from './insights/TimeRangeFilter'
 import { InsightsSkeleton } from './insights/InsightsSkeleton'
 
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
+const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks']
 
 function isValidTimeRange(value: string | null): value is TimeRange {
   return value !== null && VALID_RANGES.includes(value as TimeRange)
+}
+
+function isValidTab(value: string | null): value is TabId {
+  return value !== null && VALID_TABS.includes(value as TabId)
 }
 
 export function InsightsPage() {
@@ -25,8 +30,12 @@ export function InsightsPage() {
   const rangeFromUrl = searchParams.get('range')
   const initialRange: TimeRange = isValidTimeRange(rangeFromUrl) ? rangeFromUrl : '30d'
 
+  // Initialize active tab from URL or default to patterns
+  const tabFromUrl = searchParams.get('tab')
+  const initialTab: TabId = isValidTab(tabFromUrl) ? tabFromUrl : 'patterns'
+
   const [timeRange, setTimeRange] = useState<TimeRange>(initialRange)
-  const [activeTab, setActiveTab] = useState<TabId>('patterns')
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
 
   const { data, isLoading, error, refetch } = useInsights({ timeRange })
 
@@ -34,6 +43,13 @@ export function InsightsPage() {
     setTimeRange(range)
     const params = new URLSearchParams(searchParams)
     params.set('range', range)
+    setSearchParams(params)
+  }
+
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams)
+    params.set('tab', tab)
     setSearchParams(params)
   }
 
@@ -126,7 +142,7 @@ export function InsightsPage() {
           {/* Tab Navigation */}
           <PatternsTabs
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
           />
 
           {/* Tab Content */}
