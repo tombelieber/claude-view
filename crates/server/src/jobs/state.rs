@@ -53,8 +53,9 @@ impl JobState {
 
     /// Set the human-readable progress message and broadcast.
     pub fn set_message(&self, msg: impl Into<String>) {
-        if let Ok(mut guard) = self.message.write() {
-            *guard = Some(msg.into());
+        match self.message.write() {
+            Ok(mut guard) => *guard = Some(msg.into()),
+            Err(e) => tracing::error!("RwLock poisoned writing message: {e}"),
         }
         self.broadcast_progress();
     }
@@ -70,8 +71,9 @@ impl JobState {
     pub fn fail(&self, error: impl Into<String>) {
         self.status
             .store(JobStatus::Failed as u8, Ordering::Relaxed);
-        if let Ok(mut guard) = self.message.write() {
-            *guard = Some(error.into());
+        match self.message.write() {
+            Ok(mut guard) => *guard = Some(error.into()),
+            Err(e) => tracing::error!("RwLock poisoned writing error message: {e}"),
         }
         self.broadcast_progress();
     }
@@ -89,7 +91,13 @@ impl JobState {
             status: self.status_string(),
             current: self.current.load(Ordering::Relaxed),
             total: self.total.load(Ordering::Relaxed),
-            message: self.message.read().ok().and_then(|g| g.clone()),
+            message: match self.message.read() {
+                Ok(g) => g.clone(),
+                Err(e) => {
+                    tracing::error!("RwLock poisoned reading message: {e}");
+                    None
+                }
+            },
             timestamp: chrono::Utc::now().to_rfc3339(),
         }
     }
