@@ -208,7 +208,7 @@ impl Database {
                 COUNT(*) as sessions,
                 COALESCE(
                     CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0),
-                    0
+                    0.0
                 ) as avg_reedit
             FROM sessions
             WHERE is_sidechain = 0

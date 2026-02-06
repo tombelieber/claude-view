@@ -84,10 +84,10 @@ fn b03_abandonment_triggers(sessions: &[SessionInfo], time_range_days: u32) -> O
     let mut buckets: HashMap<&str, (u32, u32)> = HashMap::new(); // (total, abandoned)
     for s in &editing_sessions {
         let bucket = match s.reedited_files_count {
-            0 => "0_reedits",
-            1..=2 => "1-2_reedits",
-            3..=5 => "3-5_reedits",
-            _ => "6+_reedits",
+            0 => "0",
+            1..=2 => "1-2",
+            3..=5 => "3-5",
+            _ => "6+",
         };
         let entry = buckets.entry(bucket).or_default();
         entry.0 += 1;

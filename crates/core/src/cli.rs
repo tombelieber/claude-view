@@ -3,7 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::time::Duration;
 use ts_rs::TS;
+
+/// Timeout for each CLI subprocess call (prevents hangs when claude is already running).
+const CLI_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Claude CLI status information.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -55,13 +59,35 @@ impl ClaudeCliStatus {
         }
     }
 
+    /// Run a command with a timeout, returning None if it times out or fails to start.
+    fn run_with_timeout(cmd: &mut Command) -> Option<std::process::Output> {
+        let mut child = cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .ok()?;
+
+        let deadline = std::time::Instant::now() + CLI_TIMEOUT;
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return child.wait_with_output().ok(),
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return None;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
     /// Find the path to the claude binary.
     fn find_claude_path() -> Option<String> {
         // Try `which claude` first
-        let output = Command::new("which")
-            .arg("claude")
-            .output()
-            .ok()?;
+        let output = Self::run_with_timeout(Command::new("which").arg("claude"))?;
 
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout)
@@ -90,10 +116,7 @@ impl ClaudeCliStatus {
 
     /// Get the claude CLI version.
     fn get_version(path: &str) -> Option<String> {
-        let output = Command::new(path)
-            .arg("--version")
-            .output()
-            .ok()?;
+        let output = Self::run_with_timeout(Command::new(path).arg("--version"))?;
 
         if output.status.success() {
             let version_str = String::from_utf8_lossy(&output.stdout);
@@ -124,13 +147,11 @@ impl ClaudeCliStatus {
 
     /// Check authentication status.
     fn check_auth(path: &str) -> (bool, Option<String>) {
-        // Try to get auth status
-        let output = Command::new(path)
-            .args(["auth", "status"])
-            .output();
+        // Try to get auth status (with timeout to prevent hangs when claude is running)
+        let output = Self::run_with_timeout(Command::new(path).args(["auth", "status"]));
 
         match output {
-            Ok(o) if o.status.success() => {
+            Some(o) if o.status.success() => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 let stderr = String::from_utf8_lossy(&o.stderr);
                 // Check both stdout and stderr for auth info
