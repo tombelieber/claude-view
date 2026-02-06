@@ -7,32 +7,36 @@ export type AggregatedContributions = {
 /**
  * Total sessions in the period
  */
-sessionsCount: bigint, 
+sessionsCount: number, 
 /**
  * Total AI lines added
  */
-aiLinesAdded: bigint, 
+aiLinesAdded: number, 
 /**
  * Total AI lines removed
  */
-aiLinesRemoved: bigint, 
+aiLinesRemoved: number, 
 /**
  * Total commits linked
  */
-commitsCount: bigint, 
+commitsCount: number, 
 /**
  * Total commit insertions
  */
-commitInsertions: bigint, 
+commitInsertions: number, 
 /**
  * Total commit deletions
  */
-commitDeletions: bigint, 
+commitDeletions: number, 
 /**
  * Total tokens used
  */
-tokensUsed: bigint, 
+tokensUsed: number, 
 /**
  * Total estimated cost in cents
  */
-costCents: bigint, };
+costCents: number, 
+/**
+ * Total files edited across all sessions
+ */
+filesEditedCount: number, };

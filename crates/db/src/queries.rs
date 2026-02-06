@@ -39,7 +39,9 @@ pub struct InvocableWithCount {
     pub name: String,
     pub kind: String,
     pub description: String,
+    #[ts(type = "number")]
     pub invocation_count: i64,
+    #[ts(type = "number | null")]
     pub last_used_at: Option<i64>,
 }
 
@@ -66,9 +68,13 @@ pub struct ModelWithStats {
     pub id: String,
     pub provider: Option<String>,
     pub family: Option<String>,
+    #[ts(type = "number | null")]
     pub first_seen: Option<i64>,
+    #[ts(type = "number | null")]
     pub last_seen: Option<i64>,
+    #[ts(type = "number")]
     pub total_turns: i64,
+    #[ts(type = "number")]
     pub total_sessions: i64,
 }
 
@@ -92,12 +98,18 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
+    #[ts(type = "number")]
     pub total_input_tokens: u64,
+    #[ts(type = "number")]
     pub total_output_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_read_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_creation_tokens: u64,
     pub cache_hit_ratio: f64,
+    #[ts(type = "number")]
     pub turns_count: u64,
+    #[ts(type = "number")]
     pub sessions_count: u64,
 }
 
@@ -106,8 +118,11 @@ pub struct TokenStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub total_invocations: i64,
+    #[ts(type = "number")]
     pub unique_invocables_used: i64,
     pub top_invocables: Vec<InvocableWithCount>,
 }
