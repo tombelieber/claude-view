@@ -89,6 +89,17 @@ async fn main() -> Result<()> {
     // Step 1: Open database
     let db = Database::open_default().await?;
 
+    // Recover any classification jobs left in "running" state from previous crash
+    match db.recover_stale_classification_jobs().await {
+        Ok(count) if count > 0 => {
+            tracing::info!("Recovered {} stale classification jobs", count);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("Failed to recover stale classification jobs: {}", e);
+        }
+    }
+
     // Step 2: Create shared indexing state and registry holder
     let indexing = Arc::new(IndexingState::new());
     let registry_holder = Arc::new(RwLock::new(None));
