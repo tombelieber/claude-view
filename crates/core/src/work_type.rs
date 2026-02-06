@@ -45,7 +45,7 @@ impl WorkType {
     }
 
     /// Parse from database string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_str(s: &str) -> Option<Self> {
         match s {
             "deep_work" => Some(WorkType::DeepWork),
             "quick_ask" => Some(WorkType::QuickAsk),
@@ -232,13 +232,13 @@ mod tests {
 
     #[test]
     fn test_work_type_from_str() {
-        assert_eq!(WorkType::from_str("deep_work"), Some(WorkType::DeepWork));
-        assert_eq!(WorkType::from_str("quick_ask"), Some(WorkType::QuickAsk));
-        assert_eq!(WorkType::from_str("planning"), Some(WorkType::Planning));
-        assert_eq!(WorkType::from_str("bug_fix"), Some(WorkType::BugFix));
-        assert_eq!(WorkType::from_str("standard"), Some(WorkType::Standard));
-        assert_eq!(WorkType::from_str("unknown"), None);
-        assert_eq!(WorkType::from_str(""), None);
+        assert_eq!(WorkType::parse_str("deep_work"), Some(WorkType::DeepWork));
+        assert_eq!(WorkType::parse_str("quick_ask"), Some(WorkType::QuickAsk));
+        assert_eq!(WorkType::parse_str("planning"), Some(WorkType::Planning));
+        assert_eq!(WorkType::parse_str("bug_fix"), Some(WorkType::BugFix));
+        assert_eq!(WorkType::parse_str("standard"), Some(WorkType::Standard));
+        assert_eq!(WorkType::parse_str("unknown"), None);
+        assert_eq!(WorkType::parse_str(""), None);
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
             WorkType::Standard,
         ];
         for wt in types {
-            assert_eq!(WorkType::from_str(wt.as_str()), Some(wt));
+            assert_eq!(WorkType::parse_str(wt.as_str()), Some(wt));
         }
     }
 

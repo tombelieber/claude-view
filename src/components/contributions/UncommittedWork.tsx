@@ -27,7 +27,7 @@ export function UncommittedWorkSection({
     return null // Don't render if nothing to show
   }
 
-  const totalLines = uncommitted.reduce((sum, u) => sum + Number(u.linesAdded), 0)
+  const totalLines = uncommitted.reduce((sum, u) => sum + u.linesAdded, 0)
   const projectCount = uncommitted.length
 
   return (
@@ -98,7 +98,7 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
     insight,
   } = item
 
-  const ageText = formatRelativeTime(Number(lastActivityAt))
+  const ageText = formatRelativeTime(lastActivityAt)
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-amber-200 dark:border-amber-700 p-4">
@@ -129,9 +129,9 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
       {/* Stats */}
       <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-2">
         <span className="text-green-600 dark:text-green-400 font-medium tabular-nums">
-          +{formatNumber(Number(linesAdded))} lines
+          +{formatNumber(linesAdded)} lines
         </span>
-        <span>in {Number(filesCount)} files</span>
+        <span>in {filesCount} files</span>
         <span className="text-gray-300 dark:text-gray-600">&bull;</span>
         <span className="flex items-center gap-1">
           <Clock className="w-3 h-3" aria-hidden="true" />
