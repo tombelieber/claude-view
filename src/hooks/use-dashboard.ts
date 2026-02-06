@@ -1,13 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ExtendedDashboardStats } from '../types/generated'
+import type { TimeRangeParams } from '../types/time-range'
 
-/** Time range parameters for dashboard API */
-export interface TimeRangeParams {
-  /** Start timestamp (Unix seconds) - null for all-time */
-  from: number | null
-  /** End timestamp (Unix seconds) - null for all-time */
-  to: number | null
-}
+export type { TimeRangeParams } from '../types/time-range'
 
 /**
  * Fetch dashboard stats with optional time range filter.
@@ -23,7 +18,7 @@ async function fetchDashboardStats(params?: TimeRangeParams): Promise<ExtendedDa
   let url = '/api/stats/dashboard'
 
   // Add time range params if provided (not all-time)
-  if (params?.from !== null && params?.to !== null) {
+  if (params?.from != null && params?.to != null) {
     const searchParams = new URLSearchParams()
     searchParams.set('from', params.from.toString())
     searchParams.set('to', params.to.toString())
