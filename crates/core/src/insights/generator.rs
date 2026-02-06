@@ -36,7 +36,7 @@ pub struct InsightEvidence {
 
 /// Build a GeneratedInsight from raw pattern data.
 ///
-/// Returns `None` if the template cannot be found or required variables are missing.
+/// Returns `None` if the template cannot be found. Missing template variables are left as literal `{placeholder}` text.
 pub fn generate_insight(
     pattern_id: &str,
     category: &str,
