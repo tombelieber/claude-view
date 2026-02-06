@@ -243,8 +243,10 @@ async fn get_classification_status(
     let classify_state = &state.classify;
     let current_status = classify_state.status();
 
-    let total_sessions = state.db.count_all_sessions().await.unwrap_or(0);
-    let classified_sessions = state.db.count_classified_sessions().await.unwrap_or(0);
+    let total_sessions = state.db.count_all_sessions().await
+        .map_err(|e| ApiError::Internal(format!("Failed to count sessions: {e}")))?;
+    let classified_sessions = state.db.count_classified_sessions().await
+        .map_err(|e| ApiError::Internal(format!("Failed to count classified sessions: {e}")))?;
     let unclassified_sessions = total_sessions - classified_sessions;
 
     let progress = if current_status == ClassifyStatus::Running {
@@ -271,20 +273,20 @@ async fn get_classification_status(
     };
 
     // Get last completed job info from database
-    let last_run = state
-        .db
-        .get_last_completed_classification_job()
-        .await
-        .ok()
-        .flatten()
-        .map(|job| ClassifyLastRun {
+    let last_run = match state.db.get_last_completed_classification_job().await {
+        Ok(job) => job.map(|job| ClassifyLastRun {
             job_id: job.id,
             completed_at: job.completed_at,
             sessions_classified: job.classified_count,
             cost_cents: job.actual_cost_cents,
             error_count: job.failed_count,
             status: job.status.as_db_str().to_string(),
-        });
+        }),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch last classification job");
+            None
+        }
+    };
 
     let job_id = if current_status == ClassifyStatus::Running {
         let id = classify_state.db_job_id();
@@ -330,7 +332,13 @@ async fn stream_classification(
                     percentage: classify_state.percentage(),
                     eta: classify_state.eta_string(),
                 };
-                let json = serde_json::to_string(&data).unwrap_or_default();
+                let json = match serde_json::to_string(&data) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        tracing::error!(error = %e, "Failed to serialize SSE progress data");
+                        continue;
+                    }
+                };
                 yield Ok(Event::default().event("progress").data(json));
             }
 
@@ -341,7 +349,13 @@ async fn stream_classification(
                         job_id: classify_state.db_job_id(),
                         classified: classify_state.classified(),
                     };
-                    let json = serde_json::to_string(&data).unwrap_or_default();
+                    let json = match serde_json::to_string(&data) {
+                        Ok(j) => j,
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to serialize SSE progress data");
+                            continue;
+                        }
+                    };
                     yield Ok(Event::default().event("complete").data(json));
                     break;
                 }
@@ -425,7 +439,9 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
             let msg = format!("Failed to fetch sessions: {}", e);
             tracing::error!("{}", msg);
             classify_state.set_failed(msg.clone());
-            let _ = db.fail_classification_job(db_job_id, &msg).await;
+            if let Err(e) = db.fail_classification_job(db_job_id, &msg).await {
+                tracing::error!(error = %e, "Failed to record classification job failure");
+            }
             return;
         }
     };
@@ -433,7 +449,9 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let total = sessions.len();
     if total == 0 {
         classify_state.set_completed();
-        let _ = db.complete_classification_job(db_job_id, Some(0)).await;
+        if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+            tracing::error!(error = %e, "Failed to complete classification job with 0 sessions");
+        }
         return;
     }
 
@@ -459,8 +477,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
         // Check for cancellation
         if classify_state.is_cancel_requested() {
             classify_state.set_cancelled();
-            let _ = db.cancel_classification_job(db_job_id).await;
-            let _ = db
+            if let Err(e) = db.cancel_classification_job(db_job_id).await {
+                tracing::error!(error = %e, "Failed to cancel classification job");
+            }
+            if let Err(e) = db
                 .update_classification_job_progress(
                     db_job_id,
                     classified_total as i64,
@@ -468,7 +488,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                     failed_total as i64,
                     None,
                 )
-                .await;
+                .await
+            {
+                tracing::error!(error = %e, "Failed to update cancelled job progress");
+            }
             return;
         }
 
@@ -522,13 +545,16 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
         if !batch_updates.is_empty() {
             if let Err(e) = db.batch_update_session_classifications(&batch_updates).await {
                 tracing::error!(error = %e, "Failed to persist batch classifications");
+                // Count the batch as failed since results weren't persisted
+                failed_total += batch_updates.len() as u64;
+                classified_total -= batch_updates.len() as u64;
             }
         }
 
         classify_state.increment_classified(batch_updates.len() as u64);
 
         // Update job progress in database
-        let _ = db
+        if let Err(e) = db
             .update_classification_job_progress(
                 db_job_id,
                 classified_total as i64,
@@ -536,13 +562,18 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                 failed_total as i64,
                 None,
             )
-            .await;
+            .await
+        {
+            tracing::error!(error = %e, "Failed to update classification progress");
+        }
     }
 
     // Job completed
     classify_state.set_completed();
-    let _ = db.complete_classification_job(db_job_id, Some(0)).await;
-    let _ = db
+    if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+        tracing::error!(error = %e, "Failed to complete classification job");
+    }
+    if let Err(e) = db
         .update_classification_job_progress(
             db_job_id,
             classified_total as i64,
@@ -550,7 +581,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
             failed_total as i64,
             None,
         )
-        .await;
+        .await
+    {
+        tracing::error!(error = %e, "Failed to update final job progress");
+    }
 
     tracing::info!(
         classified = classified_total,
