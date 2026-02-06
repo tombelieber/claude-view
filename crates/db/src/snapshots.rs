@@ -1421,7 +1421,13 @@ impl Database {
 
         for (skills_json, lines, has_commit, reedited, files_edited, _) in rows {
             // Parse skills JSON array
-            let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+            let skills: Vec<String> = match serde_json::from_str(&skills_json) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("Failed to parse skills_used JSON: {e}");
+                    Vec::new()
+                }
+            };
 
             if skills.is_empty() {
                 // Track sessions without skills
@@ -1591,7 +1597,13 @@ impl Database {
 
         // Parse the files_edited JSON
         // Expected format: array of file paths or objects with path info
-        let files: Vec<String> = serde_json::from_str(&files_json).unwrap_or_default();
+        let files: Vec<String> = match serde_json::from_str(&files_json) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!("Failed to parse files_edited JSON for session {session_id}: {e}");
+                Vec::new()
+            }
+        };
 
         // For now, we return basic file info without detailed line counts
         // (detailed line counts would require parsing the JSONL file)
@@ -2084,7 +2096,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                    COUNT(*) FILTER (WHERE commit_count > 0),
+                    SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
                 FROM sessions
                 WHERE project_id = ?1
@@ -2101,7 +2113,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                    COUNT(*) FILTER (WHERE commit_count > 0),
+                    SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
@@ -2119,6 +2131,70 @@ impl Database {
         } else {
             Ok(Some(row.0 as f64 / row.1 as f64))
         }
+    }
+
+    /// Get total user prompt count for a time range.
+    ///
+    /// Queries sessions table directly since prompts are not stored in snapshots.
+    pub async fn get_total_prompts(
+        &self,
+        range: TimeRange,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
+        project_id: Option<&str>,
+    ) -> DbResult<i64> {
+        let (from, to) = match range {
+            TimeRange::Custom => {
+                let from = from_date.unwrap_or("1970-01-01").to_string();
+                let to = to_date
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                (from, to)
+            }
+            TimeRange::All => {
+                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+            }
+            _ => {
+                let days = range.days_back().unwrap_or(7);
+                let from = (Utc::now() - chrono::Duration::days(days))
+                    .format("%Y-%m-%d")
+                    .to_string();
+                let to = Utc::now().format("%Y-%m-%d").to_string();
+                (from, to)
+            }
+        };
+
+        let row: (i64,) = if let Some(pid) = project_id {
+            sqlx::query_as(
+                r#"
+                SELECT COALESCE(SUM(user_prompt_count), 0)
+                FROM sessions
+                WHERE project_id = ?1
+                  AND date(last_message_at, 'unixepoch') >= ?2
+                  AND date(last_message_at, 'unixepoch') <= ?3
+                "#,
+            )
+            .bind(pid)
+            .bind(&from)
+            .bind(&to)
+            .fetch_one(self.pool())
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"
+                SELECT COALESCE(SUM(user_prompt_count), 0)
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch') >= ?1
+                  AND date(last_message_at, 'unixepoch') <= ?2
+                "#,
+            )
+            .bind(&from)
+            .bind(&to)
+            .fetch_one(self.pool())
+            .await?
+        };
+
+        Ok(row.0)
     }
 }
 
