@@ -104,17 +104,35 @@ impl ClassifyState {
 
     /// Get the job ID string.
     pub fn job_id(&self) -> Option<String> {
-        self.job_id.read().ok().and_then(|g| g.clone())
+        match self.job_id.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::error!("RwLock poisoned reading job_id: {e}");
+                None
+            }
+        }
     }
 
     /// Get the current batch description.
     pub fn current_batch(&self) -> Option<String> {
-        self.current_batch.read().ok().and_then(|g| g.clone())
+        match self.current_batch.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::error!("RwLock poisoned reading current_batch: {e}");
+                None
+            }
+        }
     }
 
     /// Get the error message.
     pub fn error_message(&self) -> Option<String> {
-        self.error_message.read().ok().and_then(|g| g.clone())
+        match self.error_message.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::error!("RwLock poisoned reading error_message: {e}");
+                None
+            }
+        }
     }
 
     /// Get the start timestamp (unix seconds).
@@ -143,14 +161,17 @@ impl ClassifyState {
                 .as_secs(),
             Ordering::Relaxed,
         );
-        if let Ok(mut guard) = self.job_id.write() {
-            *guard = Some(job_id);
+        match self.job_id.write() {
+            Ok(mut guard) => *guard = Some(job_id),
+            Err(e) => tracing::error!("RwLock poisoned writing job_id: {e}"),
         }
-        if let Ok(mut guard) = self.current_batch.write() {
-            *guard = None;
+        match self.current_batch.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("RwLock poisoned writing current_batch: {e}"),
         }
-        if let Ok(mut guard) = self.error_message.write() {
-            *guard = None;
+        match self.error_message.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("RwLock poisoned writing error_message: {e}"),
         }
     }
 
@@ -166,8 +187,9 @@ impl ClassifyState {
 
     /// Set the current batch description.
     pub fn set_current_batch(&self, batch: String) {
-        if let Ok(mut guard) = self.current_batch.write() {
-            *guard = Some(batch);
+        match self.current_batch.write() {
+            Ok(mut guard) => *guard = Some(batch),
+            Err(e) => tracing::error!("RwLock poisoned writing current_batch: {e}"),
         }
     }
 
@@ -184,8 +206,9 @@ impl ClassifyState {
     /// Mark as failed.
     pub fn set_failed(&self, message: String) {
         self.status.store(ClassifyStatus::Failed as u8, Ordering::Relaxed);
-        if let Ok(mut guard) = self.error_message.write() {
-            *guard = Some(message);
+        match self.error_message.write() {
+            Ok(mut guard) => *guard = Some(message),
+            Err(e) => tracing::error!("RwLock poisoned writing error_message: {e}"),
         }
     }
 
@@ -214,14 +237,17 @@ impl ClassifyState {
         self.db_job_id.store(0, Ordering::Relaxed);
         self.cost_cents.store(0, Ordering::Relaxed);
         self.started_at.store(0, Ordering::Relaxed);
-        if let Ok(mut guard) = self.job_id.write() {
-            *guard = None;
+        match self.job_id.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("RwLock poisoned writing job_id: {e}"),
         }
-        if let Ok(mut guard) = self.current_batch.write() {
-            *guard = None;
+        match self.current_batch.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("RwLock poisoned writing current_batch: {e}"),
         }
-        if let Ok(mut guard) = self.error_message.write() {
-            *guard = None;
+        match self.error_message.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("RwLock poisoned writing error_message: {e}"),
         }
     }
 
