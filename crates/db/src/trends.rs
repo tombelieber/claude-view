@@ -720,6 +720,7 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            None,        // primary_model
         )
         .await
         .unwrap();
