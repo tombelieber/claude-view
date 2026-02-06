@@ -3,4 +3,4 @@
 /**
  * Current week metrics for dashboard (Step 22).
  */
-export type CurrentWeekMetrics = { sessionCount: bigint, totalTokens: bigint, totalFilesEdited: bigint, commitCount: bigint, };
+export type CurrentWeekMetrics = { sessionCount: number, totalTokens: number, totalFilesEdited: number, commitCount: number, };
