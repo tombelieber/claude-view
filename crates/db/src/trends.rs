@@ -399,6 +399,7 @@ impl Database {
 
     /// Get the current index metadata.
     pub async fn get_index_metadata(&self) -> DbResult<IndexMetadata> {
+        #[allow(clippy::type_complexity)]
         let row: (
             Option<i64>,
             Option<i64>,
