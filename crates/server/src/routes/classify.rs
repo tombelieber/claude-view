@@ -422,7 +422,8 @@ async fn cancel_classification(
 
 /// Run the classification loop in the background.
 ///
-/// Fetches sessions in batches, calls the LLM provider, and persists results.
+/// Sessions are classified individually via the LLM provider, grouped into
+/// batches only for progress tracking and database writes.
 async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let classify_state = &state.classify;
     let db = &state.db;

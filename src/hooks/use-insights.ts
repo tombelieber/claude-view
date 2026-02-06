@@ -92,7 +92,7 @@ function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number
 }
 
 /**
- * Map Phase 4 API response to UI data structure.
+ * Map insights API response to UI data structure.
  */
 function mapApiToUi(api: InsightsResponse): InsightsData {
   const totalSessions = api.overview.workBreakdown.totalSessions

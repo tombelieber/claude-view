@@ -58,7 +58,7 @@ export type { PatternGroups } from './PatternGroups'
 export type { WorkBreakdown } from './WorkBreakdown'
 export type { EfficiencyStats } from './EfficiencyStats'
 export type { BestTimeStats } from './BestTimeStats'
-export type { ClassificationStatus } from './ClassificationStatus'
+export type { ClassificationCoverage } from './ClassificationCoverage'
 
 // Categories types (Phase 6)
 export type { CategorySummary } from './CategorySummary'
