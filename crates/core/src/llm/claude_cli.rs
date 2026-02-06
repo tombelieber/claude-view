@@ -115,20 +115,20 @@ Skills used: {}
 
 Categories:
 L1: code_work | support_work | thinking_work
-L2 (if code_work): feature | bug_fix | refactor | testing
+L2 (if code_work): feature | bugfix | refactor | testing
 L2 (if support_work): docs | config | ops
 L2 (if thinking_work): planning | explanation | architecture
 L3 (by L2):
-  - feature: new-component | new-endpoint | new-integration | enhancement
-  - bug_fix: error-fix | logic-fix | regression-fix | crash-fix
-  - refactor: rename | extract | restructure | cleanup
-  - testing: unit-test | integration-test | e2e-test | test-fix
-  - docs: readme | api-docs | inline-docs | changelog
-  - config: env-config | build-config | ci-config | deps
-  - ops: deploy | monitoring | migration | backup
-  - planning: design-doc | spike | estimation | roadmap
-  - explanation: how-it-works | debugging-help | code-review | comparison
-  - architecture: system-design | data-model | api-design | infra
+  - feature: new-component | add-functionality | integration
+  - bugfix: error-fix | logic-fix | performance-fix
+  - refactor: cleanup | pattern-migration | dependency-update
+  - testing: unit-tests | integration-tests | test-fixes
+  - docs: code-comments | readme-guides | api-docs
+  - config: env-setup | build-tooling | dependencies
+  - ops: ci-cd | deployment | monitoring
+  - planning: brainstorming | design-doc | task-breakdown
+  - explanation: code-understanding | concept-learning | debug-investigation
+  - architecture: system-design | data-modeling | api-design
 
 Respond:
 {{"category_l1": "...", "category_l2": "...", "category_l3": "...", "confidence": 0.0-1.0}}"#,
@@ -181,7 +181,7 @@ mod tests {
         assert!(prompt.contains("/commit, /review-pr"));
         // Should contain category taxonomy
         assert!(prompt.contains("code_work"));
-        assert!(prompt.contains("bug_fix"));
+        assert!(prompt.contains("bugfix"));
         assert!(prompt.contains("error-fix"));
     }
 
@@ -203,14 +203,14 @@ mod tests {
     fn test_parse_classification_response_direct_json() {
         let json = serde_json::json!({
             "category_l1": "code_work",
-            "category_l2": "bug_fix",
+            "category_l2": "bugfix",
             "category_l3": "error-fix",
             "confidence": 0.95
         });
 
         let resp = parse_classification_response(json).unwrap();
         assert_eq!(resp.category_l1, "code_work");
-        assert_eq!(resp.category_l2, "bug_fix");
+        assert_eq!(resp.category_l2, "bugfix");
         assert_eq!(resp.category_l3, "error-fix");
         assert!((resp.confidence - 0.95).abs() < f64::EPSILON);
     }
@@ -219,13 +219,13 @@ mod tests {
     fn test_parse_classification_response_claude_cli_wrapper() {
         // Claude CLI wraps output as: { "result": "{ json string }" }
         let json = serde_json::json!({
-            "result": r#"{"category_l1": "thinking_work", "category_l2": "explanation", "category_l3": "how-it-works", "confidence": 0.88}"#
+            "result": r#"{"category_l1": "thinking_work", "category_l2": "explanation", "category_l3": "code-understanding", "confidence": 0.88}"#
         });
 
         let resp = parse_classification_response(json).unwrap();
         assert_eq!(resp.category_l1, "thinking_work");
         assert_eq!(resp.category_l2, "explanation");
-        assert_eq!(resp.category_l3, "how-it-works");
+        assert_eq!(resp.category_l3, "code-understanding");
         assert!((resp.confidence - 0.88).abs() < f64::EPSILON);
     }
 
