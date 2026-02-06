@@ -41,10 +41,12 @@ export function ContributionsPage() {
   // Fetch contributions data
   const { data, isLoading, error, refetch } = useContributions(range)
 
-  // Update URL when range changes
+  // Update URL when range changes (preserve existing params per CLAUDE.md rule)
   const handleRangeChange = (newRange: TimeRange) => {
     setRange(newRange)
-    setSearchParams({ range: newRange })
+    const params = new URLSearchParams(searchParams)
+    params.set('range', newRange)
+    setSearchParams(params)
   }
 
   // Handle session drill-down
@@ -82,7 +84,7 @@ export function ContributionsPage() {
   }
 
   // Empty state (no sessions)
-  if (!data || Number(data.overview.fluency.sessions) === 0) {
+  if (!data || data.overview.fluency.sessions === 0) {
     return (
       <div className="h-full overflow-y-auto p-6">
         <div className="max-w-4xl mx-auto space-y-6">
@@ -99,7 +101,7 @@ export function ContributionsPage() {
     )
   }
 
-  const sessionCount = Number(data.overview.fluency.sessions)
+  const sessionCount = data.overview.fluency.sessions
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -177,16 +179,16 @@ export function ContributionsPage() {
 /**
  * Generate trend insight from data.
  */
-function generateTrendInsight(data: { linesAdded: bigint; date: string }[]) {
+function generateTrendInsight(data: { linesAdded: number; date: string }[]) {
   if (data.length === 0) return undefined
 
-  const totalAdded = data.reduce((sum, d) => sum + Number(d.linesAdded), 0)
+  const totalAdded = data.reduce((sum, d) => sum + d.linesAdded, 0)
   const avgPerDay = totalAdded / data.length
 
   // Find peak day
   let peakDay = data[0]
   for (const day of data) {
-    if (Number(day.linesAdded) > Number(peakDay.linesAdded)) {
+    if (day.linesAdded > peakDay.linesAdded) {
       peakDay = day
     }
   }
@@ -196,7 +198,7 @@ function generateTrendInsight(data: { linesAdded: bigint; date: string }[]) {
   })
 
   return {
-    text: `${peakDate} was your most productive day with ${Number(peakDay.linesAdded).toLocaleString()} lines added. Average: ${Math.round(avgPerDay).toLocaleString()} lines/day.`,
+    text: `${peakDate} was your most productive day with ${peakDay.linesAdded.toLocaleString()} lines added. Average: ${Math.round(avgPerDay).toLocaleString()} lines/day.`,
     kind: 'info' as const,
   }
 }
