@@ -2,7 +2,6 @@
 ///
 /// We use simple inline migrations rather than sqlx migration files
 /// because the schema is small and self-contained.
-
 pub const MIGRATIONS: &[&str] = &[
     // Migration 1: sessions table
     r#"

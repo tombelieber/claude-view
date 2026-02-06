@@ -81,7 +81,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                    {formatNumber(Number(model.lines))}
+                    {formatNumber(model.lines)}
                   </td>
                   <td className="py-3 px-4 text-right tabular-nums">
                     <span className="inline-flex items-center gap-1">
