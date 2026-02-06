@@ -28,7 +28,7 @@ export function OverviewCards({ overview }: OverviewCardsProps) {
           <div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
-                {Number(fluency.sessions)}
+                {fluency.sessions}
               </span>
               <span className="text-sm text-gray-500 dark:text-gray-400">sessions</span>
             </div>
@@ -58,15 +58,15 @@ export function OverviewCards({ overview }: OverviewCardsProps) {
           <div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-semibold text-green-600 dark:text-green-400 tabular-nums">
-                +{formatNumber(Number(output.linesAdded))}
+                +{formatNumber(output.linesAdded)}
               </span>
               <span className="text-lg font-medium text-red-500 dark:text-red-400 tabular-nums">
-                -{formatNumber(Number(output.linesRemoved))}
+                -{formatNumber(output.linesRemoved)}
               </span>
               <span className="text-sm text-gray-500 dark:text-gray-400">lines</span>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {Number(output.filesCount)} files, {Number(output.commitsCount)} commits
+              {output.filesCount} files, {output.commitsCount} commits
             </p>
           </div>
 

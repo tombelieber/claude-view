@@ -45,7 +45,7 @@ export function EfficiencyMetricsSection({ efficiency }: EfficiencyMetricsSectio
         </span>
         <ArrowRight className="w-4 h-4 text-gray-400" aria-hidden="true" />
         <span className="font-semibold text-gray-900 dark:text-gray-100">
-          {formatNumber(Number(totalLines))} lines produced
+          {formatNumber(totalLines)} lines produced
         </span>
         {totalCommits !== null && (
           <>
