@@ -19,6 +19,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// Blended cost per token in cents.
+///
+/// Assumes ~50% Sonnet, ~40% Haiku, ~10% Opus usage with 2:1 input:output ratio.
+/// Equates to ~$2.50 per million tokens = 0.00025 cents per token.
+pub const BLENDED_COST_PER_TOKEN: f64 = 0.00025;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -85,17 +91,26 @@ impl TimeRange {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionSnapshot {
+    #[ts(type = "number")]
     pub id: i64,
     pub date: String,
     pub project_id: Option<String>,
     pub branch: Option<String>,
+    #[ts(type = "number")]
     pub sessions_count: i64,
+    #[ts(type = "number")]
     pub ai_lines_added: i64,
+    #[ts(type = "number")]
     pub ai_lines_removed: i64,
+    #[ts(type = "number")]
     pub commits_count: i64,
+    #[ts(type = "number")]
     pub commit_insertions: i64,
+    #[ts(type = "number")]
     pub commit_deletions: i64,
+    #[ts(type = "number")]
     pub tokens_used: i64,
+    #[ts(type = "number")]
     pub cost_cents: i64,
 }
 
@@ -105,21 +120,32 @@ pub struct ContributionSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct AggregatedContributions {
     /// Total sessions in the period
+    #[ts(type = "number")]
     pub sessions_count: i64,
     /// Total AI lines added
+    #[ts(type = "number")]
     pub ai_lines_added: i64,
     /// Total AI lines removed
+    #[ts(type = "number")]
     pub ai_lines_removed: i64,
     /// Total commits linked
+    #[ts(type = "number")]
     pub commits_count: i64,
     /// Total commit insertions
+    #[ts(type = "number")]
     pub commit_insertions: i64,
     /// Total commit deletions
+    #[ts(type = "number")]
     pub commit_deletions: i64,
     /// Total tokens used
+    #[ts(type = "number")]
     pub tokens_used: i64,
     /// Total estimated cost in cents
+    #[ts(type = "number")]
     pub cost_cents: i64,
+    /// Total files edited across all sessions
+    #[ts(type = "number")]
+    pub files_edited_count: i64,
 }
 
 /// Daily trend data point for charts.
@@ -128,10 +154,18 @@ pub struct AggregatedContributions {
 #[serde(rename_all = "camelCase")]
 pub struct DailyTrendPoint {
     pub date: String,
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub lines_removed: i64,
+    #[ts(type = "number")]
     pub commits: i64,
+    #[ts(type = "number")]
     pub sessions: i64,
+    #[ts(type = "number")]
+    pub tokens_used: i64,
+    #[ts(type = "number")]
+    pub cost_cents: i64,
 }
 
 /// Model usage breakdown.
@@ -140,9 +174,13 @@ pub struct DailyTrendPoint {
 #[serde(rename_all = "camelCase")]
 pub struct ModelBreakdown {
     pub model: String,
+    #[ts(type = "number")]
     pub sessions: i64,
+    #[ts(type = "number")]
     pub lines: i64,
+    #[ts(type = "number")]
     pub tokens: i64,
+    #[ts(type = "number")]
     pub cost_cents: i64,
     pub reedit_rate: Option<f64>,
 }
@@ -153,11 +191,16 @@ pub struct ModelBreakdown {
 #[serde(rename_all = "camelCase")]
 pub struct BranchBreakdown {
     pub branch: String,
+    #[ts(type = "number")]
     pub sessions_count: i64,
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub lines_removed: i64,
+    #[ts(type = "number")]
     pub commits_count: i64,
     pub ai_share: Option<f64>,
+    #[ts(type = "number | null")]
     pub last_activity: Option<i64>,
 }
 
@@ -168,12 +211,19 @@ pub struct BranchBreakdown {
 pub struct SessionContribution {
     pub session_id: String,
     pub work_type: Option<String>,
+    #[ts(type = "number")]
     pub duration_seconds: i64,
+    #[ts(type = "number")]
     pub prompt_count: i64,
+    #[ts(type = "number")]
     pub ai_lines_added: i64,
+    #[ts(type = "number")]
     pub ai_lines_removed: i64,
+    #[ts(type = "number")]
     pub files_edited_count: i64,
+    #[ts(type = "number")]
     pub reedited_files_count: i64,
+    #[ts(type = "number")]
     pub commit_count: i64,
 }
 
@@ -184,8 +234,11 @@ pub struct SessionContribution {
 pub struct LinkedCommit {
     pub hash: String,
     pub message: String,
+    #[ts(type = "number | null")]
     pub insertions: Option<i64>,
+    #[ts(type = "number | null")]
     pub deletions: Option<i64>,
+    #[ts(type = "number")]
     pub tier: i64,
 }
 
@@ -195,6 +248,7 @@ pub struct LinkedCommit {
 #[serde(rename_all = "camelCase")]
 pub struct ModelStats {
     pub model: String,
+    #[ts(type = "number")]
     pub lines: i64,
     pub reedit_rate: Option<f64>,
     pub cost_per_line: Option<f64>,
@@ -227,7 +281,9 @@ pub struct LearningCurve {
 #[serde(rename_all = "camelCase")]
 pub struct SkillStats {
     pub skill: String,
+    #[ts(type = "number")]
     pub sessions: i64,
+    #[ts(type = "number")]
     pub avg_loc: i64,
     pub commit_rate: f64,
     pub reedit_rate: f64,
@@ -241,10 +297,13 @@ pub struct UncommittedWork {
     pub project_id: String,
     pub project_name: String,
     pub branch: Option<String>,
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub files_count: i64,
     pub last_session_id: String,
     pub last_session_preview: String,
+    #[ts(type = "number")]
     pub last_activity_at: i64,
     pub insight: String,
 }
@@ -255,7 +314,9 @@ pub struct UncommittedWork {
 #[serde(rename_all = "camelCase")]
 pub struct FileImpact {
     pub path: String,
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub lines_removed: i64,
     pub action: String, // "created", "modified", "deleted"
 }
@@ -267,10 +328,15 @@ pub struct FileImpact {
 pub struct BranchSession {
     pub session_id: String,
     pub work_type: Option<String>,
+    #[ts(type = "number")]
     pub duration_seconds: i64,
+    #[ts(type = "number")]
     pub ai_lines_added: i64,
+    #[ts(type = "number")]
     pub ai_lines_removed: i64,
+    #[ts(type = "number")]
     pub commit_count: i64,
+    #[ts(type = "number")]
     pub last_message_at: i64,
 }
 
@@ -314,6 +380,7 @@ impl Database {
         commit_deletions: i64,
         tokens_used: i64,
         cost_cents: i64,
+        files_edited_count: i64,
     ) -> DbResult<()> {
         // First try to find existing row with matching (date, project_id, branch)
         // We need special handling because NULL = NULL is false in SQL
@@ -368,8 +435,9 @@ impl Database {
                     commit_insertions = ?5,
                     commit_deletions = ?6,
                     tokens_used = ?7,
-                    cost_cents = ?8
-                WHERE id = ?9
+                    cost_cents = ?8,
+                    files_edited_count = ?9
+                WHERE id = ?10
                 "#,
             )
             .bind(sessions_count)
@@ -380,6 +448,7 @@ impl Database {
             .bind(commit_deletions)
             .bind(tokens_used)
             .bind(cost_cents)
+            .bind(files_edited_count)
             .bind(id)
             .execute(self.pool())
             .await?;
@@ -391,8 +460,8 @@ impl Database {
                     date, project_id, branch,
                     sessions_count, ai_lines_added, ai_lines_removed,
                     commits_count, commit_insertions, commit_deletions,
-                    tokens_used, cost_cents
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                    tokens_used, cost_cents, files_edited_count
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                 "#,
             )
             .bind(date)
@@ -406,6 +475,7 @@ impl Database {
             .bind(commit_deletions)
             .bind(tokens_used)
             .bind(cost_cents)
+            .bind(files_edited_count)
             .execute(self.pool())
             .await?;
         }
@@ -452,7 +522,7 @@ impl Database {
         let today = Utc::now().format("%Y-%m-%d").to_string();
         let today_start = format!("{}T00:00:00Z", today);
 
-        let row: (i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
+        let row: (i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
                 SELECT
@@ -460,7 +530,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                    COALESCE(SUM(user_prompt_count), 0) as prompts
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch') >= ?2
@@ -478,7 +549,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                    COALESCE(SUM(user_prompt_count), 0) as prompts
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE datetime(last_message_at, 'unixepoch') >= ?1
                 "#,
@@ -538,6 +610,7 @@ impl Database {
             commit_deletions,
             tokens_used: row.3,
             cost_cents,
+            files_edited_count: row.5,
         })
     }
 
@@ -547,9 +620,10 @@ impl Database {
         project_id: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
         // Get snapshot totals
-        let snapshot: (i64, i64, i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
-            sqlx::query_as(
-                r#"
+        let snapshot: (i64, i64, i64, i64, i64, i64, i64, i64, i64) =
+            if let Some(pid) = project_id {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     COALESCE(SUM(sessions_count), 0),
                     COALESCE(SUM(ai_lines_added), 0),
@@ -558,17 +632,18 @@ impl Database {
                     COALESCE(SUM(commit_insertions), 0),
                     COALESCE(SUM(commit_deletions), 0),
                     COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0)
+                    COALESCE(SUM(cost_cents), 0),
+                    COALESCE(SUM(files_edited_count), 0)
                 FROM contribution_snapshots
                 WHERE project_id = ?1
                 "#,
-            )
-            .bind(pid)
-            .fetch_one(self.pool())
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
+                )
+                .bind(pid)
+                .fetch_one(self.pool())
+                .await?
+            } else {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     COALESCE(SUM(sessions_count), 0),
                     COALESCE(SUM(ai_lines_added), 0),
@@ -577,14 +652,15 @@ impl Database {
                     COALESCE(SUM(commit_insertions), 0),
                     COALESCE(SUM(commit_deletions), 0),
                     COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0)
+                    COALESCE(SUM(cost_cents), 0),
+                    COALESCE(SUM(files_edited_count), 0)
                 FROM contribution_snapshots
                 WHERE project_id IS NULL
                 "#,
-            )
-            .fetch_one(self.pool())
-            .await?
-        };
+                )
+                .fetch_one(self.pool())
+                .await?
+            };
 
         // Add today's real-time data
         let today = self.get_today_contributions(project_id).await?;
@@ -598,6 +674,7 @@ impl Database {
             commit_deletions: snapshot.5 + today.commit_deletions,
             tokens_used: snapshot.6 + today.tokens_used,
             cost_cents: snapshot.7 + today.cost_cents,
+            files_edited_count: snapshot.8 + today.files_edited_count,
         })
     }
 
@@ -608,7 +685,7 @@ impl Database {
         to: &str,
         project_id: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
-        let row: (i64, i64, i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
+        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
                 SELECT
@@ -619,7 +696,8 @@ impl Database {
                     COALESCE(SUM(commit_insertions), 0),
                     COALESCE(SUM(commit_deletions), 0),
                     COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0)
+                    COALESCE(SUM(cost_cents), 0),
+                    COALESCE(SUM(files_edited_count), 0)
                 FROM contribution_snapshots
                 WHERE project_id = ?1 AND date >= ?2 AND date <= ?3
                 "#,
@@ -640,7 +718,8 @@ impl Database {
                     COALESCE(SUM(commit_insertions), 0),
                     COALESCE(SUM(commit_deletions), 0),
                     COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0)
+                    COALESCE(SUM(cost_cents), 0),
+                    COALESCE(SUM(files_edited_count), 0)
                 FROM contribution_snapshots
                 WHERE project_id IS NULL AND date >= ?1 AND date <= ?2
                 "#,
@@ -660,6 +739,7 @@ impl Database {
             commit_deletions: row.5,
             tokens_used: row.6,
             cost_cents: row.7,
+            files_edited_count: row.8,
         })
     }
 
@@ -700,7 +780,7 @@ impl Database {
             }
         };
 
-        let rows: Vec<(String, i64, i64, i64, i64)> = if let Some(pid) = project_id {
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
                 SELECT
@@ -708,7 +788,9 @@ impl Database {
                     ai_lines_added,
                     ai_lines_removed,
                     commits_count,
-                    sessions_count
+                    sessions_count,
+                    tokens_used,
+                    cost_cents
                 FROM contribution_snapshots
                 WHERE project_id = ?1 AND date >= ?2 AND date <= ?3
                 ORDER BY date ASC
@@ -727,7 +809,9 @@ impl Database {
                     ai_lines_added,
                     ai_lines_removed,
                     commits_count,
-                    sessions_count
+                    sessions_count,
+                    tokens_used,
+                    cost_cents
                 FROM contribution_snapshots
                 WHERE project_id IS NULL AND date >= ?1 AND date <= ?2
                 ORDER BY date ASC
@@ -741,12 +825,14 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(date, lines_added, lines_removed, commits, sessions)| DailyTrendPoint {
+            .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
                 date,
                 lines_added,
                 lines_removed,
                 commits,
                 sessions,
+                tokens_used,
+                cost_cents,
             })
             .collect())
     }
@@ -1155,8 +1241,7 @@ impl Database {
                     None
                 };
 
-                // Estimate cost: ~$2.5 per million tokens
-                let cost_cents = (tokens as f64 * 0.00025).round() as i64;
+                let cost_cents = estimate_cost_cents(tokens);
                 let cost_per_line = if lines > 0 {
                     Some(cost_cents as f64 / 100.0 / lines as f64)
                 } else {
@@ -1568,13 +1653,14 @@ impl Database {
     /// and upserts it into the contribution_snapshots table.
     pub async fn generate_daily_snapshot(&self, date: &str) -> DbResult<()> {
         // Get session aggregates for the date (global)
-        let session_agg: (i64, i64, i64, i64) = sqlx::query_as(
+        let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
             r#"
             SELECT
                 COUNT(*) as sessions_count,
                 COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                 COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
-                COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
+                COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                COALESCE(SUM(files_edited_count), 0) as files_edited_count
             FROM sessions
             WHERE date(last_message_at, 'unixepoch') = ?1
             "#,
@@ -1615,6 +1701,7 @@ impl Database {
             commit_agg.2,
             session_agg.3,
             cost_cents,
+            session_agg.4,
         )
         .await?;
 
@@ -1673,7 +1760,7 @@ impl Database {
 
         // Find weeks with daily snapshots that need rollup (global snapshots only)
         // Group by ISO week (Monday as start of week)
-        let weeks: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
+        let weeks: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
             r#"
             SELECT
                 -- Get the Monday of the week (ISO week starts on Monday)
@@ -1685,7 +1772,8 @@ impl Database {
                 COALESCE(SUM(commit_insertions), 0),
                 COALESCE(SUM(commit_deletions), 0),
                 COALESCE(SUM(tokens_used), 0),
-                COALESCE(SUM(cost_cents), 0)
+                COALESCE(SUM(cost_cents), 0),
+                COALESCE(SUM(files_edited_count), 0)
             FROM contribution_snapshots
             WHERE project_id IS NULL
               AND branch IS NULL
@@ -1708,7 +1796,7 @@ impl Database {
         let mut tx = self.pool().begin().await?;
         let mut count = 0u32;
 
-        for (week_start, sessions, lines_added, lines_removed, commits, insertions, deletions, tokens, cost) in weeks {
+        for (week_start, sessions, lines_added, lines_removed, commits, insertions, deletions, tokens, cost, files_edited) in weeks {
             // Create the week key format: "W:YYYY-MM-DD" to distinguish from daily
             let week_key = format!("W:{}", week_start);
 
@@ -1728,8 +1816,8 @@ impl Database {
                         date, project_id, branch,
                         sessions_count, ai_lines_added, ai_lines_removed,
                         commits_count, commit_insertions, commit_deletions,
-                        tokens_used, cost_cents
-                    ) VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                        tokens_used, cost_cents, files_edited_count
+                    ) VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                     "#,
                 )
                 .bind(&week_key)
@@ -1741,6 +1829,7 @@ impl Database {
                 .bind(deletions)
                 .bind(tokens)
                 .bind(cost)
+                .bind(files_edited)
                 .execute(&mut *tx)
                 .await?;
 
@@ -1972,9 +2061,7 @@ impl Database {
 ///
 /// Blended rate: ~$2.5 per million tokens average
 fn estimate_cost_cents(total_tokens: i64) -> i64 {
-    // ~$2.5 per million tokens = 0.00025 cents per token
-    // = 0.25 cents per 1000 tokens
-    (total_tokens as f64 * 0.00025).round() as i64
+    (total_tokens as f64 * BLENDED_COST_PER_TOKEN).round() as i64
 }
 
 // ============================================================================
@@ -2052,7 +2139,7 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert a snapshot
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25)
+        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 12)
             .await
             .unwrap();
 
@@ -2069,7 +2156,7 @@ mod tests {
         assert_eq!(row.2, 5);
 
         // Upsert with different values
-        db.upsert_snapshot("2026-02-05", None, None, 15, 600, 150, 7, 500, 100, 150000, 38)
+        db.upsert_snapshot("2026-02-05", None, None, 15, 600, 150, 7, 500, 100, 150000, 38, 18)
             .await
             .unwrap();
 
@@ -2108,13 +2195,13 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert some snapshots
-        db.upsert_snapshot("2026-02-03", None, None, 5, 200, 50, 2, 180, 40, 50000, 13)
+        db.upsert_snapshot("2026-02-03", None, None, 5, 200, 50, 2, 180, 40, 50000, 13, 5)
             .await
             .unwrap();
-        db.upsert_snapshot("2026-02-04", None, None, 8, 350, 80, 4, 300, 60, 80000, 20)
+        db.upsert_snapshot("2026-02-04", None, None, 8, 350, 80, 4, 300, 60, 80000, 20, 10)
             .await
             .unwrap();
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25)
+        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 15)
             .await
             .unwrap();
 
@@ -2370,13 +2457,13 @@ mod tests {
 
         // Insert daily snapshots from 60 days ago (should be rolled up with retention=30)
         // Week of 2025-12-02 (Mon) to 2025-12-08 (Sun)
-        db.upsert_snapshot("2025-12-02", None, None, 5, 100, 20, 2, 90, 15, 10000, 3)
+        db.upsert_snapshot("2025-12-02", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 4)
             .await
             .unwrap();
-        db.upsert_snapshot("2025-12-03", None, None, 8, 200, 40, 3, 180, 30, 20000, 5)
+        db.upsert_snapshot("2025-12-03", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 7)
             .await
             .unwrap();
-        db.upsert_snapshot("2025-12-04", None, None, 6, 150, 30, 2, 130, 25, 15000, 4)
+        db.upsert_snapshot("2025-12-04", None, None, 6, 150, 30, 2, 130, 25, 15000, 4, 5)
             .await
             .unwrap();
 
@@ -2414,7 +2501,7 @@ mod tests {
 
         // Insert recent snapshot (should NOT be rolled up)
         let today = Utc::now().format("%Y-%m-%d").to_string();
-        db.upsert_snapshot(&today, None, None, 10, 500, 100, 5, 450, 80, 50000, 13)
+        db.upsert_snapshot(&today, None, None, 10, 500, 100, 5, 450, 80, 50000, 13, 8)
             .await
             .unwrap();
 
@@ -2438,10 +2525,10 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert some daily snapshots
-        db.upsert_snapshot("2026-01-15", None, None, 5, 100, 20, 2, 90, 15, 10000, 3)
+        db.upsert_snapshot("2026-01-15", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 3)
             .await
             .unwrap();
-        db.upsert_snapshot("2026-01-16", None, None, 8, 200, 40, 3, 180, 30, 20000, 5)
+        db.upsert_snapshot("2026-01-16", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 6)
             .await
             .unwrap();
 

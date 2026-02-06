@@ -3,4 +3,4 @@
 /**
  * Uncommitted work tracker entry.
  */
-export type UncommittedWork = { projectId: string, projectName: string, branch: string | null, linesAdded: bigint, filesCount: bigint, lastSessionId: string, lastSessionPreview: string, lastActivityAt: bigint, insight: string, };
+export type UncommittedWork = { projectId: string, projectName: string, branch: string | null, linesAdded: number, filesCount: number, lastSessionId: string, lastSessionPreview: string, lastActivityAt: number, insight: string, };
