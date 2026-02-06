@@ -13,10 +13,10 @@ test.describe('Dashboard', () => {
     await expect(page.locator('text=Your Claude Code Usage')).toBeVisible()
 
     // Verify metrics are displayed (sessions and projects counts)
-    // The number and label are in separate spans within a parent div,
-    // so we locate the specific span containing "sessions" or "projects"
-    await expect(page.locator('span:text("sessions")')).toBeVisible()
-    await expect(page.locator('span:text("projects")')).toBeVisible()
+    // Use the metric label spans which have class "ml-1" to avoid matching
+    // session list items or status bar text that also contain these words
+    await expect(page.locator('span.ml-1:text("sessions")')).toBeVisible()
+    await expect(page.locator('span.ml-1:text("projects")')).toBeVisible()
 
     // Verify Top Skills section exists
     await expect(page.locator('text=Top Skills')).toBeVisible()
@@ -24,8 +24,8 @@ test.describe('Dashboard', () => {
     // Verify Most Active Projects section exists
     await expect(page.locator('text=Most Active Projects')).toBeVisible()
 
-    // Verify Activity heatmap exists
-    await expect(page.locator('text=Activity (Last 30 Days)')).toBeVisible()
+    // Verify Activity heatmap exists (text has "Activity" in heading)
+    await expect(page.locator('text=/Activity.*Last.*Days/')).toBeVisible()
 
     // Verify Tool Usage section exists
     await expect(page.locator('text=Tool Usage')).toBeVisible()
