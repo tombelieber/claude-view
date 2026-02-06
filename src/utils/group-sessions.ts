@@ -85,6 +85,17 @@ export function groupSessions(
   return sortGroups(result, groupBy);
 }
 
+/** Maximum session count before grouping is disabled for performance */
+export const MAX_GROUPABLE_SESSIONS = 500;
+
+/**
+ * Check if grouping should be disabled due to session count.
+ * When total > 500, client-side grouping can cause UI lag.
+ */
+export function shouldDisableGrouping(totalSessions: number): boolean {
+  return totalSessions > MAX_GROUPABLE_SESSIONS;
+}
+
 /**
  * Get the group key for a session based on grouping dimension.
  */
