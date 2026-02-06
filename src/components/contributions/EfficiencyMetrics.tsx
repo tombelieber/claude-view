@@ -18,6 +18,7 @@ export function EfficiencyMetricsSection({ efficiency }: EfficiencyMetricsSectio
     costPerLine,
     costPerCommit,
     costTrend,
+    costIsEstimated,
     insight,
   } = efficiency
 
@@ -38,6 +39,9 @@ export function EfficiencyMetricsSection({ efficiency }: EfficiencyMetricsSectio
       <div className="flex flex-wrap items-center gap-2 text-lg mb-4">
         <span className="font-semibold text-gray-900 dark:text-gray-100">
           ${totalCost.toFixed(2)} spent
+          {costIsEstimated && (
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">(estimated)</span>
+          )}
         </span>
         <ArrowRight className="w-4 h-4 text-gray-400" aria-hidden="true" />
         <span className="font-semibold text-gray-900 dark:text-gray-100">

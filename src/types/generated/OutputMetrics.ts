@@ -4,4 +4,4 @@ import type { Insight } from "./Insight";
 /**
  * Output metrics for the overview card.
  */
-export type OutputMetrics = { linesAdded: bigint, linesRemoved: bigint, filesCount: bigint, commitsCount: bigint, insight: Insight, };
+export type OutputMetrics = { linesAdded: number, linesRemoved: number, filesCount: number, commitsCount: number, insight: Insight, };

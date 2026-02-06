@@ -316,7 +316,18 @@ pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffS
 
     let output = match output {
         Ok(Ok(o)) if o.status.success() => o,
-        _ => return DiffStats::default(),
+        Ok(Ok(o)) => {
+            tracing::debug!("git show returned non-zero for {commit_hash}: {:?}", o.status);
+            return DiffStats::default();
+        }
+        Ok(Err(e)) => {
+            tracing::warn!("git show spawn failed for {commit_hash}: {e}");
+            return DiffStats::default();
+        }
+        Err(_) => {
+            tracing::warn!("git show timed out for commit {commit_hash}");
+            return DiffStats::default();
+        }
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -325,8 +336,8 @@ pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffS
 
 /// Get diff stats for multiple commits in a batch.
 ///
-/// This is more efficient than calling `get_commit_diff_stats` multiple times
-/// because it uses a single git command with multiple hashes.
+/// Spawns one `git show --stat` per commit, parallelized within batches
+/// using [`tokio::task::JoinSet`] to limit concurrent subprocesses.
 ///
 /// # Arguments
 /// * `repo_path` - Path to the git repository
@@ -340,13 +351,36 @@ pub async fn get_batch_diff_stats(
 ) -> Vec<(String, DiffStats)> {
     let mut results = Vec::with_capacity(commit_hashes.len());
 
-    // Process commits in batches to avoid command line length limits
+    // Process commits in batches to bound concurrent subprocess count
     const BATCH_SIZE: usize = 50;
 
     for batch in commit_hashes.chunks(BATCH_SIZE) {
-        for hash in batch {
-            let stats = get_commit_diff_stats(repo_path, hash).await;
-            results.push((hash.clone(), stats));
+        let mut set = tokio::task::JoinSet::new();
+
+        for (idx, hash) in batch.iter().enumerate() {
+            let repo = repo_path.to_path_buf();
+            let h = hash.clone();
+            set.spawn(async move {
+                let stats = get_commit_diff_stats(&repo, &h).await;
+                (idx, h, stats)
+            });
+        }
+
+        // Collect results preserving original order
+        let mut batch_results: Vec<(usize, String, DiffStats)> =
+            Vec::with_capacity(batch.len());
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(tuple) => batch_results.push(tuple),
+                Err(e) => {
+                    tracing::warn!("JoinSet task panicked in get_batch_diff_stats: {e}");
+                }
+            }
+        }
+        batch_results.sort_by_key(|(idx, _, _)| *idx);
+
+        for (_, hash, stats) in batch_results {
+            results.push((hash, stats));
         }
     }
 
