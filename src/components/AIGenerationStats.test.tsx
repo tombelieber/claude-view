@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { AIGenerationStats } from './AIGenerationStats'
+import { AIGenerationStats, formatModelName } from './AIGenerationStats'
 
 // Mock hooks
 const mockUseAIGenerationStats = vi.fn()
@@ -56,10 +56,20 @@ describe('AIGenerationStats', () => {
   })
 
   describe('error state', () => {
-    it('should return null when error occurs', () => {
-      mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: false, error: new Error('fail') })
-      const { container } = render(<AIGenerationStats />)
-      expect(container.innerHTML).toBe('')
+    it('should show error card with retry button when error occurs', () => {
+      const mockRefetch = vi.fn()
+      mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: false, error: new Error('fail'), refetch: mockRefetch })
+      render(<AIGenerationStats />)
+      expect(screen.getByText('Failed to load AI generation stats')).toBeInTheDocument()
+      expect(screen.getByText('Retry')).toBeInTheDocument()
+    })
+
+    it('should call refetch when retry button is clicked', () => {
+      const mockRefetch = vi.fn()
+      mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: false, error: new Error('fail'), refetch: mockRefetch })
+      render(<AIGenerationStats />)
+      screen.getByText('Retry').click()
+      expect(mockRefetch).toHaveBeenCalledOnce()
     })
   })
 
@@ -183,6 +193,44 @@ describe('AIGenerationStats', () => {
     })
   })
 
+  describe('lines generated card visibility', () => {
+    it('should hide Lines Generated card when linesAdded and linesRemoved are both 0', () => {
+      mockUseAIGenerationStats.mockReturnValue({
+        data: makeStats({ linesAdded: 0, linesRemoved: 0 }),
+        isLoading: false,
+        error: null,
+      })
+      render(<AIGenerationStats />)
+
+      expect(screen.queryByText('Lines Generated')).not.toBeInTheDocument()
+      // Other cards should still be visible
+      expect(screen.getByText('Files Created')).toBeInTheDocument()
+      expect(screen.getByText('Tokens Used')).toBeInTheDocument()
+    })
+
+    it('should show Lines Generated card when linesAdded is greater than 0', () => {
+      mockUseAIGenerationStats.mockReturnValue({
+        data: makeStats({ linesAdded: 50, linesRemoved: 0 }),
+        isLoading: false,
+        error: null,
+      })
+      render(<AIGenerationStats />)
+
+      expect(screen.getByText('Lines Generated')).toBeInTheDocument()
+    })
+
+    it('should show Lines Generated card when linesRemoved is greater than 0', () => {
+      mockUseAIGenerationStats.mockReturnValue({
+        data: makeStats({ linesAdded: 0, linesRemoved: 10 }),
+        isLoading: false,
+        error: null,
+      })
+      render(<AIGenerationStats />)
+
+      expect(screen.getByText('Lines Generated')).toBeInTheDocument()
+    })
+  })
+
   describe('time range passthrough', () => {
     it('should pass timeRange to hook', () => {
       mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: true, error: null })
@@ -190,6 +238,82 @@ describe('AIGenerationStats', () => {
       render(<AIGenerationStats timeRange={timeRange} />)
 
       expect(mockUseAIGenerationStats).toHaveBeenCalledWith(timeRange)
+    })
+  })
+})
+
+describe('formatModelName', () => {
+  describe('known model IDs (lookup table)', () => {
+    it('should return friendly name for claude-opus-4-5-20251101', () => {
+      expect(formatModelName('claude-opus-4-5-20251101')).toBe('Claude Opus 4.5')
+    })
+
+    it('should return friendly name for claude-opus-4-20250514', () => {
+      expect(formatModelName('claude-opus-4-20250514')).toBe('Claude Opus 4')
+    })
+
+    it('should return friendly name for claude-sonnet-4-20250514', () => {
+      expect(formatModelName('claude-sonnet-4-20250514')).toBe('Claude Sonnet 4')
+    })
+
+    it('should return friendly name for claude-3-5-sonnet-20241022', () => {
+      expect(formatModelName('claude-3-5-sonnet-20241022')).toBe('Claude 3.5 Sonnet')
+    })
+
+    it('should return friendly name for claude-3-5-haiku-20241022', () => {
+      expect(formatModelName('claude-3-5-haiku-20241022')).toBe('Claude 3.5 Haiku')
+    })
+
+    it('should return friendly name for claude-3-opus-20240229', () => {
+      expect(formatModelName('claude-3-opus-20240229')).toBe('Claude 3 Opus')
+    })
+
+    it('should return friendly name for claude-3-haiku-20240307', () => {
+      expect(formatModelName('claude-3-haiku-20240307')).toBe('Claude 3 Haiku')
+    })
+  })
+
+  describe('unknown model IDs (regex fallback)', () => {
+    it('should parse unknown claude model with date suffix', () => {
+      expect(formatModelName('claude-3-5-opus-20260101')).toBe('Claude 3.5 Opus')
+    })
+
+    it('should parse unknown claude model without date suffix', () => {
+      expect(formatModelName('claude-3-turbo')).toBe('Claude 3 Turbo')
+    })
+
+    it('should handle claude-4-5 pattern with version dots', () => {
+      expect(formatModelName('claude-4-5-haiku-20260601')).toBe('Claude 4.5 Haiku')
+    })
+
+    it('should capitalize model variant names', () => {
+      expect(formatModelName('claude-3-mega-20260101')).toBe('Claude 3 Mega')
+    })
+
+    it('should handle model with multiple name parts', () => {
+      expect(formatModelName('claude-3-super-fast-20260101')).toBe('Claude 3 Super Fast')
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should return empty string as-is', () => {
+      expect(formatModelName('')).toBe('')
+    })
+
+    it('should return non-claude model ID as-is', () => {
+      expect(formatModelName('gpt-4-turbo')).toBe('gpt-4-turbo')
+    })
+
+    it('should return short non-claude string as-is', () => {
+      expect(formatModelName('unknown')).toBe('unknown')
+    })
+
+    it('should handle claude with only two parts (below 3-part threshold)', () => {
+      expect(formatModelName('claude-opus')).toBe('claude-opus')
+    })
+
+    it('should handle model ID that is just "claude"', () => {
+      expect(formatModelName('claude')).toBe('claude')
     })
   })
 })

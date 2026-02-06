@@ -145,6 +145,8 @@ let (from, to) = match (query.from, query.to) {
 // WHERE timestamp >= ?1 AND timestamp <= ?2
 ```
 
+> **Note:** Implementation differs -- returns all-time stats when no date params provided.
+
 **Frontend (`src/components/StatsDashboard.tsx`):**
 
 ```tsx

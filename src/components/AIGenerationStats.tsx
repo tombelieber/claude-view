@@ -1,4 +1,4 @@
-import { Sparkles, FileCode2 } from 'lucide-react'
+import { Sparkles, FileCode2, AlertCircle } from 'lucide-react'
 import { useAIGenerationStats, formatTokens, formatLineCount, type TimeRangeParams } from '../hooks/use-ai-generation'
 import { MetricCard, ProgressBar } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
@@ -17,15 +17,27 @@ interface AIGenerationStatsProps {
  * 3. Top projects by token usage (progress bars)
  */
 export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
-  const { data: stats, isLoading, error } = useAIGenerationStats(timeRange)
+  const { data: stats, isLoading, error, refetch } = useAIGenerationStats(timeRange)
   const isMobile = useIsMobile()
 
   if (isLoading) {
     return <AIGenerationStatsSkeleton />
   }
 
-  if (error || !stats) {
-    return null // Silently hide if error or no data
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-red-200 dark:border-red-800 p-4">
+        <div className="flex items-center gap-2 text-red-500 text-sm">
+          <AlertCircle className="w-4 h-4" />
+          <span>Failed to load AI generation stats</span>
+          <button onClick={() => refetch()} className="underline ml-2">Retry</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!stats) {
+    return null
   }
 
   // Calculate totals for progress bars
@@ -44,6 +56,7 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
   // Check if we have any meaningful data
   const hasTokenData = stats.totalInputTokens > 0 || stats.totalOutputTokens > 0
   const hasFileData = stats.filesCreated > 0
+  const hasLineData = stats.linesAdded > 0 || stats.linesRemoved > 0
 
   // If no data at all, don't show the component
   if (!hasTokenData && !hasFileData) {
@@ -54,13 +67,15 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
     <div className="space-y-4 sm:space-y-6">
       {/* Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        {/* Lines Generated Card */}
-        <MetricCard
-          label="Lines Generated"
-          value={formatLineCount(stats.linesAdded)}
-          subValue={stats.linesRemoved > 0 ? `${formatLineCount(-stats.linesRemoved, false)} removed` : undefined}
-          footer={netLines !== stats.linesAdded ? `net: ${formatLineCount(netLines)}` : undefined}
-        />
+        {/* Lines Generated Card — hidden when backend returns 0 (not yet implemented) */}
+        {hasLineData && (
+          <MetricCard
+            label="Lines Generated"
+            value={formatLineCount(stats.linesAdded)}
+            subValue={stats.linesRemoved > 0 ? `${formatLineCount(-stats.linesRemoved, false)} removed` : undefined}
+            footer={netLines !== stats.linesAdded ? `net: ${formatLineCount(netLines)}` : undefined}
+          />
+        )}
 
         {/* Files Created Card */}
         <MetricCard
@@ -138,7 +153,7 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
  * Format model name to be more readable.
  * e.g., "claude-3-5-sonnet-20241022" -> "Claude 3.5 Sonnet"
  */
-function formatModelName(modelId: string): string {
+export function formatModelName(modelId: string): string {
   // Map common model IDs to friendly names
   const modelMap: Record<string, string> = {
     'claude-opus-4-5-20251101': 'Claude Opus 4.5',

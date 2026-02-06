@@ -110,8 +110,8 @@ export function useTimeRange(): UseTimeRangeReturn {
           return parsed.preset as TimeRangePreset
         }
       }
-    } catch {
-      // Ignore parse errors
+    } catch (e) {
+      console.warn('Failed to read time range from localStorage:', e)
     }
     // Default to 30d
     return '30d'
@@ -143,8 +143,8 @@ export function useTimeRange(): UseTimeRangeReturn {
           }
         }
       }
-    } catch {
-      // Ignore parse errors
+    } catch (e) {
+      console.warn('Failed to read time range from localStorage:', e)
     }
     return null
   })
@@ -156,6 +156,9 @@ export function useTimeRange(): UseTimeRangeReturn {
     }
     return getTimestampsFromPreset(preset)
   }, [preset, customRange])
+
+  // Stable primitive key for searchParams to avoid re-renders from object identity
+  const urlKey = searchParams.toString()
 
   // Sync to URL and localStorage when state changes
   useEffect(() => {
@@ -189,10 +192,10 @@ export function useTimeRange(): UseTimeRangeReturn {
     }
 
     // Only update if params actually changed
-    if (newParams.toString() !== searchParams.toString()) {
+    if (newParams.toString() !== urlKey) {
       setSearchParams(newParams, { replace: true })
     }
-  }, [preset, customRange, searchParams, setSearchParams])
+  }, [preset, customRange, urlKey, searchParams, setSearchParams])
 
   // Handlers
   const setPreset = useCallback((newPreset: TimeRangePreset) => {
