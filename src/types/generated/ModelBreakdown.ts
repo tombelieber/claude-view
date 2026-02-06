@@ -3,4 +3,4 @@
 /**
  * Model usage breakdown.
  */
-export type ModelBreakdown = { model: string, sessions: bigint, lines: bigint, tokens: bigint, costCents: bigint, reeditRate: number | null, };
+export type ModelBreakdown = { model: string, sessions: number, lines: number, tokens: number, costCents: number, reeditRate: number | null, };

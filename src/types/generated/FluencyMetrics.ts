@@ -4,4 +4,4 @@ import type { Insight } from "./Insight";
 /**
  * Fluency metrics for the overview card.
  */
-export type FluencyMetrics = { sessions: bigint, promptsPerSession: number, trend: number | null, insight: Insight, };
+export type FluencyMetrics = { sessions: number, promptsPerSession: number, trend: number | null, insight: Insight, };
