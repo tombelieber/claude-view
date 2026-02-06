@@ -32,7 +32,9 @@ export function InsightsPage() {
 
   const handleTimeRangeChange = (range: TimeRange) => {
     setTimeRange(range)
-    setSearchParams({ range })
+    const params = new URLSearchParams(searchParams)
+    params.set('range', range)
+    setSearchParams(params)
   }
 
   // Error state
