@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
@@ -383,11 +383,18 @@ interface BranchListProps {
 
 function BranchList({ projectName, isSelected }: BranchListProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const activeBranch = searchParams.get('branches') || null
   const { data, isLoading, error, refetch } = useProjectBranches(projectName)
 
   const handleBranchClick = useCallback((branch: string | null) => {
-    const params = new URLSearchParams()
-    if (branch) params.set('branches', branch)
+    // Preserve existing URL params (filters, sort, groupBy, etc.)
+    const params = new URLSearchParams(window.location.search)
+    if (branch) {
+      params.set('branches', branch)
+    } else {
+      params.delete('branches')
+    }
     navigate(`/project/${encodeURIComponent(projectName)}?${params}`)
   }, [projectName, navigate])
 
@@ -441,27 +448,33 @@ function BranchList({ projectName, isSelected }: BranchListProps) {
       {data.branches.map((branchItem) => {
         const displayName = branchItem.branch || '(no branch)'
         const isNoBranch = !branchItem.branch
+        const isActive = isSelected && branchItem.branch === activeBranch
 
         return (
           <button
             key={branchItem.branch || '__no_branch__'}
             type="button"
-            onClick={() => handleBranchClick(branchItem.branch)}
+            onClick={() => handleBranchClick(isActive ? null : branchItem.branch)}
             title={branchItem.branch || 'Sessions without a git branch'}
             className={cn(
               'w-full flex items-center gap-1.5 px-2 py-1 h-6 rounded',
               'transition-colors duration-150 cursor-pointer',
-              'hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none'
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
+              isActive
+                ? 'bg-blue-100 dark:bg-blue-900/40'
+                : 'hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
             )}
           >
-            <GitBranch className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+            <GitBranch className={cn(
+              'w-3 h-3 flex-shrink-0',
+              isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+            )} />
             <span
               className={cn(
                 'flex-1 truncate text-[11px] text-left',
                 isNoBranch && 'italic',
-                isSelected
-                  ? 'text-gray-600 dark:text-gray-400'
+                isActive
+                  ? 'text-blue-700 dark:text-blue-300 font-medium'
                   : 'text-gray-600 dark:text-gray-400'
               )}
             >
@@ -469,7 +482,7 @@ function BranchList({ projectName, isSelected }: BranchListProps) {
             </span>
             <span className={cn(
               'text-[10px] tabular-nums flex-shrink-0',
-              isSelected ? 'text-gray-400 dark:text-gray-500' : 'text-gray-400 dark:text-gray-500'
+              isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
             )}>
               {branchItem.count}
             </span>
