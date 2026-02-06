@@ -18,23 +18,23 @@ workType: string | null,
 /**
  * Duration in seconds
  */
-duration: bigint, 
+duration: number, 
 /**
  * Number of prompts
  */
-promptCount: bigint, 
+promptCount: number, 
 /**
  * AI lines added
  */
-aiLinesAdded: bigint, 
+aiLinesAdded: number, 
 /**
  * AI lines removed
  */
-aiLinesRemoved: bigint, 
+aiLinesRemoved: number, 
 /**
  * Files edited count
  */
-filesEditedCount: bigint, 
+filesEditedCount: number, 
 /**
  * Per-file breakdown
  */

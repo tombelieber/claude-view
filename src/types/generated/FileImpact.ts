@@ -3,4 +3,4 @@
 /**
  * File impact for session detail view.
  */
-export type FileImpact = { path: string, linesAdded: bigint, linesRemoved: bigint, action: string, };
+export type FileImpact = { path: string, linesAdded: number, linesRemoved: number, action: string, };

@@ -3,4 +3,4 @@
 /**
  * Branch contribution breakdown.
  */
-export type BranchBreakdown = { branch: string, sessionsCount: bigint, linesAdded: bigint, linesRemoved: bigint, commitsCount: bigint, aiShare: number | null, lastActivity: bigint | null, };
+export type BranchBreakdown = { branch: string, sessionsCount: number, linesAdded: number, linesRemoved: number, commitsCount: number, aiShare: number | null, lastActivity: number | null, };
