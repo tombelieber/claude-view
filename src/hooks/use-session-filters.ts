@@ -17,11 +17,13 @@
 
 export type SessionSort = 'recent' | 'tokens' | 'prompts' | 'files_edited' | 'duration';
 export type GroupBy = 'none' | 'branch' | 'project' | 'model' | 'day' | 'week' | 'month';
+export type ViewMode = 'timeline' | 'table';
 
 export interface SessionFilters {
   // Sort and grouping
   sort: SessionSort;
   groupBy: GroupBy;
+  viewMode: ViewMode;
 
   // Multi-select filters
   branches: string[];
@@ -41,6 +43,7 @@ export interface SessionFilters {
 export const DEFAULT_FILTERS: SessionFilters = {
   sort: 'recent',
   groupBy: 'none',
+  viewMode: 'timeline',
   branches: [],
   models: [],
   hasCommits: 'any',
@@ -58,6 +61,7 @@ function parseFilters(searchParams: URLSearchParams): SessionFilters {
   return {
     sort: (searchParams.get('sort') || 'recent') as SessionSort,
     groupBy: (searchParams.get('groupBy') || 'none') as GroupBy,
+    viewMode: (searchParams.get('viewMode') || 'timeline') as ViewMode,
 
     // Parse comma-separated lists
     branches: searchParams.get('branches')?.split(',').filter(Boolean) || [],
@@ -90,6 +94,10 @@ function serializeFilters(filters: SessionFilters): URLSearchParams {
 
   if (filters.groupBy !== 'none') {
     params.set('groupBy', filters.groupBy);
+  }
+
+  if (filters.viewMode !== 'timeline') {
+    params.set('viewMode', filters.viewMode);
   }
 
   if (filters.branches.length > 0) {
