@@ -5,18 +5,18 @@ test.describe('Accessibility', () => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
 
-    // Tab to the skip link
+    // Tab to the skip link (it is positioned offscreen until focused)
     await page.keyboard.press('Tab')
 
-    // Check skip link is focused and visible
-    const skipLink = page.locator('a.skip-to-content')
+    // Check skip link is focused and visible (becomes visible via :focus CSS)
+    const skipLink = page.locator('a[href="#main"]')
     await expect(skipLink).toBeFocused()
     await expect(skipLink).toHaveText('Skip to content')
 
     // Activate the skip link
     await page.keyboard.press('Enter')
 
-    // Verify focus moved to main content
+    // Verify main content area exists and is visible
     const main = page.locator('#main')
     await expect(main).toBeVisible()
   })
@@ -27,12 +27,13 @@ test.describe('Accessibility', () => {
     await page.waitForTimeout(2000)
 
     // Tab through the page and verify focus visible rings appear
-    // Start tabbing
-    await page.keyboard.press('Tab') // Skip link
-    await page.keyboard.press('Tab') // Home link
-    await page.keyboard.press('Tab') // Search button
-    await page.keyboard.press('Tab') // Help button
-    await page.keyboard.press('Tab') // Settings link
+    // Tab order: Skip link -> Home link -> Search button -> Theme button -> Help button -> Settings link
+    await page.keyboard.press('Tab') // 1: Skip link
+    await page.keyboard.press('Tab') // 2: Home link
+    await page.keyboard.press('Tab') // 3: Search button
+    await page.keyboard.press('Tab') // 4: Theme button
+    await page.keyboard.press('Tab') // 5: Help button
+    await page.keyboard.press('Tab') // 6: Settings link
 
     // Verify settings link gets focused
     const settingsLink = page.locator('a[aria-label="Settings"]')
@@ -42,7 +43,8 @@ test.describe('Accessibility', () => {
   test('focus visible rings are present on interactive elements', async ({ page }) => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
-    await expect(page.locator('text=Settings')).toBeVisible({ timeout: 10000 })
+    // Wait for the Settings page heading (h1) to be visible, not the nav link
+    await expect(page.locator('h1:has-text("Settings")')).toBeVisible({ timeout: 10000 })
 
     // Tab to the sync button
     const syncButton = page.locator('button:has-text("Sync Git History")')
@@ -67,17 +69,19 @@ test.describe('Accessibility', () => {
   })
 
   test('loading states have aria-busy', async ({ page }) => {
-    // Intercept API to slow down loading
-    await page.route('/api/projects', async (route) => {
+    // Intercept the dashboard stats API to slow down loading
+    // The dashboard fetches from /api/stats/dashboard, not /api/projects
+    await page.route('**/api/stats/dashboard**', async (route) => {
       await new Promise(resolve => setTimeout(resolve, 1000))
       await route.continue()
     })
 
     await page.goto('/')
 
-    // Verify loading state has aria-busy
-    const busyElement = page.locator('[aria-busy="true"]')
-    await expect(busyElement).toBeVisible({ timeout: 2000 })
+    // Verify loading state has aria-busy and role="status"
+    // The DashboardSkeleton component uses role="status" aria-busy="true"
+    const busyElement = page.locator('[role="status"][aria-busy="true"]')
+    await expect(busyElement).toBeVisible({ timeout: 5000 })
   })
 
   test('metrics have screen reader labels', async ({ page }) => {
