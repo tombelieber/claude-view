@@ -168,7 +168,7 @@ pub async fn scan_repo_commits(
     // Format: hash|author|timestamp|message
     let mut cmd = Command::new("git");
     cmd.arg("log")
-        .arg(format!("--format=%H|%an|%at|%s"))
+        .arg("--format=%H|%an|%at|%s")
         .arg(format!("-n{}", limit))
         .current_dir(repo_path)
         .stdout(Stdio::piped())
@@ -423,7 +423,7 @@ fn parse_diff_stats_from_output(output: &str) -> DiffStats {
     if let Some(pos) = line.find("insertion") {
         // Find the number before "insertion"
         let prefix = &line[..pos];
-        if let Some(num_str) = prefix.split(',').last().and_then(|s| s.trim().split_whitespace().next()) {
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
             if let Ok(n) = num_str.parse::<u32>() {
                 stats.insertions = n;
             }
@@ -434,7 +434,7 @@ fn parse_diff_stats_from_output(output: &str) -> DiffStats {
     if let Some(pos) = line.find("deletion") {
         // Find the number before "deletion"
         let prefix = &line[..pos];
-        if let Some(num_str) = prefix.split(',').last().and_then(|s| s.trim().split_whitespace().next()) {
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
             if let Ok(n) = num_str.parse::<u32>() {
                 stats.deletions = n;
             }
@@ -1174,7 +1174,7 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
     let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
         std::collections::HashMap::new();
 
-    for (project_path, _sessions) in &sessions_by_repo {
+    for project_path in sessions_by_repo.keys() {
         let path = std::path::Path::new(project_path.as_str());
         let scan = scan_repo_commits(path, None, None).await;
 

@@ -40,10 +40,10 @@ export function BranchCard({
   const { data, isLoading } = useBranchSessions(branchName, timeRange, isExpanded)
 
   const aiSharePercent = aiShare !== null ? Math.round(aiShare * 100) : null
-  const lastActivityText = lastActivity !== null ? formatRelativeTime(Number(lastActivity)) : null
+  const lastActivityText = lastActivity !== null ? formatRelativeTime(lastActivity) : null
 
   // Generate insight based on AI share and commit rate
-  const insight = generateBranchInsight(aiShare, Number(sessionsCount), Number(commitsCount))
+  const insight = generateBranchInsight(aiShare, sessionsCount, commitsCount)
 
   return (
     <div
@@ -76,16 +76,16 @@ export function BranchCard({
 
         {/* Stats Row */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600 dark:text-gray-400 mb-3">
-          <span>{Number(sessionsCount)} sessions</span>
+          <span>{sessionsCount} sessions</span>
           <span className="text-gray-300 dark:text-gray-600">&bull;</span>
           <span className="tabular-nums">
-            <span className="text-green-600 dark:text-green-400">+{formatNumber(Number(linesAdded))}</span>
+            <span className="text-green-600 dark:text-green-400">+{formatNumber(linesAdded)}</span>
             {' / '}
-            <span className="text-red-500 dark:text-red-400">-{formatNumber(Number(linesRemoved))}</span>
+            <span className="text-red-500 dark:text-red-400">-{formatNumber(linesRemoved)}</span>
             {' lines'}
           </span>
           <span className="text-gray-300 dark:text-gray-600">&bull;</span>
-          <span>{Number(commitsCount)} commits</span>
+          <span>{commitsCount} commits</span>
           {lastActivityText && (
             <>
               <span className="text-gray-300 dark:text-gray-600">&bull;</span>
@@ -168,10 +168,10 @@ function SessionRow({
   session: BranchSession
   onClick?: () => void
 }) {
-  const linesTotal = Number(session.aiLinesAdded) + Number(session.aiLinesRemoved)
-  const commitCount = Number(session.commitCount)
-  const durationText = formatDuration(Number(session.durationSeconds))
-  const timeText = formatRelativeTime(Number(session.lastMessageAt))
+  const linesTotal = session.aiLinesAdded + session.aiLinesRemoved
+  const commitCount = session.commitCount
+  const durationText = formatDuration(session.durationSeconds)
+  const timeText = formatRelativeTime(session.lastMessageAt)
 
   return (
     <button
@@ -205,9 +205,9 @@ function SessionRow({
         </span>
         <span className="flex items-center gap-1">
           <FileCode2 className="w-3 h-3" aria-hidden="true" />
-          <span className="text-green-600 dark:text-green-400">+{formatNumber(Number(session.aiLinesAdded))}</span>
+          <span className="text-green-600 dark:text-green-400">+{formatNumber(session.aiLinesAdded)}</span>
           {' / '}
-          <span className="text-red-500 dark:text-red-400">-{formatNumber(Number(session.aiLinesRemoved))}</span>
+          <span className="text-red-500 dark:text-red-400">-{formatNumber(session.aiLinesRemoved)}</span>
         </span>
         {commitCount > 0 && (
           <span className="flex items-center gap-1">

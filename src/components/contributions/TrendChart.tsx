@@ -36,11 +36,11 @@ export function TrendChart({ data, insight }: TrendChartProps) {
   const chartData = data.map((point) => ({
     date: formatDate(point.date),
     fullDate: point.date,
-    linesAdded: Number(point.linesAdded),
-    linesRemoved: Number(point.linesRemoved),
-    net: Number(point.linesAdded) - Number(point.linesRemoved),
-    commits: Number(point.commits),
-    sessions: Number(point.sessions),
+    linesAdded: point.linesAdded,
+    linesRemoved: point.linesRemoved,
+    net: point.linesAdded - point.linesRemoved,
+    commits: point.commits,
+    sessions: point.sessions,
   }))
 
   // Find max value for Y axis scaling

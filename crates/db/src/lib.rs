@@ -1,5 +1,6 @@
 // crates/db/src/lib.rs
 // Phase 2: SQLite database for vibe-recall session indexing
+#![allow(clippy::type_complexity, clippy::too_many_arguments, clippy::derivable_impls)]
 
 mod migrations;
 mod queries;
@@ -77,8 +78,7 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))
-            .map_err(sqlx::Error::from)?
+        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)

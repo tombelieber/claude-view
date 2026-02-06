@@ -49,7 +49,7 @@ pub enum TimeRange {
 
 impl TimeRange {
     /// Parse from query string parameter.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_str(s: &str) -> Option<Self> {
         match s {
             "today" => Some(TimeRange::Today),
             "week" => Some(TimeRange::Week),
@@ -1712,15 +1712,15 @@ impl Database {
     ///
     /// Typically called by the nightly job to backfill any missing days.
     pub async fn generate_missing_snapshots(&self, days_back: i64) -> DbResult<u32> {
-        let mut count = 0;
         let today = Utc::now().date_naive();
 
+        // Collect all missing dates first
+        let mut missing_dates = Vec::new();
         for i in 1..=days_back {
             let date = (today - chrono::Duration::days(i))
                 .format("%Y-%m-%d")
                 .to_string();
 
-            // Check if snapshot exists
             let exists: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1 AND project_id IS NULL",
             )
@@ -1729,11 +1729,88 @@ impl Database {
             .await?;
 
             if exists.0 == 0 {
-                self.generate_daily_snapshot(&date).await?;
-                count += 1;
+                missing_dates.push(date);
             }
         }
 
+        if missing_dates.is_empty() {
+            return Ok(0);
+        }
+
+        // Batch all snapshot generation in a single transaction
+        let mut tx = self.pool().begin().await?;
+        let count = missing_dates.len() as u32;
+
+        for date in &missing_dates {
+            // Inline the snapshot generation to use the transaction
+            let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch') = ?1
+                "#,
+            )
+            .bind(date)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let commit_agg: (i64, i64, i64) = sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(DISTINCT c.hash) as commits_count,
+                    COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                    COALESCE(SUM(c.deletions), 0) as commit_deletions
+                FROM session_commits sc
+                JOIN commits c ON sc.commit_hash = c.hash
+                JOIN sessions s ON sc.session_id = s.id
+                WHERE date(s.last_message_at, 'unixepoch') = ?1
+                "#,
+            )
+            .bind(date)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let cost_cents = estimate_cost_cents(session_agg.3);
+
+            sqlx::query(
+                r#"
+                INSERT INTO contribution_snapshots
+                    (date, project_id, branch, sessions_count, ai_lines_added, ai_lines_removed,
+                     commits_count, commit_insertions, commit_deletions, tokens_used, cost_cents, files_edited_count)
+                VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                ON CONFLICT(date, COALESCE(project_id, ''), COALESCE(branch, ''))
+                DO UPDATE SET
+                    sessions_count = excluded.sessions_count,
+                    ai_lines_added = excluded.ai_lines_added,
+                    ai_lines_removed = excluded.ai_lines_removed,
+                    commits_count = excluded.commits_count,
+                    commit_insertions = excluded.commit_insertions,
+                    commit_deletions = excluded.commit_deletions,
+                    tokens_used = excluded.tokens_used,
+                    cost_cents = excluded.cost_cents,
+                    files_edited_count = excluded.files_edited_count
+                "#,
+            )
+            .bind(date)
+            .bind(session_agg.0)
+            .bind(session_agg.1)
+            .bind(session_agg.2)
+            .bind(commit_agg.0)
+            .bind(commit_agg.1)
+            .bind(commit_agg.2)
+            .bind(session_agg.3)
+            .bind(cost_cents)
+            .bind(session_agg.4)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
         Ok(count)
     }
 
@@ -2074,13 +2151,13 @@ mod tests {
 
     #[test]
     fn test_time_range_from_str() {
-        assert_eq!(TimeRange::from_str("today"), Some(TimeRange::Today));
-        assert_eq!(TimeRange::from_str("week"), Some(TimeRange::Week));
-        assert_eq!(TimeRange::from_str("month"), Some(TimeRange::Month));
-        assert_eq!(TimeRange::from_str("90days"), Some(TimeRange::NinetyDays));
-        assert_eq!(TimeRange::from_str("all"), Some(TimeRange::All));
-        assert_eq!(TimeRange::from_str("custom"), Some(TimeRange::Custom));
-        assert_eq!(TimeRange::from_str("invalid"), None);
+        assert_eq!(TimeRange::parse_str("today"), Some(TimeRange::Today));
+        assert_eq!(TimeRange::parse_str("week"), Some(TimeRange::Week));
+        assert_eq!(TimeRange::parse_str("month"), Some(TimeRange::Month));
+        assert_eq!(TimeRange::parse_str("90days"), Some(TimeRange::NinetyDays));
+        assert_eq!(TimeRange::parse_str("all"), Some(TimeRange::All));
+        assert_eq!(TimeRange::parse_str("custom"), Some(TimeRange::Custom));
+        assert_eq!(TimeRange::parse_str("invalid"), None);
     }
 
     #[test]
