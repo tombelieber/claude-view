@@ -101,9 +101,13 @@ impl JobRunner {
     /// Get all active (non-completed) jobs.
     pub fn active_jobs(&self) -> Vec<JobProgress> {
         match self.jobs.read() {
-            Ok(jobs) => jobs.values().map(|s| s.snapshot()).collect(),
+            Ok(jobs) => jobs
+                .values()
+                .map(|s| s.snapshot())
+                .filter(|p| p.status != "completed" && p.status != "failed" && p.status != "cancelled")
+                .collect(),
             Err(e) => {
-                tracing::error!("RwLock poisoned reading jobs map: {e}");
+                tracing::error!("RwLock poisoned reading jobs: {e}");
                 Vec::new()
             }
         }
