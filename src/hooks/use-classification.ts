@@ -52,6 +52,7 @@ export function useClassification(): UseClassificationResult {
   const [isStreaming, setIsStreaming] = useState(false)
   const [sseProgress, setSseProgress] = useState<ClassifyProgressInfo | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const connectStreamRef = useRef<(() => void) | null>(null)
 
   // Fetch status on mount and periodically
   const fetchStatus = useCallback(async () => {
@@ -65,7 +66,7 @@ export function useClassification(): UseClassificationResult {
 
       // Auto-connect SSE when classification is running
       if (data.status === 'running' && !eventSourceRef.current) {
-        connectStream()
+        connectStreamRef.current?.()
       }
 
       return data
@@ -159,6 +160,9 @@ export function useClassification(): UseClassificationResult {
       eventSourceRef.current = null
     }
   }, [fetchStatus, queryClient])
+
+  // Keep ref in sync so fetchStatus can call connectStream without a direct dependency
+  connectStreamRef.current = connectStream
 
   // Cleanup SSE on unmount
   useEffect(() => {
