@@ -321,7 +321,7 @@ export function StatsDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
             <Calendar className="w-4 h-4" />
-            Activity (Last 30 Days)
+            Activity (Last 90 Days)
           </h2>
           <Link
             to="/sessions"

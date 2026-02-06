@@ -30,11 +30,11 @@ pub struct DashboardQuery {
     pub to: Option<i64>,
 }
 
-/// Current week metrics for dashboard (Step 22).
+/// Current period metrics for dashboard (adapts to selected time range).
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
-pub struct CurrentWeekMetrics {
+pub struct CurrentPeriodMetrics {
     #[ts(type = "number")]
     pub session_count: u64,
     #[ts(type = "number")]
@@ -54,7 +54,7 @@ pub struct ExtendedDashboardStats {
     #[serde(flatten)]
     pub base: DashboardStats,
     /// Current period metrics (adapts to selected time range)
-    pub current_week: CurrentWeekMetrics,
+    pub current_week: CurrentPeriodMetrics,
     /// Period-over-period trends (None if viewing all-time)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trends: Option<DashboardTrends>,
@@ -117,7 +117,7 @@ pub struct StorageStats {
     pub jsonl_bytes: u64,
     /// Size of SQLite database in bytes.
     pub sqlite_bytes: u64,
-    /// Size of search index in bytes (Tantivy - not implemented yet, returns 0).
+    /// Size of search index in bytes (deep index - not implemented yet, returns 0).
     pub index_bytes: u64,
     /// Total number of sessions.
     pub session_count: i64,
@@ -161,6 +161,21 @@ pub async fn dashboard_stats(
     Query(query): Query<DashboardQuery>,
 ) -> ApiResult<Json<ExtendedDashboardStats>> {
     let start = Instant::now();
+
+    // Reject half-specified ranges
+    if query.from.is_some() != query.to.is_some() {
+        return Err(crate::error::ApiError::BadRequest(
+            "Both 'from' and 'to' must be provided together".to_string(),
+        ));
+    }
+    // Reject inverted ranges
+    if let (Some(from), Some(to)) = (query.from, query.to) {
+        if from >= to {
+            return Err(crate::error::ApiError::BadRequest(
+                "'from' must be less than 'to'".to_string(),
+            ));
+        }
+    }
 
     // Get earliest session date for "since [date]" display
     let data_start_date = state.db.get_oldest_session_date().await.ok().flatten();
@@ -207,7 +222,7 @@ pub async fn dashboard_stats(
         // Get trends for the specified period
         match state.db.get_trends_with_range(from, to).await {
             Ok(period_trends) => {
-                let current = CurrentWeekMetrics {
+                let current = CurrentPeriodMetrics {
                     session_count: period_trends.session_count.current as u64,
                     total_tokens: period_trends.total_tokens.current as u64,
                     total_files_edited: period_trends.total_files_edited.current as u64,
@@ -230,7 +245,7 @@ pub async fn dashboard_stats(
         // All-time view: show aggregate stats but no trends
         match state.db.get_all_time_metrics().await {
             Ok((session_count, total_tokens, total_files_edited, commit_count)) => {
-                let current = CurrentWeekMetrics {
+                let current = CurrentPeriodMetrics {
                     session_count,
                     total_tokens,
                     total_files_edited,
@@ -292,18 +307,48 @@ pub async fn storage_stats(
     };
 
     // Get counts from database
-    let session_count = state.db.get_session_count().await.unwrap_or(0);
-    let project_count = state.db.get_project_count().await.unwrap_or(0);
-    let commit_count = state.db.get_commit_count().await.unwrap_or(0);
-    let oldest_session_date = state.db.get_oldest_session_date().await.ok().flatten();
+    let session_count = match state.db.get_session_count().await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get session count");
+            0
+        }
+    };
+    let project_count = match state.db.get_project_count().await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get project count");
+            0
+        }
+    };
+    let commit_count = match state.db.get_commit_count().await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get commit count");
+            0
+        }
+    };
+    let oldest_session_date = match state.db.get_oldest_session_date().await {
+        Ok(date) => date,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get oldest session date");
+            None
+        }
+    };
 
     // Calculate JSONL storage size
     let jsonl_bytes = calculate_jsonl_size().await;
 
     // Calculate SQLite database size
-    let sqlite_bytes = state.db.get_database_size().await.unwrap_or(0) as u64;
+    let sqlite_bytes = match state.db.get_database_size().await {
+        Ok(size) => size as u64,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get database size");
+            0
+        }
+    };
 
-    // Search index size (Tantivy not implemented yet)
+    // Search index size (deep index not implemented yet)
     let index_bytes: u64 = 0;
 
     record_request("storage_stats", "200", start.elapsed());
@@ -329,7 +374,10 @@ pub async fn storage_stats(
 async fn calculate_jsonl_size() -> u64 {
     let projects_dir = match claude_projects_dir() {
         Ok(dir) => dir,
-        Err(_) => return 0,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to locate Claude projects directory for JSONL size calculation");
+            return 0;
+        }
     };
 
     calculate_directory_jsonl_size(&projects_dir).await
@@ -341,7 +389,10 @@ async fn calculate_directory_jsonl_size(dir: &Path) -> u64 {
 
     let mut entries = match tokio::fs::read_dir(dir).await {
         Ok(e) => e,
-        Err(_) => return 0,
+        Err(e) => {
+            tracing::warn!(error = %e, dir = %dir.display(), "Failed to read directory for JSONL size calculation");
+            return 0;
+        }
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
@@ -349,7 +400,10 @@ async fn calculate_directory_jsonl_size(dir: &Path) -> u64 {
 
         let file_type = match entry.file_type().await {
             Ok(ft) => ft,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %path.display(), "Failed to get file type during JSONL size calculation");
+                continue;
+            }
         };
 
         if file_type.is_dir() {
@@ -358,8 +412,13 @@ async fn calculate_directory_jsonl_size(dir: &Path) -> u64 {
         } else if file_type.is_file() {
             // Only count .jsonl files
             if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
-                if let Ok(metadata) = tokio::fs::metadata(&path).await {
-                    total += metadata.len();
+                match tokio::fs::metadata(&path).await {
+                    Ok(metadata) => {
+                        total += metadata.len();
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, path = %path.display(), "Failed to get metadata for JSONL file");
+                    }
                 }
             }
         }
@@ -385,6 +444,21 @@ pub async fn ai_generation_stats(
     Query(query): Query<DashboardQuery>,
 ) -> ApiResult<Json<AIGenerationStats>> {
     let start = Instant::now();
+
+    // Reject half-specified ranges
+    if query.from.is_some() != query.to.is_some() {
+        return Err(crate::error::ApiError::BadRequest(
+            "Both 'from' and 'to' must be provided together".to_string(),
+        ));
+    }
+    // Reject inverted ranges
+    if let (Some(from), Some(to)) = (query.from, query.to) {
+        if from >= to {
+            return Err(crate::error::ApiError::BadRequest(
+                "'from' must be less than 'to'".to_string(),
+            ));
+        }
+    }
 
     match state.db.get_ai_generation_stats(query.from, query.to).await {
         Ok(stats) => {

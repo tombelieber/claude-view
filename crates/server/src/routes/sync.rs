@@ -33,13 +33,21 @@ fn get_deep_index_mutex() -> &'static Mutex<()> {
     DEEP_INDEX_MUTEX.get_or_init(|| Mutex::new(()))
 }
 
+/// Status value for accepted sync responses.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum SyncStatus {
+    Accepted,
+}
+
 /// Response for successful sync initiation.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct SyncAcceptedResponse {
     pub message: String,
-    pub status: String,
+    pub status: SyncStatus,
 }
 
 /// POST /api/sync/git - Trigger git commit scanning (A8.5).
@@ -92,7 +100,7 @@ pub async fn trigger_git_sync(
 
             let response = SyncAcceptedResponse {
                 message: "Git sync initiated".to_string(),
-                status: "accepted".to_string(),
+                status: SyncStatus::Accepted,
             };
 
             Ok((StatusCode::ACCEPTED, Json(response)).into_response())
@@ -184,7 +192,7 @@ pub async fn trigger_deep_index(
 
             let response = SyncAcceptedResponse {
                 message: "Deep index rebuild initiated".to_string(),
-                status: "accepted".to_string(),
+                status: SyncStatus::Accepted,
             };
 
             Ok((StatusCode::ACCEPTED, Json(response)).into_response())

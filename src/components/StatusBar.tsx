@@ -21,6 +21,9 @@ export function StatusBar({ projects }: StatusBarProps) {
   const prevStatusRef = useRef<typeof status | null>(null)
   // Track last shown toast to prevent duplicates
   const lastToastRef = useRef<{ type: string; error?: string } | null>(null)
+  // Track component mount state to prevent state updates after unmount
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   const sessionsIndexed = status?.sessionsIndexed ? Number(status.sessionsIndexed) : totalSessions
 
@@ -40,6 +43,8 @@ export function StatusBar({ projects }: StatusBarProps) {
     let attempts = 0
 
     const poll = async () => {
+      if (!mountedRef.current) return
+
       attempts++
       if (attempts > maxAttempts) {
         toast.warning('Sync is taking longer than expected', {
@@ -52,9 +57,17 @@ export function StatusBar({ projects }: StatusBarProps) {
       // Fetch fresh status
       try {
         const response = await fetch('/api/status')
-        if (!response.ok) return
+        if (!mountedRef.current) return
+
+        if (!response.ok) {
+          console.warn(`Sync status poll failed: HTTP ${response.status}`)
+          setTimeout(poll, 1000)
+          return
+        }
 
         const newStatus = await response.json()
+        if (!mountedRef.current) return
+
         const newSyncTs = newStatus.lastGitSyncAt ?? newStatus.lastIndexedAt
 
         // Check if sync has completed (timestamp changed)
@@ -97,7 +110,8 @@ export function StatusBar({ projects }: StatusBarProps) {
 
         // Not completed yet, poll again
         setTimeout(poll, 1000)
-      } catch {
+      } catch (e) {
+        console.warn('Sync status poll failed:', e)
         // Error polling, try again
         setTimeout(poll, 1000)
       }
