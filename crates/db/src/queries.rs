@@ -715,6 +715,7 @@ impl Database {
     pub async fn get_sessions_needing_deep_index(
         &self,
     ) -> DbResult<Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32)>> {
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32)> =
             sqlx::query_as(
                 "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
@@ -1828,6 +1829,7 @@ impl Database {
         .await?;
 
         // Get the most recent completed job
+        #[allow(clippy::type_complexity)]
         let last_job: Option<(String, Option<String>, Option<i64>, String, String)> = sqlx::query_as(
             r#"
             SELECT started_at, completed_at, actual_cost_cents, provider, model
