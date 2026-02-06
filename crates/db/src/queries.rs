@@ -1652,6 +1652,24 @@ impl Database {
         Ok(())
     }
 
+    /// Backfill primary_model from turns table for sessions that were deep-indexed
+    /// before primary_model was populated during indexing.
+    pub async fn backfill_primary_models(&self) -> DbResult<u64> {
+        let result = sqlx::query(
+            r#"
+            UPDATE sessions SET primary_model = (
+                SELECT model_id FROM turns
+                WHERE turns.session_id = sessions.id
+                GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
+            )
+            WHERE primary_model IS NULL AND deep_indexed_at IS NOT NULL
+            "#,
+        )
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     // ========================================================================
     // AI Generation Statistics (for dashboard AI generation breakdown)
     // ========================================================================
