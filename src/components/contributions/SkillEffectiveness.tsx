@@ -33,7 +33,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
 
   // Find best and worst re-edit rates for comparison
   // Include skills that have measurable re-edit data (reeditRate > 0) or enough sessions to be statistically meaningful (> 2)
-  const comparableSkills = bySkill.filter((s) => s.reeditRate > 0 || Number(s.sessions) > 2)
+  const comparableSkills = bySkill.filter((s) => s.reeditRate > 0 || s.sessions > 2)
   const sortedByReedit = [...comparableSkills].sort((a, b) => a.reeditRate - b.reeditRate)
   // Best = lowest non-zero re-edit rate; worst = highest re-edit rate (need at least 2 skills to compare)
   const bestReedit = sortedByReedit.length > 0 ? sortedByReedit[0].reeditRate : null
@@ -104,10 +104,10 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                    {Number(skill.sessions).toLocaleString()}
+                    {skill.sessions.toLocaleString()}
                   </td>
                   <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                    {Number(skill.avgLoc) > 0 ? `+${Number(skill.avgLoc).toLocaleString()}` : '--'}
+                    {skill.avgLoc > 0 ? `+${skill.avgLoc.toLocaleString()}` : '--'}
                   </td>
                   <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
                     {formatPercent(skill.commitRate)}

@@ -37,13 +37,13 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }:
   const sortedBranches = [...byBranch].sort((a, b) => {
     switch (sortBy) {
       case 'lines':
-        return Number(b.linesAdded) - Number(a.linesAdded)
+        return b.linesAdded - a.linesAdded
       case 'sessions':
-        return Number(b.sessionsCount) - Number(a.sessionsCount)
+        return b.sessionsCount - a.sessionsCount
       case 'commits':
-        return Number(b.commitsCount) - Number(a.commitsCount)
+        return b.commitsCount - a.commitsCount
       case 'recent':
-        return (Number(b.lastActivity) || 0) - (Number(a.lastActivity) || 0)
+        return (b.lastActivity || 0) - (a.lastActivity || 0)
       default:
         return 0
     }

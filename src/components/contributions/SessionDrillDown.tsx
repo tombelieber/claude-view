@@ -84,21 +84,21 @@ export function SessionDrillDown({
               <StatBox
                 icon={<Clock className="w-4 h-4 text-gray-400" />}
                 label="Duration"
-                value={formatDuration(Number(data.duration))}
+                value={formatDuration(data.duration)}
               />
               <StatBox
                 icon={<MessageSquare className="w-4 h-4 text-gray-400" />}
                 label="Prompts"
-                value={Number(data.promptCount).toString()}
+                value={data.promptCount.toString()}
               />
               <StatBox
                 icon={<FileCode2 className="w-4 h-4 text-gray-400" />}
                 label="AI Lines"
                 value={
                   <span>
-                    <span className="text-green-600 dark:text-green-400">+{formatNumber(Number(data.aiLinesAdded))}</span>
+                    <span className="text-green-600 dark:text-green-400">+{formatNumber(data.aiLinesAdded)}</span>
                     {' / '}
-                    <span className="text-red-500 dark:text-red-400">-{formatNumber(Number(data.aiLinesRemoved))}</span>
+                    <span className="text-red-500 dark:text-red-400">-{formatNumber(data.aiLinesRemoved)}</span>
                   </span>
                 }
               />
@@ -235,8 +235,8 @@ function StatBox({
  * File impact row with progress bar.
  */
 function FileImpactRow({ file }: { file: FileImpact }) {
-  const totalLines = Number(file.linesAdded) + Number(file.linesRemoved)
-  const addedPercent = totalLines > 0 ? (Number(file.linesAdded) / totalLines) * 100 : 50
+  const totalLines = file.linesAdded + file.linesRemoved
+  const addedPercent = totalLines > 0 ? (file.linesAdded / totalLines) * 100 : 50
 
   return (
     <div className="flex items-center gap-3 py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -246,10 +246,10 @@ function FileImpactRow({ file }: { file: FileImpact }) {
         </p>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-green-600 dark:text-green-400 tabular-nums">
-            +{formatNumber(Number(file.linesAdded))}
+            +{formatNumber(file.linesAdded)}
           </span>
           <span className="text-xs text-red-500 dark:text-red-400 tabular-nums">
-            -{formatNumber(Number(file.linesRemoved))}
+            -{formatNumber(file.linesRemoved)}
           </span>
         </div>
       </div>
@@ -292,10 +292,10 @@ function CommitRow({ commit }: { commit: LinkedCommit }) {
       {(commit.insertions !== null || commit.deletions !== null) && (
         <div className="text-xs tabular-nums flex-shrink-0">
           {commit.insertions !== null && (
-            <span className="text-green-600 dark:text-green-400">+{Number(commit.insertions)}</span>
+            <span className="text-green-600 dark:text-green-400">+{commit.insertions}</span>
           )}
           {commit.deletions !== null && (
-            <span className="text-red-500 dark:text-red-400 ml-1">-{Number(commit.deletions)}</span>
+            <span className="text-red-500 dark:text-red-400 ml-1">-{commit.deletions}</span>
           )}
         </div>
       )}
