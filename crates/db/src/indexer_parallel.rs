@@ -74,7 +74,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         ai_lines_added = ?42,
         ai_lines_removed = ?43,
         work_type = ?44,
-        git_branch = COALESCE(git_branch, ?45)
+        git_branch = COALESCE(git_branch, ?45),
+        primary_model = ?46
     WHERE id = ?1
 "#;
 
@@ -104,6 +105,21 @@ const UPSERT_MODEL_SQL: &str = r#"
     ON CONFLICT(id) DO UPDATE SET
         last_seen = MAX(models.last_seen, excluded.last_seen)
 "#;
+
+/// Compute the primary model for a session: the model_id with the most turns.
+fn compute_primary_model(turns: &[vibe_recall_core::RawTurn]) -> Option<String> {
+    if turns.is_empty() {
+        return None;
+    }
+    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for turn in turns {
+        *counts.entry(&turn.model_id).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(model, _)| model.to_string())
+}
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
@@ -1862,7 +1878,9 @@ where
                     );
                     let work_type = classify_work_type(&work_type_input);
 
-                    // UPDATE session deep fields (45 params: ?1=id, ?2-?45=fields)
+                    let primary_model = compute_primary_model(&result.parse_result.turns);
+
+                    // UPDATE session deep fields (46 params: ?1=id, ?2-?46=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1909,6 +1927,7 @@ where
                         meta.ai_lines_removed as i32,     // ?43
                         work_type.as_str(),               // ?44
                         result.parse_result.git_branch.as_deref(),  // ?45
+                        primary_model,                    // ?46 (Option<String>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // INSERT invocations
@@ -2052,6 +2071,8 @@ async fn write_results_sqlx(
         );
         let work_type = classify_work_type(&work_type_input);
 
+        let primary_model = compute_primary_model(&result.parse_result.turns);
+
         crate::queries::update_session_deep_fields_tx(
             &mut tx,
             &result.session_id,
@@ -2101,6 +2122,7 @@ async fn write_results_sqlx(
             meta.ai_lines_removed as i32,
             Some(work_type.as_str()),
             result.parse_result.git_branch.as_deref(),
+            primary_model.as_deref(),
         )
         .await
         .map_err(|e| {
