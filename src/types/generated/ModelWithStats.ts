@@ -3,4 +3,4 @@
 /**
  * A model record with aggregated usage stats (for GET /api/models).
  */
-export type ModelWithStats = { id: string, provider: string | null, family: string | null, firstSeen: bigint | null, lastSeen: bigint | null, totalTurns: bigint, totalSessions: bigint, };
+export type ModelWithStats = { id: string, provider: string | null, family: string | null, firstSeen: number | null, lastSeen: number | null, totalTurns: number, totalSessions: number, };

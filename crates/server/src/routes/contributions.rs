@@ -85,6 +85,7 @@ pub struct BranchSessionsQuery {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct FluencyMetrics {
+    #[ts(type = "number")]
     pub sessions: i64,
     pub prompts_per_session: f64,
     pub trend: Option<f64>,
@@ -96,9 +97,13 @@ pub struct FluencyMetrics {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct OutputMetrics {
+    #[ts(type = "number")]
     pub lines_added: i64,
+    #[ts(type = "number")]
     pub lines_removed: i64,
+    #[ts(type = "number")]
     pub files_count: i64,
+    #[ts(type = "number")]
     pub commits_count: i64,
     pub insight: Insight,
 }
@@ -129,10 +134,12 @@ pub struct OverviewMetrics {
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyMetrics {
     pub total_cost: f64,
+    #[ts(type = "number")]
     pub total_lines: i64,
     pub cost_per_line: Option<f64>,
     pub cost_per_commit: Option<f64>,
     pub cost_trend: Vec<f64>,
+    pub cost_is_estimated: bool,
     pub insight: Insight,
 }
 
@@ -184,14 +191,19 @@ pub struct SessionContributionResponse {
     /// Work type classification
     pub work_type: Option<String>,
     /// Duration in seconds
+    #[ts(type = "number")]
     pub duration: i64,
     /// Number of prompts
+    #[ts(type = "number")]
     pub prompt_count: i64,
     /// AI lines added
+    #[ts(type = "number")]
     pub ai_lines_added: i64,
     /// AI lines removed
+    #[ts(type = "number")]
     pub ai_lines_removed: i64,
     /// Files edited count
+    #[ts(type = "number")]
     pub files_edited_count: i64,
     /// Per-file breakdown
     pub files: Vec<FileImpact>,
@@ -314,7 +326,7 @@ pub async fn get_contributions(
         output: OutputMetrics {
             lines_added: agg.ai_lines_added,
             lines_removed: agg.ai_lines_removed,
-            files_count: estimate_files_count(&agg),
+            files_count: agg.files_edited_count,
             commits_count: agg.commits_count,
             insight: output_insight(agg.ai_lines_added, peak_day),
         },
@@ -339,14 +351,10 @@ pub async fn get_contributions(
         None
     };
 
-    // Cost trend from daily data (simplified - just use daily costs)
+    // Cost trend from daily snapshot data (token-based estimation stored in cost_cents)
     let cost_trend: Vec<f64> = trend
         .iter()
-        .map(|t| {
-            // Estimate cost from lines (simplified)
-            let lines = t.lines_added + t.lines_removed;
-            lines as f64 * 0.00025 // Same rate as estimate_cost_cents
-        })
+        .map(|t| t.cost_cents as f64 / 100.0) // Convert cents to dollars
         .collect();
 
     let efficiency = EfficiencyMetrics {
@@ -355,6 +363,7 @@ pub async fn get_contributions(
         cost_per_line,
         cost_per_commit,
         cost_trend: cost_trend.clone(),
+        cost_is_estimated: true,
         insight: efficiency_insight(cost_per_line, &cost_trend),
     };
 
@@ -553,15 +562,6 @@ async fn get_previous_period_contributions(
         )
         .await
         .map_err(Into::into)
-}
-
-/// Estimate files count from aggregated data.
-///
-/// This is a rough estimate since we don't store files count in snapshots.
-fn estimate_files_count(agg: &AggregatedContributions) -> i64 {
-    // Assume average of 50 lines per file
-    let lines = agg.ai_lines_added + agg.ai_lines_removed;
-    (lines / 50).max(0)
 }
 
 /// Generate skill insight comparing sessions with and without skills.
@@ -832,6 +832,7 @@ mod tests {
                 cost_per_line: Some(0.004),
                 cost_per_commit: Some(0.50),
                 cost_trend: vec![0.5, 0.4, 0.3],
+                cost_is_estimated: true,
                 insight: crate::insights::Insight::info("Good"),
             },
             by_model: vec![],
