@@ -29,7 +29,6 @@ export interface SegmentedControlProps<T extends string> {
  *
  * Accessibility:
  * - Uses radio group pattern for proper semantics
- * - Keyboard navigation with arrow keys
  * - Visible focus ring
  */
 export function SegmentedControl<T extends string>({
