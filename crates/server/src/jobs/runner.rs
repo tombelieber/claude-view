@@ -51,8 +51,9 @@ impl JobRunner {
         let state = Arc::new(JobState::new(id, job_type.into(), total));
 
         // Store state
-        if let Ok(mut jobs) = self.jobs.write() {
-            jobs.insert(id, Arc::clone(&state));
+        match self.jobs.write() {
+            Ok(mut jobs) => { jobs.insert(id, Arc::clone(&state)); }
+            Err(e) => tracing::error!("RwLock poisoned writing jobs map: {e}"),
         }
 
         // Create cancellation channel
@@ -88,23 +89,24 @@ impl JobRunner {
 
     /// Get current status of a specific job.
     pub fn get_job(&self, id: JobId) -> Option<JobProgress> {
-        self.jobs
-            .read()
-            .ok()
-            .and_then(|jobs| jobs.get(&id).map(|s| s.snapshot()))
+        match self.jobs.read() {
+            Ok(jobs) => jobs.get(&id).map(|s| s.snapshot()),
+            Err(e) => {
+                tracing::error!("RwLock poisoned reading jobs map: {e}");
+                None
+            }
+        }
     }
 
     /// Get all active (non-completed) jobs.
     pub fn active_jobs(&self) -> Vec<JobProgress> {
-        self.jobs
-            .read()
-            .ok()
-            .map(|jobs| {
-                jobs.values()
-                    .map(|s| s.snapshot())
-                    .collect()
-            })
-            .unwrap_or_default()
+        match self.jobs.read() {
+            Ok(jobs) => jobs.values().map(|s| s.snapshot()).collect(),
+            Err(e) => {
+                tracing::error!("RwLock poisoned reading jobs map: {e}");
+                Vec::new()
+            }
+        }
     }
 }
 
