@@ -162,8 +162,9 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
       const hasCommits = await commitIcon.first().isVisible({ timeout: 2000 }).catch(() => false)
       // This is informational - commits may or may not exist depending on backend state
       if (hasCommits) {
-        // Verify the commit count is a number
-        await expect(footer.locator('text=/\\d+/')).toBeVisible()
+        // Verify the commit count is a number (use .first() since multiple
+        // numeric elements may exist in the footer: session count, commit count)
+        await expect(footer.locator('text=/\\d+/').first()).toBeVisible()
       }
     }
 
