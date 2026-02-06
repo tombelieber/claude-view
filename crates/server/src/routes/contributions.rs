@@ -237,7 +237,7 @@ pub async fn get_contributions(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ContributionsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let range = TimeRange::from_str(&params.range).unwrap_or(TimeRange::Week);
+    let range = TimeRange::parse_str(&params.range).unwrap_or(TimeRange::Week);
     let from_date = params.from.as_deref();
     let to_date = params.to.as_deref();
     let project_id = params.project_id.as_deref();
@@ -476,11 +476,11 @@ pub async fn get_branch_sessions(
     Path(branch_name): Path<String>,
     Query(params): Query<BranchSessionsQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let range = TimeRange::from_str(&params.range).unwrap_or(TimeRange::Week);
+    let range = TimeRange::parse_str(&params.range).unwrap_or(TimeRange::Week);
     let from_date = params.from.as_deref();
     let to_date = params.to.as_deref();
     let project_id = params.project_id.as_deref();
-    let limit = params.limit.unwrap_or(10).min(50).max(1);
+    let limit = params.limit.unwrap_or(10).clamp(1, 50);
 
     // URL decode the branch name (e.g., "feature%2Ftest" -> "feature/test")
     let branch = urlencoding::decode(&branch_name)
