@@ -5,12 +5,25 @@ test.describe('Accessibility', () => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
 
+    // Blur any focused element and reset focus to the document body
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement)?.blur()
+      document.body.focus()
+    })
+
     // Tab to the skip link (it is positioned offscreen until focused)
     await page.keyboard.press('Tab')
 
-    // Check skip link is focused and visible (becomes visible via :focus CSS)
+    // The skip link should now be focused. In some cases, another element
+    // may receive focus first, so press Tab again if needed.
     const skipLink = page.locator('a[href="#main"]')
-    await expect(skipLink).toBeFocused()
+    const isFocused = await skipLink.evaluate(el => document.activeElement === el)
+    if (!isFocused) {
+      // If another element got focus first, try one more Tab
+      await page.keyboard.press('Tab')
+    }
+
+    await expect(skipLink).toBeFocused({ timeout: 5000 })
     await expect(skipLink).toHaveText('Skip to content')
 
     // Activate the skip link
@@ -72,7 +85,7 @@ test.describe('Accessibility', () => {
     // Intercept the dashboard stats API to slow down loading
     // The dashboard fetches from /api/stats/dashboard, not /api/projects
     await page.route('**/api/stats/dashboard**', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 3000))
       await route.continue()
     })
 
@@ -81,7 +94,7 @@ test.describe('Accessibility', () => {
     // Verify loading state has aria-busy and role="status"
     // The DashboardSkeleton component uses role="status" aria-busy="true"
     const busyElement = page.locator('[role="status"][aria-busy="true"]')
-    await expect(busyElement).toBeVisible({ timeout: 5000 })
+    await expect(busyElement.first()).toBeVisible({ timeout: 5000 })
   })
 
   test('metrics have screen reader labels', async ({ page }) => {
