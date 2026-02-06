@@ -7,7 +7,6 @@ import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { AIGenerationStats } from './AIGenerationStats'
-import { RecentCommits } from './RecentCommits'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
 import { TimeRangeSelector, DateRangePicker } from './ui'
 import { FEATURES } from '../config/features'
@@ -312,9 +311,6 @@ export function StatsDashboard() {
           </div>
         )}
       </div>
-
-      {/* Recent Commits */}
-      <RecentCommits commits={[]} />
 
       {/* Activity Heatmap */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
