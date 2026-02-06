@@ -115,7 +115,7 @@ pub struct InsightsResponse {
     /// Patterns grouped by impact tier.
     pub patterns: PatternGroups,
     /// Classification coverage statistics.
-    pub classification_status: ClassificationStatus,
+    pub classification_status: ClassificationCoverage,
     /// Response metadata.
     pub meta: InsightsMeta,
 }
@@ -176,7 +176,7 @@ pub struct PatternGroups {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
-pub struct ClassificationStatus {
+pub struct ClassificationCoverage {
     pub classified: u32,
     pub total: u32,
     pub pending_classification: u32,
@@ -657,7 +657,7 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
 /// Get classification status from the database.
 async fn get_classification_status(
     pool: &sqlx::SqlitePool,
-) -> ApiResult<ClassificationStatus> {
+) -> ApiResult<ClassificationCoverage> {
     let row: (i64, i64) = sqlx::query_as(
         r#"
         SELECT
@@ -679,7 +679,7 @@ async fn get_classification_status(
         0.0
     };
 
-    Ok(ClassificationStatus {
+    Ok(ClassificationCoverage {
         classified,
         total,
         pending_classification: pending,
