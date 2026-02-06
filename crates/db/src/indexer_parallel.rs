@@ -66,7 +66,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         summary_text = ?38,
         parse_version = ?39,
         file_size_at_index = ?40,
-        file_mtime_at_index = ?41
+        file_mtime_at_index = ?41,
+        primary_model = ?42
     WHERE id = ?1
 "#;
 
@@ -96,6 +97,21 @@ const UPSERT_MODEL_SQL: &str = r#"
     ON CONFLICT(id) DO UPDATE SET
         last_seen = MAX(models.last_seen, excluded.last_seen)
 "#;
+
+/// Compute the primary model for a session: the model_id with the most turns.
+fn compute_primary_model(turns: &[vibe_recall_core::RawTurn]) -> Option<String> {
+    if turns.is_empty() {
+        return None;
+    }
+    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for turn in turns {
+        *counts.entry(&turn.model_id).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(model, _)| model.to_string())
+}
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
@@ -1702,7 +1718,9 @@ where
                         (Some(avg as i64), Some(max as i64), Some(total as i64))
                     };
 
-                    // UPDATE session deep fields (41 params: ?1=id, ?2-?41=fields)
+                    let primary_model = compute_primary_model(&result.parse_result.turns);
+
+                    // UPDATE session deep fields (42 params: ?1=id, ?2-?42=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1745,6 +1763,7 @@ where
                         CURRENT_PARSE_VERSION,            // ?39
                         result.file_size,                 // ?40
                         result.file_mtime,                // ?41
+                        primary_model,                    // ?42 (Option<String>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // INSERT invocations
@@ -1878,6 +1897,8 @@ async fn write_results_sqlx(
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
 
+        let primary_model = compute_primary_model(&result.parse_result.turns);
+
         crate::queries::update_session_deep_fields_tx(
             &mut tx,
             &result.session_id,
@@ -1920,6 +1941,7 @@ async fn write_results_sqlx(
             CURRENT_PARSE_VERSION,
             result.file_size,
             result.file_mtime,
+            primary_model.as_deref(),
         )
         .await
         .map_err(|e| {
