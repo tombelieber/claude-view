@@ -1,5 +1,7 @@
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { BarChart3, Sparkles, TerminalSquare, Plug, Bot, FolderOpen, Calendar, Pencil, Eye, Terminal, Clock, ArrowRight, Search } from 'lucide-react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { useDashboardStats } from '../hooks/use-dashboard'
 import { buildSessionUrl } from '../lib/url-utils'
 import { useTimeRange } from '../hooks/use-time-range'
@@ -361,6 +363,84 @@ function formatDuration(seconds: number): string {
   return `${hours.toFixed(1)}h`
 }
 
+/** Format a date string (YYYY-MM-DD) for tooltip display */
+function formatHeatmapDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00')
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
+
+/** Heatmap cell with rich tooltip and 150ms close delay (Feature 2B) */
+function HeatmapCell({
+  day,
+  isMobile,
+  colorClass,
+  onClick,
+}: {
+  day: { date: string; count: number }
+  isMobile: boolean
+  colorClass: string
+  onClick: () => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+    if (open) {
+      setIsOpen(true)
+    } else {
+      // 150ms close delay to prevent flickering
+      closeTimeoutRef.current = setTimeout(() => setIsOpen(false), 150)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current)
+    }
+  }, [])
+
+  const formattedDate = formatHeatmapDate(day.date)
+  const label = `${formattedDate}: ${day.count} session${day.count !== 1 ? 's' : ''}`
+
+  return (
+    <Tooltip.Root delayDuration={0} open={isOpen} onOpenChange={handleOpenChange}>
+      <Tooltip.Trigger asChild>
+        <button
+          onClick={onClick}
+          className={cn(
+            isMobile ? 'w-4 h-4' : 'w-3 h-3',
+            'rounded-sm transition-colors hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-400',
+            colorClass
+          )}
+          aria-label={label}
+        />
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content
+          role="tooltip"
+          className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg text-sm z-50 animate-in fade-in-0 zoom-in-95"
+          sideOffset={5}
+          side="top"
+          align="center"
+        >
+          <div className="font-medium">{formattedDate}</div>
+          <div className="text-gray-200">{day.count} session{day.count !== 1 ? 's' : ''}</div>
+          <div className="text-gray-400 text-xs mt-1">Click to filter</div>
+          <Tooltip.Arrow className="fill-gray-900" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
+}
+
 // Activity Heatmap Component
 function ActivityHeatmap({
   data,
@@ -407,51 +487,48 @@ function ActivityHeatmap({
   const showScrollIndicator = isMobile && weeks.length > 12
 
   return (
-    <div className="relative">
-      {/* Mobile: horizontally scrollable container */}
-      <div className={cn(
-        'flex gap-1',
-        isMobile && 'overflow-x-auto pb-2 -mx-1 px-1'
-      )}>
-        {displayWeeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-1 shrink-0">
-            {week.map((day) => (
-              <button
-                key={day.date}
-                onClick={() => handleDayClick(day.date)}
-                className={cn(
-                  // Larger touch targets on mobile (min 44x44 tap area with spacing)
-                  isMobile ? 'w-4 h-4' : 'w-3 h-3',
-                  'rounded-sm transition-colors hover:ring-2 hover:ring-blue-400 focus-visible:ring-2 focus-visible:ring-blue-400',
-                  getColor(day.count)
-                )}
-                title={`${day.date}: ${day.count} sessions`}
-                aria-label={`${day.date}: ${day.count} sessions`}
-              />
-            ))}
-          </div>
-        ))}
-        {/* Legend - sticky on mobile scroll */}
+    <Tooltip.Provider delayDuration={0}>
+      <div className="relative">
+        {/* Mobile: horizontally scrollable container */}
         <div className={cn(
-          'flex items-center gap-2 text-xs text-gray-400',
-          isMobile ? 'sticky right-0 bg-white dark:bg-gray-900 pl-2' : 'ml-2'
+          'flex gap-1',
+          isMobile && 'overflow-x-auto pb-2 -mx-1 px-1'
         )}>
-          <span>Less</span>
-          <div className="flex gap-0.5">
-            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-gray-100 dark:bg-gray-800')} />
-            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-200 dark:bg-green-600')} />
-            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-300 dark:bg-green-400')} />
-            <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-500')} />
+          {displayWeeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-1 shrink-0">
+              {week.map((day) => (
+                <HeatmapCell
+                  key={day.date}
+                  day={day}
+                  isMobile={isMobile}
+                  colorClass={getColor(day.count)}
+                  onClick={() => handleDayClick(day.date)}
+                />
+              ))}
+            </div>
+          ))}
+          {/* Legend - sticky on mobile scroll */}
+          <div className={cn(
+            'flex items-center gap-2 text-xs text-gray-400',
+            isMobile ? 'sticky right-0 bg-white dark:bg-gray-900 pl-2' : 'ml-2'
+          )}>
+            <span>Less</span>
+            <div className="flex gap-0.5">
+              <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-gray-100 dark:bg-gray-800')} />
+              <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-200 dark:bg-green-600')} />
+              <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-300 dark:bg-green-400')} />
+              <div className={cn(isMobile ? 'w-4 h-4' : 'w-3 h-3', 'rounded-sm bg-green-500')} />
+            </div>
+            <span>More</span>
           </div>
-          <span>More</span>
         </div>
+        {/* Scroll indicator for mobile */}
+        {showScrollIndicator && (
+          <p className="text-xs text-gray-400 mt-1 text-center">
+            Swipe to see more weeks
+          </p>
+        )}
       </div>
-      {/* Scroll indicator for mobile */}
-      {showScrollIndicator && (
-        <p className="text-xs text-gray-400 mt-1 text-center">
-          Swipe to see more weeks
-        </p>
-      )}
-    </div>
+    </Tooltip.Provider>
   )
 }
