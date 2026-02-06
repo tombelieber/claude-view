@@ -261,6 +261,9 @@ CREATE TABLE IF NOT EXISTS contribution_snapshots (
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_date ON contribution_snapshots(date);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_project_date ON contribution_snapshots(project_id, date);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_branch_date ON contribution_snapshots(project_id, branch, date);"#,
+    // Migration 14: Add files_edited_count to contribution_snapshots
+    // This replaces the fabricated estimate_files_count (lines/50) with real data.
+    r#"ALTER TABLE contribution_snapshots ADD COLUMN files_edited_count INTEGER NOT NULL DEFAULT 0;"#,
 ];
 
 // ============================================================================
