@@ -2237,6 +2237,13 @@ where
     // Pass 2: use the registry for invocation classification
     let indexed = pass_2_deep_index(db, Some(&registry), on_file_done).await?;
 
+    // Backfill primary_model for sessions indexed before this field was populated
+    match db.backfill_primary_models().await {
+        Ok(n) if n > 0 => tracing::info!("Backfilled primary_model for {} sessions", n),
+        Ok(_) => {}
+        Err(e) => tracing::warn!("Failed to backfill primary_models: {}", e),
+    }
+
     // Store registry in shared holder for API routes to use
     if let Some(holder) = registry_holder {
         if let Ok(mut guard) = holder.write() {
