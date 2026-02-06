@@ -76,7 +76,7 @@ impl PatternScore {
 /// Calculate the effect size score from the relative difference between
 /// a "better" value and a baseline.
 ///
-/// Uses a Cohen's d-like interpretation:
+/// Maps relative percentage differences to a 0.0-1.0 score:
 /// - < 10%  -> small effect (maps to 0.0-0.2)
 /// - 10-25% -> medium effect (maps to 0.2-0.5)
 /// - > 25%  -> large effect (maps to 0.5-0.8+)
@@ -97,10 +97,10 @@ pub fn calculate_effect_size(relative_diff: f64) -> f64 {
 /// Calculate sample confidence from observation count vs minimum threshold.
 ///
 /// Uses logarithmic scaling:
-/// - threshold -> ~0.5
-/// - 2x threshold -> ~0.75
-/// - 5x threshold -> ~0.9
-/// - 10x+ threshold -> ~1.0
+/// - threshold -> 0.0
+/// - 2x threshold -> ~0.41
+/// - 5x threshold -> ~0.62
+/// - 10x+ threshold -> ~0.70
 pub fn calculate_sample_confidence(n: u32, threshold: u32) -> f64 {
     if n < threshold || threshold == 0 {
         return 0.0;
