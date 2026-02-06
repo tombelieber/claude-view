@@ -49,7 +49,8 @@ async function fetchTrends(params: TrendsParams): Promise<InsightsTrendsResponse
 
   const response = await fetch(`/api/insights/trends?${searchParams}`)
   if (!response.ok) {
-    throw new Error('Failed to fetch trends data')
+    const errorText = await response.text()
+    throw new Error(`Failed to fetch trends data: ${errorText}`)
   }
   return response.json()
 }

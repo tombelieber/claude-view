@@ -185,7 +185,8 @@ export function useInsights({ timeRange }: UseInsightsOptions) {
 
       const response = await fetch(`/api/insights?${params}`)
       if (!response.ok) {
-        throw new Error('Failed to fetch insights')
+        const errorText = await response.text()
+        throw new Error(`Failed to fetch insights: ${errorText}`)
       }
 
       const apiResponse: InsightsResponse = await response.json()
