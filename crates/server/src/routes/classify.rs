@@ -21,7 +21,7 @@ use crate::classify_state::ClassifyStatus;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use vibe_recall_core::classification::{
-    self, ClassificationInput, BATCH_SIZE, SYSTEM_PROMPT,
+    self, ClassificationInput, BATCH_SIZE,
 };
 use vibe_recall_core::llm::{ClassificationRequest, LlmProvider};
 
@@ -475,47 +475,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
         batch_num += 1;
         classify_state.set_current_batch(format!("Batch {} ({} sessions)", batch_num, batch.len()));
 
-        // Build the prompt
-        let prompt = classification::build_batch_prompt(batch);
-
-        // Call the LLM provider
-        let provider = vibe_recall_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
-
-        // Build a single-shot request with the batch prompt as the user prompt
-        // and the system prompt as context
-        let full_prompt = format!("{}\n\n{}", SYSTEM_PROMPT, prompt);
-        let request = ClassificationRequest {
-            session_id: format!("batch_{}", batch_num),
-            first_prompt: full_prompt,
-            files_touched: vec![],
-            skills_used: vec![],
-        };
-
-        match provider.classify(request).await {
-            Ok(_response) => {
-                // The existing ClaudeCliProvider returns a single classification.
-                // For the MVP, we classify sessions one-by-one using individual calls.
-                // Batch classification with a custom prompt will be a future optimization.
-                tracing::debug!(batch_num, "Batch prompt validation succeeded");
-            }
-            Err(e) => {
-                tracing::warn!(batch_num, error = %e, "Batch classification failed");
-                failed_total += batch.len() as u64;
-                classify_state.increment_errors();
-                classify_state.increment_classified(batch.len() as u64);
-
-                let _ = db
-                    .update_classification_job_progress(
-                        db_job_id,
-                        classified_total as i64,
-                        0,
-                        failed_total as i64,
-                        None,
-                    )
-                    .await;
-                continue;
-            }
-        }
+        tracing::debug!(batch_num, batch_size = batch.len(), "Processing batch");
 
         // For the MVP, classify each session individually using the existing provider
         let mut batch_updates: Vec<(String, String, String, String, f64, String)> = Vec::new();
