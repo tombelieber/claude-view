@@ -47,7 +47,8 @@ export function useCategories({ timeRange, enabled = true }: UseCategoriesOption
 
       const response = await fetch(`/api/insights/categories?${params}`)
       if (!response.ok) {
-        throw new Error('Failed to fetch categories')
+        const errorText = await response.text()
+        throw new Error(`Failed to fetch categories: ${errorText}`)
       }
 
       return response.json()

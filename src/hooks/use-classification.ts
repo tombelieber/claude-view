@@ -105,8 +105,8 @@ export function useClassification(): UseClassificationResult {
       try {
         const data = JSON.parse(event.data) as ClassifyProgressInfo
         setSseProgress(data)
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.warn('Failed to parse SSE progress:', err)
       }
     })
 
@@ -135,7 +135,7 @@ export function useClassification(): UseClassificationResult {
           const data = JSON.parse(event.data)
           setError(data.message || 'Classification error')
         } catch {
-          // ignore
+          setError('Classification failed (unable to parse error details)')
         }
       }
       setSseProgress(null)
@@ -244,7 +244,8 @@ export function useClassification(): UseClassificationResult {
         return await res.json()
       }
       return null
-    } catch {
+    } catch (err) {
+      console.warn('Dry run failed:', err)
       return null
     }
   }, [])
