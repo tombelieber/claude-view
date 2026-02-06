@@ -7,36 +7,36 @@ export type IndexMetadata = {
 /**
  * Unix timestamp of last successful index completion.
  */
-lastIndexedAt: bigint | null, 
+lastIndexedAt: number | null, 
 /**
  * Duration of last successful index in milliseconds.
  */
-lastIndexDurationMs: bigint | null, 
+lastIndexDurationMs: number | null, 
 /**
  * Number of sessions indexed in last run.
  */
-sessionsIndexed: bigint, 
+sessionsIndexed: number, 
 /**
  * Number of projects indexed in last run.
  */
-projectsIndexed: bigint, 
+projectsIndexed: number, 
 /**
  * Unix timestamp of last successful git sync.
  */
-lastGitSyncAt: bigint | null, 
+lastGitSyncAt: number | null, 
 /**
  * Number of commits found in last git sync.
  */
-commitsFound: bigint, 
+commitsFound: number, 
 /**
  * Number of session-commit links created in last git sync.
  */
-linksCreated: bigint, 
+linksCreated: number, 
 /**
  * Unix timestamp of last metadata update.
  */
-updatedAt: bigint, 
+updatedAt: number, 
 /**
  * User-configurable git sync interval in seconds (default 60).
  */
-gitSyncIntervalSecs: bigint, };
+gitSyncIntervalSecs: number, };

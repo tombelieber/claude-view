@@ -24,6 +24,7 @@ pub use trends::TrendMetric;
 pub use trends::WeekTrends;
 
 // Re-export snapshots types
+pub use snapshots::BLENDED_COST_PER_TOKEN;
 pub use snapshots::AggregatedContributions;
 pub use snapshots::BranchBreakdown;
 pub use snapshots::BranchSession;
