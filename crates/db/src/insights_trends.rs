@@ -162,9 +162,9 @@ impl Database {
             r#"
             SELECT
                 {group_by} as period,
-                CAST(SUM(CASE WHEN category_l1 = 'code' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as code_work,
-                CAST(SUM(CASE WHEN category_l1 = 'support' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as support_work,
-                CAST(SUM(CASE WHEN category_l1 = 'thinking' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as thinking_work
+                CAST(SUM(CASE WHEN category_l1 = 'code_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as code_work,
+                CAST(SUM(CASE WHEN category_l1 = 'support_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as support_work,
+                CAST(SUM(CASE WHEN category_l1 = 'thinking_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as thinking_work
             FROM sessions
             WHERE is_sidechain = 0
               AND last_message_at >= ?1
