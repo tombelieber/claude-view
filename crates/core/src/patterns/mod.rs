@@ -32,15 +32,6 @@ pub struct PatternResult {
     pub actionability: Actionability,
 }
 
-/// Error types for pattern calculations.
-#[derive(Debug, thiserror::Error)]
-pub enum PatternError {
-    #[error("Insufficient data: need {required} samples, got {actual}")]
-    InsufficientData { required: u32, actual: u32 },
-    #[error("Invalid calculation: {0}")]
-    InvalidCalculation(String),
-}
-
 /// A bucket with a label, count, and aggregate metric value.
 #[derive(Debug, Clone)]
 pub struct Bucket {

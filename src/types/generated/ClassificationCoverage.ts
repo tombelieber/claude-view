@@ -3,4 +3,4 @@
 /**
  * Classification coverage status.
  */
-export type ClassificationStatus = { classified: number, total: number, pendingClassification: number, classificationPct: number, };
+export type ClassificationCoverage = { classified: number, total: number, pendingClassification: number, classificationPct: number, };
