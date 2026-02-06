@@ -4,7 +4,7 @@
 //! - GET  /system           — Comprehensive system status
 //! - POST /system/reindex   — Trigger full re-index
 //! - POST /system/clear-cache — Clear search index and cache
-//! - POST /system/git-resync — Trigger full git re-sync
+//! - POST /system/git-resync — Trigger full git re-sync (stub -- not yet implemented)
 //! - POST /system/reset     — Factory reset (requires confirmation)
 
 use std::sync::Arc;
@@ -345,11 +345,9 @@ pub async fn clear_cache(
 pub async fn trigger_git_resync(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ActionResponse>> {
-    // Git resync would be triggered through the sync mechanism
-    // For now, return a success status indicating the request was accepted
     Ok(Json(ActionResponse {
-        status: "started".to_string(),
-        message: Some("Git re-sync started".to_string()),
+        status: "not_implemented".to_string(),
+        message: Some("Git re-sync is not yet available".to_string()),
     }))
 }
 
@@ -659,8 +657,8 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(json["status"], "started");
-        assert!(json["message"].as_str().unwrap().contains("re-sync"));
+        assert_eq!(json["status"], "not_implemented");
+        assert!(json["message"].as_str().unwrap().contains("not yet available"));
     }
 
     // ========================================================================
