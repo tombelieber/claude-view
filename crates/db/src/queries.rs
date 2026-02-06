@@ -596,6 +596,7 @@ impl Database {
         parse_version: i32,
         file_size: i64,
         file_mtime: i64,
+        primary_model: Option<&str>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -641,7 +642,8 @@ impl Database {
                 summary_text = ?38,
                 parse_version = ?39,
                 file_size_at_index = ?40,
-                file_mtime_at_index = ?41
+                file_mtime_at_index = ?41,
+                primary_model = ?42
             WHERE id = ?1
             "#,
         )
@@ -686,6 +688,7 @@ impl Database {
         .bind(parse_version)
         .bind(file_size)
         .bind(file_mtime)
+        .bind(primary_model)
         .execute(self.pool())
         .await?;
 
@@ -1859,6 +1862,7 @@ pub async fn update_session_deep_fields_tx(
     ai_lines_removed: i32,
     work_type: Option<&str>,
     git_branch: Option<&str>,
+    primary_model: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1911,7 +1915,8 @@ pub async fn update_session_deep_fields_tx(
             ai_lines_added = ?45,
             ai_lines_removed = ?46,
             work_type = ?47,
-            git_branch = COALESCE(git_branch, ?48)
+            git_branch = COALESCE(git_branch, ?48),
+            primary_model = ?49
         WHERE id = ?1
         "#,
     )
@@ -1963,6 +1968,7 @@ pub async fn update_session_deep_fields_tx(
     .bind(ai_lines_removed)
     .bind(work_type)
     .bind(git_branch)
+    .bind(primary_model)
     .execute(&mut **tx)
     .await?;
 
@@ -2957,6 +2963,7 @@ mod tests {
             1,     // parse_version
             5000,  // file_size
             1706200000, // file_mtime
+            None,  // primary_model
         )
         .await
         .unwrap();
@@ -3030,6 +3037,7 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            None,        // primary_model
         )
         .await
         .unwrap();
@@ -3202,6 +3210,7 @@ mod tests {
             1,
             2000,
             1706200000,
+            None, // primary_model
         )
         .await
         .unwrap();
@@ -3226,6 +3235,7 @@ mod tests {
             1,
             1000,
             1706200000,
+            None, // primary_model
         )
         .await
         .unwrap();
@@ -3302,6 +3312,7 @@ mod tests {
             1,
             2000,
             1706200000,
+            Some("claude-opus-4-5-20251101"),
         )
         .await
         .unwrap();
@@ -3326,25 +3337,10 @@ mod tests {
             1,
             1000,
             1706200000,
+            Some("claude-sonnet-4-20250514"),
         )
         .await
         .unwrap();
-
-        // Set primary_model on both sessions (update_session_deep_fields doesn't set it,
-        // so we do it directly)
-        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
-            .bind("claude-opus-4-5-20251101")
-            .bind("ai-gen-1")
-            .execute(db.pool())
-            .await
-            .unwrap();
-
-        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
-            .bind("claude-sonnet-4-20250514")
-            .bind("ai-gen-2")
-            .execute(db.pool())
-            .await
-            .unwrap();
 
         // Test all-time (no range filter)
         let stats = db.get_ai_generation_stats(None, None).await.unwrap();

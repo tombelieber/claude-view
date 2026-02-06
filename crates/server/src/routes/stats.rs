@@ -202,9 +202,7 @@ pub async fn dashboard_stats(
     };
 
     // Calculate period bounds and comparison period
-    let (period_start, period_end, comparison_start, comparison_end) = if has_time_range {
-        let from = query.from.unwrap();
-        let to = query.to.unwrap();
+    let (period_start, period_end, comparison_start, comparison_end) = if let (Some(from), Some(to)) = (query.from, query.to) {
         let duration = to - from;
         // Previous period is the same duration immediately before
         let comp_end = from - 1;
@@ -215,10 +213,7 @@ pub async fn dashboard_stats(
     };
 
     // Get trends (either for custom period or default week-over-week)
-    let (current_week, trends) = if has_time_range {
-        let from = query.from.unwrap();
-        let to = query.to.unwrap();
-
+    let (current_week, trends) = if let (Some(from), Some(to)) = (query.from, query.to) {
         // Get trends for the specified period
         match state.db.get_trends_with_range(from, to).await {
             Ok(period_trends) => {
@@ -933,6 +928,7 @@ mod tests {
             1,       // parse_version
             2048,    // file_size
             now - 86400,  // file_mtime
+            None,    // primary_model
         ).await.unwrap();
 
         // Update the primary_model column using the db pool directly
@@ -1043,6 +1039,7 @@ mod tests {
             0, None, None, None,
             0, 0, 0, 0, 0, 0, 0, 0,
             None, 1, 2048, now - 86400,
+            None, // primary_model
         ).await.unwrap();
 
         let app = build_app(db);
