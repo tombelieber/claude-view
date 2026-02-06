@@ -4,4 +4,4 @@ import type { Insight } from "./Insight";
 /**
  * Efficiency metrics section.
  */
-export type EfficiencyMetrics = { totalCost: number, totalLines: bigint, costPerLine: number | null, costPerCommit: number | null, costTrend: Array<number>, insight: Insight, };
+export type EfficiencyMetrics = { totalCost: number, totalLines: number, costPerLine: number | null, costPerCommit: number | null, costTrend: Array<number>, costIsEstimated: boolean, insight: Insight, };
