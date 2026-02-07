@@ -1789,23 +1789,21 @@ impl Database {
 
             let cost_cents = estimate_cost_cents(session_agg.3);
 
+            // First delete any existing row for this (date, NULL, NULL) combo,
+            // since UNIQUE(date, project_id, branch) doesn't catch NULL duplicates.
+            sqlx::query(
+                "DELETE FROM contribution_snapshots WHERE date = ?1 AND project_id IS NULL AND branch IS NULL",
+            )
+            .bind(date)
+            .execute(&mut *tx)
+            .await?;
+
             sqlx::query(
                 r#"
                 INSERT INTO contribution_snapshots
                     (date, project_id, branch, sessions_count, ai_lines_added, ai_lines_removed,
                      commits_count, commit_insertions, commit_deletions, tokens_used, cost_cents, files_edited_count)
                 VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                ON CONFLICT(date, COALESCE(project_id, ''), COALESCE(branch, ''))
-                DO UPDATE SET
-                    sessions_count = excluded.sessions_count,
-                    ai_lines_added = excluded.ai_lines_added,
-                    ai_lines_removed = excluded.ai_lines_removed,
-                    commits_count = excluded.commits_count,
-                    commit_insertions = excluded.commit_insertions,
-                    commit_deletions = excluded.commit_deletions,
-                    tokens_used = excluded.tokens_used,
-                    cost_cents = excluded.cost_cents,
-                    files_edited_count = excluded.files_edited_count
                 "#,
             )
             .bind(date)

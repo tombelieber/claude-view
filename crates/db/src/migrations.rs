@@ -229,16 +229,21 @@ CREATE TABLE IF NOT EXISTS api_errors (
     // they only slow down bulk writes (~24k unnecessary B-tree ops per reindex).
     r#"DROP INDEX IF EXISTS idx_invocations_session;"#,
     r#"DROP INDEX IF EXISTS idx_invocations_timestamp;"#,
-    // Migration 13: Theme 3 contribution tracking fields
-    // 13a: Add AI contribution metrics to sessions table
+    // Migration 13: Add lines_added and lines_removed to sessions (Phase C: LOC estimation)
+    r#"ALTER TABLE sessions ADD COLUMN lines_added INTEGER NOT NULL DEFAULT 0 CHECK (lines_added >= 0);"#,
+    r#"ALTER TABLE sessions ADD COLUMN lines_removed INTEGER NOT NULL DEFAULT 0 CHECK (lines_removed >= 0);"#,
+    // Source tracking: 0 = not computed, 1 = tool-call estimate, 2 = git diff
+    r#"ALTER TABLE sessions ADD COLUMN loc_source INTEGER NOT NULL DEFAULT 0 CHECK (loc_source IN (0, 1, 2));"#,
+    // Migration 14: Theme 3 contribution tracking fields
+    // 14a: Add AI contribution metrics to sessions table
     r#"ALTER TABLE sessions ADD COLUMN ai_lines_added INTEGER NOT NULL DEFAULT 0;"#,
     r#"ALTER TABLE sessions ADD COLUMN ai_lines_removed INTEGER NOT NULL DEFAULT 0;"#,
     r#"ALTER TABLE sessions ADD COLUMN work_type TEXT;"#,  // 'deep_work', 'quick_ask', 'planning', 'bug_fix', 'standard'
-    // 13b: Add diff stats to commits table (nullable: diff stats may not be available initially)
+    // 14b: Add diff stats to commits table (nullable: diff stats may not be available initially)
     r#"ALTER TABLE commits ADD COLUMN files_changed INTEGER;"#,
     r#"ALTER TABLE commits ADD COLUMN insertions INTEGER;"#,
     r#"ALTER TABLE commits ADD COLUMN deletions INTEGER;"#,
-    // 13c: Add contribution_snapshots table for daily aggregates
+    // 14c: Add contribution_snapshots table for daily aggregates
     r#"
 CREATE TABLE IF NOT EXISTS contribution_snapshots (
     id INTEGER PRIMARY KEY,
@@ -256,11 +261,11 @@ CREATE TABLE IF NOT EXISTS contribution_snapshots (
     UNIQUE(date, project_id, branch)
 );
 "#,
-    // 13d: Indexes for contribution_snapshots
+    // 14d: Indexes for contribution_snapshots
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_date ON contribution_snapshots(date);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_project_date ON contribution_snapshots(project_id, date);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_snapshots_branch_date ON contribution_snapshots(project_id, branch, date);"#,
-    // Migration 14: Add files_edited_count to contribution_snapshots
+    // Migration 15: Add files_edited_count to contribution_snapshots
     // This replaces the fabricated estimate_files_count (lines/50) with real data.
     r#"ALTER TABLE contribution_snapshots ADD COLUMN files_edited_count INTEGER NOT NULL DEFAULT 0;"#,
 ];
@@ -669,11 +674,107 @@ mod tests {
     }
 
     // ========================================================================
-    // Migration 13: Theme 3 contribution tracking
+    // Migration 13: LOC estimation columns (from main)
     // ========================================================================
 
     #[tokio::test]
-    async fn test_migration13_sessions_contribution_columns_exist() {
+    async fn test_migration13_loc_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"lines_added"), "Missing lines_added column");
+        assert!(column_names.contains(&"lines_removed"), "Missing lines_removed column");
+        assert!(column_names.contains(&"loc_source"), "Missing loc_source column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_loc_defaults() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-test', 'proj', '/tmp/loc.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "lines_added default should be 0");
+        assert_eq!(row.1, 0, "lines_removed default should be 0");
+        assert_eq!(row.2, 0, "loc_source default should be 0");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_loc_check_constraints() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-check', 'proj', '/tmp/c.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Test that negative values are rejected for lines_added
+        let result = sqlx::query(
+            "UPDATE sessions SET lines_added = -1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Negative lines_added should be rejected");
+
+        // Test that negative values are rejected for lines_removed
+        let result = sqlx::query(
+            "UPDATE sessions SET lines_removed = -1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Negative lines_removed should be rejected");
+
+        // Test that valid loc_source values work (0, 1, 2)
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "loc_source=1 should be valid");
+
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 2 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "loc_source=2 should be valid");
+
+        // Test that invalid loc_source value is rejected
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 3 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "loc_source=3 should be rejected (only 0, 1, 2 allowed)");
+    }
+
+    // ========================================================================
+    // Migration 14: Theme 3 contribution tracking
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration14_sessions_contribution_columns_exist() {
         let pool = setup_db().await;
 
         let columns: Vec<(String,)> = sqlx::query_as(
