@@ -201,6 +201,8 @@ pub struct BranchBreakdown {
     pub ai_share: Option<f64>,
     #[ts(type = "number | null")]
     pub last_activity: Option<i64>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
 }
 
 /// Session contribution detail for the drill-down view.
@@ -624,35 +626,66 @@ impl Database {
     }
 
     /// Get all-time contributions from snapshots + today's real-time data.
+    ///
+    /// When `project_id` is Some, queries the `sessions` table directly because
+    /// snapshot generation only creates global (project_id = NULL) snapshots.
     async fn get_all_contributions(
         &self,
         project_id: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
-        // Get snapshot totals
-        let snapshot: (i64, i64, i64, i64, i64, i64, i64, i64, i64) =
-            if let Some(pid) = project_id {
-                sqlx::query_as(
-                    r#"
+        if let Some(pid) = project_id {
+            // Project-filtered: query sessions directly (snapshots only have global data)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+                r#"
                 SELECT
-                    COALESCE(SUM(sessions_count), 0),
-                    COALESCE(SUM(ai_lines_added), 0),
-                    COALESCE(SUM(ai_lines_removed), 0),
-                    COALESCE(SUM(commits_count), 0),
-                    COALESCE(SUM(commit_insertions), 0),
-                    COALESCE(SUM(commit_deletions), 0),
-                    COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0),
-                    COALESCE(SUM(files_edited_count), 0)
-                FROM contribution_snapshots
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
                 WHERE project_id = ?1
                 "#,
+            )
+            .bind(pid)
+            .fetch_one(self.pool())
+            .await?;
+
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE s.project_id = ?1
+                    "#,
                 )
                 .bind(pid)
                 .fetch_one(self.pool())
-                .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
+
+            Ok(AggregatedContributions {
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
+            })
+        } else {
+            // Global: use snapshots (pre-aggregated) + today's live data
+            let snapshot: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+                r#"
                 SELECT
                     COALESCE(SUM(sessions_count), 0),
                     COALESCE(SUM(ai_lines_added), 0),
@@ -666,58 +699,98 @@ impl Database {
                 FROM contribution_snapshots
                 WHERE project_id IS NULL
                 "#,
-                )
-                .fetch_one(self.pool())
-                .await?
-            };
+            )
+            .fetch_one(self.pool())
+            .await?;
 
-        // Add today's real-time data
-        let today = self.get_today_contributions(project_id).await?;
+            // Add today's real-time data
+            let today = self.get_today_contributions(project_id).await?;
 
-        Ok(AggregatedContributions {
-            sessions_count: snapshot.0 + today.sessions_count,
-            ai_lines_added: snapshot.1 + today.ai_lines_added,
-            ai_lines_removed: snapshot.2 + today.ai_lines_removed,
-            commits_count: snapshot.3 + today.commits_count,
-            commit_insertions: snapshot.4 + today.commit_insertions,
-            commit_deletions: snapshot.5 + today.commit_deletions,
-            tokens_used: snapshot.6 + today.tokens_used,
-            cost_cents: snapshot.7 + today.cost_cents,
-            files_edited_count: snapshot.8 + today.files_edited_count,
-        })
+            Ok(AggregatedContributions {
+                sessions_count: snapshot.0 + today.sessions_count,
+                ai_lines_added: snapshot.1 + today.ai_lines_added,
+                ai_lines_removed: snapshot.2 + today.ai_lines_removed,
+                commits_count: snapshot.3 + today.commits_count,
+                commit_insertions: snapshot.4 + today.commit_insertions,
+                commit_deletions: snapshot.5 + today.commit_deletions,
+                tokens_used: snapshot.6 + today.tokens_used,
+                cost_cents: snapshot.7 + today.cost_cents,
+                files_edited_count: snapshot.8 + today.files_edited_count,
+            })
+        }
     }
 
-    /// Get contributions in a date range from snapshots.
+    /// Get contributions in a date range.
+    ///
+    /// When `project_id` is Some, queries the `sessions` table directly because
+    /// snapshot generation only creates global (project_id = NULL) snapshots.
+    /// When `project_id` is None, uses pre-aggregated `contribution_snapshots`.
     async fn get_contributions_in_range(
         &self,
         from: &str,
         to: &str,
         project_id: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
-        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
-            sqlx::query_as(
+        if let Some(pid) = project_id {
+            // Project-filtered: query sessions directly (snapshots only have global data)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
                 r#"
                 SELECT
-                    COALESCE(SUM(sessions_count), 0),
-                    COALESCE(SUM(ai_lines_added), 0),
-                    COALESCE(SUM(ai_lines_removed), 0),
-                    COALESCE(SUM(commits_count), 0),
-                    COALESCE(SUM(commit_insertions), 0),
-                    COALESCE(SUM(commit_deletions), 0),
-                    COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0),
-                    COALESCE(SUM(files_edited_count), 0)
-                FROM contribution_snapshots
-                WHERE project_id = ?1 AND date >= ?2 AND date <= ?3
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE project_id = ?1
+                  AND date(last_message_at, 'unixepoch') >= ?2
+                  AND date(last_message_at, 'unixepoch') <= ?3
                 "#,
             )
             .bind(pid)
             .bind(from)
             .bind(to)
             .fetch_one(self.pool())
-            .await?
+            .await?;
+
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE s.project_id = ?1
+                      AND date(s.last_message_at, 'unixepoch') >= ?2
+                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                    "#,
+                )
+                .bind(pid)
+                .bind(from)
+                .bind(to)
+                .fetch_one(self.pool())
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
+
+            Ok(AggregatedContributions {
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
+            })
         } else {
-            sqlx::query_as(
+            // Global: use pre-aggregated snapshots
+            let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
                 r#"
                 SELECT
                     COALESCE(SUM(sessions_count), 0),
@@ -736,20 +809,20 @@ impl Database {
             .bind(from)
             .bind(to)
             .fetch_one(self.pool())
-            .await?
-        };
+            .await?;
 
-        Ok(AggregatedContributions {
-            sessions_count: row.0,
-            ai_lines_added: row.1,
-            ai_lines_removed: row.2,
-            commits_count: row.3,
-            commit_insertions: row.4,
-            commit_deletions: row.5,
-            tokens_used: row.6,
-            cost_cents: row.7,
-            files_edited_count: row.8,
-        })
+            Ok(AggregatedContributions {
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count: row.3,
+                commit_insertions: row.4,
+                commit_deletions: row.5,
+                tokens_used: row.6,
+                cost_cents: row.7,
+                files_edited_count: row.8,
+            })
+        }
     }
 
     // ========================================================================
@@ -789,19 +862,23 @@ impl Database {
             }
         };
 
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
-            sqlx::query_as(
+        if let Some(pid) = project_id {
+            // Project-filtered: query sessions directly grouped by date
+            // (snapshots only have global data)
+            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
-                    date,
-                    ai_lines_added,
-                    ai_lines_removed,
-                    commits_count,
-                    sessions_count,
-                    tokens_used,
-                    cost_cents
-                FROM contribution_snapshots
-                WHERE project_id = ?1 AND date >= ?2 AND date <= ?3
+                    date(last_message_at, 'unixepoch') as date,
+                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
+                    COALESCE(SUM(commit_count), 0) as commits_count,
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
+                FROM sessions
+                WHERE project_id = ?1
+                  AND date(last_message_at, 'unixepoch') >= ?2
+                  AND date(last_message_at, 'unixepoch') <= ?3
+                GROUP BY date(last_message_at, 'unixepoch')
                 ORDER BY date ASC
                 "#,
             )
@@ -809,9 +886,26 @@ impl Database {
             .bind(&from)
             .bind(&to)
             .fetch_all(self.pool())
-            .await?
+            .await?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
+                    let cost_cents = estimate_cost_cents(tokens_used);
+                    DailyTrendPoint {
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    }
+                })
+                .collect())
         } else {
-            sqlx::query_as(
+            // Global: use pre-aggregated snapshots
+            let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
                     date,
@@ -829,21 +923,21 @@ impl Database {
             .bind(&from)
             .bind(&to)
             .fetch_all(self.pool())
-            .await?
-        };
+            .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
-                date,
-                lines_added,
-                lines_removed,
-                commits,
-                sessions,
-                tokens_used,
-                cost_cents,
-            })
-            .collect())
+            Ok(rows
+                .into_iter()
+                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
+                    date,
+                    lines_added,
+                    lines_removed,
+                    commits,
+                    sessions,
+                    tokens_used,
+                    cost_cents,
+                })
+                .collect())
+        }
     }
 
     // ========================================================================
@@ -880,10 +974,9 @@ impl Database {
         };
 
         // Query sessions grouped by branch for the time range
-        let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>)> = if let Some(pid) =
-            project_id
-        {
-            sqlx::query_as(
+        if let Some(pid) = project_id {
+            // Project-filtered: no need to return project info (it's redundant)
+            let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>)> = sqlx::query_as(
                 r#"
                 SELECT
                     git_branch,
@@ -905,9 +998,29 @@ impl Database {
             .bind(&from)
             .bind(&to)
             .fetch_all(self.pool())
-            .await?
+            .await?;
+
+            Ok(rows
+                .into_iter()
+                .map(
+                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity)| {
+                        BranchBreakdown {
+                            branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
+                            sessions_count,
+                            lines_added,
+                            lines_removed,
+                            commits_count,
+                            ai_share: None,
+                            last_activity,
+                            project_id: None,
+                            project_name: None,
+                        }
+                    },
+                )
+                .collect())
         } else {
-            sqlx::query_as(
+            // Global: group by project + branch so frontend can group by project
+            let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>, Option<String>, Option<String>)> = sqlx::query_as(
                 r#"
                 SELECT
                     git_branch,
@@ -916,38 +1029,40 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
                     COALESCE(SUM(commit_count), 0) as commits_count,
                     COALESCE(SUM(files_edited_count), 0) as files_edited,
-                    MAX(last_message_at) as last_activity
+                    MAX(last_message_at) as last_activity,
+                    project_id,
+                    COALESCE(project_display_name, project_id) as project_name
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
                   AND date(last_message_at, 'unixepoch') <= ?2
-                GROUP BY git_branch
+                GROUP BY project_id, git_branch
                 ORDER BY sessions_count DESC
                 "#,
             )
             .bind(&from)
             .bind(&to)
             .fetch_all(self.pool())
-            .await?
-        };
+            .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(
-                |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity)| {
-                    // Calculate AI share: ai_lines_added / total commit insertions
-                    // For now, we just show the lines as-is; ai_share needs commit data
-                    BranchBreakdown {
-                        branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
-                        sessions_count,
-                        lines_added,
-                        lines_removed,
-                        commits_count,
-                        ai_share: None, // Would need to join with commits table
-                        last_activity,
-                    }
-                },
-            )
-            .collect())
+            Ok(rows
+                .into_iter()
+                .map(
+                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity, pid, pname)| {
+                        BranchBreakdown {
+                            branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
+                            sessions_count,
+                            lines_added,
+                            lines_removed,
+                            commits_count,
+                            ai_share: None,
+                            last_activity,
+                            project_id: pid,
+                            project_name: pname,
+                        }
+                    },
+                )
+                .collect())
+        }
     }
 
     // ========================================================================

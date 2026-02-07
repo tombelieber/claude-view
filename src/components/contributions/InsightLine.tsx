@@ -73,7 +73,7 @@ export function InsightLineCompact({ insight, className }: InsightLineProps) {
       aria-label={insight.text}
     >
       <Icon className={cn('w-3 h-3 flex-shrink-0', iconColor)} aria-hidden="true" />
-      <span className="truncate">{insight.text}</span>
+      <span className="truncate" title={insight.text}>{insight.text}</span>
     </div>
   )
 }
