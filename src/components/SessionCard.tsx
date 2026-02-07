@@ -301,15 +301,23 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
       </div>
 
       {/* LOC Impact */}
-      {hasLoc && (aiLinesAdded ?? 0) + (aiLinesRemoved ?? 0) > 0 && (
+      {(session.linesAdded > 0 || session.linesRemoved > 0) && (
         <div className="flex items-center gap-2 mt-2 text-xs">
+          {session.locSource === 2 && (
+            <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+          )}
           <span className="text-green-600 dark:text-green-400">
-            +{formatNumber(aiLinesAdded ?? 0)}
+            +{formatNumber(session.linesAdded)}
           </span>
           <span className="text-gray-400">/</span>
           <span className="text-red-600 dark:text-red-400">
-            -{formatNumber(aiLinesRemoved ?? 0)}
+            -{formatNumber(session.linesRemoved)}
           </span>
+        </div>
+      )}
+      {session.linesAdded === 0 && session.linesRemoved === 0 && session.locSource > 0 && (
+        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+          ±0
         </div>
       )}
 
