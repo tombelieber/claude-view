@@ -9,6 +9,7 @@ pub mod indexer_parallel;
 pub mod git_correlation;
 pub mod trends;
 pub mod snapshots;
+pub mod pricing;
 
 pub use queries::BranchCount;
 pub use queries::IndexerEntry;
@@ -24,8 +25,13 @@ pub use trends::IndexMetadata;
 pub use trends::TrendMetric;
 pub use trends::WeekTrends;
 
+// Re-export pricing types
+pub use pricing::{
+    calculate_cost_usd, default_pricing, lookup_pricing, ModelPricing, TokenBreakdown,
+    FALLBACK_COST_PER_TOKEN_USD,
+};
+
 // Re-export snapshots types
-pub use snapshots::BLENDED_COST_PER_TOKEN;
 pub use snapshots::AggregatedContributions;
 pub use snapshots::BranchBreakdown;
 pub use snapshots::BranchSession;
