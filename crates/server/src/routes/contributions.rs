@@ -26,8 +26,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use vibe_recall_db::{
-    AggregatedContributions, BranchBreakdown, BranchSession, DailyTrendPoint, FileImpact,
-    LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange, UncommittedWork,
+    calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
+    DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
+    TokenBreakdown, UncommittedWork, FALLBACK_COST_PER_TOKEN_USD,
 };
 
 use crate::error::{ApiError, ApiResult};
@@ -263,8 +264,8 @@ pub async fn get_contributions(
         .get_branch_breakdown(range, from_date, to_date, project_id)
         .await?;
 
-    // Get model breakdown
-    let by_model = state
+    // Get model breakdown (mutable — handler fills in cost_per_line per model)
+    let mut by_model = state
         .db
         .get_model_breakdown(range, from_date, to_date, project_id)
         .await?;
@@ -340,28 +341,51 @@ pub async fn get_contributions(
         },
     };
 
-    // Build efficiency
-    let total_cost = agg.cost_cents as f64 / 100.0;
+    // Compute per-model cost from ModelStats token data + pricing table
+    let mut total_cost_usd = 0.0;
+    for ms in &mut by_model {
+        let tokens = TokenBreakdown {
+            input_tokens: ms.input_tokens,
+            output_tokens: ms.output_tokens,
+            cache_read_tokens: ms.cache_read_tokens,
+            cache_creation_tokens: ms.cache_creation_tokens,
+        };
+        let model_cost = match lookup_pricing(&ms.model, &state.pricing) {
+            Some(p) => calculate_cost_usd(&tokens, p),
+            None => {
+                let total = (ms.input_tokens + ms.output_tokens
+                    + ms.cache_read_tokens + ms.cache_creation_tokens) as f64;
+                total * FALLBACK_COST_PER_TOKEN_USD
+            }
+        };
+        total_cost_usd += model_cost;
+        ms.cost_per_line = if ms.lines > 0 {
+            Some(model_cost / ms.lines as f64)
+        } else {
+            None
+        };
+    }
+
     let total_lines = agg.ai_lines_added + agg.ai_lines_removed;
     let cost_per_line = if total_lines > 0 {
-        Some(total_cost / total_lines as f64)
+        Some(total_cost_usd / total_lines as f64)
     } else {
         None
     };
     let cost_per_commit = if agg.commits_count > 0 {
-        Some(total_cost / agg.commits_count as f64)
+        Some(total_cost_usd / agg.commits_count as f64)
     } else {
         None
     };
 
-    // Cost trend from daily snapshot data (token-based estimation stored in cost_cents)
+    // Cost trend from daily snapshot data (still uses blended rate)
     let cost_trend: Vec<f64> = trend
         .iter()
-        .map(|t| t.cost_cents as f64 / 100.0) // Convert cents to dollars
+        .map(|t| t.cost_cents as f64 / 100.0)
         .collect();
 
     let efficiency = EfficiencyMetrics {
-        total_cost,
+        total_cost: total_cost_usd,
         total_lines,
         cost_per_line,
         cost_per_commit,

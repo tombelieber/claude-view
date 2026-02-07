@@ -19,11 +19,10 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Blended cost per token in cents.
-///
-/// Assumes ~50% Sonnet, ~40% Haiku, ~10% Opus usage with 2:1 input:output ratio.
-/// Equates to ~$2.50 per million tokens = 0.00025 cents per token.
-pub const BLENDED_COST_PER_TOKEN: f64 = 0.00025;
+/// Legacy blended cost per token in cents (0.00025 cents = $2.50/M tokens).
+/// Used only by `estimate_cost_cents()` for snapshot generation.
+/// For accurate per-model pricing, use `pricing::calculate_cost_usd()`.
+const BLENDED_COST_PER_TOKEN_CENTS: f64 = 0.00025;
 
 // ============================================================================
 // Types
@@ -249,7 +248,17 @@ pub struct LinkedCommit {
 pub struct ModelStats {
     pub model: String,
     #[ts(type = "number")]
+    pub sessions: i64,
+    #[ts(type = "number")]
     pub lines: i64,
+    #[ts(type = "number")]
+    pub input_tokens: i64,
+    #[ts(type = "number")]
+    pub output_tokens: i64,
+    #[ts(type = "number")]
+    pub cache_read_tokens: i64,
+    #[ts(type = "number")]
+    pub cache_creation_tokens: i64,
     pub reedit_rate: Option<f64>,
     pub cost_per_line: Option<f64>,
     pub insight: String,
@@ -1170,8 +1179,9 @@ impl Database {
 
     /// Get model breakdown statistics for a time range.
     ///
-    /// Aggregates by model from turn_metrics table, joining with sessions
-    /// to get re-edit rates and line counts.
+    /// Aggregates by model from the `turns` table (not the empty `turn_metrics`
+    /// table). Uses CTEs to avoid double-counting session-level metrics when a
+    /// session has multiple turns for the same model.
     pub async fn get_model_breakdown(
         &self,
         range: TimeRange,
@@ -1181,25 +1191,91 @@ impl Database {
     ) -> DbResult<Vec<ModelStats>> {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
-        // Query aggregated model stats from turn_metrics joined with sessions
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
+        // CTE approach:
+        //   model_tokens   — aggregate token counts per model (no double-counting)
+        //   model_weights   — per (session, model) token weight for proportional allocation
+        //   session_totals  — total tokens per session (denominator for weight)
+        //   model_sessions  — session-level metrics weighted by token share
+        //
+        // If a session used 70% Sonnet / 30% Haiku tokens, its 100 lines are
+        // allocated as 70 to Sonnet and 30 to Haiku, avoiding double-counting.
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
+                WITH model_tokens AS (
+                    SELECT
+                        COALESCE(t.model_id, 'unknown') as model,
+                        SUM(COALESCE(t.input_tokens, 0)) as input_tokens,
+                        SUM(COALESCE(t.output_tokens, 0)) as output_tokens,
+                        SUM(COALESCE(t.cache_read_tokens, 0)) as cache_read_tokens,
+                        SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
+                        COUNT(DISTINCT t.session_id) as session_count
+                    FROM turns t
+                    JOIN sessions s ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND s.project_id = ?1
+                      AND date(s.last_message_at, 'unixepoch') >= ?2
+                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                    GROUP BY t.model_id
+                ),
+                model_weights AS (
+                    SELECT
+                        t.session_id,
+                        COALESCE(t.model_id, 'unknown') as model_id,
+                        CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
+                    FROM turns t
+                    JOIN sessions s ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND s.project_id = ?1
+                      AND date(s.last_message_at, 'unixepoch') >= ?2
+                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                    GROUP BY t.session_id, t.model_id
+                ),
+                session_totals AS (
+                    SELECT session_id, SUM(model_tokens) as total_tokens
+                    FROM model_weights
+                    GROUP BY session_id
+                ),
+                model_sessions AS (
+                    SELECT
+                        w.model_id as model,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN (s.ai_lines_added + s.ai_lines_removed) * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as lines,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN s.reedited_files_count * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as reedited,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN s.files_edited_count * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as files_edited
+                    FROM model_weights w
+                    JOIN session_totals st ON w.session_id = st.session_id
+                    JOIN sessions s ON w.session_id = s.id
+                    GROUP BY w.model_id
+                )
                 SELECT
-                    COALESCE(tm.model, 'unknown') as model,
-                    COUNT(DISTINCT s.id) as sessions,
-                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
-                    COALESCE(SUM(tm.input_tokens + tm.output_tokens), 0) as tokens,
-                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
-                    COALESCE(SUM(s.files_edited_count), 0) as files_edited,
-                    COUNT(DISTINCT tm.session_id) as turn_sessions
-                FROM turn_metrics tm
-                JOIN sessions s ON tm.session_id = s.id
-                WHERE s.project_id = ?1
-                  AND date(s.last_message_at, 'unixepoch') >= ?2
-                  AND date(s.last_message_at, 'unixepoch') <= ?3
-                GROUP BY tm.model
-                ORDER BY lines DESC
+                    mt.model,
+                    mt.session_count as sessions,
+                    COALESCE(ms.lines, 0) as lines,
+                    mt.input_tokens,
+                    mt.output_tokens,
+                    mt.cache_read_tokens,
+                    mt.cache_creation_tokens,
+                    COALESCE(ms.reedited, 0) as reedited,
+                    COALESCE(ms.files_edited, 0) as files_edited
+                FROM model_tokens mt
+                LEFT JOIN model_sessions ms ON mt.model = ms.model
+                ORDER BY (mt.input_tokens + mt.output_tokens) DESC
                 "#,
             )
             .bind(pid)
@@ -1210,20 +1286,77 @@ impl Database {
         } else {
             sqlx::query_as(
                 r#"
+                WITH model_tokens AS (
+                    SELECT
+                        COALESCE(t.model_id, 'unknown') as model,
+                        SUM(COALESCE(t.input_tokens, 0)) as input_tokens,
+                        SUM(COALESCE(t.output_tokens, 0)) as output_tokens,
+                        SUM(COALESCE(t.cache_read_tokens, 0)) as cache_read_tokens,
+                        SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
+                        COUNT(DISTINCT t.session_id) as session_count
+                    FROM turns t
+                    JOIN sessions s ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND date(s.last_message_at, 'unixepoch') >= ?1
+                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                    GROUP BY t.model_id
+                ),
+                model_weights AS (
+                    SELECT
+                        t.session_id,
+                        COALESCE(t.model_id, 'unknown') as model_id,
+                        CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
+                    FROM turns t
+                    JOIN sessions s ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND date(s.last_message_at, 'unixepoch') >= ?1
+                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                    GROUP BY t.session_id, t.model_id
+                ),
+                session_totals AS (
+                    SELECT session_id, SUM(model_tokens) as total_tokens
+                    FROM model_weights
+                    GROUP BY session_id
+                ),
+                model_sessions AS (
+                    SELECT
+                        w.model_id as model,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN (s.ai_lines_added + s.ai_lines_removed) * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as lines,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN s.reedited_files_count * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as reedited,
+                        CAST(ROUND(COALESCE(SUM(
+                            CASE WHEN st.total_tokens > 0
+                                THEN s.files_edited_count * w.model_tokens / st.total_tokens
+                                ELSE 0
+                            END
+                        ), 0)) AS INTEGER) as files_edited
+                    FROM model_weights w
+                    JOIN session_totals st ON w.session_id = st.session_id
+                    JOIN sessions s ON w.session_id = s.id
+                    GROUP BY w.model_id
+                )
                 SELECT
-                    COALESCE(tm.model, 'unknown') as model,
-                    COUNT(DISTINCT s.id) as sessions,
-                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
-                    COALESCE(SUM(tm.input_tokens + tm.output_tokens), 0) as tokens,
-                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
-                    COALESCE(SUM(s.files_edited_count), 0) as files_edited,
-                    COUNT(DISTINCT tm.session_id) as turn_sessions
-                FROM turn_metrics tm
-                JOIN sessions s ON tm.session_id = s.id
-                WHERE date(s.last_message_at, 'unixepoch') >= ?1
-                  AND date(s.last_message_at, 'unixepoch') <= ?2
-                GROUP BY tm.model
-                ORDER BY lines DESC
+                    mt.model,
+                    mt.session_count as sessions,
+                    COALESCE(ms.lines, 0) as lines,
+                    mt.input_tokens,
+                    mt.output_tokens,
+                    mt.cache_read_tokens,
+                    mt.cache_creation_tokens,
+                    COALESCE(ms.reedited, 0) as reedited,
+                    COALESCE(ms.files_edited, 0) as files_edited
+                FROM model_tokens mt
+                LEFT JOIN model_sessions ms ON mt.model = ms.model
+                ORDER BY (mt.input_tokens + mt.output_tokens) DESC
                 "#,
             )
             .bind(&from)
@@ -1234,19 +1367,15 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(model, _sessions, lines, tokens, reedited, files_edited, _turn_sessions)| {
+            .map(|(model, sessions, lines, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reedited, files_edited)| {
                 let reedit_rate = if files_edited > 0 {
                     Some(reedited as f64 / files_edited as f64)
                 } else {
                     None
                 };
 
-                let cost_cents = estimate_cost_cents(tokens);
-                let cost_per_line = if lines > 0 {
-                    Some(cost_cents as f64 / 100.0 / lines as f64)
-                } else {
-                    None
-                };
+                // cost_per_line is computed by the handler using per-model pricing
+                // (set to None here, filled in by contributions.rs)
 
                 // Generate simple insight
                 let insight = match reedit_rate {
@@ -1258,9 +1387,14 @@ impl Database {
 
                 ModelStats {
                     model,
+                    sessions,
                     lines,
+                    input_tokens,
+                    output_tokens,
+                    cache_read_tokens,
+                    cache_creation_tokens,
                     reedit_rate,
-                    cost_per_line,
+                    cost_per_line: None,
                     insight,
                 }
             })
@@ -1362,7 +1496,10 @@ impl Database {
 
     /// Get skill effectiveness breakdown.
     ///
-    /// Parses skills_used JSON from sessions to aggregate by skill.
+    /// Queries the `invocations` + `invocables` tables (where `kind = 'skill'`)
+    /// instead of the unreliable `sessions.skills_used` JSON column. Uses a CTE
+    /// to deduplicate to one row per (skill, session) pair so session-level
+    /// metrics aren't double-counted.
     pub async fn get_skill_breakdown(
         &self,
         range: TimeRange,
@@ -1372,41 +1509,75 @@ impl Database {
     ) -> DbResult<Vec<SkillStats>> {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
-        // Get sessions with skills data
-        let rows: Vec<(String, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
+        // Step 1: Skills with session metrics (deduplicated via CTE)
+        let skill_rows: Vec<(String, i64, f64, f64, f64)> = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
+                WITH skill_sessions AS (
+                    SELECT DISTINCT
+                        inv.name as skill_name,
+                        i.session_id
+                    FROM invocations i
+                    JOIN invocables inv ON i.invocable_id = inv.id
+                    WHERE inv.kind = 'skill'
+                )
                 SELECT
-                    skills_used,
-                    ai_lines_added + ai_lines_removed as lines,
-                    CASE WHEN commit_count > 0 THEN 1 ELSE 0 END as has_commit,
-                    reedited_files_count,
-                    files_edited_count,
-                    1 as session_count
-                FROM sessions
-                WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                    ss.skill_name,
+                    COUNT(*) as session_count,
+                    COALESCE(AVG(s.ai_lines_added + s.ai_lines_removed), 0.0) as avg_loc,
+                    COALESCE(
+                        SUM(CASE WHEN s.commit_count > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*),
+                        0.0
+                    ) as commit_rate,
+                    COALESCE(
+                        CAST(SUM(s.reedited_files_count) AS REAL) /
+                        NULLIF(SUM(s.files_edited_count), 0),
+                        0.0
+                    ) as reedit_rate
+                FROM skill_sessions ss
+                JOIN sessions s ON ss.session_id = s.id
+                WHERE date(s.last_message_at, 'unixepoch') >= ?1
+                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND s.project_id = ?3
+                GROUP BY ss.skill_name
+                ORDER BY session_count DESC
                 "#,
             )
-            .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(pid)
             .fetch_all(self.pool())
             .await?
         } else {
             sqlx::query_as(
                 r#"
+                WITH skill_sessions AS (
+                    SELECT DISTINCT
+                        inv.name as skill_name,
+                        i.session_id
+                    FROM invocations i
+                    JOIN invocables inv ON i.invocable_id = inv.id
+                    WHERE inv.kind = 'skill'
+                )
                 SELECT
-                    skills_used,
-                    ai_lines_added + ai_lines_removed as lines,
-                    CASE WHEN commit_count > 0 THEN 1 ELSE 0 END as has_commit,
-                    reedited_files_count,
-                    files_edited_count,
-                    1 as session_count
-                FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                    ss.skill_name,
+                    COUNT(*) as session_count,
+                    COALESCE(AVG(s.ai_lines_added + s.ai_lines_removed), 0.0) as avg_loc,
+                    COALESCE(
+                        SUM(CASE WHEN s.commit_count > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*),
+                        0.0
+                    ) as commit_rate,
+                    COALESCE(
+                        CAST(SUM(s.reedited_files_count) AS REAL) /
+                        NULLIF(SUM(s.files_edited_count), 0),
+                        0.0
+                    ) as reedit_rate
+                FROM skill_sessions ss
+                JOIN sessions s ON ss.session_id = s.id
+                WHERE date(s.last_message_at, 'unixepoch') >= ?1
+                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                GROUP BY ss.skill_name
+                ORDER BY session_count DESC
                 "#,
             )
             .bind(&from)
@@ -1415,64 +1586,99 @@ impl Database {
             .await?
         };
 
-        // Aggregate by skill
-        let mut skill_map: std::collections::HashMap<String, (i64, i64, i64, i64, i64)> =
-            std::collections::HashMap::new();
+        // Step 2: "(no skill)" baseline — sessions with zero skill invocations
+        let no_skill_row: Option<(i64, f64, f64, f64)> = if let Some(pid) = project_id {
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(*) as session_count,
+                    COALESCE(AVG(s.ai_lines_added + s.ai_lines_removed), 0.0) as avg_loc,
+                    COALESCE(
+                        SUM(CASE WHEN s.commit_count > 0 THEN 1.0 ELSE 0.0 END) /
+                        NULLIF(COUNT(*), 0),
+                        0.0
+                    ) as commit_rate,
+                    COALESCE(
+                        CAST(SUM(s.reedited_files_count) AS REAL) /
+                        NULLIF(SUM(s.files_edited_count), 0),
+                        0.0
+                    ) as reedit_rate
+                FROM sessions s
+                LEFT JOIN (
+                    SELECT DISTINCT i2.session_id
+                    FROM invocations i2
+                    JOIN invocables inv2 ON i2.invocable_id = inv2.id
+                    WHERE inv2.kind = 'skill'
+                ) skill_sessions ON s.id = skill_sessions.session_id
+                WHERE skill_sessions.session_id IS NULL
+                  AND date(s.last_message_at, 'unixepoch') >= ?1
+                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND s.project_id = ?3
+                "#,
+            )
+            .bind(&from)
+            .bind(&to)
+            .bind(pid)
+            .fetch_optional(self.pool())
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(*) as session_count,
+                    COALESCE(AVG(s.ai_lines_added + s.ai_lines_removed), 0.0) as avg_loc,
+                    COALESCE(
+                        SUM(CASE WHEN s.commit_count > 0 THEN 1.0 ELSE 0.0 END) /
+                        NULLIF(COUNT(*), 0),
+                        0.0
+                    ) as commit_rate,
+                    COALESCE(
+                        CAST(SUM(s.reedited_files_count) AS REAL) /
+                        NULLIF(SUM(s.files_edited_count), 0),
+                        0.0
+                    ) as reedit_rate
+                FROM sessions s
+                LEFT JOIN (
+                    SELECT DISTINCT i2.session_id
+                    FROM invocations i2
+                    JOIN invocables inv2 ON i2.invocable_id = inv2.id
+                    WHERE inv2.kind = 'skill'
+                ) skill_sessions ON s.id = skill_sessions.session_id
+                WHERE skill_sessions.session_id IS NULL
+                  AND date(s.last_message_at, 'unixepoch') >= ?1
+                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                "#,
+            )
+            .bind(&from)
+            .bind(&to)
+            .fetch_optional(self.pool())
+            .await?
+        };
 
-        for (skills_json, lines, has_commit, reedited, files_edited, _) in rows {
-            // Parse skills JSON array
-            let skills: Vec<String> = match serde_json::from_str(&skills_json) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!("Failed to parse skills_used JSON: {e}");
-                    Vec::new()
-                }
-            };
-
-            if skills.is_empty() {
-                // Track sessions without skills
-                let entry = skill_map.entry("(no skill)".to_string()).or_default();
-                entry.0 += 1; // sessions
-                entry.1 += lines; // lines
-                entry.2 += has_commit; // commits
-                entry.3 += reedited; // reedited
-                entry.4 += files_edited; // files_edited
-            } else {
-                for skill in skills {
-                    let entry = skill_map.entry(skill).or_default();
-                    entry.0 += 1;
-                    entry.1 += lines;
-                    entry.2 += has_commit;
-                    entry.3 += reedited;
-                    entry.4 += files_edited;
-                }
-            }
-        }
-
-        let mut results: Vec<SkillStats> = skill_map
+        // Build results
+        let mut results: Vec<SkillStats> = skill_rows
             .into_iter()
-            .map(|(skill, (sessions, lines, commits, reedited, files_edited))| {
-                let avg_loc = if sessions > 0 { lines / sessions } else { 0 };
-                let commit_rate = if sessions > 0 {
-                    commits as f64 / sessions as f64
-                } else {
-                    0.0
-                };
-                let reedit_rate = if files_edited > 0 {
-                    reedited as f64 / files_edited as f64
-                } else {
-                    0.0
-                };
-
-                SkillStats {
-                    skill,
-                    sessions,
-                    avg_loc,
-                    commit_rate,
-                    reedit_rate,
-                }
+            .map(|(skill_name, sessions, avg_loc, commit_rate, reedit_rate)| SkillStats {
+                skill: skill_name,
+                sessions,
+                avg_loc: avg_loc.round() as i64,
+                commit_rate,
+                reedit_rate,
             })
             .collect();
+
+        // Add "(no skill)" baseline if there are sessions without skills
+        if let Some((count, avg_loc, commit_rate, reedit_rate)) = no_skill_row {
+            if count > 0 {
+                results.push(SkillStats {
+                    skill: "(no skill)".to_string(),
+                    sessions: count,
+                    avg_loc: avg_loc.round() as i64,
+                    commit_rate,
+                    reedit_rate,
+                });
+            }
+        }
 
         // Sort by sessions descending
         results.sort_by(|a, b| b.sessions.cmp(&a.sessions));
@@ -2212,7 +2418,7 @@ impl Database {
 ///
 /// Blended rate: ~$2.5 per million tokens average
 fn estimate_cost_cents(total_tokens: i64) -> i64 {
-    (total_tokens as f64 * BLENDED_COST_PER_TOKEN).round() as i64
+    (total_tokens as f64 * BLENDED_COST_PER_TOKEN_CENTS).round() as i64
 }
 
 // ============================================================================
@@ -2461,14 +2667,42 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
         let now = Utc::now().timestamp();
 
-        // Insert sessions with different skills
+        // Insert sessions
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, project_id, file_path, preview, skills_used, ai_lines_added, ai_lines_removed, commit_count, files_edited_count, reedited_files_count, last_message_at)
+            INSERT INTO sessions (id, project_id, file_path, preview, ai_lines_added, ai_lines_removed, commit_count, files_edited_count, reedited_files_count, last_message_at)
             VALUES
-                ('sess1', 'proj', '/tmp/1.jsonl', 'Preview', '["tdd", "commit"]', 200, 50, 1, 5, 1, ?1),
-                ('sess2', 'proj', '/tmp/2.jsonl', 'Preview', '["tdd"]', 150, 30, 1, 3, 0, ?1),
-                ('sess3', 'proj', '/tmp/3.jsonl', 'Preview', '[]', 100, 20, 0, 4, 2, ?1)
+                ('sess1', 'proj', '/tmp/1.jsonl', 'Preview', 200, 50, 1, 5, 1, ?1),
+                ('sess2', 'proj', '/tmp/2.jsonl', 'Preview', 150, 30, 1, 3, 0, ?1),
+                ('sess3', 'proj', '/tmp/3.jsonl', 'Preview', 100, 20, 0, 4, 2, ?1)
+            "#,
+        )
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Insert invocables (skills)
+        sqlx::query(
+            r#"
+            INSERT INTO invocables (id, plugin_name, name, kind, description, status)
+            VALUES
+                ('tdd-skill', 'superpowers', 'tdd', 'skill', 'TDD skill', 'active'),
+                ('commit-skill', 'commit-commands', 'commit', 'skill', 'Commit skill', 'active')
+            "#,
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Insert invocations: sess1 uses tdd + commit, sess2 uses tdd, sess3 uses nothing
+        sqlx::query(
+            r#"
+            INSERT INTO invocations (source_file, byte_offset, invocable_id, session_id, project, timestamp)
+            VALUES
+                ('/tmp/1.jsonl', 0, 'tdd-skill', 'sess1', 'proj', ?1),
+                ('/tmp/1.jsonl', 100, 'commit-skill', 'sess1', 'proj', ?1),
+                ('/tmp/2.jsonl', 0, 'tdd-skill', 'sess2', 'proj', ?1)
             "#,
         )
         .bind(now)
@@ -2499,7 +2733,12 @@ mod tests {
     async fn test_model_stats_serialization() {
         let stats = ModelStats {
             model: "claude-sonnet".to_string(),
+            sessions: 10,
             lines: 500,
+            input_tokens: 100_000,
+            output_tokens: 50_000,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
             reedit_rate: Some(0.15),
             cost_per_line: Some(0.003),
             insight: "Low re-edit rate".to_string(),
