@@ -1,17 +1,30 @@
 import { GitBranch } from 'lucide-react'
 import { TimeRangeFilter } from './TimeRangeFilter'
 import type { TimeRange } from '../../hooks/use-contributions'
+import type { ProjectSummary } from '../../hooks/use-projects'
 
 interface ContributionsHeaderProps {
   range: TimeRange
   onRangeChange: (range: TimeRange) => void
   sessionCount: number
+  projects?: ProjectSummary[]
+  projectId: string | null
+  onProjectChange: (id: string | null) => void
+  projectsLoading?: boolean
 }
 
 /**
- * Header for the contributions page with title and time range filter.
+ * Header for the contributions page with title, project filter, and time range filter.
  */
-export function ContributionsHeader({ range, onRangeChange, sessionCount }: ContributionsHeaderProps) {
+export function ContributionsHeader({
+  range,
+  onRangeChange,
+  sessionCount,
+  projects,
+  projectId,
+  onProjectChange,
+  projectsLoading,
+}: ContributionsHeaderProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center justify-between">
@@ -31,7 +44,22 @@ export function ContributionsHeader({ range, onRangeChange, sessionCount }: Cont
           </div>
         </div>
 
-        <TimeRangeFilter value={range} onChange={onRangeChange} />
+        <div className="flex items-center gap-3">
+          <select
+            value={projectId ?? ''}
+            onChange={(e) => onProjectChange(e.target.value || null)}
+            disabled={projectsLoading}
+            className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+          >
+            <option value="">All Projects</option>
+            {projects?.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+          <TimeRangeFilter value={range} onChange={onRangeChange} />
+        </div>
       </div>
     </div>
   )
