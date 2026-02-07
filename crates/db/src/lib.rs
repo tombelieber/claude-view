@@ -169,6 +169,11 @@ impl Database {
     /// columns and adding them if missing.
     async fn ensure_schema_columns(&self) -> DbResult<()> {
         let expected_session_cols = &[
+            // Main LOC estimation columns
+            ("lines_added", "INTEGER NOT NULL DEFAULT 0"),
+            ("lines_removed", "INTEGER NOT NULL DEFAULT 0"),
+            ("loc_source", "INTEGER NOT NULL DEFAULT 0"),
+            // Theme 3 contribution columns
             ("ai_lines_added", "INTEGER NOT NULL DEFAULT 0"),
             ("ai_lines_removed", "INTEGER NOT NULL DEFAULT 0"),
             ("work_type", "TEXT"),
