@@ -19,6 +19,12 @@ export function Sidebar({ projects }: SidebarProps) {
 
   const selectedProjectId = params.projectId ? decodeURIComponent(params.projectId) : null
 
+  const [searchParams] = useSearchParams()
+  // On contributions page, the filtered project comes from URL search params
+  const contributionsProjectId = location.pathname === '/contributions'
+    ? searchParams.get('projectId')
+    : null
+
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -98,8 +104,23 @@ export function Sidebar({ projects }: SidebarProps) {
       }
       return next
     })
-    navigate(`/project/${encodeURIComponent(node.name)}`)
-  }, [navigate])
+
+    // Context-aware navigation
+    if (location.pathname === '/contributions') {
+      // Stay on contributions, set projectId URL param
+      const params = new URLSearchParams(window.location.search)
+      const current = params.get('projectId')
+      if (current === node.name) {
+        params.delete('projectId') // Toggle off = back to All Projects
+      } else {
+        params.set('projectId', node.name)
+      }
+      navigate(`/contributions?${params}`)
+    } else {
+      // Default: navigate to project detail page
+      navigate(`/project/${encodeURIComponent(node.name)}`)
+    }
+  }, [navigate, location.pathname])
 
   const handleGroupClick = useCallback((node: ProjectTreeNode) => {
     if (node.type !== 'group') return
@@ -247,7 +268,7 @@ export function Sidebar({ projects }: SidebarProps) {
       )
     } else {
       // Project node
-      const isSelected = selectedProjectId === node.name
+      const isSelected = selectedProjectId === node.name || contributionsProjectId === node.name
       const isExpanded = expandedProjects.has(node.name)
       const paddingLeft = node.depth * 12 + 8
 
@@ -325,6 +346,7 @@ export function Sidebar({ projects }: SidebarProps) {
     }
   }, [
     selectedProjectId,
+    contributionsProjectId,
     expandedProjects,
     expandedGroups,
     focusedIndex,

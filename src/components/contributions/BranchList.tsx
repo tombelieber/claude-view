@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { GitBranch, ChevronDown, ArrowUpDown } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { GitBranch, ChevronDown, ArrowUpDown, FolderOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { BranchCard } from './BranchCard'
 import type { TimeRange } from '../../hooks/use-contributions'
@@ -49,8 +49,22 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }:
     }
   })
 
-  const handleToggleBranch = (branchName: string) => {
-    setExpandedBranch((prev) => (prev === branchName ? null : branchName))
+  // Group by project (only when data has project info and not filtering by a single project)
+  const groupedBranches = useMemo(() => {
+    const hasProjects = sortedBranches.some(b => b.projectName)
+    if (!hasProjects) return [{ name: '', branches: sortedBranches }]
+
+    const groups = new Map<string, BranchBreakdown[]>()
+    for (const branch of sortedBranches) {
+      const key = branch.projectName ?? '(unknown)'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(branch)
+    }
+    return Array.from(groups, ([name, branches]) => ({ name, branches }))
+  }, [sortedBranches])
+
+  const handleToggleBranch = (branchKey: string) => {
+    setExpandedBranch((prev) => (prev === branchKey ? null : branchKey))
   }
 
   if (byBranch.length === 0) {
@@ -143,17 +157,30 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }:
         </div>
       </div>
 
-      {/* Branch Cards */}
+      {/* Branch Cards (grouped by project when applicable) */}
       <div className="space-y-3">
-        {sortedBranches.map((branch) => (
-          <BranchCard
-            key={branch.branch}
-            branch={branch}
-            isExpanded={expandedBranch === branch.branch}
-            onToggle={() => handleToggleBranch(branch.branch)}
-            onDrillDown={onSessionDrillDown}
-            timeRange={timeRange}
-          />
+        {groupedBranches.map((group) => (
+          <div key={group.name || '__all'}>
+            {group.name && (
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-6 mb-2 first:mt-0 flex items-center gap-2">
+                <FolderOpen className="w-3.5 h-3.5" />
+                {group.name}
+              </h3>
+            )}
+            {group.branches.map((branch) => {
+              const branchKey = `${group.name}-${branch.branch}`
+              return (
+                <BranchCard
+                  key={branchKey}
+                  branch={branch}
+                  isExpanded={expandedBranch === branchKey}
+                  onToggle={() => handleToggleBranch(branchKey)}
+                  onDrillDown={onSessionDrillDown}
+                  timeRange={timeRange}
+                />
+              )
+            })}
+          </div>
         ))}
       </div>
     </div>
