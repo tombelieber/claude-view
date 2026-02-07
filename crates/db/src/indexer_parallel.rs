@@ -2025,6 +2025,9 @@ async fn write_results_sqlx(
             CURRENT_PARSE_VERSION,
             result.file_size,
             result.file_mtime,
+            result.parse_result.lines_added as i32,
+            result.parse_result.lines_removed as i32,
+            1, // loc_source = 1 (tool-call estimate)
             meta.ai_lines_added as i32,
             meta.ai_lines_removed as i32,
             Some(work_type.as_str()),
