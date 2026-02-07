@@ -13,8 +13,12 @@ export type TimeRange = 'today' | 'week' | 'month' | '90days' | 'all'
 /**
  * Fetch contributions data from the API.
  */
-async function fetchContributions(range: TimeRange): Promise<ContributionsResponse> {
-  const response = await fetch(`/api/contributions?range=${encodeURIComponent(range)}`)
+async function fetchContributions(range: TimeRange, projectId?: string): Promise<ContributionsResponse> {
+  let url = `/api/contributions?range=${encodeURIComponent(range)}`
+  if (projectId) {
+    url += `&projectId=${encodeURIComponent(projectId)}`
+  }
+  const response = await fetch(url)
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Failed to fetch contributions: ${errorText}`)
@@ -48,10 +52,10 @@ async function fetchSessionContribution(sessionId: string): Promise<SessionContr
  * - uncommitted: Array<UncommittedWork>
  * - warnings: Array<ContributionWarning>
  */
-export function useContributions(range: TimeRange = 'week') {
+export function useContributions(range: TimeRange = 'week', projectId?: string) {
   return useQuery({
-    queryKey: ['contributions', range],
-    queryFn: () => fetchContributions(range),
+    queryKey: ['contributions', range, projectId],
+    queryFn: () => fetchContributions(range, projectId),
     staleTime: getStaleTime(range),
     gcTime: 30 * 60 * 1000, // 30 min garbage collection
   })
@@ -74,11 +78,14 @@ export function useSessionContribution(sessionId: string | null) {
  */
 async function fetchBranchSessions(
   branch: string,
-  range: TimeRange
+  range: TimeRange,
+  projectId?: string
 ): Promise<BranchSessionsResponse> {
-  const response = await fetch(
-    `/api/contributions/branches/${encodeURIComponent(branch)}/sessions?range=${encodeURIComponent(range)}`
-  )
+  let url = `/api/contributions/branches/${encodeURIComponent(branch)}/sessions?range=${encodeURIComponent(range)}`
+  if (projectId) {
+    url += `&projectId=${encodeURIComponent(projectId)}`
+  }
+  const response = await fetch(url)
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Failed to fetch branch sessions: ${errorText}`)
@@ -94,11 +101,12 @@ async function fetchBranchSessions(
 export function useBranchSessions(
   branch: string | null,
   range: TimeRange = 'week',
-  enabled: boolean = true
+  enabled: boolean = true,
+  projectId?: string
 ) {
   return useQuery({
-    queryKey: ['branch-sessions', branch, range],
-    queryFn: () => fetchBranchSessions(branch!, range),
+    queryKey: ['branch-sessions', branch, range, projectId],
+    queryFn: () => fetchBranchSessions(branch!, range, projectId),
     enabled: enabled && !!branch,
     staleTime: 5 * 60 * 1000, // 5 min
   })

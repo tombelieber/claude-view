@@ -3,4 +3,4 @@
 /**
  * Model statistics for the byModel breakdown.
  */
-export type ModelStats = { model: string, lines: number, reeditRate: number | null, costPerLine: number | null, insight: string, };
+export type ModelStats = { model: string, sessions: number, lines: number, inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheCreationTokens: number, reeditRate: number | null, costPerLine: number | null, insight: string, };
