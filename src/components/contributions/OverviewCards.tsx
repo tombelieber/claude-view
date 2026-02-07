@@ -1,6 +1,7 @@
 import { Activity, FileCode2, Target, TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { InsightLineCompact } from './InsightLine'
+import { MetricTooltip } from './MetricTooltip'
 import type { OverviewMetrics } from '../../types/generated'
 
 interface OverviewCardsProps {
@@ -93,7 +94,18 @@ export function OverviewCards({ overview }: OverviewCardsProps) {
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {effectiveness.reeditRate !== null
-                ? `${effectiveness.reeditRate.toFixed(2)} re-edit rate`
+                ? (
+                  <span className="inline-flex items-center">
+                    {effectiveness.reeditRate.toFixed(2)} re-edit rate
+                    <MetricTooltip>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">Re-edit rate</span> measures how often AI-generated files need further editing after the initial write.
+                      <br /><br />
+                      <span className="font-medium text-gray-900 dark:text-gray-100">Lower is better.</span> 0 = no re-edits needed.
+                      <br /><br />
+                      Formula: files re-edited / total files edited
+                    </MetricTooltip>
+                  </span>
+                )
                 : 'Re-edit rate unavailable'}
             </p>
           </div>

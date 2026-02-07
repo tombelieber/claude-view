@@ -27,7 +27,7 @@ export function ContributionsHeader({
 }: ContributionsHeaderProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-[#7c9885]/10 rounded-lg">
             <GitBranch className="w-5 h-5 text-[#7c9885]" />
