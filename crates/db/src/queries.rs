@@ -1348,6 +1348,9 @@ pub async fn update_session_deep_fields_tx(
     parse_version: i32,
     file_size: i64,
     file_mtime: i64,
+    lines_added: i32,
+    lines_removed: i32,
+    loc_source: i32,
     ai_lines_added: i32,
     ai_lines_removed: i32,
     work_type: Option<&str>,
@@ -1397,9 +1400,12 @@ pub async fn update_session_deep_fields_tx(
             parse_version = ?39,
             file_size_at_index = ?40,
             file_mtime_at_index = ?41,
-            ai_lines_added = ?42,
-            ai_lines_removed = ?43,
-            work_type = ?44
+            lines_added = ?42,
+            lines_removed = ?43,
+            loc_source = ?44,
+            ai_lines_added = ?45,
+            ai_lines_removed = ?46,
+            work_type = ?47
         WHERE id = ?1
         "#,
     )
@@ -1444,6 +1450,9 @@ pub async fn update_session_deep_fields_tx(
     .bind(parse_version)
     .bind(file_size)
     .bind(file_mtime)
+    .bind(lines_added)
+    .bind(lines_removed)
+    .bind(loc_source)
     .bind(ai_lines_added)
     .bind(ai_lines_removed)
     .bind(work_type)

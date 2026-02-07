@@ -590,15 +590,6 @@ pub fn tier2_match(
 // Database CRUD Operations
 // ============================================================================
 
-/// Git diff stats extracted from numstat output.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DiffStats {
-    /// Total lines added across all files.
-    pub lines_added: u32,
-    /// Total lines removed across all files.
-    pub lines_removed: u32,
-}
-
 impl DiffStats {
     /// Parse numstat output and aggregate stats.
     ///
@@ -623,8 +614,9 @@ impl DiffStats {
             let removed = parts[1].parse::<u32>().ok();
 
             if let (Some(a), Some(r)) = (added, removed) {
-                stats.lines_added += a;
-                stats.lines_removed += r;
+                stats.files_changed += 1;
+                stats.insertions += a;
+                stats.deletions += r;
             }
             // Binary files (- - filename) are skipped
         }
@@ -635,8 +627,9 @@ impl DiffStats {
     /// Aggregate multiple DiffStats together.
     pub fn aggregate(stats: &[DiffStats]) -> Self {
         stats.iter().fold(Self::default(), |mut acc, s| {
-            acc.lines_added += s.lines_added;
-            acc.lines_removed += s.lines_removed;
+            acc.files_changed += s.files_changed;
+            acc.insertions += s.insertions;
+            acc.deletions += s.deletions;
             acc
         })
     }
@@ -954,7 +947,7 @@ impl Database {
         stats: &DiffStats,
     ) -> DbResult<()> {
         // Only update if we have actual stats
-        if stats.lines_added == 0 && stats.lines_removed == 0 {
+        if stats.insertions == 0 && stats.deletions == 0 {
             return Ok(());
         }
 
@@ -966,8 +959,8 @@ impl Database {
             "#,
         )
         .bind(session_id)
-        .bind(stats.lines_added as i64)
-        .bind(stats.lines_removed as i64)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
         .execute(self.pool())
         .await?;
 
@@ -2531,24 +2524,24 @@ mod tests {
     #[test]
     fn test_diff_stats_from_numstat_empty() {
         let stats = DiffStats::from_numstat("");
-        assert_eq!(stats.lines_added, 0);
-        assert_eq!(stats.lines_removed, 0);
+        assert_eq!(stats.insertions, 0);
+        assert_eq!(stats.deletions, 0);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_single_file() {
         let output = "10\t5\tfile.rs";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 10);
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_multiple_files() {
         let output = "10\t5\tfile.rs\n3\t0\tREADME.md\n0\t7\ttest.rs";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // 10 + 3 + 0
-        assert_eq!(stats.lines_removed, 12); // 5 + 0 + 7
+        assert_eq!(stats.insertions, 13); // 10 + 3 + 0
+        assert_eq!(stats.deletions, 12); // 5 + 0 + 7
     }
 
     #[test]
@@ -2556,43 +2549,46 @@ mod tests {
         // Binary files show as "- - filename"
         let output = "10\t5\tfile.rs\n-\t-\timage.png\n3\t0\tREADME.md";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // Binary file ignored
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 13); // Binary file ignored
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_malformed_lines() {
         let output = "10\t5\tfile.rs\nmalformed line\n3\t0\tREADME.md";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // Malformed line ignored
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 13); // Malformed line ignored
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_aggregate() {
         let stats1 = DiffStats {
-            lines_added: 10,
-            lines_removed: 5,
+            files_changed: 1,
+            insertions: 10,
+            deletions: 5,
         };
         let stats2 = DiffStats {
-            lines_added: 3,
-            lines_removed: 7,
+            files_changed: 1,
+            insertions: 3,
+            deletions: 7,
         };
         let stats3 = DiffStats {
-            lines_added: 0,
-            lines_removed: 2,
+            files_changed: 1,
+            insertions: 0,
+            deletions: 2,
         };
 
         let aggregated = DiffStats::aggregate(&[stats1, stats2, stats3]);
-        assert_eq!(aggregated.lines_added, 13);
-        assert_eq!(aggregated.lines_removed, 14);
+        assert_eq!(aggregated.insertions, 13);
+        assert_eq!(aggregated.deletions, 14);
     }
 
     #[test]
     fn test_diff_stats_aggregate_empty() {
         let aggregated = DiffStats::aggregate(&[]);
-        assert_eq!(aggregated.lines_added, 0);
-        assert_eq!(aggregated.lines_removed, 0);
+        assert_eq!(aggregated.insertions, 0);
+        assert_eq!(aggregated.deletions, 0);
     }
 
     #[tokio::test]
@@ -2658,8 +2654,8 @@ mod tests {
             .expect("should extract stats");
 
         // Initial commit adds 10 lines, removes 0
-        assert_eq!(stats.lines_added, 10);
-        assert_eq!(stats.lines_removed, 0);
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 0);
     }
 
     #[tokio::test]
@@ -2686,8 +2682,9 @@ mod tests {
 
         // Update LOC from git
         let stats = DiffStats {
-            lines_added: 42,
-            lines_removed: 13,
+            files_changed: 2,
+            insertions: 42,
+            deletions: 13,
         };
         db.update_session_loc_from_git("sess-1", &stats)
             .await
@@ -2730,8 +2727,9 @@ mod tests {
 
         // Try to update with zero stats (should be no-op)
         let stats = DiffStats {
-            lines_added: 0,
-            lines_removed: 0,
+            files_changed: 0,
+            insertions: 0,
+            deletions: 0,
         };
         db.update_session_loc_from_git("sess-1", &stats)
             .await
@@ -2835,6 +2833,9 @@ mod tests {
             author: Some("Test".to_string()),
             timestamp: commit_ts,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -2962,6 +2963,9 @@ mod tests {
                 author: Some("Test".to_string()),
                 timestamp: now,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: hash2.clone(),
@@ -2970,6 +2974,9 @@ mod tests {
                 author: Some("Test".to_string()),
                 timestamp: now + 100,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -3077,6 +3084,9 @@ mod tests {
             author: Some("Test".to_string()),
             timestamp: now,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
