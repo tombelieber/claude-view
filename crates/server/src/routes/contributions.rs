@@ -252,8 +252,8 @@ pub async fn get_contributions(
     // Get previous period for comparison (for fluency trend)
     let prev_agg = get_previous_period_contributions(&state, range, project_id).await?;
 
-    // Get trend data
-    let trend = state
+    // Get trend data (mutable — handler redistributes cost below)
+    let mut trend = state
         .db
         .get_contribution_trend(range, from_date, to_date, project_id)
         .await?;
@@ -378,7 +378,29 @@ pub async fn get_contributions(
         None
     };
 
-    // Cost trend from daily snapshot data (still uses blended rate)
+    // Redistribute per-model cost across trend points.
+    // Snapshot blended rate only accounts for input+output tokens and misses
+    // cache tokens, producing a cost ~300x too low.  Distribute the accurate
+    // `total_cost_usd` (computed from per-model pricing) proportionally.
+    let total_trend_tokens: i64 = trend.iter().map(|t| t.tokens_used).sum();
+    if total_cost_usd > 0.0 {
+        if total_trend_tokens > 0 {
+            for t in &mut trend {
+                let fraction = t.tokens_used as f64 / total_trend_tokens as f64;
+                t.cost_cents = (total_cost_usd * fraction * 100.0).round() as i64;
+            }
+        } else {
+            // Fallback: distribute by session count when token data is missing
+            let total_sessions: i64 = trend.iter().map(|t| t.sessions).sum();
+            if total_sessions > 0 {
+                for t in &mut trend {
+                    let fraction = t.sessions as f64 / total_sessions as f64;
+                    t.cost_cents = (total_cost_usd * fraction * 100.0).round() as i64;
+                }
+            }
+        }
+    }
+
     let cost_trend: Vec<f64> = trend
         .iter()
         .map(|t| t.cost_cents as f64 / 100.0)

@@ -124,7 +124,7 @@ export function ContributionsPage() {
   const sessionCount = data.overview.fluency.sessions
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header with time + project filter */}
         <ContributionsHeader
@@ -162,7 +162,12 @@ export function ContributionsPage() {
         />
 
         {/* Efficiency Metrics (ROI) */}
-        <EfficiencyMetricsSection efficiency={data.efficiency} />
+        <EfficiencyMetricsSection
+          efficiency={data.efficiency}
+          trendData={data.trend}
+          sessionCount={sessionCount}
+          commitsCount={data.overview.output.commitsCount}
+        />
 
         {/* Model Comparison Table */}
         <ModelComparison byModel={data.byModel} />
