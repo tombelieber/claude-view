@@ -9,8 +9,13 @@ import type { ExtendedDashboardStats } from '../types/generated'
  * - currentWeek: sessionCount, totalTokens, totalFilesEdited, commitCount
  * - trends: week-over-week changes for sessions, tokens, filesEdited, commits
  */
-async function fetchDashboardStats(): Promise<ExtendedDashboardStats> {
-  const response = await fetch('/api/stats/dashboard')
+async function fetchDashboardStats(project?: string, branches?: string): Promise<ExtendedDashboardStats> {
+  const params = new URLSearchParams()
+  if (project) params.set('project', project)
+  if (branches) params.set('branches', branches)
+  const qs = params.toString()
+  const url = qs ? `/api/stats/dashboard?${qs}` : '/api/stats/dashboard'
+  const response = await fetch(url)
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Failed to fetch dashboard stats: ${errorText}`)
@@ -30,10 +35,10 @@ async function fetchDashboardStats(): Promise<ExtendedDashboardStats> {
  * - currentWeek (CurrentWeekMetrics)
  * - trends (DashboardTrends)
  */
-export function useDashboardStats() {
+export function useDashboardStats(project?: string, branches?: string) {
   return useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: fetchDashboardStats,
+    queryKey: ['dashboard-stats', project, branches],
+    queryFn: () => fetchDashboardStats(project, branches),
     staleTime: 30_000, // Consider data fresh for 30 seconds
   })
 }
