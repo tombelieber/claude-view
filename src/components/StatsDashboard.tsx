@@ -1,14 +1,19 @@
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { BarChart3, Sparkles, TerminalSquare, Plug, Bot, FolderOpen, Calendar, Pencil, Eye, Terminal, Clock, ArrowRight, Search } from 'lucide-react'
 import { useDashboardStats } from '../hooks/use-dashboard'
+import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { RecentCommits } from './RecentCommits'
+import { ContributionSummaryCard } from './ContributionSummaryCard'
 
 export function StatsDashboard() {
   const navigate = useNavigate()
-  const { data: stats, isLoading, error, refetch } = useDashboardStats()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const projectFilter = searchParams.get("project") || undefined
+  const branchFilter = searchParams.get("branch") || undefined
+  const { data: stats, isLoading, error, refetch } = useDashboardStats(projectFilter, branchFilter)
 
   // Loading state with skeleton
   if (isLoading) {
@@ -60,7 +65,24 @@ export function StatsDashboard() {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-5 h-5 text-[#7c9885]" />
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Your Claude Code Usage</h1>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            {projectFilter
+              ? `${projectFilter} Usage`
+              : "Your Claude Code Usage"}
+          </h1>
+          {projectFilter && (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams(searchParams)
+                params.delete("project")
+                params.delete("branch")
+                setSearchParams(params)
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
@@ -80,6 +102,9 @@ export function StatsDashboard() {
       {stats.trends && (
         <DashboardMetricsGrid trends={stats.trends} />
       )}
+
+      {/* Theme 3: AI Contribution Summary Card */}
+      <ContributionSummaryCard />
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Invocable category cards — self-contained leaderboards, items are clickable */}
@@ -122,35 +147,41 @@ export function StatsDashboard() {
           )
         })}
 
-        {/* Most Active Projects — items link to project pages */}
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-            <FolderOpen className="w-4 h-4" />
-            Most Active Projects
-          </h2>
-          <div className="space-y-3">
-            {stats.topProjects.map((project) => (
-              <Link
-                key={project.name}
-                to={`/project/${encodeURIComponent(project.name)}`}
-                className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
-              >
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {project.displayName}
-                  </span>
-                  <span className="tabular-nums text-gray-400">{project.sessionCount}</span>
-                </div>
-                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-colors bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-500"
-                    style={{ width: `${(project.sessionCount / maxProjectSessions) * 100}%` }}
-                  />
-                </div>
-              </Link>
-            ))}
+        {/* Most Active Projects — items link to project pages, hidden when filtered to a single project */}
+        {!projectFilter && (
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+              <FolderOpen className="w-4 h-4" />
+              Most Active Projects
+            </h2>
+            <div className="space-y-3">
+              {stats.topProjects.map((project) => (
+                <button
+                  key={project.name}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams)
+                    params.set('project', project.name)
+                    setSearchParams(params)
+                  }}
+                  className="w-full group text-left focus-visible:ring-2 focus-visible:ring-blue-400"
+                >
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {project.displayName}
+                    </span>
+                    <span className="tabular-nums text-gray-400">{project.sessionCount}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-colors bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-500"
+                      style={{ width: `${(project.sessionCount / maxProjectSessions) * 100}%` }}
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Longest Sessions — "See all" links to sorted history */}
         {stats.longestSessions.length > 0 && (
@@ -173,7 +204,7 @@ export function StatsDashboard() {
                 return (
                   <Link
                     key={session.id}
-                    to={`/session/${encodeURIComponent(session.id)}`}
+                    to={buildSessionUrl(session.id, searchParams)}
                     className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
                     <div className="flex items-center justify-between text-sm mb-1">
@@ -209,7 +240,7 @@ export function StatsDashboard() {
             Activity (Last 30 Days)
           </h2>
           <Link
-            to="/history"
+            to="/sessions"
             className="text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-0.5"
           >
             All sessions <ArrowRight className="w-3 h-3" />

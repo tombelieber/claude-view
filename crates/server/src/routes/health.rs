@@ -16,6 +16,7 @@ use crate::state::AppState;
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+    #[ts(type = "number")]
     pub uptime_secs: u64,
 }
 

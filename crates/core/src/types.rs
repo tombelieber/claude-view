@@ -186,7 +186,9 @@ pub struct SessionInfo {
     pub project: String,
     pub project_path: String,
     pub file_path: String,
+    #[ts(type = "number")]
     pub modified_at: i64,
+    #[ts(type = "number")]
     pub size_bytes: u64,
     pub preview: String,
     pub last_message: String,
@@ -204,14 +206,19 @@ pub struct SessionInfo {
     #[serde(default)]
     pub deep_indexed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_input_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_cache_read_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub total_cache_creation_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_count_api: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_model: Option<String>,
@@ -240,8 +247,10 @@ pub struct SessionInfo {
     #[serde(default)]
     pub thinking_block_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_duration_avg_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub turn_duration_max_ms: Option<u64>,
     #[serde(default)]
     pub api_error_count: u32,
@@ -340,6 +349,7 @@ pub struct ProjectSummary {
     pub session_count: usize,
     pub active_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
     pub last_activity_at: Option<i64>,
 }
 
