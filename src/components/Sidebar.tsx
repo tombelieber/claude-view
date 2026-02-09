@@ -418,7 +418,7 @@ export function Sidebar({ projects }: SidebarProps) {
                   newParams.delete('branch')
                   setSearchParams(newParams)
                 }}
-                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5"
+                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 aria-label="Clear scope"
               >
                 <X className="w-3 h-3" />
@@ -566,7 +566,7 @@ function BranchList({ projectName }: BranchListProps) {
         <button
           type="button"
           onClick={() => refetch()}
-          className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+          className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         >
           Retry
         </button>
@@ -659,7 +659,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
         </span>
         <Link
           to={`/sessions?project=${encodeURIComponent(project)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`}
-          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5"
+          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         >
           All <ArrowRight className="w-2.5 h-2.5" />
         </Link>
