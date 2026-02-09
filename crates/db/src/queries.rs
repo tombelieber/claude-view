@@ -1169,19 +1169,24 @@ impl Database {
     }
 
     /// Fetch top 10 invocables by kind from the invocations table.
-    async fn top_invocables_by_kind(&self, kind: &str) -> DbResult<Vec<SkillStat>> {
+    async fn top_invocables_by_kind(&self, kind: &str, project: Option<&str>, branch: Option<&str>) -> DbResult<Vec<SkillStat>> {
         let rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT inv.name, COUNT(*) as cnt
             FROM invocations i
             JOIN invocables inv ON i.invocable_id = inv.id
-            WHERE inv.kind = ?1
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE inv.kind = ?1 AND s.is_sidechain = 0
+              AND (?2 IS NULL OR s.project_id = ?2)
+              AND (?3 IS NULL OR s.git_branch = ?3)
             GROUP BY inv.name
             ORDER BY cnt DESC
             LIMIT 10
             "#,
         )
         .bind(kind)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1197,15 +1202,19 @@ impl Database {
     /// Get pre-computed dashboard statistics.
     ///
     /// Returns heatmap (90 days), top 10 invocables per kind, top 5 projects, tool totals.
-    pub async fn get_dashboard_stats(&self) -> DbResult<DashboardStats> {
+    pub async fn get_dashboard_stats(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<DashboardStats> {
         // Total sessions and projects
         let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
+                .bind(project)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?;
 
         let (total_projects,): (i64,) =
-            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0")
+            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
+                .bind(project)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?;
 
@@ -1217,11 +1226,14 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
             FROM sessions
             WHERE last_message_at >= ?1 AND is_sidechain = 0
+              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
         )
         .bind(ninety_days_ago)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1234,10 +1246,10 @@ impl Database {
             .collect();
 
         // Top invocables by kind (from Phase 2A-2 invocations table)
-        let top_skills = self.top_invocables_by_kind("skill").await?;
-        let top_commands = self.top_invocables_by_kind("command").await?;
-        let top_mcp_tools = self.top_invocables_by_kind("mcp_tool").await?;
-        let top_agents = self.top_invocables_by_kind("agent").await?;
+        let top_skills = self.top_invocables_by_kind("skill", project, branch).await?;
+        let top_commands = self.top_invocables_by_kind("command", project, branch).await?;
+        let top_mcp_tools = self.top_invocables_by_kind("mcp_tool", project, branch).await?;
+        let top_agents = self.top_invocables_by_kind("agent", project, branch).await?;
 
         // Top 5 projects by session count
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1245,11 +1257,14 @@ impl Database {
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM sessions
             WHERE is_sidechain = 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1268,10 +1283,13 @@ impl Database {
             SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
             FROM sessions
             WHERE is_sidechain = 0 AND duration_seconds > 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             ORDER BY duration_seconds DESC
             LIMIT 5
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1298,8 +1316,11 @@ impl Database {
                 COALESCE(SUM(tool_counts_write), 0)
             FROM sessions
             WHERE is_sidechain = 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
@@ -1330,24 +1351,30 @@ impl Database {
         &self,
         from: Option<i64>,
         to: Option<i64>,
+        project: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<DashboardStats> {
         let from = from.unwrap_or(0);
         let to = to.unwrap_or(i64::MAX);
 
         // Total sessions and projects (filtered)
         let (total_sessions,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2",
+            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2 AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)",
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
         let (total_projects,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2",
+            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2 AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)",
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
@@ -1359,11 +1386,14 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
             FROM sessions
             WHERE last_message_at >= ?1 AND is_sidechain = 0
+              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
         )
         .bind(ninety_days_ago)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1376,10 +1406,10 @@ impl Database {
             .collect();
 
         // Top invocables by kind (filtered by time range via invocations table)
-        let top_skills = self.top_invocables_by_kind_with_range("skill", from, to).await?;
-        let top_commands = self.top_invocables_by_kind_with_range("command", from, to).await?;
-        let top_mcp_tools = self.top_invocables_by_kind_with_range("mcp_tool", from, to).await?;
-        let top_agents = self.top_invocables_by_kind_with_range("agent", from, to).await?;
+        let top_skills = self.top_invocables_by_kind_with_range("skill", from, to, project, branch).await?;
+        let top_commands = self.top_invocables_by_kind_with_range("command", from, to, project, branch).await?;
+        let top_mcp_tools = self.top_invocables_by_kind_with_range("mcp_tool", from, to, project, branch).await?;
+        let top_agents = self.top_invocables_by_kind_with_range("agent", from, to, project, branch).await?;
 
         // Top 5 projects by session count (filtered)
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1387,6 +1417,7 @@ impl Database {
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM sessions
             WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -1394,6 +1425,8 @@ impl Database {
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1412,12 +1445,15 @@ impl Database {
             SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
             FROM sessions
             WHERE is_sidechain = 0 AND duration_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             ORDER BY duration_seconds DESC
             LIMIT 5
             "#,
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1444,10 +1480,13 @@ impl Database {
                 COALESCE(SUM(tool_counts_write), 0)
             FROM sessions
             WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             "#,
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
@@ -1473,10 +1512,12 @@ impl Database {
     /// Get all-time aggregate metrics for the dashboard.
     ///
     /// Returns (session_count, total_tokens, total_files_edited, commit_count).
-    pub async fn get_all_time_metrics(&self) -> DbResult<(u64, u64, u64, u64)> {
+    pub async fn get_all_time_metrics(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<(u64, u64, u64, u64)> {
         // Session count
         let (session_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
+                .bind(project)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?;
 
@@ -1487,15 +1528,20 @@ impl Database {
             FROM turns t
             INNER JOIN sessions s ON t.session_id = s.id
             WHERE s.is_sidechain = 0
+              AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
         // Total files edited
         let (total_files_edited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0",
+            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
         )
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
@@ -1506,8 +1552,11 @@ impl Database {
             FROM session_commits sc
             INNER JOIN sessions s ON sc.session_id = s.id
             WHERE s.is_sidechain = 0
+              AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
@@ -1525,6 +1574,8 @@ impl Database {
         kind: &str,
         from: i64,
         to: i64,
+        project: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Vec<SkillStat>> {
         let rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
@@ -1533,6 +1584,8 @@ impl Database {
             INNER JOIN invocables i ON inv.invocable_id = i.id
             INNER JOIN sessions s ON inv.session_id = s.id
             WHERE i.kind = ?1 AND s.is_sidechain = 0 AND s.last_message_at >= ?2 AND s.last_message_at <= ?3
+              AND (?4 IS NULL OR s.project_id = ?4)
+              AND (?5 IS NULL OR s.git_branch = ?5)
             GROUP BY i.name
             ORDER BY cnt DESC
             LIMIT 10
@@ -1541,6 +1594,8 @@ impl Database {
         .bind(kind)
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1631,10 +1686,12 @@ impl Database {
     }
 
     /// Get the oldest session date (Unix timestamp).
-    pub async fn get_oldest_session_date(&self) -> DbResult<Option<i64>> {
+    pub async fn get_oldest_session_date(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<Option<i64>> {
         let result: (Option<i64>,) = sqlx::query_as(
-            "SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0",
+            "SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
         )
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
         Ok(result.0)
@@ -1696,6 +1753,8 @@ impl Database {
         &self,
         from: Option<i64>,
         to: Option<i64>,
+        project: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<AIGenerationStats> {
         let from = from.unwrap_or(0);
         let to = to.unwrap_or(i64::MAX);
@@ -1719,10 +1778,14 @@ impl Database {
                 WHERE is_sidechain = 0
                   AND last_message_at >= ?1
                   AND last_message_at <= ?2
+                  AND (?3 IS NULL OR project_id = ?3)
+                  AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
             .bind(from)
             .bind(to)
+            .bind(project)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?;
 
@@ -1738,6 +1801,8 @@ impl Database {
             WHERE is_sidechain = 0
               AND last_message_at >= ?1
               AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3)
+              AND (?4 IS NULL OR git_branch = ?4)
               AND primary_model IS NOT NULL
             GROUP BY primary_model
             ORDER BY (input_tokens + output_tokens) DESC
@@ -1745,6 +1810,8 @@ impl Database {
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1771,6 +1838,8 @@ impl Database {
             WHERE is_sidechain = 0
               AND last_message_at >= ?1
               AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3)
+              AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY (input_tokens + output_tokens) DESC
             LIMIT 6
@@ -1778,6 +1847,8 @@ impl Database {
         )
         .bind(from)
         .bind(to)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -2894,7 +2965,7 @@ mod tests {
         db.insert_session(&s2, "project-a", "Project A").await.unwrap();
         db.insert_session(&s3, "project-b", "Project B").await.unwrap();
 
-        let stats = db.get_dashboard_stats().await.unwrap();
+        let stats = db.get_dashboard_stats(None, None).await.unwrap();
         assert_eq!(stats.total_sessions, 3);
         assert_eq!(stats.total_projects, 2);
         assert!(!stats.heatmap.is_empty());
@@ -3157,7 +3228,7 @@ mod tests {
 
         // Filter to only sess-2 (last_message_at = 2000)
         let stats = db
-            .get_dashboard_stats_with_range(Some(1500), Some(2500))
+            .get_dashboard_stats_with_range(Some(1500), Some(2500), None, None)
             .await
             .unwrap();
         assert_eq!(stats.total_sessions, 1, "Only 1 session within range");
@@ -3171,7 +3242,7 @@ mod tests {
 
         // Full range should include all 3
         let all = db
-            .get_dashboard_stats_with_range(None, None)
+            .get_dashboard_stats_with_range(None, None, None, None)
             .await
             .unwrap();
         assert_eq!(all.total_sessions, 3);
@@ -3269,7 +3340,7 @@ mod tests {
         .unwrap();
 
         let (session_count, total_tokens, total_files_edited, commit_count) =
-            db.get_all_time_metrics().await.unwrap();
+            db.get_all_time_metrics(None, None).await.unwrap();
 
         assert_eq!(session_count, 2, "Should have 2 sessions");
         // Tokens come from turns table, which we didn't populate
@@ -3371,7 +3442,7 @@ mod tests {
         .unwrap();
 
         // Test all-time (no range filter)
-        let stats = db.get_ai_generation_stats(None, None).await.unwrap();
+        let stats = db.get_ai_generation_stats(None, None, None, None).await.unwrap();
 
         // files_created = sum of files_edited_count: 4 + 2 = 6
         assert_eq!(stats.files_created, 6, "Sum of files_edited_count");
@@ -3409,12 +3480,164 @@ mod tests {
 
         // Test with time range: only ai-gen-1 has last_message_at = 1000
         let ranged = db
-            .get_ai_generation_stats(Some(900), Some(1100))
+            .get_ai_generation_stats(Some(900), Some(1100), None, None)
             .await
             .unwrap();
         assert_eq!(ranged.files_created, 4, "Only ai-gen-1 within range");
         assert_eq!(ranged.total_input_tokens, 3000);
         assert_eq!(ranged.total_output_tokens, 2000);
         assert_eq!(ranged.tokens_by_model.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            duration_seconds: 600,
+            ..make_session("sess-filter-a", "proj-x", now - 100)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let s2 = SessionInfo {
+            git_branch: Some("develop".to_string()),
+            duration_seconds: 300,
+            ..make_session("sess-filter-b", "proj-y", now - 200)
+        };
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter — should see both
+        let stats = db.get_dashboard_stats(None, None).await.unwrap();
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.total_projects, 2);
+
+        // Project filter — should see only proj-x
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+        assert_eq!(stats.total_projects, 1);
+
+        // Project + branch filter — matching
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("main")).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Project + wrong branch = 0
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 0);
+
+        // Branch-only filter (no project)
+        let stats = db.get_dashboard_stats(None, Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Tool totals should reflect filtered sessions
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.tool_totals.edit, 5); // make_session sets edit=5
+
+        // Longest sessions should be filtered (duration_seconds > 0, so they appear)
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.longest_sessions.len(), 1, "only proj-x's session");
+        assert_eq!(stats.longest_sessions[0].id, "sess-filter-a");
+
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.longest_sessions.len(), 0, "wrong branch = no sessions");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_time_metrics_with_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-atm-a", "proj-x", now - 100)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let mut s2 = make_session("sess-atm-b", "proj-y", now - 200);
+        s2.git_branch = Some("develop".to_string());
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(None, None).await.unwrap();
+        assert_eq!(sessions, 2);
+
+        // Project filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), None).await.unwrap();
+        assert_eq!(sessions, 1);
+
+        // Project + branch filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), Some("main")).await.unwrap();
+        assert_eq!(sessions, 1);
+
+        // Project + wrong branch
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(sessions, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_session_date_with_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-old-a", "proj-x", now - 200)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let mut s2 = make_session("sess-old-b", "proj-y", now - 100);
+        s2.git_branch = Some("develop".to_string());
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter — oldest across all
+        let oldest = db.get_oldest_session_date(None, None).await.unwrap();
+        assert!(oldest.is_some());
+
+        // Filter proj-y — should get session_b's timestamp
+        let oldest = db.get_oldest_session_date(Some("proj-y"), None).await.unwrap();
+        assert!(oldest.is_some());
+
+        // Filter non-existent project — should be None
+        let oldest = db.get_oldest_session_date(Some("proj-z"), None).await.unwrap();
+        assert!(oldest.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_range_and_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // 3 sessions: proj-x at t=1000, proj-x at t=2000, proj-y at t=2000
+        let s1 = SessionInfo {
+            modified_at: 1000,
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-rp-1", "proj-x", 1000)
+        };
+        let s2 = SessionInfo {
+            modified_at: 2000,
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-rp-2", "proj-x", 2000)
+        };
+        let mut s3 = SessionInfo {
+            modified_at: 2000,
+            ..make_session("sess-rp-3", "proj-y", 2000)
+        };
+        s3.git_branch = Some("develop".to_string());
+
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+        db.insert_session(&s2, "proj-x", "Project X").await.unwrap();
+        db.insert_session(&s3, "proj-y", "Project Y").await.unwrap();
+
+        // Time range 1500-2500 + no project filter: sess-rp-2 and sess-rp-3
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), None, None).await.unwrap();
+        assert_eq!(stats.total_sessions, 2);
+
+        // Time range 1500-2500 + project filter proj-x: only sess-rp-2
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Time range 1500-2500 + project proj-x + branch develop: 0
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 0);
     }
 }

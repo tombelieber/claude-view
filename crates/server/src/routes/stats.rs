@@ -28,6 +28,10 @@ pub struct DashboardQuery {
     /// Period end timestamp (Unix seconds, inclusive).
     /// If omitted along with `from`, returns all-time stats with no trends.
     pub to: Option<i64>,
+    /// Optional project filter (matches sessions.project_id).
+    pub project: Option<String>,
+    /// Optional branch filter (matches sessions.git_branch).
+    pub branch: Option<String>,
 }
 
 /// Current period metrics for dashboard (adapts to selected time range).
@@ -191,16 +195,16 @@ pub async fn dashboard_stats(
     }
 
     // Get earliest session date for "since [date]" display
-    let data_start_date = state.db.get_oldest_session_date().await.ok().flatten();
+    let data_start_date = state.db.get_oldest_session_date(query.project.as_deref(), query.branch.as_deref()).await.ok().flatten();
 
     // Determine if we have a time range filter
     let has_time_range = query.from.is_some() && query.to.is_some();
 
     // Get base dashboard stats (always includes heatmap which is fixed at 90 days)
     let base = match if has_time_range {
-        state.db.get_dashboard_stats_with_range(query.from, query.to).await
+        state.db.get_dashboard_stats_with_range(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await
     } else {
-        state.db.get_dashboard_stats().await
+        state.db.get_dashboard_stats(query.project.as_deref(), query.branch.as_deref()).await
     } {
         Ok(stats) => stats,
         Err(e) => {
@@ -228,7 +232,7 @@ pub async fn dashboard_stats(
     // Get trends (either for custom period or default week-over-week)
     let (current_week, trends) = if let (Some(from), Some(to)) = (query.from, query.to) {
         // Get trends for the specified period
-        match state.db.get_trends_with_range(from, to).await {
+        match state.db.get_trends_with_range(from, to, query.project.as_deref(), query.branch.as_deref()).await {
             Ok(period_trends) => {
                 let current = CurrentPeriodMetrics {
                     session_count: period_trends.session_count.current as u64,
@@ -251,7 +255,7 @@ pub async fn dashboard_stats(
         }
     } else {
         // All-time view: show aggregate stats but no trends
-        match state.db.get_all_time_metrics().await {
+        match state.db.get_all_time_metrics(query.project.as_deref(), query.branch.as_deref()).await {
             Ok((session_count, total_tokens, total_files_edited, commit_count)) => {
                 let current = CurrentPeriodMetrics {
                     session_count,
@@ -336,7 +340,7 @@ pub async fn storage_stats(
             0
         }
     };
-    let oldest_session_date = match state.db.get_oldest_session_date().await {
+    let oldest_session_date = match state.db.get_oldest_session_date(None, None).await {
         Ok(date) => date,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to get oldest session date");
@@ -468,7 +472,7 @@ pub async fn ai_generation_stats(
         }
     }
 
-    match state.db.get_ai_generation_stats(query.from, query.to).await {
+    match state.db.get_ai_generation_stats(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
         Ok(stats) => {
             record_request("ai_generation_stats", "200", start.elapsed());
             Ok(Json(stats))
@@ -1087,5 +1091,175 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["totalInputTokens"], 0);
         assert_eq!(json["totalOutputTokens"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_with_project_filter() {
+        let db = test_db().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let session_a = SessionInfo {
+            id: "sess-proj-a".to_string(),
+            project: "project-alpha".to_string(),
+            project_path: "/home/user/project-alpha".to_string(),
+            file_path: "/path/sess-proj-a.jsonl".to_string(),
+            modified_at: now - 86400,
+            size_bytes: 2048,
+            preview: "Alpha session".to_string(),
+            last_message: "Test msg A".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            message_count: 20,
+            turn_count: 8,
+            summary: None,
+            git_branch: Some("main".to_string()),
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: Some(10000),
+            total_output_tokens: Some(5000),
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 10,
+            api_call_count: 20,
+            tool_call_count: 50,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 15,
+            files_edited_count: 5,
+            reedited_files_count: 2,
+            duration_seconds: 600,
+            commit_count: 3,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            summary_text: None,
+            parse_version: 0,
+        };
+        db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
+
+        let mut session_b = session_a.clone();
+        session_b.id = "sess-proj-b".to_string();
+        session_b.project = "project-beta".to_string();
+        session_b.project_path = "/home/user/project-beta".to_string();
+        session_b.file_path = "/path/sess-proj-b.jsonl".to_string();
+        session_b.preview = "Beta session".to_string();
+        session_b.git_branch = Some("develop".to_string());
+        db.insert_session(&session_b, "project-beta", "Project Beta").await.unwrap();
+
+        let app = build_app(db);
+
+        // Filter by project
+        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalSessions"], 1, "should only count project-alpha sessions");
+        assert_eq!(json["totalProjects"], 1);
+
+        // Filter by project + branch
+        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha&branch=main").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalSessions"], 1);
+
+        // Filter by project + wrong branch = 0 sessions
+        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha&branch=develop").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalSessions"], 0);
+
+        // No filter — both sessions
+        let (status, body) = do_get(app, "/api/stats/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalSessions"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_stats_with_project_filter() {
+        let db = test_db().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let session_a = SessionInfo {
+            id: "sess-aigen-a".to_string(),
+            project: "project-alpha".to_string(),
+            project_path: "/home/user/project-alpha".to_string(),
+            file_path: "/path/sess-aigen-a.jsonl".to_string(),
+            modified_at: now - 86400,
+            size_bytes: 2048,
+            preview: "Alpha AI".to_string(),
+            last_message: "msg".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 10,
+            turn_count: 5,
+            summary: None,
+            git_branch: Some("main".to_string()),
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 5,
+            api_call_count: 10,
+            tool_call_count: 20,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 5,
+            files_edited_count: 3,
+            reedited_files_count: 0,
+            duration_seconds: 300,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            summary_text: None,
+            parse_version: 0,
+        };
+        db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
+
+        let app = build_app(db);
+
+        // Filter by project
+        let (status, body) = do_get(app.clone(), "/api/stats/ai-generation?project=project-alpha").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["filesCreated"], 3);
+
+        // Filter by non-existent project = 0
+        let (status, body) = do_get(app, "/api/stats/ai-generation?project=project-nope").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["filesCreated"], 0);
     }
 }
