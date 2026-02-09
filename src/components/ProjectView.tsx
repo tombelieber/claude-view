@@ -10,7 +10,6 @@ import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
-import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, EmptyState, SessionsEmptyState, ErrorState } from './LoadingStates'
 import { cn } from '../lib/utils'
 
@@ -255,7 +254,7 @@ export function ProjectView() {
                               {group.sessions.map((session) => (
                                 <Link
                                   key={session.id}
-                                  to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                  to={`/session/${encodeURIComponent(session.id)}`}
                                   className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
                                 >
                                   <SessionCard

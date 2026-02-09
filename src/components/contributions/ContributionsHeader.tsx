@@ -1,29 +1,25 @@
-import { GitBranch } from 'lucide-react'
+import { GitBranch, X } from 'lucide-react'
 import { TimeRangeFilter } from './TimeRangeFilter'
 import type { TimeRange } from '../../hooks/use-contributions'
-import type { ProjectSummary } from '../../hooks/use-projects'
 
 interface ContributionsHeaderProps {
   range: TimeRange
   onRangeChange: (range: TimeRange) => void
   sessionCount: number
-  projects?: ProjectSummary[]
-  projectId: string | null
-  onProjectChange: (id: string | null) => void
-  projectsLoading?: boolean
+  projectFilter?: string | null
+  onClearProjectFilter?: () => void
 }
 
 /**
- * Header for the contributions page with title, project filter, and time range filter.
+ * Header for the contributions page with title, time range filter,
+ * and optional project filter indicator.
  */
 export function ContributionsHeader({
   range,
   onRangeChange,
   sessionCount,
-  projects,
-  projectId,
-  onProjectChange,
-  projectsLoading,
+  projectFilter,
+  onClearProjectFilter,
 }: ContributionsHeaderProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -35,31 +31,39 @@ export function ContributionsHeader({
           <div>
             <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
               AI Contributions
+              {projectFilter ? (
+                <span className="text-base font-normal text-gray-500 dark:text-gray-400">
+                  {' '}&mdash; {projectFilter}
+                </span>
+              ) : (
+                <span className="text-base font-normal text-gray-500 dark:text-gray-400">
+                  {' '}&mdash; All Projects
+                </span>
+              )}
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Tracking your AI-assisted development across{' '}
-              <span className="font-medium tabular-nums">{sessionCount}</span>{' '}
-              session{sessionCount !== 1 ? 's' : ''}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Tracking your AI-assisted development across{' '}
+                <span className="font-medium tabular-nums">{sessionCount}</span>{' '}
+                session{sessionCount !== 1 ? 's' : ''}
+              </p>
+              {projectFilter && onClearProjectFilter && (
+                <button
+                  onClick={onClearProjectFilter}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full
+                    bg-[#7c9885]/10 text-[#7c9885] hover:bg-[#7c9885]/20
+                    transition-colors cursor-pointer"
+                  title="Clear project filter"
+                >
+                  {projectFilter}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <select
-            value={projectId ?? ''}
-            onChange={(e) => onProjectChange(e.target.value || null)}
-            disabled={projectsLoading}
-            className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
-          >
-            <option value="">All Projects</option>
-            {projects?.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.displayName}
-              </option>
-            ))}
-          </select>
-          <TimeRangeFilter value={range} onChange={onRangeChange} />
-        </div>
+        <TimeRangeFilter value={range} onChange={onRangeChange} />
       </div>
     </div>
   )
