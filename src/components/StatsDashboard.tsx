@@ -126,6 +126,7 @@ export function StatsDashboard() {
               value={timeRange.preset}
               onChange={setPreset}
               options={[
+                { value: 'today', label: isMobile ? 'Today' : 'Today' },
                 { value: '7d', label: isMobile ? '7 days' : '7d' },
                 { value: '30d', label: isMobile ? '30 days' : '30d' },
                 { value: '90d', label: isMobile ? '90 days' : '90d' },
