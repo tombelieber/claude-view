@@ -1,9 +1,10 @@
-import { useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { RefreshCw, GitCommitHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useStatus, formatRelativeTime, useTick } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
+import { useGitSyncProgress } from '../hooks/use-git-sync-progress'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface StatusBarProps {
@@ -12,18 +13,18 @@ interface StatusBarProps {
 
 export function StatusBar({ projects }: StatusBarProps) {
   const { data: status, isLoading: isStatusLoading } = useStatus()
-  const { triggerSync, isLoading: isSyncing, status: syncStatus, error: syncError, reset: resetSync } = useGitSync()
+  const { triggerSync, isLoading: isSyncing, status: syncStatus, reset: resetSync } = useGitSync()
   const queryClient = useQueryClient()
   useTick(30_000) // Force re-render every 30s to keep relative time fresh
   const totalSessions = projects.reduce((sum, p) => sum + p.sessionCount, 0)
 
-  // Track previous status values to calculate deltas
-  const prevStatusRef = useRef<typeof status | null>(null)
-  // Track last shown toast to prevent duplicates
-  const lastToastRef = useRef<{ type: string; error?: string } | null>(null)
-  // Track component mount state to prevent state updates after unmount
-  const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  // SSE progress state
+  const [sseEnabled, setSseEnabled] = useState(false)
+  const progress = useGitSyncProgress(sseEnabled)
+
+  // Guard against React strict-mode double-firing of the terminal-state effect.
+  // Reset to false when sseEnabled transitions to true (new sync started).
+  const doneHandledRef = useRef(false)
 
   const sessionsIndexed = status?.sessionsIndexed ? Number(status.sessionsIndexed) : totalSessions
 
@@ -35,156 +36,60 @@ export function StatusBar({ projects }: StatusBarProps) {
   const commitsFound = status?.commitsFound ? Number(status.commitsFound) : 0
   const linksCreated = status?.linksCreated ? Number(status.linksCreated) : 0
 
-  const isSpinning = isStatusLoading || isSyncing
-
-  // Poll for sync completion and show toast with results
-  const pollForCompletion = useCallback(async (prevSessions: number, prevCommits: number, prevLinks: number) => {
-    const maxAttempts = 30 // 30 seconds max
-    let attempts = 0
-
-    const poll = async () => {
-      if (!mountedRef.current) return
-
-      attempts++
-      if (attempts > maxAttempts) {
-        toast.warning('Sync is taking longer than expected', {
-          description: 'The sync is still running in the background.',
-          duration: 4000,
-        })
-        return
-      }
-
-      // Fetch fresh status
-      try {
-        const response = await fetch('/api/status')
-        if (!mountedRef.current) return
-
-        if (!response.ok) {
-          console.warn(`Sync status poll failed: HTTP ${response.status}`)
-          setTimeout(poll, 1000)
-          return
-        }
-
-        const newStatus = await response.json()
-        if (!mountedRef.current) return
-
-        const newSyncTs = newStatus.lastGitSyncAt ?? newStatus.lastIndexedAt
-
-        // Check if sync has completed (timestamp changed)
-        const oldSyncTs = prevStatusRef.current?.lastGitSyncAt ?? prevStatusRef.current?.lastIndexedAt
-        if (newSyncTs && (!oldSyncTs || newSyncTs > oldSyncTs)) {
-          // Sync completed - calculate deltas
-          const newSessions = Number(newStatus.sessionsIndexed ?? 0)
-          const newCommits = Number(newStatus.commitsFound ?? 0)
-          const newLinks = Number(newStatus.linksCreated ?? 0)
-
-          const sessionsDelta = newSessions - prevSessions
-          const linksDelta = newLinks - prevLinks
-
-          // Show success toast with stats
-          const parts: string[] = []
-          parts.push(`${newSessions.toLocaleString()} sessions`)
-          if (sessionsDelta > 0) {
-            parts.push(`+${sessionsDelta} new`)
-          }
-          if (newCommits > 0) {
-            parts.push(`${newCommits.toLocaleString()} commits`)
-          }
-          if (linksDelta > 0) {
-            parts.push(`+${linksDelta} links`)
-          }
-
-          toast.success('Sync completed', {
-            description: parts.join(' | '),
-            duration: 4000,
-          })
-
-          // Refresh data queries
-          queryClient.invalidateQueries({ queryKey: ['status'] })
-          queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
-          queryClient.invalidateQueries({ queryKey: ['projects'] })
-
-          prevStatusRef.current = newStatus
-          return
-        }
-
-        // Not completed yet, poll again
-        setTimeout(poll, 1000)
-      } catch (e) {
-        console.warn('Sync status poll failed:', e)
-        // Error polling, try again
-        setTimeout(poll, 1000)
-      }
-    }
-
-    poll()
-  }, [queryClient])
+  // Derive syncing state from SSE phase
+  const isSseActive = sseEnabled && progress.phase !== 'idle' && progress.phase !== 'done' && progress.phase !== 'error'
+  const isSpinning = isStatusLoading || isSyncing || isSseActive
 
   // Handle retry from error toast
   const handleRetry = useCallback(async () => {
-    // Reset sync state first
     resetSync()
-    lastToastRef.current = null
-
-    // Store current values before retry
-    const prevSessions = sessionsIndexed
-    const prevCommits = commitsFound
-    const prevLinks = linksCreated
-
+    doneHandledRef.current = false
     const started = await triggerSync()
-    if (started) {
-      pollForCompletion(prevSessions, prevCommits, prevLinks)
-    }
-  }, [triggerSync, pollForCompletion, sessionsIndexed, commitsFound, linksCreated, resetSync])
+    if (started) setSseEnabled(true)
+  }, [triggerSync, resetSync])
 
   const handleRefresh = async () => {
     if (isSpinning) return
-
-    // Store current values before sync
-    const prevSessions = sessionsIndexed
-    const prevCommits = commitsFound
-    const prevLinks = linksCreated
-
+    doneHandledRef.current = false
     const started = await triggerSync()
-    if (started) {
-      // Start polling for completion
-      pollForCompletion(prevSessions, prevCommits, prevLinks)
-    }
+    if (started) setSseEnabled(true)
   }
 
-  // Show error toast when sync fails (using useEffect to prevent repeated calls)
+  // React to SSE terminal states
   useEffect(() => {
-    if (syncStatus === 'error' && syncError) {
-      // Check if we already showed this error
-      if (lastToastRef.current?.type === 'error' && lastToastRef.current?.error === syncError) {
-        return
-      }
-      lastToastRef.current = { type: 'error', error: syncError }
-
+    if (progress.phase === 'done' && !doneHandledRef.current) {
+      doneHandledRef.current = true
+      toast.success('Sync completed', {
+        description: `${progress.reposScanned} repos | ${progress.commitsFound} commits | ${progress.linksCreated} links`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['status'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      setSseEnabled(false)
+      resetSync()
+    } else if (progress.phase === 'error' && !doneHandledRef.current) {
+      doneHandledRef.current = true
       toast.error('Sync failed', {
-        description: syncError,
+        description: progress.errorMessage ?? 'Unknown error',
         duration: 6000,
         action: {
           label: 'Retry',
           onClick: handleRetry,
         },
       })
-    } else if (syncStatus === 'conflict') {
-      // Check if we already showed conflict toast
-      if (lastToastRef.current?.type === 'conflict') {
-        return
-      }
-      lastToastRef.current = { type: 'conflict' }
+      setSseEnabled(false)
+    }
+  }, [progress.phase, progress.reposScanned, progress.commitsFound, progress.linksCreated, progress.errorMessage, queryClient, resetSync, handleRetry])
 
+  // Handle 409 conflict from the HTTP sync trigger
+  useEffect(() => {
+    if (syncStatus === 'conflict') {
       toast.info('Sync already in progress', {
         description: 'Please wait for the current sync to complete.',
         duration: 3000,
       })
-    } else if (syncStatus === 'idle' || syncStatus === 'success') {
-      // Reset toast tracking when sync completes or is idle
-      lastToastRef.current = null
     }
-  }, [syncStatus, syncError, handleRetry])
+  }, [syncStatus])
 
   return (
     <footer
@@ -195,6 +100,18 @@ export function StatusBar({ projects }: StatusBarProps) {
       <div className="flex items-center gap-1.5">
         {isStatusLoading ? (
           <span className="animate-pulse">Loading status...</span>
+        ) : isSseActive ? (
+          <span className="animate-pulse text-xs">
+            {progress.phase === 'scanning'
+              ? progress.totalRepos > 0
+                ? `Scanning repo ${progress.reposScanned}/${progress.totalRepos}...`
+                : 'Scanning repos...'
+              : progress.phase === 'correlating'
+                ? progress.totalCorrelatableSessions > 0
+                  ? `Linking sessions ${progress.sessionsCorrelated}/${progress.totalCorrelatableSessions}... (${progress.linksCreated} links)`
+                  : `Linking commits... (${progress.linksCreated} links)`
+                : 'Starting sync...'}
+          </span>
         ) : isSyncing ? (
           <span className="animate-pulse">Syncing...</span>
         ) : lastUpdatedText ? (
@@ -222,14 +139,14 @@ export function StatusBar({ projects }: StatusBarProps) {
         onClick={handleRefresh}
         disabled={isSpinning}
         className="inline-flex items-center gap-1.5 px-2.5 py-1 -mr-1 rounded text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        aria-label={isSyncing ? 'Sync in progress' : 'Sync now'}
+        aria-label={isSyncing || isSseActive ? 'Sync in progress' : 'Sync now'}
         data-testid="sync-button"
       >
         <RefreshCw
           className={`w-3.5 h-3.5 ${isSpinning ? 'animate-spin' : ''}`}
           aria-hidden="true"
         />
-        {isSyncing ? 'Syncing...' : 'Sync Now'}
+        {isSyncing || isSseActive ? 'Syncing...' : 'Sync Now'}
       </button>
     </footer>
   )
