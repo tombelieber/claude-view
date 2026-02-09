@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 /** Predefined time range options */
-export type TimeRangePreset = '7d' | '30d' | '90d' | 'all' | 'custom'
+export type TimeRangePreset = 'today' | '7d' | '30d' | '90d' | 'all' | 'custom'
 
 /** Custom date range with from/to dates */
 export interface CustomDateRange {
@@ -38,6 +38,14 @@ export interface UseTimeRangeReturn {
 
 const STORAGE_KEY = 'dashboard-time-range'
 
+/** Map old Contributions-page URL params to new unified presets.
+ *  Keeps bookmarked /contributions?range=week URLs working after migration. */
+const LEGACY_RANGE_MAP: Record<string, TimeRangePreset> = {
+  week: '7d',
+  month: '30d',
+  '90days': '90d',
+}
+
 /** Calculate timestamps from preset */
 function getTimestampsFromPreset(preset: TimeRangePreset): { from: number | null; to: number | null } {
   if (preset === 'all') {
@@ -45,6 +53,14 @@ function getTimestampsFromPreset(preset: TimeRangePreset): { from: number | null
   }
 
   const now = Math.floor(Date.now() / 1000)
+
+  if (preset === 'today') {
+    // Since midnight today (matches backend's TimeRange::Today semantics)
+    const midnight = new Date()
+    midnight.setHours(0, 0, 0, 0)
+    return { from: Math.floor(midnight.getTime() / 1000), to: now }
+  }
+
   const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90
   const from = now - days * 86400
   return { from, to: now }
@@ -94,8 +110,12 @@ export function useTimeRange(): UseTimeRangeReturn {
   const [preset, setPresetState] = useState<TimeRangePreset>(() => {
     // Check URL params first
     const rangeParam = searchParams.get('range')
-    if (rangeParam && ['7d', '30d', '90d', 'all', 'custom'].includes(rangeParam)) {
-      return rangeParam as TimeRangePreset
+    if (rangeParam) {
+      const migrated = LEGACY_RANGE_MAP[rangeParam]
+      if (migrated) return migrated
+      if (['today', '7d', '30d', '90d', 'all', 'custom'].includes(rangeParam)) {
+        return rangeParam as TimeRangePreset
+      }
     }
     // Check if custom timestamps are in URL
     if (searchParams.get('from') && searchParams.get('to')) {
@@ -106,7 +126,7 @@ export function useTimeRange(): UseTimeRangeReturn {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored)
-        if (parsed.preset && ['7d', '30d', '90d', 'all', 'custom'].includes(parsed.preset)) {
+        if (parsed.preset && ['today', '7d', '30d', '90d', 'all', 'custom'].includes(parsed.preset)) {
           return parsed.preset as TimeRangePreset
         }
       }
@@ -215,6 +235,9 @@ export function useTimeRange(): UseTimeRangeReturn {
 
   // Compute labels
   const label = useMemo(() => {
+    if (preset === 'today') {
+      return 'Today'
+    }
     if (preset === 'all') {
       return 'All time'
     }
@@ -228,6 +251,9 @@ export function useTimeRange(): UseTimeRangeReturn {
   }, [preset, customRange, timestamps])
 
   const comparisonLabel = useMemo(() => {
+    if (preset === 'today') {
+      return 'vs yesterday'
+    }
     if (preset === 'all') {
       return null // No comparison for all-time
     }
