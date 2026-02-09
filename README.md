@@ -1,9 +1,8 @@
-# claude-view
+# vibe-recall
 
 <p align="center">
-  <strong>Browse and export your Claude Code sessions</strong>
+  <strong>Your AI fluency, measured.</strong>
 </p>
-
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -18,62 +17,59 @@
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center">
-  <b>Fast</b> · <b>Lightweight</b> · <b>Private</b> · <b>Zero Config</b>
-</p>
+<!-- TODO: demo GIF here -->
 
 ---
 
-## Why claude-view?
+## The Problem
+
+92% of developers use AI coding tools. A [METR study](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/) found they're actually **19% slower**. The problem isn't the tools — it's that nobody teaches you how to use them well.
+
+41% of code is now AI-generated, but most developers have no idea if they're using AI tools effectively or wasting half their tokens on re-prompting.
+
+## The Solution
+
+**vibe-recall** is a fitness tracker for your AI coding workflow. It analyzes your Claude Code sessions, shows you your patterns, and helps you **measurably improve**.
+
+```bash
+npx claude-view
+```
+
+That's it. Opens in your browser. Your AI fluency, measured.
+
+---
+
+## What You'll Discover
+
+| Insight | Example |
+|---------|---------|
+| **AI Fluency Score** | A single number (0-100) that tracks how effectively you use AI |
+| **Token efficiency** | "You waste 34% of tokens on re-prompting" |
+| **Prompt clarity** | "Your re-edit rate dropped 54% over 3 months" |
+| **Model fit** | "Opus is 42% better for refactoring, but you use it for everything" |
+| **Workflow patterns** | "Tuesday mornings are your most effective AI coding sessions" |
+| **Skill effectiveness** | "TDD skill reduces re-edit rate by 65%" |
+
+---
+
+## How It's Built
 
 | | |
 |---|---|
-| **Blazing fast** | Rust-powered backend with SIMD-accelerated JSONL parsing, memory-mapped I/O, and instant startup — indexes thousands of sessions in seconds |
-| **Tiny footprint** | Single ~15 MB binary. No runtime dependencies, no background daemons, no bloat |
-| **100% private** | All data stays on your machine. No telemetry, no cloud, no network requests. Read-only access to your session files |
-| **Memory safe** | Written in Rust — no buffer overflows, no data races, no GC pauses |
-| **Full-text search** | Powered by Tantivy (Rust search engine) and SQLite — find any conversation instantly |
+| **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
+| **Tiny footprint** | Single ~15 MB binary. No runtime dependencies, no background daemons |
+| **100% local** | All data stays on your machine. Zero telemetry, zero cloud, zero network requests |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
 
 ---
 
-## 😤 The Problem
-
-You've been using **Claude Code** for weeks. Dozens of sessions. Hundreds of conversations. But where did they go?
-
-They're buried in `~/.claude/projects/` as cryptic **JSONL files**. Good luck finding that one conversation where Claude helped you fix that tricky bug.
-
-## ✨ The Solution
-
-**claude-view** turns your Claude Code session history into a **beautiful, searchable archive**.
+## Quick Start
 
 ```bash
 npx claude-view
 ```
 
-That's it. Opens in your browser. All your sessions, organized and searchable.
-
----
-
-## 🎯 Features
-
-| Feature | Description |
-|---------|-------------|
-| 📁 **Browse by project** | Sessions organized by working directory |
-| 🔍 **Rich previews** | See tools used, skills invoked — at a glance. Drill into sessions for files touched |
-| 💬 **Full conversations** | Syntax-highlighted code, rendered markdown |
-| 📤 **Export conversations** | Share or archive as HTML, PDF, or Markdown |
-| ⌨️ **Keyboard-first** | `⌘K` to search across all sessions |
-
----
-
-## 🚀 Quick Start
-
-```bash
-npx claude-view
-```
-
-Opens at `http://localhost:47892` — your sessions are waiting.
+Opens at `http://localhost:47892`.
 
 ### Configuration
 
@@ -84,7 +80,7 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 
 ---
 
-## 📦 Installation
+## Installation
 
 | Method | Command |
 |--------|---------|
@@ -92,29 +88,38 @@ Opens at `http://localhost:47892` — your sessions are waiting.
 | **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
 | **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
 
----
+### Requirements
 
-## 📋 Requirements
-
-- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we read
+- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we analyze
 
 ---
 
-## 🤔 What is Claude Code?
+## How It Compares
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's AI coding assistant that runs in your terminal. Every conversation you have with it is saved locally. **claude-view** helps you revisit, search, and export those conversations.
+Every other tool is a utility (viewer/monitor). None of them coach you to improve.
+
+```
+                    Individual ←————————→ Team
+                         |                  |
+            Utility      |  ccusage         |  Anthropic Analytics
+            (just view)  |  History Viewer  |  GitHub Copilot Reports
+                         |  Claude HUD      |
+                         |                  |
+            Coach        |  ★ vibe-recall   |  (coming soon)
+            (improve)    |                  |
+```
 
 ---
 
-## 💬 Community
+## Community
 
 Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature requests, and discussion.
 
 ---
 
-## ⭐ Like this project?
+## Like this project?
 
-If **claude-view** saves you time, consider giving it a star! It helps others discover this tool.
+If **vibe-recall** helps you level up your AI coding, consider giving it a star. It helps others discover this tool.
 
 <p align="center">
   <a href="https://github.com/tombelieber/claude-view/stargazers">
@@ -124,7 +129,7 @@ If **claude-view** saves you time, consider giving it a star! It helps others di
 
 ---
 
-## 🛠️ Development
+## Development
 
 Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo install cargo-watch`
 
@@ -148,8 +153,6 @@ bun dev            # Start full-stack dev (Rust + Vite with hot reload)
 | `bun run test:e2e` | Run Playwright end-to-end tests |
 
 ### Testing Production Distribution
-
-These commands simulate the full `npx claude-view` experience locally:
 
 ```bash
 bun run dist:test    # One command: build → pack → install → run
@@ -181,19 +184,19 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ---
 
-## 🗺️ Platform Roadmap
+## Platform Roadmap
 
 | Platform | Status |
 |----------|--------|
-| macOS (Apple Silicon) | ✅ Available |
-| macOS (Intel) | ✅ Available |
-| Linux (x64) | ✅ Available |
-| Windows (x64) | ✅ Available |
-| Linux (ARM64) | 🔜 Coming |
-| Windows (ARM64) | 🔜 Coming |
+| macOS (Apple Silicon) | Available |
+| macOS (Intel) | Available |
+| Linux (x64) | Available |
+| Windows (x64) | Available |
+| Linux (ARM64) | Coming |
+| Windows (ARM64) | Coming |
 
 ---
 
-## 📄 License
+## License
 
 MIT © 2026
