@@ -79,7 +79,7 @@ describe('StorageOverview', () => {
       })
     })
 
-    it('should render storage progress bars', async () => {
+    it('should render storage donut chart legend', async () => {
       render(<StorageOverview />, { wrapper: createWrapper() })
 
       await waitFor(() => {

@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || require('./package.json').version),
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

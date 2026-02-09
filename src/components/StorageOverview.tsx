@@ -1,25 +1,79 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { RefreshCw, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts'
 import {
   useStorageStats,
   formatBytes,
   formatTimestamp,
   formatDurationMs,
 } from '../hooks/use-storage-stats'
-import { ProgressBar, StatCard } from './ui'
+import { useIndexingProgress } from '../hooks/use-indexing-progress'
+import { StatCard } from './ui'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+
+/** Colors for each storage category — soft, distinct, calming */
+const STORAGE_COLORS = [
+  { fill: '#D97757', label: 'JSONL Sessions' },   // Claude Code terracotta — their data
+  { fill: '#6366f1', label: 'SQLite Database' },   // indigo — this app's DB
+  { fill: '#10b981', label: 'Search Index' },       // emerald — this app's index
+] as const
+
+/**
+ * Active shape renderer for the donut chart hover state.
+ * Expands the hovered slice and shows detailed label.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderActiveShape(props: any) {
+  const {
+    cx, cy, innerRadius, outerRadius, startAngle, endAngle,
+    fill, payload, percent,
+  } = props
+
+  return (
+    <g>
+      {/* Center label */}
+      <text x={cx} y={cy - 8} textAnchor="middle" className="fill-gray-800 dark:fill-gray-200" fontSize={14} fontWeight={600}>
+        {payload.label}
+      </text>
+      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-gray-500 dark:fill-gray-400" fontSize={12}>
+        {payload.formattedBytes} ({(percent * 100).toFixed(1)}%)
+      </text>
+      {/* Expanded slice */}
+      <Sector
+        cx={cx} cy={cy}
+        innerRadius={innerRadius - 2}
+        outerRadius={outerRadius + 6}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        opacity={1}
+      />
+      {/* Inner ring highlight */}
+      <Sector
+        cx={cx} cy={cy}
+        innerRadius={innerRadius - 4}
+        outerRadius={innerRadius - 2}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        opacity={0.4}
+      />
+    </g>
+  )
+}
 
 /**
  * Storage Overview section for the Settings page.
  *
  * Displays:
- * - Storage bars: JSONL, SQLite, Search Index with progress visualization
- * - Total storage summary
+ * - Donut chart: JSONL, SQLite, Search Index — part-to-whole distribution
+ * - Total storage in center
+ * - Legend with byte sizes
  * - Counts grid: sessions, projects, commits, oldest session, index built, last sync
- * - Action buttons: Rebuild Index, Clear Cache
+ * - Action buttons: Rebuild Index
  * - Index performance stats
  */
 export function StorageOverview() {
@@ -28,16 +82,55 @@ export function StorageOverview() {
 
   const [isRebuilding, setIsRebuilding] = useState(false)
   const [rebuildStatus, setRebuildStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [sseEnabled, setSseEnabled] = useState(false)
+  const progress = useIndexingProgress(sseEnabled)
+  const [activeSlice, setActiveSlice] = useState<number | undefined>(undefined)
+
+  // React to SSE progress phase changes
+  useEffect(() => {
+    if (progress.phase === 'done') {
+      setIsRebuilding(false)
+      setRebuildStatus('success')
+      setSseEnabled(false)
+      // Refresh storage stats to show new index info
+      queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['status'] })
+      setTimeout(() => setRebuildStatus('idle'), 4000)
+    } else if (progress.phase === 'error') {
+      setIsRebuilding(false)
+      setRebuildStatus('error')
+      setSseEnabled(false)
+      toast.error('Index rebuild failed', {
+        description: progress.errorMessage ?? 'Unknown error',
+      })
+      setTimeout(() => setRebuildStatus('idle'), 4000)
+    }
+  }, [progress.phase, progress.errorMessage, queryClient])
+
+  const onPieEnter = useCallback((_: unknown, index: number) => {
+    setActiveSlice(index)
+  }, [])
+
+  const onPieLeave = useCallback(() => {
+    setActiveSlice(undefined)
+  }, [])
 
   // Calculate total storage
   const totalBytes = stats
     ? Number(stats.jsonlBytes) + Number(stats.sqliteBytes) + Number(stats.indexBytes)
     : 0
 
-  // Calculate percentages for progress bars
-  const jsonlPercent = totalBytes > 0 ? (Number(stats?.jsonlBytes ?? 0) / totalBytes) * 100 : 0
-  const sqlitePercent = totalBytes > 0 ? (Number(stats?.sqliteBytes ?? 0) / totalBytes) * 100 : 0
-  const indexPercent = totalBytes > 0 ? (Number(stats?.indexBytes ?? 0) / totalBytes) * 100 : 0
+  // App-only footprint (SQLite + Search Index — data this app created)
+  const appBytes = stats
+    ? Number(stats.sqliteBytes) + Number(stats.indexBytes)
+    : 0
+
+  // Build donut chart data with source attribution
+  const chartData = stats ? [
+    { label: 'JSONL Sessions', source: 'Claude Code', bytes: Number(stats.jsonlBytes), formattedBytes: formatBytes(stats.jsonlBytes) },
+    { label: 'SQLite Database', source: 'This app', bytes: Number(stats.sqliteBytes), formattedBytes: formatBytes(stats.sqliteBytes) },
+    { label: 'Search Index', source: 'This app', bytes: Number(stats.indexBytes), formattedBytes: formatBytes(stats.indexBytes) },
+  ] : []
 
   // Calculate throughput for index performance
   const indexThroughput =
@@ -50,22 +143,13 @@ export function StorageOverview() {
     setRebuildStatus('idle')
 
     try {
-      // Trigger full deep index rebuild via /api/sync/deep
       const response = await fetch('/api/sync/deep', { method: 'POST' })
       if (response.ok || response.status === 202) {
-        setRebuildStatus('success')
-        toast.success('Index rebuild started', {
-          description: 'Full deep index rebuild initiated. This may take a moment.',
-        })
-        // Invalidate queries to refresh data
-        queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
-        queryClient.invalidateQueries({ queryKey: ['status'] })
+        // Start listening to SSE for real-time progress
+        setSseEnabled(true)
       } else if (response.status === 409) {
-        // Sync already in progress
-        setRebuildStatus('idle')
-        toast.info('Rebuild in progress', {
-          description: 'An index rebuild is already running. Please wait for it to complete.',
-        })
+        // Already running — attach to in-progress SSE stream
+        setSseEnabled(true)
       } else {
         setRebuildStatus('error')
         const errorText = await response.text().catch(() => '')
@@ -74,6 +158,8 @@ export function StorageOverview() {
             ? `Server error (${response.status}): ${errorText}`
             : `Unexpected error (HTTP ${response.status}). Please try again.`,
         })
+        setIsRebuilding(false)
+        setTimeout(() => setRebuildStatus('idle'), 4000)
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unknown error'
@@ -82,9 +168,8 @@ export function StorageOverview() {
       toast.error('Failed to rebuild index', {
         description: `Network error: ${message}. Please check your connection and try again.`,
       })
-    } finally {
       setIsRebuilding(false)
-      setTimeout(() => setRebuildStatus('idle'), 3000)
+      setTimeout(() => setRebuildStatus('idle'), 4000)
     }
   }
 
@@ -118,34 +203,99 @@ export function StorageOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Storage Bars */}
-      <div className="space-y-1">
-        <ProgressBar
-          label="JSONL Sessions"
-          value={jsonlPercent}
-          max={100}
-          suffix={formatBytes(stats?.jsonlBytes ?? 0)}
-        />
-        <ProgressBar
-          label="SQLite Database"
-          value={sqlitePercent}
-          max={100}
-          suffix={formatBytes(stats?.sqliteBytes ?? 0)}
-        />
-        <ProgressBar
-          label="Search Index"
-          value={indexPercent}
-          max={100}
-          suffix={formatBytes(stats?.indexBytes ?? 0)}
-        />
-      </div>
+      {/* Storage Donut Chart + Legend */}
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        {/* Donut Chart */}
+        <div className="relative w-48 h-48 shrink-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="bytes"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius={52}
+                outerRadius={76}
+                paddingAngle={2}
+                activeIndex={activeSlice}
+                activeShape={renderActiveShape}
+                onMouseEnter={onPieEnter}
+                onMouseLeave={onPieLeave}
+                animationBegin={0}
+                animationDuration={600}
+                animationEasing="ease-out"
+              >
+                {chartData.map((_, i) => (
+                  <Cell
+                    key={STORAGE_COLORS[i].label}
+                    fill={STORAGE_COLORS[i].fill}
+                    opacity={activeSlice !== undefined && activeSlice !== i ? 0.4 : 1}
+                    stroke="none"
+                    className="cursor-pointer transition-opacity duration-150"
+                  />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          {/* Center total — only show when no slice is hovered */}
+          {activeSlice === undefined && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {formatBytes(totalBytes)}
+              </span>
+            </div>
+          )}
+        </div>
 
-      {/* Total Storage */}
-      <div className="text-sm text-gray-600 dark:text-gray-400">
-        <span className="font-medium">Total:</span>{' '}
-        <span className="font-semibold text-gray-800 dark:text-gray-200">
-          {formatBytes(totalBytes)}
-        </span>
+        {/* Legend */}
+        <div className="flex flex-col gap-3" role="list" aria-label="Storage breakdown">
+          {chartData.map((item, i) => {
+            const pct = totalBytes > 0 ? ((item.bytes / totalBytes) * 100).toFixed(1) : '0.0'
+            return (
+              <div
+                key={item.label}
+                className="flex items-center gap-3 cursor-default"
+                role="listitem"
+                onMouseEnter={() => setActiveSlice(i)}
+                onMouseLeave={() => setActiveSlice(undefined)}
+              >
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: STORAGE_COLORS[i].fill }}
+                  aria-hidden="true"
+                />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {item.label}
+                    </span>
+                    <span className={cn(
+                      'text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none',
+                      item.source === 'Claude Code'
+                        ? 'text-[#D97757] bg-[#D97757]/10 dark:bg-[#D97757]/20'
+                        : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    )}>
+                      {item.source}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                    {item.formattedBytes} · {pct}%
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* App footprint callout */}
+          <div className="mt-1 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              App footprint: <span className="font-medium text-gray-700 dark:text-gray-300">{formatBytes(appBytes)}</span>
+              <span className="text-gray-400 dark:text-gray-500"> — JSONL data is read-only from <code className="text-[11px]">~/.claude/</code></span>
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Counts Grid - Responsive: 2 cols mobile, 3 cols tablet, 6 cols desktop */}
@@ -166,34 +316,53 @@ export function StorageOverview() {
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
           Actions
         </h4>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={handleRebuildIndex}
-            disabled={isRebuilding}
-            className={cn(
-              // Touch target: min 44x44px
-              'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
-              'text-sm font-medium rounded-md cursor-pointer',
-              'transition-colors duration-150',
-              'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
-              'hover:bg-gray-200 dark:hover:bg-gray-700',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
-            )}
-          >
-            {isRebuilding ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : rebuildStatus === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : rebuildStatus === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-red-500" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            Rebuild Index
-          </button>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={handleRebuildIndex}
+              disabled={isRebuilding}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
+                'text-sm font-medium rounded-md cursor-pointer',
+                'transition-colors duration-150',
+                'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
+                'hover:bg-gray-200 dark:hover:bg-gray-700',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+              )}
+            >
+              {isRebuilding ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : rebuildStatus === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              ) : rebuildStatus === 'error' ? (
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Rebuild Index
+            </button>
+          </div>
 
+          {/* Inline progress bar — visible while rebuilding */}
+          {isRebuilding && (
+            <RebuildProgressBar
+              phase={progress.phase}
+              indexed={progress.indexed}
+              total={progress.total}
+            />
+          )}
+
+          {/* Success summary — brief flash after completion */}
+          {rebuildStatus === 'success' && !isRebuilding && (
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 animate-in fade-in duration-200">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>
+                Rebuilt {formatNumber(progress.indexed)} session{progress.indexed !== 1 ? 's' : ''} successfully
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -234,6 +403,60 @@ export function StorageOverview() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Inline progress bar shown during index rebuild.
+ * Displays phase label, session counter, and animated bar.
+ */
+function RebuildProgressBar({
+  phase,
+  indexed,
+  total,
+}: {
+  phase: string
+  indexed: number
+  total: number
+}) {
+  const percentage = total > 0 ? Math.min((indexed / total) * 100, 100) : 0
+  const isIndeterminate = phase === 'idle' || phase === 'reading-indexes' || total === 0
+
+  const phaseLabel =
+    phase === 'reading-indexes'
+      ? 'Scanning sessions...'
+      : phase === 'deep-indexing'
+        ? `Indexing ${formatNumber(indexed)} / ${formatNumber(total)} sessions`
+        : 'Starting rebuild...'
+
+  return (
+    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-600 dark:text-gray-400">{phaseLabel}</span>
+        {!isIndeterminate && (
+          <span className="text-xs font-medium tabular-nums text-gray-700 dark:text-gray-300">
+            {Math.round(percentage)}%
+          </span>
+        )}
+      </div>
+      <div
+        className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+        role="progressbar"
+        aria-valuenow={isIndeterminate ? undefined : indexed}
+        aria-valuemin={0}
+        aria-valuemax={isIndeterminate ? undefined : total}
+        aria-label={`Index rebuild: ${phaseLabel}`}
+      >
+        {isIndeterminate ? (
+          <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 animate-indeterminate" />
+        ) : (
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out"
+            style={{ width: `${percentage}%` }}
+          />
+        )}
+      </div>
     </div>
   )
 }
