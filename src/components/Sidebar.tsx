@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { Link, useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { ChevronRight, Folder, FolderOpen, Clock, Home, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3 } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
@@ -13,17 +13,10 @@ interface SidebarProps {
 type ProjectViewMode = 'list' | 'tree'
 
 export function Sidebar({ projects }: SidebarProps) {
-  const params = useParams()
   const location = useLocation()
-  const navigate = useNavigate()
 
-  const selectedProjectId = params.projectId ? decodeURIComponent(params.projectId) : null
-
-  const [searchParams] = useSearchParams()
-  // On contributions page, the filtered project comes from URL search params
-  const contributionsProjectId = location.pathname === '/contributions'
-    ? searchParams.get('projectId')
-    : null
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedProjectId = searchParams.get("project")
 
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
@@ -44,6 +37,16 @@ export function Sidebar({ projects }: SidebarProps) {
     }
     prevViewModeRef.current = viewMode
   }, [viewMode, treeNodes])
+
+  // Auto-expand selected project from URL params (e.g. bookmarked URL with ?project=foo)
+  useEffect(() => {
+    if (selectedProjectId) {
+      setExpandedProjects((prev) => {
+        if (prev.has(selectedProjectId)) return prev
+        return new Set(prev).add(selectedProjectId)
+      })
+    }
+  }, [selectedProjectId])
 
   // Flatten tree nodes for keyboard navigation
   const flattenedNodes = useMemo(() => {
@@ -94,6 +97,8 @@ export function Sidebar({ projects }: SidebarProps) {
   const handleProjectClick = useCallback((node: ProjectTreeNode) => {
     if (node.type !== 'project') return
 
+    const currentProject = searchParams.get("project")
+
     // Toggle expand/collapse
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -105,22 +110,19 @@ export function Sidebar({ projects }: SidebarProps) {
       return next
     })
 
-    // Context-aware navigation
-    if (location.pathname === '/contributions') {
-      // Stay on contributions, set projectId URL param
-      const params = new URLSearchParams(window.location.search)
-      const current = params.get('projectId')
-      if (current === node.name) {
-        params.delete('projectId') // Toggle off = back to All Projects
-      } else {
-        params.set('projectId', node.name)
-      }
-      navigate(`/contributions?${params}`)
+    // Toggle project filter via URL query params
+    const newParams = new URLSearchParams(searchParams)
+    if (currentProject === node.name) {
+      // Deselect: clear project and branches
+      newParams.delete("project")
+      newParams.delete("branches")
     } else {
-      // Default: navigate to project detail page
-      navigate(`/project/${encodeURIComponent(node.name)}`)
+      // Select: set project, clear branches
+      newParams.set("project", node.name)
+      newParams.delete("branches")
     }
-  }, [navigate, location.pathname])
+    setSearchParams(newParams)
+  }, [searchParams, setSearchParams])
 
   const handleGroupClick = useCallback((node: ProjectTreeNode) => {
     if (node.type !== 'group') return
@@ -268,7 +270,7 @@ export function Sidebar({ projects }: SidebarProps) {
       )
     } else {
       // Project node
-      const isSelected = selectedProjectId === node.name || contributionsProjectId === node.name
+      const isSelected = selectedProjectId === node.name
       const isExpanded = expandedProjects.has(node.name)
       const paddingLeft = node.depth * 12 + 8
 
@@ -346,7 +348,6 @@ export function Sidebar({ projects }: SidebarProps) {
     }
   }, [
     selectedProjectId,
-    contributionsProjectId,
     expandedProjects,
     expandedGroups,
     focusedIndex,
@@ -360,30 +361,54 @@ export function Sidebar({ projects }: SidebarProps) {
     <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
       {/* Nav Links */}
       <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
-        <Link
-          to="/contributions"
-          className={cn(
-            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-            location.pathname === '/contributions'
-              ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-          )}
-        >
-          <GitBranch className="w-4 h-4" />
-          <span className="font-medium">Contributions</span>
-        </Link>
-        <Link
-          to="/history"
-          className={cn(
-            'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-            location.pathname === '/history'
-              ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-          )}
-        >
-          <Clock className="w-4 h-4" />
-          <span className="font-medium">History</span>
-        </Link>
+        {(() => {
+          // Build preserved params string for nav links
+          const preservedParams = new URLSearchParams()
+          if (searchParams.get("project")) preservedParams.set("project", searchParams.get("project")!)
+          if (searchParams.get("branches")) preservedParams.set("branches", searchParams.get("branches")!)
+          const paramString = preservedParams.toString()
+
+          return (
+            <>
+              <Link
+                to={`/${paramString ? `?${paramString}` : ""}`}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  location.pathname === '/'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                )}
+              >
+                <Home className="w-4 h-4" />
+                <span className="font-medium">Fluency</span>
+              </Link>
+              <Link
+                to={`/sessions${paramString ? `?${paramString}` : ""}`}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  location.pathname === '/sessions'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                )}
+              >
+                <Clock className="w-4 h-4" />
+                <span className="font-medium">Sessions</span>
+              </Link>
+              <Link
+                to={`/contributions${paramString ? `?${paramString}` : ""}`}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  location.pathname === '/contributions'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                )}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="font-medium">Contributions</span>
+              </Link>
+            </>
+          )
+        })()}
       </div>
 
       {/* View Mode Toggle + Expand/Collapse */}
@@ -469,21 +494,20 @@ interface BranchListProps {
 }
 
 function BranchList({ projectName, isSelected }: BranchListProps) {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const activeBranch = searchParams.get('branches') || null
   const { data, isLoading, error, refetch } = useProjectBranches(projectName)
 
   const handleBranchClick = useCallback((branch: string | null) => {
-    // Preserve existing URL params (filters, sort, groupBy, etc.)
-    const params = new URLSearchParams(window.location.search)
-    if (branch) {
-      params.set('branches', branch)
+    const newParams = new URLSearchParams(searchParams)
+    const currentBranch = searchParams.get('branches')
+    if (branch && currentBranch !== branch) {
+      newParams.set('branches', branch)
     } else {
-      params.delete('branches')
+      newParams.delete('branches')
     }
-    navigate(`/project/${encodeURIComponent(projectName)}?${params}`)
-  }, [projectName, navigate])
+    setSearchParams(newParams)
+  }, [searchParams, setSearchParams])
 
   if (isLoading) {
     return (
