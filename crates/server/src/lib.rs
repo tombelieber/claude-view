@@ -5,6 +5,7 @@
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
 pub mod error;
+pub mod git_sync_state;
 pub mod indexing_state;
 pub mod insights;
 pub mod metrics;
@@ -12,6 +13,7 @@ pub mod routes;
 pub mod state;
 
 pub use error::*;
+pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
