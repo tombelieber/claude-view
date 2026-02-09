@@ -114,30 +114,43 @@ impl From<WeekTrends> for DashboardTrends {
 #[serde(rename_all = "camelCase")]
 pub struct StorageStats {
     /// Size of JSONL session files in bytes.
+    #[ts(type = "number")]
     pub jsonl_bytes: u64,
     /// Size of SQLite database in bytes.
+    #[ts(type = "number")]
     pub sqlite_bytes: u64,
     /// Size of search index in bytes (deep index - not implemented yet, returns 0).
+    #[ts(type = "number")]
     pub index_bytes: u64,
     /// Total number of sessions.
+    #[ts(type = "number")]
     pub session_count: i64,
     /// Total number of projects.
+    #[ts(type = "number")]
     pub project_count: i64,
     /// Total number of linked commits.
+    #[ts(type = "number")]
     pub commit_count: i64,
     /// Unix timestamp of oldest session.
+    #[ts(type = "number | null")]
     pub oldest_session_date: Option<i64>,
     /// Unix timestamp of last index completion.
+    #[ts(type = "number | null")]
     pub last_index_at: Option<i64>,
     /// Duration of last index in milliseconds.
+    #[ts(type = "number | null")]
     pub last_index_duration_ms: Option<i64>,
     /// Number of sessions indexed in last run.
+    #[ts(type = "number")]
     pub last_index_session_count: i64,
     /// Unix timestamp of last git sync.
+    #[ts(type = "number | null")]
     pub last_git_sync_at: Option<i64>,
     /// Duration of last git sync in milliseconds (not currently tracked, returns None).
+    #[ts(type = "number | null")]
     pub last_git_sync_duration_ms: Option<i64>,
     /// Number of repos scanned in last git sync (not currently tracked, returns 0).
+    #[ts(type = "number")]
     pub last_git_sync_repo_count: i64,
 }
 
@@ -585,6 +598,9 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             summary_text: None,
             parse_version: 0,
         };
@@ -773,6 +789,9 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             summary_text: None,
             parse_version: 0,
         };
@@ -881,6 +900,9 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             summary_text: None,
             parse_version: 0,
         };
@@ -1020,6 +1042,9 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             summary_text: None,
             parse_version: 0,
         };
