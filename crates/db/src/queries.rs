@@ -17,6 +17,7 @@ use vibe_recall_core::{
 #[serde(rename_all = "camelCase")]
 pub struct BranchCount {
     pub branch: Option<String>,
+    #[ts(type = "number")]
     pub count: i64,
 }
 
@@ -119,7 +120,9 @@ pub struct TokenStats {
 #[serde(rename_all = "camelCase")]
 pub struct TokensByModel {
     pub model: String,
+    #[ts(type = "number")]
     pub input_tokens: i64,
+    #[ts(type = "number")]
     pub output_tokens: i64,
 }
 
@@ -129,7 +132,9 @@ pub struct TokensByModel {
 #[serde(rename_all = "camelCase")]
 pub struct TokensByProject {
     pub project: String,
+    #[ts(type = "number")]
     pub input_tokens: i64,
+    #[ts(type = "number")]
     pub output_tokens: i64,
 }
 
@@ -142,14 +147,19 @@ pub struct TokensByProject {
 #[serde(rename_all = "camelCase")]
 pub struct AIGenerationStats {
     /// Total lines of code added (currently not tracked, returns 0)
+    #[ts(type = "number")]
     pub lines_added: i64,
     /// Total lines of code removed (currently not tracked, returns 0)
+    #[ts(type = "number")]
     pub lines_removed: i64,
     /// Total files created/edited by AI (based on files_edited_count)
+    #[ts(type = "number")]
     pub files_created: i64,
     /// Total input tokens consumed
+    #[ts(type = "number")]
     pub total_input_tokens: i64,
     /// Total output tokens generated
+    #[ts(type = "number")]
     pub total_output_tokens: i64,
     /// Token usage breakdown by model
     pub tokens_by_model: Vec<TokensByModel>,
