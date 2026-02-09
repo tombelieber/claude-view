@@ -1,6 +1,7 @@
 //! Git sync endpoint for triggering git commit scanning.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{
     extract::State,
@@ -14,6 +15,7 @@ use tokio::sync::Mutex;
 use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
+use crate::metrics::record_sync;
 use crate::state::AppState;
 
 /// Global mutex to prevent concurrent git syncs.
@@ -51,20 +53,32 @@ pub async fn trigger_git_sync(
             tokio::spawn(async move {
                 // Hold the mutex guard for the entire duration of the sync.
                 let _guard = guard;
+                let start = Instant::now();
 
                 tracing::info!("Git sync triggered via API");
                 match vibe_recall_db::git_correlation::run_git_sync(&db).await {
                     Ok(result) => {
+                        let duration = start.elapsed();
                         tracing::info!(
-                            "Git sync complete: {} repos, {} commits, {} links, {} errors",
-                            result.repos_scanned,
-                            result.commits_found,
-                            result.links_created,
-                            result.errors.len(),
+                            repos_scanned = result.repos_scanned,
+                            commits_found = result.commits_found,
+                            links_created = result.links_created,
+                            errors = result.errors.len(),
+                            duration_secs = duration.as_secs_f64(),
+                            "Git sync complete"
                         );
+                        // Record sync metrics
+                        record_sync("git", duration, Some(result.commits_found as u64));
                     }
                     Err(e) => {
-                        tracing::error!("Git sync failed: {}", e);
+                        let duration = start.elapsed();
+                        tracing::error!(
+                            error = %e,
+                            duration_secs = duration.as_secs_f64(),
+                            "Git sync failed"
+                        );
+                        // Still record duration for failed syncs
+                        record_sync("git", duration, None);
                     }
                 }
             });
