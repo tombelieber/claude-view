@@ -268,6 +268,19 @@ CREATE TABLE IF NOT EXISTS contribution_snapshots (
     // Migration 15: Add files_edited_count to contribution_snapshots
     // This replaces the fabricated estimate_files_count (lines/50) with real data.
     r#"ALTER TABLE contribution_snapshots ADD COLUMN files_edited_count INTEGER NOT NULL DEFAULT 0;"#,
+    // Migration 16: Dashboard analytics indexes (Phase 2A time-range filtering)
+    // 16a: Add primary_model column for efficient model-based grouping
+    // This denormalizes the most-used model from turns table to avoid expensive subqueries.
+    r#"ALTER TABLE sessions ADD COLUMN primary_model TEXT;"#,
+    // 16b: Index for time-range queries on first_message_at
+    // Supports "sessions started in date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);"#,
+    // 16c: Composite index for time-range queries scoped to project
+    // Supports "sessions in project X during date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);"#,
+    // 16d: Index for model-based grouping and filtering
+    // Supports "token usage by model" queries in AI Generation Breakdown.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
 ];
 
 // ============================================================================
@@ -792,7 +805,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_commits_diff_stats_columns_exist() {
+    async fn test_migration14_commits_diff_stats_columns_exist() {
         let pool = setup_db().await;
 
         let columns: Vec<(String,)> = sqlx::query_as(
@@ -810,7 +823,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_contribution_snapshots_table_exists() {
+    async fn test_migration14_contribution_snapshots_table_exists() {
         let pool = setup_db().await;
 
         let columns: Vec<(String,)> = sqlx::query_as(
@@ -837,7 +850,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_contribution_snapshots_unique_constraint() {
+    async fn test_migration14_contribution_snapshots_unique_constraint() {
         let pool = setup_db().await;
 
         // Insert first snapshot
@@ -868,7 +881,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_sessions_default_values() {
+    async fn test_migration14_sessions_default_values() {
         let pool = setup_db().await;
 
         sqlx::query(
@@ -891,7 +904,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_commits_default_values() {
+    async fn test_migration14_commits_default_values() {
         let pool = setup_db().await;
 
         sqlx::query(
@@ -914,7 +927,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration13_indexes_created() {
+    async fn test_migration14_indexes_created() {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
@@ -929,5 +942,65 @@ mod tests {
         assert!(index_names.contains(&"idx_snapshots_date"), "Missing idx_snapshots_date index");
         assert!(index_names.contains(&"idx_snapshots_project_date"), "Missing idx_snapshots_project_date index");
         assert!(index_names.contains(&"idx_snapshots_branch_date"), "Missing idx_snapshots_branch_date index");
+    }
+
+    // ========================================================================
+    // Migration 16: Dashboard analytics indexes (renumbered from branch's 13)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration16_dashboard_analytics_indexes() {
+        let pool = setup_db().await;
+
+        // Verify primary_model column was added
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
+
+        // Verify new indexes were created
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_sessions_first_message"),
+            "Missing idx_sessions_first_message index");
+        assert!(index_names.contains(&"idx_sessions_project_first_message"),
+            "Missing idx_sessions_project_first_message index");
+        assert!(index_names.contains(&"idx_sessions_primary_model"),
+            "Missing idx_sessions_primary_model index");
+    }
+
+    #[tokio::test]
+    async fn test_migration16_primary_model_can_be_set() {
+        let pool = setup_db().await;
+
+        // Insert a session with primary_model
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, primary_model) VALUES ('pm-test', 'proj', '/tmp/pm.jsonl', 'Test', 'claude-sonnet-4')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Verify the value
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT primary_model FROM sessions WHERE id = 'pm-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, Some("claude-sonnet-4".to_string()));
     }
 }
