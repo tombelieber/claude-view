@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { groupSessionsByDate } from '../lib/date-groups'
+import { buildSessionUrl } from '../lib/url-utils'
 import { SessionCard } from './SessionCard'
 import type { SessionInfo } from '../hooks/use-projects'
 
@@ -31,7 +32,7 @@ export function DateGroupedList({ sessions, showProjectBadge }: DateGroupedListP
             {group.sessions.map((session) => (
               <Link
                 key={session.id}
-                to={`/session/${encodeURIComponent(session.id)}`}
+                to={buildSessionUrl(session.id)}
                 className="block focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-lg"
               >
                 <SessionCard
