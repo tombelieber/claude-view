@@ -7,52 +7,52 @@ export type StorageStats = {
 /**
  * Size of JSONL session files in bytes.
  */
-jsonlBytes: bigint, 
+jsonlBytes: number, 
 /**
  * Size of SQLite database in bytes.
  */
-sqliteBytes: bigint, 
+sqliteBytes: number, 
 /**
  * Size of search index in bytes (deep index - not implemented yet, returns 0).
  */
-indexBytes: bigint, 
+indexBytes: number, 
 /**
  * Total number of sessions.
  */
-sessionCount: bigint, 
+sessionCount: number, 
 /**
  * Total number of projects.
  */
-projectCount: bigint, 
+projectCount: number, 
 /**
  * Total number of linked commits.
  */
-commitCount: bigint, 
+commitCount: number, 
 /**
  * Unix timestamp of oldest session.
  */
-oldestSessionDate: bigint | null, 
+oldestSessionDate: number | null, 
 /**
  * Unix timestamp of last index completion.
  */
-lastIndexAt: bigint | null, 
+lastIndexAt: number | null, 
 /**
  * Duration of last index in milliseconds.
  */
-lastIndexDurationMs: bigint | null, 
+lastIndexDurationMs: number | null, 
 /**
  * Number of sessions indexed in last run.
  */
-lastIndexSessionCount: bigint, 
+lastIndexSessionCount: number, 
 /**
  * Unix timestamp of last git sync.
  */
-lastGitSyncAt: bigint | null, 
+lastGitSyncAt: number | null, 
 /**
  * Duration of last git sync in milliseconds (not currently tracked, returns None).
  */
-lastGitSyncDurationMs: bigint | null, 
+lastGitSyncDurationMs: number | null, 
 /**
  * Number of repos scanned in last git sync (not currently tracked, returns 0).
  */
-lastGitSyncRepoCount: bigint, };
+lastGitSyncRepoCount: number, };
