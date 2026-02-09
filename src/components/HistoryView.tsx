@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Search, X, FolderOpen, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown } from 'lucide-react'
+import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
+import { buildSessionUrl } from '../lib/url-utils'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
@@ -13,7 +14,6 @@ import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
-import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
 
@@ -83,12 +83,9 @@ export function HistoryView() {
   const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
 
   const [searchText, setSearchText] = useState('')
-  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [showProjectFilter, setShowProjectFilter] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
-  const filterRef = useRef<HTMLDivElement>(null)
 
   // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
   const hasDeepLinkSort = filters.sort !== 'recent'
@@ -101,19 +98,6 @@ export function HistoryView() {
       searchRef.current?.focus()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Close project filter on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setShowProjectFilter(false)
-      }
-    }
-    if (showProjectFilter) {
-      document.addEventListener('mousedown', handleClick)
-      return () => document.removeEventListener('mousedown', handleClick)
-    }
-  }, [showProjectFilter])
 
   // Extract unique branches from sessions for the filter popover
   const availableBranches = useMemo(() => {
@@ -134,6 +118,10 @@ export function HistoryView() {
     return map
   }, [summaries])
 
+  // Sidebar global filters from URL
+  const sidebarProject = searchParams.get('project') || null
+  const sidebarBranch = searchParams.get('branch') || null
+
   // Apply filters and sorting
   const filteredSessions = useMemo(() => {
     const now = Math.floor(Date.now() / 1000)
@@ -150,8 +138,11 @@ export function HistoryView() {
       // Time filter
       if (cutoff > 0 && Number(s.modifiedAt) < cutoff) return false
 
-      // Project filter
-      if (selectedProjects.size > 0 && !selectedProjects.has(s.project)) return false
+      // Sidebar project filter (global, from URL ?project= param)
+      if (sidebarProject && s.project !== sidebarProject) return false
+
+      // Sidebar branch filter (global, from URL ?branch= param)
+      if (sidebarBranch && s.gitBranch !== sidebarBranch) return false
 
       // Date filter (from sparkline click)
       if (selectedDate) {
@@ -235,9 +226,9 @@ export function HistoryView() {
     }
 
     return filtered
-  }, [allSessions, searchText, selectedProjects, timeFilter, selectedDate, filters])
+  }, [allSessions, searchText, sidebarProject, sidebarBranch, timeFilter, selectedDate, filters])
 
-  const isFiltered = searchText || selectedProjects.size > 0 || timeFilter !== 'all' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
+  const isFiltered = searchText || sidebarProject || sidebarBranch || timeFilter !== 'all' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
 
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
 
@@ -276,26 +267,8 @@ export function HistoryView() {
     });
   }, []);
 
-  // Project list sorted by session count
-  const sortedProjects = useMemo(() => {
-    return [...(summaries ?? [])].sort((a, b) => b.sessionCount - a.sessionCount)
-  }, [summaries])
-
-  function toggleProject(name: string) {
-    setSelectedProjects(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      return next
-    })
-  }
-
   function clearAll() {
     setSearchText('')
-    setSelectedProjects(new Set())
     setTimeFilter('all')
     setSelectedDate(null)
     setFilters(DEFAULT_FILTERS)
@@ -386,6 +359,34 @@ export function HistoryView() {
             )}
           </div>
 
+          {/* Sidebar scope indicator (read-only — scope is controlled by sidebar) */}
+          {sidebarProject && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs">
+              <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-blue-700 dark:text-blue-300 font-medium truncate">
+                {sidebarProject.split('/').pop()}
+              </span>
+              {sidebarBranch && (
+                <>
+                  <span className="text-blue-300 dark:text-blue-600">/</span>
+                  <span className="text-blue-600 dark:text-blue-400 truncate">{sidebarBranch}</span>
+                </>
+              )}
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams)
+                  params.delete('project')
+                  params.delete('branch')
+                  setSearchParams(params)
+                }}
+                className="ml-auto text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300 transition-colors"
+                aria-label="Clear project scope"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Filter row: session filter/sort + time + project */}
           <div className="flex items-center gap-2 flex-wrap">
             {/* NEW: SessionToolbar with view mode toggle */}
@@ -414,58 +415,6 @@ export function HistoryView() {
                   {opt.label}
                 </button>
               ))}
-            </div>
-
-            {/* Project filter dropdown */}
-            <div className="relative" ref={filterRef}>
-              <button
-                onClick={() => setShowProjectFilter(!showProjectFilter)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-all ${
-                  selectedProjects.size > 0
-                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                {selectedProjects.size > 0
-                  ? `${selectedProjects.size} project${selectedProjects.size > 1 ? 's' : ''}`
-                  : 'Projects'}
-              </button>
-
-              {showProjectFilter && (
-                <div className="absolute top-full left-0 mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
-                  {selectedProjects.size > 0 && (
-                    <button
-                      onClick={() => setSelectedProjects(new Set())}
-                      className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700"
-                    >
-                      Clear selection
-                    </button>
-                  )}
-                  {sortedProjects.map(p => {
-                    const checked = selectedProjects.has(p.name)
-                    return (
-                      <button
-                        key={p.name}
-                        onClick={() => toggleProject(p.name)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <div className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                          checked ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'
-                        }`}>
-                          {checked && (
-                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{p.displayName}</span>
-                        <span className="text-xs text-gray-400 tabular-nums">{p.sessionCount}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
             </div>
 
             {/* Active filter summary */}
@@ -565,7 +514,7 @@ export function HistoryView() {
                                   </div>
                                 )}
                                 <Link
-                                  to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                  to={buildSessionUrl(session.id, searchParams)}
                                   className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
                                 >
                                   <SessionCard
