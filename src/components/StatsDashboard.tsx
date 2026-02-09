@@ -11,7 +11,6 @@ import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { AIGenerationStats } from './AIGenerationStats'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
 import { TimeRangeSelector, DateRangePicker } from './ui'
-import { FEATURES } from '../config/features'
 import { useIsMobile } from '../hooks/use-media-query'
 
 /** Format a timestamp to a human-readable date */
@@ -47,9 +46,7 @@ export function StatsDashboard() {
   const { data: stats, isLoading, error, refetch } = useDashboardStats(
     projectFilter,
     branchFilter,
-    FEATURES.timeRange
-      ? { from: timeRange.fromTimestamp, to: timeRange.toTimestamp }
-      : null
+    { from: timeRange.fromTimestamp, to: timeRange.toTimestamp }
   )
 
   // Loading state with skeleton
@@ -123,28 +120,26 @@ export function StatsDashboard() {
             )}
           </div>
 
-          {/* Time Range Selector (Feature flag gated) */}
-          {FEATURES.timeRange && (
-            <div className="flex items-center gap-2">
-              <TimeRangeSelector
-                value={timeRange.preset}
-                onChange={setPreset}
-                options={[
-                  { value: '7d', label: isMobile ? '7 days' : '7d' },
-                  { value: '30d', label: isMobile ? '30 days' : '30d' },
-                  { value: '90d', label: isMobile ? '90 days' : '90d' },
-                  { value: 'all', label: isMobile ? 'All time' : 'All' },
-                  { value: 'custom', label: 'Custom' },
-                ]}
+          {/* Time Range Selector */}
+          <div className="flex items-center gap-2">
+            <TimeRangeSelector
+              value={timeRange.preset}
+              onChange={setPreset}
+              options={[
+                { value: '7d', label: isMobile ? '7 days' : '7d' },
+                { value: '30d', label: isMobile ? '30 days' : '30d' },
+                { value: '90d', label: isMobile ? '90 days' : '90d' },
+                { value: 'all', label: isMobile ? 'All time' : 'All' },
+                { value: 'custom', label: 'Custom' },
+              ]}
+            />
+            {timeRange.preset === 'custom' && (
+              <DateRangePicker
+                value={timeRange.customRange}
+                onChange={setCustomRange}
               />
-              {timeRange.preset === 'custom' && (
-                <DateRangePicker
-                  value={timeRange.customRange}
-                  onChange={setCustomRange}
-                />
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
@@ -159,21 +154,19 @@ export function StatsDashboard() {
           </div>
         </div>
 
-        {/* Date Range Caption (Feature flag gated) */}
-        {FEATURES.timeRange && (
-          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
-            <span>
-              {stats.periodStart && stats.periodEnd
-                ? `Showing stats from ${formatTimestampDate(stats.periodStart)} - ${formatTimestampDate(stats.periodEnd)}`
-                : 'Showing all-time stats'}
+        {/* Date Range Caption */}
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
+          <span>
+            {stats.periodStart && stats.periodEnd
+              ? `Showing stats from ${formatTimestampDate(stats.periodStart)} - ${formatTimestampDate(stats.periodEnd)}`
+              : 'Showing all-time stats'}
+          </span>
+          {stats.dataStartDate && (
+            <span className="text-gray-400 dark:text-gray-500">
+              since {formatShortDate(stats.dataStartDate)}
             </span>
-            {stats.dataStartDate && (
-              <span className="text-gray-400 dark:text-gray-500">
-                since {formatShortDate(stats.dataStartDate)}
-              </span>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Phase 3: Week-over-week metrics grid */}
@@ -184,12 +177,10 @@ export function StatsDashboard() {
       {/* Theme 3: AI Contribution Summary Card */}
       <ContributionSummaryCard />
 
-      {/* AI Generation Breakdown (Feature flag gated) */}
-      {FEATURES.aiGeneration && (
-        <AIGenerationStats
-          timeRange={FEATURES.timeRange ? { from: timeRange.fromTimestamp, to: timeRange.toTimestamp } : null}
-        />
-      )}
+      {/* AI Generation Breakdown */}
+      <AIGenerationStats
+        timeRange={{ from: timeRange.fromTimestamp, to: timeRange.toTimestamp }}
+      />
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Invocable category cards — self-contained leaderboards, items are clickable */}
