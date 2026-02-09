@@ -504,15 +504,16 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
         match range {
-            TimeRange::Today => self.get_today_contributions(project_id).await,
-            TimeRange::All => self.get_all_contributions(project_id).await,
+            TimeRange::Today => self.get_today_contributions(project_id, branch).await,
+            TimeRange::All => self.get_all_contributions(project_id, branch).await,
             TimeRange::Custom => {
                 let from = from_date.unwrap_or("1970-01-01");
                 let to_default = Utc::now().format("%Y-%m-%d").to_string();
                 let to = to_date.unwrap_or(&to_default);
-                self.get_contributions_in_range(from, to, project_id).await
+                self.get_contributions_in_range(from, to, project_id, branch).await
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
@@ -520,7 +521,7 @@ impl Database {
                     .format("%Y-%m-%d")
                     .to_string();
                 let to = Utc::now().format("%Y-%m-%d").to_string();
-                self.get_contributions_in_range(&from, &to, project_id).await
+                self.get_contributions_in_range(&from, &to, project_id, branch).await
             }
         }
     }
@@ -529,6 +530,7 @@ impl Database {
     async fn get_today_contributions(
         &self,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
         let today = Utc::now().format("%Y-%m-%d").to_string();
         let today_start = format!("{}T00:00:00Z", today);
@@ -546,10 +548,12 @@ impl Database {
                 FROM sessions
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch') >= ?2
+                  AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
             .bind(pid)
             .bind(&today_start)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         } else {
@@ -564,9 +568,11 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE datetime(last_message_at, 'unixepoch') >= ?1
+                  AND (?2 IS NULL OR git_branch = ?2)
                 "#,
             )
             .bind(&today_start)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         };
@@ -585,10 +591,12 @@ impl Database {
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
                       AND datetime(s.last_message_at, 'unixepoch') >= ?2
+                      AND (?3 IS NULL OR s.git_branch = ?3)
                     "#,
                 )
                 .bind(pid)
                 .bind(&today_start)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?
             } else {
@@ -602,9 +610,11 @@ impl Database {
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE datetime(s.last_message_at, 'unixepoch') >= ?1
+                      AND (?2 IS NULL OR s.git_branch = ?2)
                     "#,
                 )
                 .bind(&today_start)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?
             };
@@ -632,6 +642,7 @@ impl Database {
     async fn get_all_contributions(
         &self,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
@@ -646,9 +657,11 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE project_id = ?1
+                  AND (?2 IS NULL OR git_branch = ?2)
                 "#,
             )
             .bind(pid)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?;
 
@@ -663,9 +676,60 @@ impl Database {
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
+                      AND (?2 IS NULL OR s.git_branch = ?2)
                     "#,
                 )
                 .bind(pid)
+                .bind(branch)
+                .fetch_one(self.pool())
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
+
+            Ok(AggregatedContributions {
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
+            })
+        } else if branch.is_some() {
+            // Global + branch filter: query sessions directly (snapshots lack branch column)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE git_branch = ?1
+                "#,
+            )
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?;
+
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE s.git_branch = ?1
+                    "#,
+                )
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?;
 
@@ -704,7 +768,7 @@ impl Database {
             .await?;
 
             // Add today's real-time data
-            let today = self.get_today_contributions(project_id).await?;
+            let today = self.get_today_contributions(project_id, branch).await?;
 
             Ok(AggregatedContributions {
                 sessions_count: snapshot.0 + today.sessions_count,
@@ -730,6 +794,7 @@ impl Database {
         from: &str,
         to: &str,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
@@ -746,11 +811,13 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
             .bind(pid)
             .bind(from)
             .bind(to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?;
 
@@ -767,11 +834,70 @@ impl Database {
                     WHERE s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch') >= ?2
                       AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND (?4 IS NULL OR s.git_branch = ?4)
                     "#,
                 )
                 .bind(pid)
                 .bind(from)
                 .bind(to)
+                .bind(branch)
+                .fetch_one(self.pool())
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
+
+            Ok(AggregatedContributions {
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
+            })
+        } else if branch.is_some() {
+            // Global + branch filter: query sessions directly (snapshots lack branch column)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+                r#"
+                SELECT
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch') >= ?1
+                  AND date(last_message_at, 'unixepoch') <= ?2
+                  AND git_branch = ?3
+                "#,
+            )
+            .bind(from)
+            .bind(to)
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?;
+
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE date(s.last_message_at, 'unixepoch') >= ?1
+                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                      AND s.git_branch = ?3
+                    "#,
+                )
+                .bind(from)
+                .bind(to)
+                .bind(branch)
                 .fetch_one(self.pool())
                 .await?;
 
@@ -836,6 +962,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Vec<DailyTrendPoint>> {
         let (from, to) = match range {
             TimeRange::Today => {
@@ -878,6 +1005,7 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 GROUP BY date(last_message_at, 'unixepoch')
                 ORDER BY date ASC
                 "#,
@@ -885,6 +1013,47 @@ impl Database {
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
+            .fetch_all(self.pool())
+            .await?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
+                    let cost_cents = estimate_cost_cents(tokens_used);
+                    DailyTrendPoint {
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    }
+                })
+                .collect())
+        } else if branch.is_some() {
+            // Global + branch filter: query sessions directly (snapshots lack branch column)
+            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
+                r#"
+                SELECT
+                    date(last_message_at, 'unixepoch') as date,
+                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
+                    COALESCE(SUM(commit_count), 0) as commits_count,
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch') >= ?1
+                  AND date(last_message_at, 'unixepoch') <= ?2
+                  AND git_branch = ?3
+                GROUP BY date(last_message_at, 'unixepoch')
+                ORDER BY date ASC
+                "#,
+            )
+            .bind(&from)
+            .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?;
 
@@ -951,6 +1120,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Vec<BranchBreakdown>> {
         let (from, to) = match range {
             TimeRange::Custom => {
@@ -990,6 +1160,7 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 GROUP BY git_branch
                 ORDER BY sessions_count DESC
                 "#,
@@ -997,6 +1168,7 @@ impl Database {
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?;
 
@@ -1035,12 +1207,14 @@ impl Database {
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
                   AND date(last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR git_branch = ?3)
                 GROUP BY project_id, git_branch
                 ORDER BY sessions_count DESC
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?;
 
@@ -1303,6 +1477,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Vec<ModelStats>> {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
@@ -1332,6 +1507,7 @@ impl Database {
                       AND s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch') >= ?2
                       AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND (?4 IS NULL OR s.git_branch = ?4)
                     GROUP BY t.model_id
                 ),
                 model_weights AS (
@@ -1345,6 +1521,7 @@ impl Database {
                       AND s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch') >= ?2
                       AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND (?4 IS NULL OR s.git_branch = ?4)
                     GROUP BY t.session_id, t.model_id
                 ),
                 session_totals AS (
@@ -1396,6 +1573,7 @@ impl Database {
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         } else {
@@ -1414,6 +1592,7 @@ impl Database {
                     WHERE t.model_id IS NOT NULL
                       AND date(s.last_message_at, 'unixepoch') >= ?1
                       AND date(s.last_message_at, 'unixepoch') <= ?2
+                      AND (?3 IS NULL OR s.git_branch = ?3)
                     GROUP BY t.model_id
                 ),
                 model_weights AS (
@@ -1426,6 +1605,7 @@ impl Database {
                     WHERE t.model_id IS NOT NULL
                       AND date(s.last_message_at, 'unixepoch') >= ?1
                       AND date(s.last_message_at, 'unixepoch') <= ?2
+                      AND (?3 IS NULL OR s.git_branch = ?3)
                     GROUP BY t.session_id, t.model_id
                 ),
                 session_totals AS (
@@ -1476,6 +1656,7 @@ impl Database {
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         };
@@ -1524,6 +1705,7 @@ impl Database {
     pub async fn get_learning_curve(
         &self,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<LearningCurve> {
         // Get monthly re-edit rates for the last 6 months
         let rows: Vec<(String, i64, i64)> = if let Some(pid) = project_id {
@@ -1536,11 +1718,13 @@ impl Database {
                 FROM sessions
                 WHERE project_id = ?1
                   AND last_message_at >= strftime('%s', 'now', '-6 months')
+                  AND (?2 IS NULL OR git_branch = ?2)
                 GROUP BY period
                 ORDER BY period ASC
                 "#,
             )
             .bind(pid)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         } else {
@@ -1552,10 +1736,12 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited
                 FROM sessions
                 WHERE last_message_at >= strftime('%s', 'now', '-6 months')
+                  AND (?1 IS NULL OR git_branch = ?1)
                 GROUP BY period
                 ORDER BY period ASC
                 "#,
             )
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         };
@@ -1621,6 +1807,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Vec<SkillStats>> {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
@@ -1654,6 +1841,7 @@ impl Database {
                 WHERE date(s.last_message_at, 'unixepoch') >= ?1
                   AND date(s.last_message_at, 'unixepoch') <= ?2
                   AND s.project_id = ?3
+                  AND (?4 IS NULL OR s.git_branch = ?4)
                 GROUP BY ss.skill_name
                 ORDER BY session_count DESC
                 "#,
@@ -1661,6 +1849,7 @@ impl Database {
             .bind(&from)
             .bind(&to)
             .bind(pid)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         } else {
@@ -1691,12 +1880,14 @@ impl Database {
                 JOIN sessions s ON ss.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch') >= ?1
                   AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR s.git_branch = ?3)
                 GROUP BY ss.skill_name
                 ORDER BY session_count DESC
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_all(self.pool())
             .await?
         };
@@ -1729,11 +1920,13 @@ impl Database {
                   AND date(s.last_message_at, 'unixepoch') >= ?1
                   AND date(s.last_message_at, 'unixepoch') <= ?2
                   AND s.project_id = ?3
+                  AND (?4 IS NULL OR s.git_branch = ?4)
                 "#,
             )
             .bind(&from)
             .bind(&to)
             .bind(pid)
+            .bind(branch)
             .fetch_optional(self.pool())
             .await?
         } else {
@@ -1762,10 +1955,12 @@ impl Database {
                 WHERE skill_sessions.session_id IS NULL
                   AND date(s.last_message_at, 'unixepoch') >= ?1
                   AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR s.git_branch = ?3)
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_optional(self.pool())
             .await?
         };
@@ -2313,6 +2508,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Option<f64>> {
         let (from, to) = match range {
             TimeRange::Custom => {
@@ -2345,11 +2541,13 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         } else {
@@ -2361,10 +2559,12 @@ impl Database {
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
                   AND date(last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         };
@@ -2389,6 +2589,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<Option<f64>> {
         let (from, to) = match range {
             TimeRange::Custom => {
@@ -2421,11 +2622,13 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         } else {
@@ -2437,10 +2640,12 @@ impl Database {
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
                   AND date(last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         };
@@ -2461,6 +2666,7 @@ impl Database {
         from_date: Option<&str>,
         to_date: Option<&str>,
         project_id: Option<&str>,
+        branch: Option<&str>,
     ) -> DbResult<i64> {
         let (from, to) = match range {
             TimeRange::Custom => {
@@ -2491,11 +2697,13 @@ impl Database {
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch') >= ?2
                   AND date(last_message_at, 'unixepoch') <= ?3
+                  AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
             .bind(pid)
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         } else {
@@ -2505,10 +2713,12 @@ impl Database {
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch') >= ?1
                   AND date(last_message_at, 'unixepoch') <= ?2
+                  AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
             .bind(&from)
             .bind(&to)
+            .bind(branch)
             .fetch_one(self.pool())
             .await?
         };
@@ -2598,7 +2808,7 @@ mod tests {
     async fn test_get_aggregated_contributions_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
         let agg = db
-            .get_aggregated_contributions(TimeRange::Week, None, None, None)
+            .get_aggregated_contributions(TimeRange::Week, None, None, None, None)
             .await
             .unwrap();
 
@@ -2655,7 +2865,7 @@ mod tests {
     async fn test_get_contribution_trend_empty() {
         let db = Database::new_in_memory().await.unwrap();
         let trend = db
-            .get_contribution_trend(TimeRange::Week, None, None, None)
+            .get_contribution_trend(TimeRange::Week, None, None, None, None)
             .await
             .unwrap();
 
@@ -2682,6 +2892,7 @@ mod tests {
                 TimeRange::Custom,
                 Some("2026-02-01"),
                 Some("2026-02-10"),
+                None,
                 None,
             )
             .await
@@ -2716,7 +2927,7 @@ mod tests {
     async fn test_get_model_breakdown_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
         let breakdown = db
-            .get_model_breakdown(TimeRange::Week, None, None, None)
+            .get_model_breakdown(TimeRange::Week, None, None, None, None)
             .await
             .unwrap();
         assert!(breakdown.is_empty());
@@ -2725,7 +2936,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_learning_curve_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
-        let curve = db.get_learning_curve(None).await.unwrap();
+        let curve = db.get_learning_curve(None, None).await.unwrap();
         assert!(curve.periods.is_empty());
         assert_eq!(curve.current_avg, 0.0);
         assert_eq!(curve.improvement, 0.0);
@@ -2735,7 +2946,7 @@ mod tests {
     async fn test_get_skill_breakdown_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
         let breakdown = db
-            .get_skill_breakdown(TimeRange::Week, None, None, None)
+            .get_skill_breakdown(TimeRange::Week, None, None, None, None)
             .await
             .unwrap();
         assert!(breakdown.is_empty());
@@ -2826,7 +3037,7 @@ mod tests {
         .unwrap();
 
         let breakdown = db
-            .get_skill_breakdown(TimeRange::All, None, None, None)
+            .get_skill_breakdown(TimeRange::All, None, None, None, None)
             .await
             .unwrap();
 

@@ -123,7 +123,7 @@ describe('CompactSessionTable', () => {
       const links = within(firstDataRow).getAllByRole('link')
       expect(links.length).toBeGreaterThan(0)
       links.forEach(link => {
-        expect(link).toHaveAttribute('href', expect.stringContaining('/session/'))
+        expect(link).toHaveAttribute('href', expect.stringContaining('/sessions/'))
       })
     })
 
