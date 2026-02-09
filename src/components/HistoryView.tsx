@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown } from 'lucide-react'
+import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
 import { buildSessionUrl } from '../lib/url-utils'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
@@ -358,6 +358,34 @@ export function HistoryView() {
               </button>
             )}
           </div>
+
+          {/* Sidebar scope indicator (read-only — scope is controlled by sidebar) */}
+          {sidebarProject && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs">
+              <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-blue-700 dark:text-blue-300 font-medium truncate">
+                {sidebarProject.split('/').pop()}
+              </span>
+              {sidebarBranch && (
+                <>
+                  <span className="text-blue-300 dark:text-blue-600">/</span>
+                  <span className="text-blue-600 dark:text-blue-400 truncate">{sidebarBranch}</span>
+                </>
+              )}
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams)
+                  params.delete('project')
+                  params.delete('branch')
+                  setSearchParams(params)
+                }}
+                className="ml-auto text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300 transition-colors"
+                aria-label="Clear project scope"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Filter row: session filter/sort + time + project */}
           <div className="flex items-center gap-2 flex-wrap">
