@@ -3,4 +3,4 @@
 /**
  * An invocable (tool/skill/MCP) with its aggregated invocation count.
  */
-export type InvocableWithCount = { id: string, pluginName: string | null, name: string, kind: string, description: string, invocationCount: bigint, lastUsedAt: bigint | null, };
+export type InvocableWithCount = { id: string, pluginName: string | null, name: string, kind: string, description: string, invocationCount: number, lastUsedAt: number | null, };

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-05
 purpose: Theme 3 Design — Git Integration & AI Contribution Tracking
 ---
@@ -851,3 +851,342 @@ Add a summary card linking to `/contributions`:
 - [ ] Skill effectiveness table
 - [ ] Cost/ROI metrics
 - [ ] Directory heatmap (codebase coverage)
+
+---
+
+## Migration & Backfill Strategy
+
+### Existing Data Backfill
+
+When Theme 3 launches, existing sessions lack `ai_lines_added`, `ai_lines_removed`, and `work_type`. Backfill is required.
+
+**Approach:** Re-parse JSONL files for existing sessions during next deep index.
+
+```rust
+// In deep_index.rs
+async fn backfill_contribution_metrics(session: &mut Session, jsonl_path: &Path) -> Result<()> {
+    if session.ai_lines_added.is_some() {
+        return Ok(()); // Already computed, skip
+    }
+
+    let (lines_added, lines_removed) = count_ai_lines(jsonl_path).await?;
+    let work_type = classify_work_type(session);
+
+    session.ai_lines_added = Some(lines_added);
+    session.ai_lines_removed = Some(lines_removed);
+    session.work_type = Some(work_type);
+
+    Ok(())
+}
+```
+
+**Backfill triggers:**
+
+1. **Automatic:** Next scheduled deep index after upgrade
+2. **Manual:** `vibe-recall reindex --backfill-contributions`
+
+**Progress tracking:**
+
+- Store `last_backfill_version` in DB metadata
+- Current version: `1` (initial release)
+- Future schema changes increment version, triggering re-backfill
+
+### Snapshot Bootstrap
+
+First run after upgrade has no historical snapshots. Bootstrap strategy:
+
+```sql
+-- Generate snapshots for all historical dates with sessions
+INSERT INTO contribution_snapshots (date, project_id, branch, ...)
+SELECT
+    DATE(started_at) as date,
+    project_id,
+    branch,
+    COUNT(*) as sessions_count,
+    SUM(ai_lines_added) as ai_lines_added,
+    ...
+FROM sessions
+WHERE ai_lines_added IS NOT NULL
+GROUP BY DATE(started_at), project_id, branch;
+```
+
+**Bootstrap runs once** during first snapshot job execution after upgrade.
+
+---
+
+## Test Strategy
+
+### Unit Tests
+
+| Component | Test Focus | Location |
+|-----------|------------|----------|
+| `count_ai_lines()` | Parses Edit/Write tool_use, handles malformed JSONL | `crates/core/src/contribution_test.rs` |
+| `classify_work_type()` | Heuristic boundaries, edge cases | `crates/core/src/work_type_test.rs` |
+| `insights::fluency()` | Trend calculation, zero-division | `crates/server/src/insights_test.rs` |
+| `insights::effectiveness()` | Threshold logic, null handling | `crates/server/src/insights_test.rs` |
+| `safe_pct()` | Division by zero returns null | `crates/core/src/math_test.rs` |
+
+**Test fixtures:**
+
+- `fixtures/sessions/deep_work.jsonl` — 45min, 847 lines, 23 prompts
+- `fixtures/sessions/quick_ask.jsonl` — 2min, 0 edits, 2 prompts
+- `fixtures/sessions/planning.jsonl` — brainstorming skill, low edits
+- `fixtures/sessions/empty.jsonl` — no tool calls
+
+### Integration Tests
+
+| Scenario | Test File |
+|----------|-----------|
+| `/api/contributions` returns correct aggregates | `crates/server/tests/contributions_api.rs` |
+| Snapshot job produces correct daily rollups | `crates/db/tests/snapshot_job.rs` |
+| Git sync captures diff stats | `crates/core/tests/git_sync.rs` |
+| Backfill populates missing fields | `crates/db/tests/backfill.rs` |
+
+**Test database:** Use SQLite in-memory with seeded test data.
+
+### E2E Tests
+
+| Flow | Tool |
+|------|------|
+| Load `/contributions`, verify cards render | Playwright |
+| Change time filter, verify chart updates | Playwright |
+| Click branch, verify drill-down opens | Playwright |
+| Empty state displays when no sessions | Playwright |
+
+**E2E test location:** `frontend/e2e/contributions.spec.ts`
+
+### Test Commands
+
+```bash
+# Unit tests for contribution metrics
+cargo test -p core -- contribution
+
+# Integration tests for API
+cargo test -p server -- contributions
+
+# E2E tests
+pnpm --filter frontend test:e2e -- contributions
+```
+
+---
+
+## Performance Benchmarks
+
+### API Latency Targets
+
+| Endpoint | P50 | P95 | P99 |
+|----------|-----|-----|-----|
+| `GET /api/contributions?range=week` | < 50ms | < 100ms | < 200ms |
+| `GET /api/contributions?range=month` | < 100ms | < 200ms | < 400ms |
+| `GET /api/contributions?range=all` | < 200ms | < 500ms | < 1s |
+| `GET /api/contributions/sessions/:id` | < 30ms | < 50ms | < 100ms |
+
+**Measurement:** Add tracing spans, emit metrics to logs.
+
+### Memory Limits
+
+| Operation | Max Memory |
+|-----------|------------|
+| Snapshot aggregation query | < 50MB |
+| Single session contribution parse | < 10MB |
+| Backfill batch (100 sessions) | < 200MB |
+
+### Snapshot Job Performance
+
+| Metric | Target |
+|--------|--------|
+| Daily snapshot generation | < 5s for 1000 sessions |
+| Bootstrap (first run, 10k sessions) | < 60s |
+
+### Frontend Bundle Impact
+
+| Metric | Budget |
+|--------|--------|
+| Chart library (Recharts) | < 50KB gzipped |
+| Contributions page chunk | < 30KB gzipped |
+| Total JS increase | < 80KB gzipped |
+
+**Chart library choice:** Recharts (already commonly used, tree-shakeable).
+
+---
+
+## Frontend Component Tree
+
+```
+frontend/src/pages/ContributionsPage.tsx
+├── ContributionsHeader.tsx
+│   ├── PageTitle
+│   └── TimeRangeFilter.tsx (dropdown)
+│
+├── OverviewCards.tsx
+│   ├── FluencyCard.tsx
+│   ├── OutputCard.tsx
+│   └── EffectivenessCard.tsx
+│
+├── TrendChart.tsx
+│   ├── Chart (Recharts LineChart)
+│   ├── ChartToggle.tsx (Lines/Commits/Sessions)
+│   └── InsightLine.tsx
+│
+├── EfficiencyMetrics.tsx
+│   └── CostBreakdown.tsx
+│
+├── ModelComparison.tsx
+│   └── ModelTable.tsx
+│
+├── LearningCurve.tsx
+│   └── ProgressChart.tsx (Recharts BarChart)
+│
+├── BranchList.tsx
+│   └── BranchCard.tsx (expandable)
+│       └── SessionSummary.tsx
+│
+├── SkillEffectiveness.tsx
+│   └── SkillTable.tsx
+│
+├── UncommittedWork.tsx
+│   └── UncommittedCard.tsx
+│
+├── SessionDrillDown.tsx (modal or slide-over)
+│   ├── SessionHeader.tsx
+│   ├── FileImpactList.tsx
+│   ├── LinkedCommits.tsx
+│   └── EffectivenessBar.tsx
+│
+└── ContributionsEmptyState.tsx
+```
+
+### Shared Components
+
+| Component | Purpose |
+|-----------|---------|
+| `InsightLine.tsx` | Renders plain-English insight with icon |
+| `MetricCard.tsx` | Reusable card with primary/secondary values |
+| `ProgressBar.tsx` | Horizontal bar for percentages |
+| `TrendIndicator.tsx` | Up/down arrow with % change |
+| `WorkTypeBadge.tsx` | Colored badge for work type |
+
+### State Management
+
+```typescript
+// frontend/src/hooks/useContributions.ts
+export function useContributions(range: TimeRange) {
+  return useQuery({
+    queryKey: ['contributions', range],
+    queryFn: () => api.getContributions(range),
+    staleTime: 5 * 60 * 1000, // 5 min
+    gcTime: 30 * 60 * 1000,   // 30 min
+  });
+}
+```
+
+**Library:** TanStack Query (React Query) for caching and background refresh.
+
+---
+
+## Caching Strategy
+
+### API Response Caching
+
+| Endpoint | Cache Duration | Invalidation |
+|----------|----------------|--------------|
+| `/api/contributions?range=today` | 1 min | On new session |
+| `/api/contributions?range=week` | 5 min | On snapshot job |
+| `/api/contributions?range=month` | 15 min | On snapshot job |
+| `/api/contributions?range=all` | 30 min | On snapshot job |
+
+**Implementation:** HTTP `Cache-Control` headers + ETag.
+
+```rust
+// In contributions route
+let cache_seconds = match range {
+    TimeRange::Today => 60,
+    TimeRange::Week => 300,
+    TimeRange::Month => 900,
+    _ => 1800,
+};
+
+Response::builder()
+    .header("Cache-Control", format!("max-age={}", cache_seconds))
+    .header("ETag", compute_etag(&data))
+    .body(Json(data))
+```
+
+### Frontend Caching
+
+- **React Query** handles client-side cache
+- `staleTime`: Match API cache duration
+- `gcTime`: 30 minutes (keep in memory for back-navigation)
+- **Optimistic updates:** Not needed (read-only page)
+
+### Snapshot Job Cache Invalidation
+
+After daily snapshot job completes:
+1. Bump `snapshot_version` in DB metadata
+2. Next API request sees version mismatch → returns fresh data
+3. ETag changes → client refetches
+
+---
+
+## Snapshot Retention Policy
+
+| Granularity | Retention |
+|-------------|-----------|
+| Daily snapshots | 90 days |
+| Weekly rollups | 1 year |
+| Monthly rollups | Forever |
+
+**Rollup job:** Runs weekly, aggregates old daily snapshots into weekly/monthly.
+
+```sql
+-- Weekly rollup (runs every Sunday)
+INSERT INTO contribution_snapshots (date, project_id, branch, granularity, ...)
+SELECT
+    DATE(date, 'weekday 0', '-7 days') as week_start,
+    project_id,
+    branch,
+    'weekly' as granularity,
+    SUM(sessions_count),
+    ...
+FROM contribution_snapshots
+WHERE granularity = 'daily'
+  AND date < DATE('now', '-90 days')
+GROUP BY week_start, project_id, branch;
+
+-- Delete old daily snapshots
+DELETE FROM contribution_snapshots
+WHERE granularity = 'daily'
+  AND date < DATE('now', '-90 days');
+```
+
+### Session Data Retention
+
+Session contribution fields (`ai_lines_added`, `work_type`) follow existing session retention policy (no separate policy needed).
+
+---
+
+## Error States UX
+
+### API Errors
+
+| Error | UI Behavior |
+|-------|-------------|
+| 500 Internal Error | Show error banner with "Retry" button, preserve last-good data if cached |
+| 503 Indexing In Progress | Show "Building contribution data..." with spinner |
+| Partial data (warnings) | Show data + warning banner explaining what's missing |
+
+### Specific Warning States
+
+| Warning Code | User Message |
+|--------------|--------------|
+| `GIT_SYNC_INCOMPLETE` | "Some commit data unavailable — run `vibe-recall sync` to update" |
+| `COST_UNAVAILABLE` | "Cost metrics unavailable — token data missing from some sessions" |
+| `PARTIAL_DATA` | "Showing partial data — some sessions still indexing" |
+
+### Empty States
+
+| Condition | UI |
+|-----------|-----|
+| No sessions in time range | Empty state with "View All Time" button |
+| No commits linked | Show session data, hide commit-dependent metrics, show "No commits found" |
+| New user (0 sessions) | Onboarding empty state with "Start a Claude Code session..." |

@@ -39,6 +39,23 @@ pub struct GitCommit {
     pub timestamp: i64,
     /// Branch name (if available).
     pub branch: Option<String>,
+    /// Number of files changed in this commit.
+    pub files_changed: Option<u32>,
+    /// Number of lines inserted in this commit.
+    pub insertions: Option<u32>,
+    /// Number of lines deleted in this commit.
+    pub deletions: Option<u32>,
+}
+
+/// Diff stats for a commit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiffStats {
+    /// Number of files changed.
+    pub files_changed: u32,
+    /// Number of lines inserted.
+    pub insertions: u32,
+    /// Number of lines deleted.
+    pub deletions: u32,
 }
 
 /// Result of scanning a repository for commits.
@@ -151,7 +168,7 @@ pub async fn scan_repo_commits(
     // Format: hash|author|timestamp|message
     let mut cmd = Command::new("git");
     cmd.arg("log")
-        .arg(format!("--format=%H|%an|%at|%s"))
+        .arg("--format=%H|%an|%at|%s")
         .arg(format!("-n{}", limit))
         .current_dir(repo_path)
         .stdout(Stdio::piped())
@@ -271,7 +288,160 @@ fn parse_git_log_line(line: &str, repo_path: &Path) -> Option<GitCommit> {
         },
         timestamp,
         branch: None, // Set later
+        files_changed: None, // Set later via get_commit_diff_stats
+        insertions: None,
+        deletions: None,
     })
+}
+
+/// Get diff stats for a single commit using `git show --stat`.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hash` - The commit hash to get stats for
+///
+/// # Returns
+/// `DiffStats` with files_changed, insertions, and deletions, or default if unavailable.
+pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffStats {
+    // Use git show --stat --format="" to get only the stat line
+    // Output format: "N files changed, N insertions(+), N deletions(-)"
+    let output = tokio::time::timeout(
+        Duration::from_secs(GIT_TIMEOUT_SECS),
+        Command::new("git")
+            .args(["show", "--stat", "--format=", commit_hash])
+            .current_dir(repo_path)
+            .output(),
+    )
+    .await;
+
+    let output = match output {
+        Ok(Ok(o)) if o.status.success() => o,
+        Ok(Ok(o)) => {
+            tracing::debug!("git show returned non-zero for {commit_hash}: {:?}", o.status);
+            return DiffStats::default();
+        }
+        Ok(Err(e)) => {
+            tracing::warn!("git show spawn failed for {commit_hash}: {e}");
+            return DiffStats::default();
+        }
+        Err(_) => {
+            tracing::warn!("git show timed out for commit {commit_hash}");
+            return DiffStats::default();
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_diff_stats_from_output(&stdout)
+}
+
+/// Get diff stats for multiple commits in a batch.
+///
+/// Spawns one `git show --stat` per commit, parallelized within batches
+/// using [`tokio::task::JoinSet`] to limit concurrent subprocesses.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hashes` - Slice of commit hashes to get stats for
+///
+/// # Returns
+/// Vec of (hash, DiffStats) tuples. Commits that fail to parse will have default stats.
+pub async fn get_batch_diff_stats(
+    repo_path: &Path,
+    commit_hashes: &[String],
+) -> Vec<(String, DiffStats)> {
+    let mut results = Vec::with_capacity(commit_hashes.len());
+
+    // Process commits in batches to bound concurrent subprocess count
+    const BATCH_SIZE: usize = 50;
+
+    for batch in commit_hashes.chunks(BATCH_SIZE) {
+        let mut set = tokio::task::JoinSet::new();
+
+        for (idx, hash) in batch.iter().enumerate() {
+            let repo = repo_path.to_path_buf();
+            let h = hash.clone();
+            set.spawn(async move {
+                let stats = get_commit_diff_stats(&repo, &h).await;
+                (idx, h, stats)
+            });
+        }
+
+        // Collect results preserving original order
+        let mut batch_results: Vec<(usize, String, DiffStats)> =
+            Vec::with_capacity(batch.len());
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(tuple) => batch_results.push(tuple),
+                Err(e) => {
+                    tracing::warn!("JoinSet task panicked in get_batch_diff_stats: {e}");
+                }
+            }
+        }
+        batch_results.sort_by_key(|(idx, _, _)| *idx);
+
+        for (_, hash, stats) in batch_results {
+            results.push((hash, stats));
+        }
+    }
+
+    results
+}
+
+/// Parse diff stats from git show --stat output.
+///
+/// Expected format in the last line:
+/// " N files changed, N insertions(+), N deletions(-)"
+/// or partial variants like:
+/// " N files changed, N insertions(+)"
+/// " N files changed, N deletions(-)"
+/// " N file changed"
+fn parse_diff_stats_from_output(output: &str) -> DiffStats {
+    // Find the summary line (last non-empty line containing "changed")
+    let summary_line = output
+        .lines()
+        .rev()
+        .find(|line| line.contains("changed"));
+
+    let line = match summary_line {
+        Some(l) => l.trim(),
+        None => return DiffStats::default(),
+    };
+
+    let mut stats = DiffStats::default();
+
+    // Parse "N file(s) changed"
+    if let Some(pos) = line.find("file") {
+        let prefix = &line[..pos].trim();
+        if let Some(num_str) = prefix.split_whitespace().last() {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.files_changed = n;
+            }
+        }
+    }
+
+    // Parse "N insertion(s)(+)"
+    if let Some(pos) = line.find("insertion") {
+        // Find the number before "insertion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.insertions = n;
+            }
+        }
+    }
+
+    // Parse "N deletion(s)(-)"
+    if let Some(pos) = line.find("deletion") {
+        // Find the number before "deletion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.deletions = n;
+            }
+        }
+    }
+
+    stats
 }
 
 /// Check if a directory is a git repository.
@@ -420,15 +590,6 @@ pub fn tier2_match(
 // Database CRUD Operations
 // ============================================================================
 
-/// Git diff stats extracted from numstat output.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DiffStats {
-    /// Total lines added across all files.
-    pub lines_added: u32,
-    /// Total lines removed across all files.
-    pub lines_removed: u32,
-}
-
 impl DiffStats {
     /// Parse numstat output and aggregate stats.
     ///
@@ -453,8 +614,9 @@ impl DiffStats {
             let removed = parts[1].parse::<u32>().ok();
 
             if let (Some(a), Some(r)) = (added, removed) {
-                stats.lines_added += a;
-                stats.lines_removed += r;
+                stats.files_changed += 1;
+                stats.insertions += a;
+                stats.deletions += r;
             }
             // Binary files (- - filename) are skipped
         }
@@ -465,8 +627,9 @@ impl DiffStats {
     /// Aggregate multiple DiffStats together.
     pub fn aggregate(stats: &[DiffStats]) -> Self {
         stats.iter().fold(Self::default(), |mut acc, s| {
-            acc.lines_added += s.lines_added;
-            acc.lines_removed += s.lines_removed;
+            acc.files_changed += s.files_changed;
+            acc.insertions += s.insertions;
+            acc.deletions += s.deletions;
             acc
         })
     }
@@ -525,14 +688,17 @@ impl Database {
         for commit in commits {
             let result = sqlx::query(
                 r#"
-                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 ON CONFLICT(hash) DO UPDATE SET
                     repo_path = excluded.repo_path,
                     message = excluded.message,
                     author = excluded.author,
                     timestamp = excluded.timestamp,
-                    branch = excluded.branch
+                    branch = excluded.branch,
+                    files_changed = COALESCE(excluded.files_changed, commits.files_changed),
+                    insertions = COALESCE(excluded.insertions, commits.insertions),
+                    deletions = COALESCE(excluded.deletions, commits.deletions)
                 "#,
             )
             .bind(&commit.hash)
@@ -541,6 +707,9 @@ impl Database {
             .bind(&commit.author)
             .bind(commit.timestamp)
             .bind(&commit.branch)
+            .bind(commit.files_changed.map(|v| v as i64))
+            .bind(commit.insertions.map(|v| v as i64))
+            .bind(commit.deletions.map(|v| v as i64))
             .execute(&mut *tx)
             .await?;
 
@@ -549,6 +718,49 @@ impl Database {
 
         tx.commit().await?;
         Ok(affected)
+    }
+
+    /// Update diff stats for a commit.
+    ///
+    /// Used to populate diff stats for commits that were initially created without them.
+    pub async fn update_commit_diff_stats(
+        &self,
+        commit_hash: &str,
+        stats: DiffStats,
+    ) -> DbResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE commits SET
+                files_changed = ?2,
+                insertions = ?3,
+                deletions = ?4
+            WHERE hash = ?1
+            "#,
+        )
+        .bind(commit_hash)
+        .bind(stats.files_changed as i64)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get commits missing diff stats (for backfill).
+    pub async fn get_commits_without_diff_stats(&self, limit: usize) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT hash FROM commits
+            WHERE files_changed IS NULL OR insertions IS NULL OR deletions IS NULL
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(|(h,)| h).collect())
     }
 
     /// Insert session-commit links with tier and evidence.
@@ -615,10 +827,11 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, i32, String)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
                 r#"
             SELECT c.hash, c.repo_path, c.message, c.author, c.timestamp, c.branch,
+                   c.files_changed, c.insertions, c.deletions,
                    sc.tier, sc.evidence
             FROM commits c
             INNER JOIN session_commits sc ON c.hash = sc.commit_hash
@@ -633,7 +846,7 @@ impl Database {
         let results = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch, tier, evidence)| {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions, tier, evidence)| {
                     let commit = GitCommit {
                         hash,
                         repo_path,
@@ -641,6 +854,9 @@ impl Database {
                         author,
                         timestamp,
                         branch,
+                        files_changed: files_changed.map(|v| v as u32),
+                        insertions: insertions.map(|v| v as u32),
+                        deletions: deletions.map(|v| v as u32),
                     };
                     (commit, tier, evidence)
                 },
@@ -659,10 +875,10 @@ impl Database {
         start_ts: i64,
         end_ts: i64,
     ) -> DbResult<Vec<GitCommit>> {
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
             sqlx::query_as(
                 r#"
-            SELECT hash, repo_path, message, author, timestamp, branch
+            SELECT hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions
             FROM commits
             WHERE repo_path = ?1 AND timestamp >= ?2 AND timestamp <= ?3
             ORDER BY timestamp DESC
@@ -677,13 +893,16 @@ impl Database {
         let commits = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch)| GitCommit {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)| GitCommit {
                     hash,
                     repo_path,
                     message,
                     author,
                     timestamp,
                     branch,
+                    files_changed: files_changed.map(|v| v as u32),
+                    insertions: insertions.map(|v| v as u32),
+                    deletions: deletions.map(|v| v as u32),
                 },
             )
             .collect();
@@ -728,7 +947,7 @@ impl Database {
         stats: &DiffStats,
     ) -> DbResult<()> {
         // Only update if we have actual stats
-        if stats.lines_added == 0 && stats.lines_removed == 0 {
+        if stats.insertions == 0 && stats.deletions == 0 {
             return Ok(());
         }
 
@@ -740,8 +959,8 @@ impl Database {
             "#,
         )
         .bind(session_id)
-        .bind(stats.lines_added as i64)
-        .bind(stats.lines_removed as i64)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
         .execute(self.pool())
         .await?;
 
@@ -948,7 +1167,7 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
     let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
         std::collections::HashMap::new();
 
-    for (project_path, _sessions) in &sessions_by_repo {
+    for project_path in sessions_by_repo.keys() {
         let path = std::path::Path::new(project_path.as_str());
         let scan = scan_repo_commits(path, None, None).await;
 
@@ -1158,6 +1377,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100, // Exact match
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1185,6 +1407,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 - 60, // 60s before (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1206,6 +1431,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 300, // 300s after (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1227,6 +1455,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 301, // 301s after (outside window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1247,6 +1478,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1274,6 +1508,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400120, // Matches first skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1282,6 +1519,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400520, // Matches second skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1302,6 +1542,9 @@ mod tests {
             author: None,
             timestamp: 1706400200, // Within session range
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1323,6 +1566,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100, // At session start
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1331,6 +1577,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400300, // At session end
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1348,6 +1597,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400099, // 1 second before session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1356,6 +1608,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400301, // 1 second after session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1372,6 +1627,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1394,6 +1652,9 @@ mod tests {
                 author: Some("Author 1".to_string()),
                 timestamp: 1706400100,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1402,6 +1663,9 @@ mod tests {
                 author: Some("Author 2".to_string()),
                 timestamp: 1706400200,
                 branch: Some("feature".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1427,6 +1691,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1439,6 +1706,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&updated).await.unwrap();
@@ -1482,6 +1752,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1540,6 +1813,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1613,6 +1889,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1621,6 +1900,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1713,6 +1995,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400150, // Within Tier 1 window [1706400040, 1706400400]
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1721,6 +2006,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400500, // Outside Tier 1 window (>1706400400), inside session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
@@ -1729,6 +2017,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1807,6 +2098,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1858,6 +2152,9 @@ mod tests {
             author: None,
             timestamp: 1706400150,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -2227,24 +2524,24 @@ mod tests {
     #[test]
     fn test_diff_stats_from_numstat_empty() {
         let stats = DiffStats::from_numstat("");
-        assert_eq!(stats.lines_added, 0);
-        assert_eq!(stats.lines_removed, 0);
+        assert_eq!(stats.insertions, 0);
+        assert_eq!(stats.deletions, 0);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_single_file() {
         let output = "10\t5\tfile.rs";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 10);
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_multiple_files() {
         let output = "10\t5\tfile.rs\n3\t0\tREADME.md\n0\t7\ttest.rs";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // 10 + 3 + 0
-        assert_eq!(stats.lines_removed, 12); // 5 + 0 + 7
+        assert_eq!(stats.insertions, 13); // 10 + 3 + 0
+        assert_eq!(stats.deletions, 12); // 5 + 0 + 7
     }
 
     #[test]
@@ -2252,43 +2549,46 @@ mod tests {
         // Binary files show as "- - filename"
         let output = "10\t5\tfile.rs\n-\t-\timage.png\n3\t0\tREADME.md";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // Binary file ignored
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 13); // Binary file ignored
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_from_numstat_malformed_lines() {
         let output = "10\t5\tfile.rs\nmalformed line\n3\t0\tREADME.md";
         let stats = DiffStats::from_numstat(output);
-        assert_eq!(stats.lines_added, 13); // Malformed line ignored
-        assert_eq!(stats.lines_removed, 5);
+        assert_eq!(stats.insertions, 13); // Malformed line ignored
+        assert_eq!(stats.deletions, 5);
     }
 
     #[test]
     fn test_diff_stats_aggregate() {
         let stats1 = DiffStats {
-            lines_added: 10,
-            lines_removed: 5,
+            files_changed: 1,
+            insertions: 10,
+            deletions: 5,
         };
         let stats2 = DiffStats {
-            lines_added: 3,
-            lines_removed: 7,
+            files_changed: 1,
+            insertions: 3,
+            deletions: 7,
         };
         let stats3 = DiffStats {
-            lines_added: 0,
-            lines_removed: 2,
+            files_changed: 1,
+            insertions: 0,
+            deletions: 2,
         };
 
         let aggregated = DiffStats::aggregate(&[stats1, stats2, stats3]);
-        assert_eq!(aggregated.lines_added, 13);
-        assert_eq!(aggregated.lines_removed, 14);
+        assert_eq!(aggregated.insertions, 13);
+        assert_eq!(aggregated.deletions, 14);
     }
 
     #[test]
     fn test_diff_stats_aggregate_empty() {
         let aggregated = DiffStats::aggregate(&[]);
-        assert_eq!(aggregated.lines_added, 0);
-        assert_eq!(aggregated.lines_removed, 0);
+        assert_eq!(aggregated.insertions, 0);
+        assert_eq!(aggregated.deletions, 0);
     }
 
     #[tokio::test]
@@ -2354,8 +2654,8 @@ mod tests {
             .expect("should extract stats");
 
         // Initial commit adds 10 lines, removes 0
-        assert_eq!(stats.lines_added, 10);
-        assert_eq!(stats.lines_removed, 0);
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 0);
     }
 
     #[tokio::test]
@@ -2382,8 +2682,9 @@ mod tests {
 
         // Update LOC from git
         let stats = DiffStats {
-            lines_added: 42,
-            lines_removed: 13,
+            files_changed: 2,
+            insertions: 42,
+            deletions: 13,
         };
         db.update_session_loc_from_git("sess-1", &stats)
             .await
@@ -2426,8 +2727,9 @@ mod tests {
 
         // Try to update with zero stats (should be no-op)
         let stats = DiffStats {
-            lines_added: 0,
-            lines_removed: 0,
+            files_changed: 0,
+            insertions: 0,
+            deletions: 0,
         };
         db.update_session_loc_from_git("sess-1", &stats)
             .await
@@ -2531,6 +2833,9 @@ mod tests {
             author: Some("Test".to_string()),
             timestamp: commit_ts,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -2658,6 +2963,9 @@ mod tests {
                 author: Some("Test".to_string()),
                 timestamp: now,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: hash2.clone(),
@@ -2666,6 +2974,9 @@ mod tests {
                 author: Some("Test".to_string()),
                 timestamp: now + 100,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -2773,6 +3084,9 @@ mod tests {
             author: Some("Test".to_string()),
             timestamp: now,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
