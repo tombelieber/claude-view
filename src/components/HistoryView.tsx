@@ -146,6 +146,7 @@ export function HistoryView() {
 
       // Date filter (from sparkline click)
       if (selectedDate) {
+        if (Number(s.modifiedAt) <= 0) return false
         const d = new Date(Number(s.modifiedAt) * 1000)
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         if (key !== selectedDate) return false

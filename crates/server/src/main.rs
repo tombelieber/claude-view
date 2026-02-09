@@ -51,7 +51,7 @@ async fn run_git_sync_logged(db: &Database, label: &str) {
     let start = Instant::now();
     tracing::info!(sync_type = label, "Starting git sync");
 
-    match vibe_recall_db::git_correlation::run_git_sync(db).await {
+    match vibe_recall_db::git_correlation::run_git_sync(db, |_| {}).await {
         Ok(r) => {
             let duration = start.elapsed();
             if r.repos_scanned > 0 || r.links_created > 0 {
@@ -162,6 +162,7 @@ async fn main() -> Result<()> {
     let idx_registry = registry_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
+        let index_start = Instant::now();
 
         let state_for_pass1 = idx_state.clone();
         let state_for_progress = idx_state.clone();
@@ -191,6 +192,15 @@ async fn main() -> Result<()> {
 
         match result {
             Ok(_) => {
+                // Persist index metadata so Settings > Data Status shows real values.
+                // Query actual DB counts (not atomic counters which only track
+                // newly-indexed sessions in this run — on restart most are skipped).
+                let duration_ms = index_start.elapsed().as_millis() as i64;
+                let sessions = idx_db.get_session_count().await.unwrap_or(0);
+                let projects = idx_db.get_project_count().await.unwrap_or(0);
+                if let Err(e) = idx_db.update_index_metadata_on_success(duration_ms, sessions, projects).await {
+                    tracing::warn!(error = %e, "Failed to persist index metadata");
+                }
                 // Auto git-sync: correlate commits with sessions after indexing completes.
                 run_git_sync_logged(&idx_db, "initial").await;
 
