@@ -10,9 +10,9 @@ import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
-import { sessionSlug } from '../lib/url-slugs'
 import { Skeleton, EmptyState, SessionsEmptyState, ErrorState } from './LoadingStates'
 import { cn } from '../lib/utils'
+import { buildSessionUrl } from '../lib/url-utils'
 
 /** Human-readable labels for sort options */
 const SORT_LABELS: Record<SessionSort, string> = {
@@ -255,7 +255,7 @@ export function ProjectView() {
                               {group.sessions.map((session) => (
                                 <Link
                                   key={session.id}
-                                  to={`/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`}
+                                  to={buildSessionUrl(session.id, searchParams)}
                                   className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
                                 >
                                   <SessionCard

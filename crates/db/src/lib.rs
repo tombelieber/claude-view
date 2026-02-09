@@ -1,5 +1,6 @@
 // crates/db/src/lib.rs
 // Phase 2: SQLite database for vibe-recall session indexing
+#![allow(clippy::type_complexity, clippy::too_many_arguments, clippy::derivable_impls)]
 
 mod migrations;
 mod queries;
@@ -7,6 +8,8 @@ pub mod indexer;
 pub mod indexer_parallel;
 pub mod git_correlation;
 pub mod trends;
+pub mod snapshots;
+pub mod pricing;
 
 pub use queries::BranchCount;
 pub use queries::IndexerEntry;
@@ -21,6 +24,29 @@ pub use trends::previous_week_bounds;
 pub use trends::IndexMetadata;
 pub use trends::TrendMetric;
 pub use trends::WeekTrends;
+
+// Re-export pricing types
+pub use pricing::{
+    calculate_cost_usd, default_pricing, lookup_pricing, ModelPricing, TokenBreakdown,
+    FALLBACK_COST_PER_TOKEN_USD,
+};
+
+// Re-export snapshots types
+pub use snapshots::AggregatedContributions;
+pub use snapshots::BranchBreakdown;
+pub use snapshots::BranchSession;
+pub use snapshots::ContributionSnapshot;
+pub use snapshots::DailyTrendPoint;
+pub use snapshots::FileImpact;
+pub use snapshots::LearningCurve;
+pub use snapshots::LearningCurvePeriod;
+pub use snapshots::LinkedCommit;
+pub use snapshots::ModelBreakdown;
+pub use snapshots::ModelStats;
+pub use snapshots::SessionContribution;
+pub use snapshots::SkillStats;
+pub use snapshots::TimeRange;
+pub use snapshots::UncommittedWork;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{ConnectOptions, SqlitePool};
@@ -58,8 +84,7 @@ impl Database {
             std::fs::create_dir_all(parent)?;
         }
 
-        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))
-            .map_err(sqlx::Error::from)?
+        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path.display()))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
@@ -134,6 +159,98 @@ impl Database {
                     .await?;
             }
         }
+
+        // Post-migration schema reconciliation: ensure critical columns exist
+        // even if another branch's code occupied the same migration version slots.
+        self.ensure_schema_columns().await?;
+
+        Ok(())
+    }
+
+    /// Ensure critical columns exist regardless of migration version tracking.
+    ///
+    /// When multiple git branches add different migrations at the same version
+    /// slots, the migration tracker may think a version is applied when the
+    /// actual SQL was different. This catches that case by checking for expected
+    /// columns and adding them if missing.
+    async fn ensure_schema_columns(&self) -> DbResult<()> {
+        let expected_session_cols = &[
+            // Main LOC estimation columns
+            ("lines_added", "INTEGER NOT NULL DEFAULT 0"),
+            ("lines_removed", "INTEGER NOT NULL DEFAULT 0"),
+            ("loc_source", "INTEGER NOT NULL DEFAULT 0"),
+            // Theme 3 contribution columns
+            ("ai_lines_added", "INTEGER NOT NULL DEFAULT 0"),
+            ("ai_lines_removed", "INTEGER NOT NULL DEFAULT 0"),
+            ("work_type", "TEXT"),
+        ];
+        let expected_commit_cols = &[
+            ("files_changed", "INTEGER"),
+            ("insertions", "INTEGER"),
+            ("deletions", "INTEGER"),
+        ];
+
+        for (col, typedef) in expected_session_cols {
+            self.add_column_if_missing("sessions", col, typedef).await?;
+        }
+        for (col, typedef) in expected_commit_cols {
+            self.add_column_if_missing("commits", col, typedef).await?;
+        }
+
+        // Ensure contribution_snapshots table exists
+        sqlx::query(
+            r#"CREATE TABLE IF NOT EXISTS contribution_snapshots (
+                id INTEGER PRIMARY KEY,
+                date TEXT NOT NULL,
+                project_id TEXT,
+                branch TEXT,
+                sessions_count INTEGER DEFAULT 0,
+                ai_lines_added INTEGER DEFAULT 0,
+                ai_lines_removed INTEGER DEFAULT 0,
+                commits_count INTEGER DEFAULT 0,
+                commit_insertions INTEGER DEFAULT 0,
+                commit_deletions INTEGER DEFAULT 0,
+                tokens_used INTEGER DEFAULT 0,
+                cost_cents INTEGER DEFAULT 0,
+                UNIQUE(date, project_id, branch)
+            )"#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Ensure indexes exist
+        for idx_sql in &[
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_date ON contribution_snapshots(date)",
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_project_date ON contribution_snapshots(project_id, date)",
+            "CREATE INDEX IF NOT EXISTS idx_snapshots_branch_date ON contribution_snapshots(project_id, branch, date)",
+        ] {
+            sqlx::query(idx_sql).execute(&self.pool).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Add a column to a table if it doesn't already exist.
+    async fn add_column_if_missing(
+        &self,
+        table: &str,
+        column: &str,
+        typedef: &str,
+    ) -> DbResult<()> {
+        let columns: Vec<(String,)> = sqlx::query_as(&format!(
+            "SELECT name FROM pragma_table_info('{}')",
+            table
+        ))
+        .fetch_all(&self.pool)
+        .await?;
+
+        let has_column = columns.iter().any(|(name,)| name == column);
+        if !has_column {
+            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, typedef);
+            sqlx::query(&sql).execute(&self.pool).await?;
+            info!("Schema reconciliation: added {}.{}", table, column);
+        }
+
         Ok(())
     }
 
