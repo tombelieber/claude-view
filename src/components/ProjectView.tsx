@@ -104,6 +104,15 @@ export function ProjectView() {
     return [...set].sort()
   }, [page?.sessions])
 
+  // Extract unique models from sessions for the filter popover
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of page?.sessions ?? []) {
+      if (s.primaryModel) set.add(s.primaryModel)
+    }
+    return [...set].sort()
+  }, [page?.sessions])
+
   // Grouping safeguard
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
 
@@ -188,6 +197,7 @@ export function ProjectView() {
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
               branches={availableBranches}
+              models={availableModels}
             />
 
             {/* Grouping safeguard warning */}
