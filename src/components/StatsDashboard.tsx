@@ -1,6 +1,7 @@
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { BarChart3, Sparkles, TerminalSquare, Plug, Bot, FolderOpen, Calendar, Pencil, Eye, Terminal, Clock, ArrowRight, Search } from 'lucide-react'
 import { useDashboardStats } from '../hooks/use-dashboard'
+import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
@@ -11,7 +12,7 @@ export function StatsDashboard() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const projectFilter = searchParams.get("project") || undefined
-  const branchFilter = searchParams.get("branches") || undefined
+  const branchFilter = searchParams.get("branch") || undefined
   const { data: stats, isLoading, error, refetch } = useDashboardStats(projectFilter, branchFilter)
 
   // Loading state with skeleton
@@ -74,7 +75,7 @@ export function StatsDashboard() {
               onClick={() => {
                 const params = new URLSearchParams(searchParams)
                 params.delete("project")
-                params.delete("branches")
+                params.delete("branch")
                 setSearchParams(params)
               }}
               className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -203,7 +204,7 @@ export function StatsDashboard() {
                 return (
                   <Link
                     key={session.id}
-                    to={`/session/${encodeURIComponent(session.id)}`}
+                    to={buildSessionUrl(session.id, searchParams)}
                     className="w-full group block focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
                     <div className="flex items-center justify-between text-sm mb-1">

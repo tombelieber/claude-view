@@ -8,17 +8,23 @@ import { SettingsPage } from './components/SettingsPage'
 import { ContributionsPage } from './pages/ContributionsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
-/** Redirect old /project/:projectId/session/:slug to flat /session/:sessionId */
+/** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
 function OldSessionRedirect() {
   const { slug } = useParams()
   const sessionId = slug ? sessionIdFromSlug(slug) : ''
-  return <Navigate to={`/session/${sessionId}`} replace />
+  return <Navigate to={`/sessions/${sessionId}`} replace />
 }
 
-/** Redirect legacy /session/:projectId/:sessionId to flat /session/:sessionId */
+/** Redirect legacy /session/:projectId/:sessionId to flat /sessions/:sessionId */
 function LegacySessionRedirect() {
   const { sessionId } = useParams()
-  return <Navigate to={`/session/${sessionId}`} replace />
+  return <Navigate to={`/sessions/${sessionId}`} replace />
+}
+
+/** Redirect old singular /session/:sessionId to new /sessions/:sessionId */
+function SingularSessionRedirect() {
+  const { sessionId } = useParams()
+  return <Navigate to={`/sessions/${sessionId}`} replace />
 }
 
 /** Redirect old /project/:projectId/contributions to flat /contributions?project=... */
@@ -42,9 +48,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <StatsDashboard /> },
       { path: 'sessions', element: <HistoryView /> },
+      { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'settings', element: <SettingsPage /> },
-      // Flat session route (new canonical URL)
-      { path: 'session/:sessionId', element: <ConversationView /> },
       {
         path: 'project/:projectId',
         children: [
@@ -59,6 +64,8 @@ export const router = createBrowserRouter([
       { path: 'contributions', element: <ContributionsPage /> },
       // Redirects for old URLs
       { path: 'history', element: <Navigate to="/sessions" replace /> },
+      // Redirect old singular /session/:id to /sessions/:id
+      { path: 'session/:sessionId', element: <SingularSessionRedirect /> },
       // Legacy redirect
       { path: 'session/:projectId/:sessionId', element: <LegacySessionRedirect /> },
     ],

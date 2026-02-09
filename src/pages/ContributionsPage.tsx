@@ -14,6 +14,7 @@ import { UncommittedWorkSection } from '../components/contributions/UncommittedW
 import { WarningBanner } from '../components/contributions/WarningBanner'
 import { SessionDrillDown } from '../components/contributions/SessionDrillDown'
 import { DashboardSkeleton, ErrorState } from '../components/LoadingStates'
+import { buildSessionUrl } from '../lib/url-utils'
 
 /**
  * ContributionsPage - AI Contribution Tracking dashboard.
@@ -33,7 +34,7 @@ export function ContributionsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const projectId = searchParams.get('project')
-  const branchFilter = searchParams.get('branches') || undefined
+  const branchFilter = searchParams.get('branch') || undefined
 
   // URL-persisted time range
   const initialRange = (searchParams.get('range') as TimeRange) || 'week'
@@ -43,14 +44,31 @@ export function ContributionsPage() {
   const [drillDownSessionId, setDrillDownSessionId] = useState<string | null>(null)
   const [drillDownBranch, setDrillDownBranch] = useState<string | undefined>(undefined)
 
-  // Fetch contributions data (with project filter)
-  const { data, isLoading, error, refetch } = useContributions(range, projectId ?? undefined)
+  // Fetch contributions data (with project + branch filter)
+  const { data, isLoading, error, refetch } = useContributions(range, projectId ?? undefined, branchFilter)
 
   // Update URL when range changes (preserve existing params per CLAUDE.md rule)
   const handleRangeChange = (newRange: TimeRange) => {
     setRange(newRange)
     const params = new URLSearchParams(searchParams)
     params.set('range', newRange)
+    setSearchParams(params)
+  }
+
+  // Handle branch filter (copy-then-modify per CLAUDE.md rule)
+  const handleBranchFilter = (branch: string | null) => {
+    const params = new URLSearchParams(searchParams)
+    if (branch) {
+      params.set('branch', branch)
+    } else {
+      params.delete('branch')
+    }
+    setSearchParams(params)
+  }
+
+  const handleClearBranchFilter = () => {
+    const params = new URLSearchParams(searchParams)
+    params.delete('branch')
     setSearchParams(params)
   }
 
@@ -101,9 +119,11 @@ export function ContributionsPage() {
             onClearProjectFilter={() => {
               const params = new URLSearchParams(searchParams)
               params.delete('project')
-              params.delete('branches')
+              params.delete('branch')
               setSearchParams(params)
             }}
+            branchFilter={branchFilter}
+            onClearBranchFilter={handleClearBranchFilter}
           />
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
             <ContributionsEmptyState range={range} onRangeChange={handleRangeChange} />
@@ -127,9 +147,11 @@ export function ContributionsPage() {
           onClearProjectFilter={() => {
             const params = new URLSearchParams(searchParams)
             params.delete('project')
-            params.delete('branches')
+            params.delete('branch')
             setSearchParams(params)
           }}
+          branchFilter={branchFilter}
+          onClearBranchFilter={handleClearBranchFilter}
         />
 
         {/* Warnings */}
@@ -177,6 +199,10 @@ export function ContributionsPage() {
         <BranchList
           byBranch={data.byBranch}
           onSessionDrillDown={(sessionId) => handleSessionDrillDown(sessionId)}
+          projectId={projectId ?? undefined}
+          timeRange={range}
+          activeBranchFilter={branchFilter}
+          onBranchFilter={handleBranchFilter}
         />
       </div>
 
@@ -189,7 +215,7 @@ export function ContributionsPage() {
               branchName={drillDownBranch}
               onClose={handleCloseDrillDown}
               onOpenFullSession={(sessionId) => {
-                navigate(`/session/${sessionId}`)
+                navigate(buildSessionUrl(sessionId, searchParams))
               }}
             />
           </div>
