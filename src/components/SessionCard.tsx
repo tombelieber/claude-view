@@ -1,10 +1,21 @@
-import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit } from 'lucide-react'
+import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit, Code2 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
+import { WorkTypeBadge } from './WorkTypeBadge'
+
+/**
+ * Extended session info with optional Theme 3 contribution fields.
+ * These fields are populated after deep indexing with contribution metrics.
+ */
+interface ExtendedSessionInfo extends SessionInfo {
+  workType?: string | null
+  aiLinesAdded?: bigint | null
+  aiLinesRemoved?: bigint | null
+}
 
 interface SessionCardProps {
-  session: SessionInfo | null | undefined
+  session: ExtendedSessionInfo | null | undefined
   isSelected?: boolean
   projectDisplayName?: string | null
 }
@@ -163,6 +174,12 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const reeditedFiles = session?.reeditedFilesCount ?? 0
   const commitCount = session?.commitCount ?? 0
   const durationSeconds = session?.durationSeconds ?? 0
+
+  // Theme 3: Contribution metrics (optional, populated by deep index)
+  const workType = session?.workType ?? null
+  const aiLinesAdded = session?.aiLinesAdded ? Number(session.aiLinesAdded) : null
+  const aiLinesRemoved = session?.aiLinesRemoved ? Number(session.aiLinesRemoved) : null
+  const hasLoc = aiLinesAdded !== null || aiLinesRemoved !== null
 
   // Calculate start timestamp from modifiedAt - durationSeconds
   const endTimestamp = Number(session?.modifiedAt ?? 0)
@@ -324,14 +341,32 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         </div>
       )}
 
-      {/* Footer: Commits badge + Skills */}
+      {/* Footer: Work type badge + Commits badge + LOC + Skills */}
       <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2">
+          {/* Work type badge (Theme 3) */}
+          {workType && (
+            <WorkTypeBadge workType={workType} />
+          )}
+
           {/* Commit badge */}
           {commitCount > 0 && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-200 dark:border-green-800">
               <GitCommit className="w-3 h-3" />
               {commitCount} commit{commitCount !== 1 ? 's' : ''}
+            </span>
+          )}
+
+          {/* LOC badge (Theme 3) */}
+          {hasLoc && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded border border-gray-200 dark:border-gray-700 tabular-nums">
+              <Code2 className="w-3 h-3" />
+              {aiLinesAdded !== null && aiLinesAdded > 0 && (
+                <span className="text-green-600 dark:text-green-400">+{formatNumber(aiLinesAdded)}</span>
+              )}
+              {aiLinesRemoved !== null && aiLinesRemoved > 0 && (
+                <span className="text-red-600 dark:text-red-400">-{formatNumber(aiLinesRemoved)}</span>
+              )}
             </span>
           )}
 
