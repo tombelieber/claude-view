@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, Home, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3 } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, Home, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
 import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNode } from '../utils/build-project-tree'
+import { useRecentSessions } from '../hooks/use-recent-sessions'
+import { buildSessionUrl } from '../lib/url-utils'
 
 interface SidebarProps {
   projects: ProjectSummary[]
@@ -99,27 +101,16 @@ export function Sidebar({ projects }: SidebarProps) {
 
     const currentProject = searchParams.get("project")
 
-    // Toggle expand/collapse
-    setExpandedProjects((prev) => {
-      const next = new Set(prev)
-      if (next.has(node.name)) {
-        next.delete(node.name)
-      } else {
-        next.add(node.name)
-      }
-      return next
-    })
-
-    // Toggle project filter via URL query params
+    // Toggle project filter via URL query params (expand is handled separately by chevron)
     const newParams = new URLSearchParams(searchParams)
     if (currentProject === node.name) {
-      // Deselect: clear project and branches
+      // Deselect: clear project and branch
       newParams.delete("project")
-      newParams.delete("branches")
+      newParams.delete("branch")
     } else {
-      // Select: set project, clear branches
+      // Select: set project, clear branch
       newParams.set("project", node.name)
-      newParams.delete("branches")
+      newParams.delete("branch")
     }
     setSearchParams(newParams)
   }, [searchParams, setSearchParams])
@@ -340,7 +331,6 @@ export function Sidebar({ projects }: SidebarProps) {
           {isExpanded && (
             <BranchList
               projectName={node.name}
-              isSelected={isSelected}
             />
           )}
         </div>
@@ -359,13 +349,13 @@ export function Sidebar({ projects }: SidebarProps) {
 
   return (
     <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
-      {/* Nav Links */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1">
+      {/* ─── Zone 1: Navigation Tabs ─── */}
+      <nav className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1" aria-label="Main navigation">
         {(() => {
           // Build preserved params string for nav links
           const preservedParams = new URLSearchParams()
           if (searchParams.get("project")) preservedParams.set("project", searchParams.get("project")!)
-          if (searchParams.get("branches")) preservedParams.set("branches", searchParams.get("branches")!)
+          if (searchParams.get("branch")) preservedParams.set("branch", searchParams.get("branch")!)
           const paramString = preservedParams.toString()
 
           return (
@@ -386,7 +376,7 @@ export function Sidebar({ projects }: SidebarProps) {
                 to={`/sessions${paramString ? `?${paramString}` : ""}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname === '/sessions'
+                  location.pathname.startsWith('/sessions')
                     ? 'bg-blue-500 text-white'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
                 )}
@@ -409,105 +399,148 @@ export function Sidebar({ projects }: SidebarProps) {
             </>
           )
         })()}
+      </nav>
+
+      {/* ─── Zone 2: Scope Panel ─── */}
+      <div className="flex flex-col min-h-0 flex-1">
+        {/* Scope header with clear button */}
+        <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Scope
+            </span>
+            {selectedProjectId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const newParams = new URLSearchParams(searchParams)
+                  newParams.delete('project')
+                  newParams.delete('branch')
+                  setSearchParams(newParams)
+                }}
+                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5"
+                aria-label="Clear scope"
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* View mode toggle + expand/collapse controls */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={cn(
+                  'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  viewMode === 'list'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                )}
+                aria-label="List view"
+                aria-pressed={viewMode === 'list'}
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('tree')}
+                className={cn(
+                  'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  viewMode === 'tree'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                )}
+                aria-label="Tree view"
+                aria-pressed={viewMode === 'tree'}
+              >
+                <FolderTree className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-0.5 ml-auto">
+              <button
+                type="button"
+                onClick={handleExpandAll}
+                title="Expand All"
+                className={cn(
+                  'p-1 rounded transition-colors',
+                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                )}
+              >
+                <ChevronsUpDown className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleCollapseAll}
+                title="Collapse All"
+                className={cn(
+                  'p-1 rounded transition-colors',
+                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                )}
+              >
+                <ChevronsDownUp className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Project tree (scrollable) */}
+        <div
+          className="flex-1 overflow-y-auto py-1"
+          role="tree"
+          aria-label="Projects"
+          onKeyDown={handleKeyDown}
+        >
+          {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
+        </div>
       </div>
 
-      {/* View Mode Toggle + Expand/Collapse */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-        <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={cn(
-              'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-              viewMode === 'list'
-                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            )}
-            aria-label="List view"
-            aria-pressed={viewMode === 'list'}
-          >
-            <List className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('tree')}
-            className={cn(
-              'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-              viewMode === 'tree'
-                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            )}
-            aria-label="Tree view"
-            aria-pressed={viewMode === 'tree'}
-          >
-            <FolderTree className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div className="flex items-center gap-0.5 ml-auto">
-          <button
-            type="button"
-            onClick={handleExpandAll}
-            title="Expand All"
-            className={cn(
-              'p-1 rounded transition-colors',
-              'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
-              'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
-            )}
-          >
-            <ChevronsUpDown className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleCollapseAll}
-            title="Collapse All"
-            className={cn(
-              'p-1 rounded transition-colors',
-              'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
-              'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
-            )}
-          >
-            <ChevronsDownUp className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Project Tree */}
-      <div
-        className="flex-1 overflow-y-auto py-1"
-        role="tree"
-        aria-label="Projects"
-        onKeyDown={handleKeyDown}
-      >
-        {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
-      </div>
+      {/* ─── Zone 3: Quick Jump (only when scoped) ─── */}
+      {selectedProjectId && (
+        <QuickJumpZone project={selectedProjectId} branch={searchParams.get('branch')} />
+      )}
     </aside>
   )
 }
 
 interface BranchListProps {
   projectName: string
-  isSelected: boolean
 }
 
-function BranchList({ projectName, isSelected }: BranchListProps) {
+function BranchList({ projectName }: BranchListProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeBranch = searchParams.get('branches') || null
+  const branchParam = searchParams.get('branch') || ''
+  const selectedProject = searchParams.get('project')
+  const activeBranches = useMemo(
+    () => {
+      // Only show active branches if this project is the selected one
+      if (selectedProject !== projectName) return new Set<string>()
+      return new Set(branchParam ? [branchParam] : [])
+    },
+    [branchParam, selectedProject, projectName]
+  )
   const { data, isLoading, error, refetch } = useProjectBranches(projectName)
 
   const handleBranchClick = useCallback((branch: string | null) => {
     const newParams = new URLSearchParams(searchParams)
-    const currentBranch = searchParams.get('branches')
-    if (branch && currentBranch !== branch) {
-      newParams.set('branches', branch)
+    if (branch && !activeBranches.has(branch)) {
+      // Select branch — also ensure parent project is set
+      newParams.set('branch', branch)
+      newParams.set('project', projectName)
     } else {
-      newParams.delete('branches')
+      // Deselect branch, keep project
+      newParams.delete('branch')
     }
     setSearchParams(newParams)
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, activeBranches, projectName])
 
   if (isLoading) {
     return (
@@ -544,10 +577,7 @@ function BranchList({ projectName, isSelected }: BranchListProps) {
   if (!data || data.branches.length === 0) {
     return (
       <div className="pl-10 pr-3 py-1">
-        <span className={cn(
-          'text-[11px]',
-          isSelected ? 'text-gray-500' : 'text-gray-400 dark:text-gray-500'
-        )}>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">
           No branches
         </span>
       </div>
@@ -559,7 +589,7 @@ function BranchList({ projectName, isSelected }: BranchListProps) {
       {data.branches.map((branchItem) => {
         const displayName = branchItem.branch || '(no branch)'
         const isNoBranch = !branchItem.branch
-        const isActive = isSelected && branchItem.branch === activeBranch
+        const isActive = !!branchItem.branch && activeBranches.has(branchItem.branch)
 
         return (
           <button
@@ -602,4 +632,66 @@ function BranchList({ projectName, isSelected }: BranchListProps) {
       })}
     </div>
   )
+}
+
+function QuickJumpZone({ project, branch }: { project: string; branch: string | null }) {
+  const [searchParams] = useSearchParams()
+  const { data: sessions, isLoading } = useRecentSessions(project, branch)
+
+  if (isLoading) {
+    return (
+      <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
+        <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" style={{ width: `${60 + i * 10}%` }} />
+        ))}
+      </div>
+    )
+  }
+
+  if (!sessions || sessions.length === 0) return null
+
+  return (
+    <nav aria-label="Recent sessions" className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          Recent
+        </span>
+        <Link
+          to={`/sessions?project=${encodeURIComponent(project)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`}
+          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5"
+        >
+          All <ArrowRight className="w-2.5 h-2.5" />
+        </Link>
+      </div>
+      <div className="space-y-0.5">
+        {sessions.map(session => (
+          <Link
+            key={session.id}
+            to={buildSessionUrl(session.id, searchParams)}
+            className={cn(
+              'flex items-center gap-2 px-2 py-1 h-6 rounded text-[11px] transition-colors',
+              'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none'
+            )}
+            title={session.preview}
+          >
+            <Clock className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+            <span className="truncate flex-1">{session.preview || '(untitled)'}</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
+              {formatRelativeTimeShort(session.modifiedAt)}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+function formatRelativeTimeShort(timestamp: number): string {
+  const diff = Date.now() / 1000 - timestamp
+  if (diff < 60) return 'now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
+  return `${Math.floor(diff / 86400)}d`
 }
