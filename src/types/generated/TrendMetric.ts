@@ -7,15 +7,15 @@ export type TrendMetric = {
 /**
  * Current period value.
  */
-current: bigint, 
+current: number, 
 /**
  * Previous period value.
  */
-previous: bigint, 
+previous: number, 
 /**
  * Absolute change (current - previous).
  */
-delta: bigint, 
+delta: number, 
 /**
  * Percentage change, rounded to 1 decimal place.
  * None if previous == 0 (cannot calculate percentage).
