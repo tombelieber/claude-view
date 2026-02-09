@@ -1676,6 +1676,7 @@ impl Database {
 
         // Get aggregate file stats and tokens from sessions table
         // Using sessions.total_input_tokens/total_output_tokens which are denormalized from turns
+        // Use last_message_at to match dashboard_stats time filtering
         let (files_created, total_input_tokens, total_output_tokens): (i64, i64, i64) =
             sqlx::query_as(
                 r#"
@@ -1685,8 +1686,8 @@ impl Database {
                     COALESCE(SUM(total_output_tokens), 0)
                 FROM sessions
                 WHERE is_sidechain = 0
-                  AND first_message_at >= ?1
-                  AND first_message_at <= ?2
+                  AND last_message_at >= ?1
+                  AND last_message_at <= ?2
                 "#,
             )
             .bind(from)
@@ -1695,6 +1696,7 @@ impl Database {
             .await?;
 
         // Token usage by model (from sessions.primary_model)
+        // Use last_message_at to match dashboard_stats time filtering
         let model_rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
             r#"
             SELECT
@@ -1703,8 +1705,8 @@ impl Database {
                 COALESCE(SUM(total_output_tokens), 0) as output_tokens
             FROM sessions
             WHERE is_sidechain = 0
-              AND first_message_at >= ?1
-              AND first_message_at <= ?2
+              AND last_message_at >= ?1
+              AND last_message_at <= ?2
               AND primary_model IS NOT NULL
             GROUP BY primary_model
             ORDER BY (input_tokens + output_tokens) DESC
@@ -1727,6 +1729,7 @@ impl Database {
             .collect();
 
         // Token usage by project (top 5 + "Others")
+        // Use last_message_at to match dashboard_stats time filtering
         let project_rows: Vec<(String, i64, i64)> = sqlx::query_as(
             r#"
             SELECT
@@ -1735,8 +1738,8 @@ impl Database {
                 COALESCE(SUM(total_output_tokens), 0) as output_tokens
             FROM sessions
             WHERE is_sidechain = 0
-              AND first_message_at >= ?1
-              AND first_message_at <= ?2
+              AND last_message_at >= ?1
+              AND last_message_at <= ?2
             GROUP BY project_id
             ORDER BY (input_tokens + output_tokens) DESC
             LIMIT 6
@@ -1760,10 +1763,12 @@ impl Database {
                 .collect();
 
             // Calculate "Others" by subtracting top 5 from total
+            // Clamp to zero: totals and per-project sums come from separate queries,
+            // so under race conditions total < sum(top5) is possible.
             let top5_input: i64 = result.iter().map(|p| p.input_tokens).sum();
             let top5_output: i64 = result.iter().map(|p| p.output_tokens).sum();
-            let others_input = total_input_tokens - top5_input;
-            let others_output = total_output_tokens - top5_output;
+            let others_input = (total_input_tokens - top5_input).max(0);
+            let others_output = (total_output_tokens - top5_output).max(0);
 
             if others_input > 0 || others_output > 0 {
                 result.push(TokensByProject {
@@ -3378,9 +3383,9 @@ mod tests {
             "Should have 2 project entries"
         );
 
-        // Test with time range: only ai-gen-1 has first_message_at = 500
+        // Test with time range: only ai-gen-1 has last_message_at = 1000
         let ranged = db
-            .get_ai_generation_stats(Some(400), Some(600))
+            .get_ai_generation_stats(Some(900), Some(1100))
             .await
             .unwrap();
         assert_eq!(ranged.files_created, 4, "Only ai-gen-1 within range");
