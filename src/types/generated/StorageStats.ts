@@ -13,7 +13,7 @@ jsonlBytes: bigint,
  */
 sqliteBytes: bigint, 
 /**
- * Size of search index in bytes (Tantivy - not implemented yet, returns 0).
+ * Size of search index in bytes (deep index - not implemented yet, returns 0).
  */
 indexBytes: bigint, 
 /**
