@@ -127,6 +127,122 @@ pub fn read_all_session_indexes(
     Ok(results)
 }
 
+/// Discover sessions in project directories that lack a `sessions-index.json`.
+///
+/// These "orphan" sessions are typically found in worktree project directories
+/// where Claude Code hasn't written an index file. The function scans for `.jsonl`
+/// files and creates minimal `SessionIndexEntry` records from the filenames.
+///
+/// Returns a list of `(project_dir_name, entries)` tuples, only for directories
+/// that have at least one `.jsonl` file and do NOT have a `sessions-index.json`.
+pub fn discover_orphan_sessions(
+    claude_dir: &Path,
+) -> Result<Vec<(String, Vec<SessionIndexEntry>)>, SessionIndexError> {
+    let projects_dir = claude_dir.join("projects");
+    if !projects_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let dir_entries =
+        std::fs::read_dir(&projects_dir).map_err(|e| SessionIndexError::io(&projects_dir, e))?;
+
+    let mut results = Vec::new();
+
+    for entry in dir_entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                warn!(
+                    "Failed to read directory entry in {}: {}",
+                    projects_dir.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Skip directories that already have a sessions-index.json —
+        // those are handled by read_all_session_indexes.
+        if path.join("sessions-index.json").exists() {
+            continue;
+        }
+
+        let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name.to_string(),
+            None => {
+                warn!(
+                    "Skipping directory with non-UTF-8 name: {}",
+                    path.display()
+                );
+                continue;
+            }
+        };
+
+        let dir_contents = match std::fs::read_dir(&path) {
+            Ok(contents) => contents,
+            Err(e) => {
+                warn!("Failed to read directory {}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        let mut session_entries = Vec::new();
+
+        for file_entry in dir_contents {
+            let file_entry = match file_entry {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!(
+                        "Failed to read file entry in {}: {}",
+                        path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let file_path = file_entry.path();
+
+            // Only consider .jsonl files
+            if file_path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            let session_id = match file_path.file_stem().and_then(|s| s.to_str()) {
+                Some(stem) => stem.to_string(),
+                None => continue,
+            };
+
+            let full_path = file_path.to_string_lossy().to_string();
+
+            session_entries.push(SessionIndexEntry {
+                session_id,
+                full_path: Some(full_path),
+                file_mtime: None,
+                first_prompt: None,
+                summary: None,
+                message_count: None,
+                created: None,
+                modified: None,
+                git_branch: None,
+                project_path: None,
+                is_sidechain: None,
+            });
+        }
+
+        if !session_entries.is_empty() {
+            results.push((dir_name, session_entries));
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +398,83 @@ mod tests {
             result.unwrap_err(),
             SessionIndexError::ProjectsDirNotFound { .. }
         ));
+    }
+
+    // ========================================================================
+    // discover_orphan_sessions Tests
+    // ========================================================================
+
+    #[test]
+    fn test_discover_orphan_sessions_finds_jsonl_without_index() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let orphan_proj = projects_dir.join("orphan-project");
+        std::fs::create_dir(&orphan_proj).unwrap();
+        std::fs::write(orphan_proj.join("abc-123.jsonl"), "{}").unwrap();
+        std::fs::write(orphan_proj.join("def-456.jsonl"), "{}").unwrap();
+
+        let results = discover_orphan_sessions(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "orphan-project");
+        assert_eq!(results[0].1.len(), 2);
+
+        let ids: Vec<&str> = results[0].1.iter().map(|e| e.session_id.as_str()).collect();
+        assert!(ids.contains(&"abc-123"));
+        assert!(ids.contains(&"def-456"));
+
+        // Verify full_path is set
+        for entry in &results[0].1 {
+            assert!(entry.full_path.is_some());
+            assert!(entry.full_path.as_ref().unwrap().ends_with(".jsonl"));
+        }
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_skips_indexed_dirs() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let indexed_proj = projects_dir.join("indexed-project");
+        std::fs::create_dir(&indexed_proj).unwrap();
+        std::fs::write(indexed_proj.join("sessions-index.json"), "[]").unwrap();
+        std::fs::write(indexed_proj.join("abc-123.jsonl"), "{}").unwrap();
+
+        let results = discover_orphan_sessions(dir.path()).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_ignores_non_jsonl() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let proj = projects_dir.join("some-project");
+        std::fs::create_dir(&proj).unwrap();
+        std::fs::write(proj.join("notes.txt"), "text").unwrap();
+        std::fs::write(proj.join("config.json"), "{}").unwrap();
+
+        let results = discover_orphan_sessions(dir.path()).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_empty_projects_dir() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let results = discover_orphan_sessions(dir.path()).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_no_projects_dir() {
+        let dir = TempDir::new().unwrap();
+        let results = discover_orphan_sessions(dir.path()).unwrap();
+        assert!(results.is_empty());
     }
 }

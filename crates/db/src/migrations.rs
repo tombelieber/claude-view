@@ -2,7 +2,6 @@
 ///
 /// We use simple inline migrations rather than sqlx migration files
 /// because the schema is small and self-contained.
-
 pub const MIGRATIONS: &[&str] = &[
     // Migration 1: sessions table
     r#"
@@ -235,6 +234,40 @@ CREATE TABLE IF NOT EXISTS api_errors (
     r#"ALTER TABLE sessions ADD COLUMN lines_removed INTEGER NOT NULL DEFAULT 0 CHECK (lines_removed >= 0);"#,
     // Source tracking: 0 = not computed, 1 = tool-call estimate, 2 = git diff
     r#"ALTER TABLE sessions ADD COLUMN loc_source INTEGER NOT NULL DEFAULT 0 CHECK (loc_source IN (0, 1, 2));"#,
+    // Migration 14: Theme 3 contribution tracking fields
+    // 14a: Add AI contribution metrics to sessions table
+    r#"ALTER TABLE sessions ADD COLUMN ai_lines_added INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN ai_lines_removed INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN work_type TEXT;"#,  // 'deep_work', 'quick_ask', 'planning', 'bug_fix', 'standard'
+    // 14b: Add diff stats to commits table (nullable: diff stats may not be available initially)
+    r#"ALTER TABLE commits ADD COLUMN files_changed INTEGER;"#,
+    r#"ALTER TABLE commits ADD COLUMN insertions INTEGER;"#,
+    r#"ALTER TABLE commits ADD COLUMN deletions INTEGER;"#,
+    // 14c: Add contribution_snapshots table for daily aggregates
+    r#"
+CREATE TABLE IF NOT EXISTS contribution_snapshots (
+    id INTEGER PRIMARY KEY,
+    date TEXT NOT NULL,              -- YYYY-MM-DD
+    project_id TEXT,                 -- NULL for global
+    branch TEXT,                     -- NULL for project-wide
+    sessions_count INTEGER DEFAULT 0,
+    ai_lines_added INTEGER DEFAULT 0,
+    ai_lines_removed INTEGER DEFAULT 0,
+    commits_count INTEGER DEFAULT 0,
+    commit_insertions INTEGER DEFAULT 0,
+    commit_deletions INTEGER DEFAULT 0,
+    tokens_used INTEGER DEFAULT 0,
+    cost_cents INTEGER DEFAULT 0,
+    UNIQUE(date, project_id, branch)
+);
+"#,
+    // 14d: Indexes for contribution_snapshots
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_date ON contribution_snapshots(date);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_project_date ON contribution_snapshots(project_id, date);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_branch_date ON contribution_snapshots(project_id, branch, date);"#,
+    // Migration 15: Add files_edited_count to contribution_snapshots
+    // This replaces the fabricated estimate_files_count (lines/50) with real data.
+    r#"ALTER TABLE contribution_snapshots ADD COLUMN files_edited_count INTEGER NOT NULL DEFAULT 0;"#,
 ];
 
 // ============================================================================
@@ -640,11 +673,14 @@ mod tests {
         assert_eq!(count.0, 0, "session_commits should be deleted via CASCADE");
     }
 
+    // ========================================================================
+    // Migration 13: LOC estimation columns (from main)
+    // ========================================================================
+
     #[tokio::test]
     async fn test_migration13_loc_columns_exist() {
         let pool = setup_db().await;
 
-        // Query the sessions table schema
         let columns: Vec<(String,)> = sqlx::query_as(
             "SELECT name FROM pragma_table_info('sessions')"
         )
@@ -654,7 +690,6 @@ mod tests {
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        // Verify LOC columns exist
         assert!(column_names.contains(&"lines_added"), "Missing lines_added column");
         assert!(column_names.contains(&"lines_removed"), "Missing lines_removed column");
         assert!(column_names.contains(&"loc_source"), "Missing loc_source column");
@@ -664,7 +699,6 @@ mod tests {
     async fn test_migration13_loc_defaults() {
         let pool = setup_db().await;
 
-        // Insert a minimal session
         sqlx::query(
             "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-test', 'proj', '/tmp/loc.jsonl', 'Test')"
         )
@@ -672,7 +706,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Verify default values
         let row: (i64, i64, i64) = sqlx::query_as(
             "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'"
         )
@@ -689,7 +722,6 @@ mod tests {
     async fn test_migration13_loc_check_constraints() {
         let pool = setup_db().await;
 
-        // Insert a valid session first
         sqlx::query(
             "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-check', 'proj', '/tmp/c.jsonl', 'Test')"
         )
@@ -735,5 +767,167 @@ mod tests {
         .execute(&pool)
         .await;
         assert!(result.is_err(), "loc_source=3 should be rejected (only 0, 1, 2 allowed)");
+    }
+
+    // ========================================================================
+    // Migration 14: Theme 3 contribution tracking
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration14_sessions_contribution_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
+        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
+        assert!(column_names.contains(&"work_type"), "Missing work_type column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_commits_diff_stats_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('commits')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"files_changed"), "Missing files_changed column");
+        assert!(column_names.contains(&"insertions"), "Missing insertions column");
+        assert!(column_names.contains(&"deletions"), "Missing deletions column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_contribution_snapshots_table_exists() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('contribution_snapshots')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"date"), "Missing date column");
+        assert!(column_names.contains(&"project_id"), "Missing project_id column");
+        assert!(column_names.contains(&"branch"), "Missing branch column");
+        assert!(column_names.contains(&"sessions_count"), "Missing sessions_count column");
+        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
+        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
+        assert!(column_names.contains(&"commits_count"), "Missing commits_count column");
+        assert!(column_names.contains(&"commit_insertions"), "Missing commit_insertions column");
+        assert!(column_names.contains(&"commit_deletions"), "Missing commit_deletions column");
+        assert!(column_names.contains(&"tokens_used"), "Missing tokens_used column");
+        assert!(column_names.contains(&"cost_cents"), "Missing cost_cents column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_contribution_snapshots_unique_constraint() {
+        let pool = setup_db().await;
+
+        // Insert first snapshot
+        sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-05', 'proj1', 'main', 5)"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Insert second snapshot - same date+project+branch should fail
+        let result = sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-05', 'proj1', 'main', 10)"
+        )
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "Should reject duplicate date+project_id+branch combination");
+
+        // Insert different date - should succeed
+        let result = sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-06', 'proj1', 'main', 10)"
+        )
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_ok(), "Should allow different date");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_sessions_default_values() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('contrib-test', 'proj', '/tmp/c.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, Option<String>) = sqlx::query_as(
+            "SELECT ai_lines_added, ai_lines_removed, work_type FROM sessions WHERE id = 'contrib-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "ai_lines_added default should be 0");
+        assert_eq!(row.1, 0, "ai_lines_removed default should be 0");
+        assert!(row.2.is_none(), "work_type default should be NULL");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_commits_default_values() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO commits (hash, repo_path, message, timestamp) VALUES ('abc123def456789012345678901234567890abcd', '/repo', 'test', 1000)"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT files_changed, insertions, deletions FROM commits WHERE hash = 'abc123def456789012345678901234567890abcd'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "files_changed default should be 0");
+        assert_eq!(row.1, 0, "insertions default should be 0");
+        assert_eq!(row.2, 0, "deletions default should be 0");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_indexes_created() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_snapshots%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_snapshots_date"), "Missing idx_snapshots_date index");
+        assert!(index_names.contains(&"idx_snapshots_project_date"), "Missing idx_snapshots_project_date index");
+        assert!(index_names.contains(&"idx_snapshots_branch_date"), "Missing idx_snapshots_branch_date index");
     }
 }

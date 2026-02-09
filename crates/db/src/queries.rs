@@ -39,7 +39,9 @@ pub struct InvocableWithCount {
     pub name: String,
     pub kind: String,
     pub description: String,
+    #[ts(type = "number")]
     pub invocation_count: i64,
+    #[ts(type = "number | null")]
     pub last_used_at: Option<i64>,
 }
 
@@ -66,9 +68,13 @@ pub struct ModelWithStats {
     pub id: String,
     pub provider: Option<String>,
     pub family: Option<String>,
+    #[ts(type = "number | null")]
     pub first_seen: Option<i64>,
+    #[ts(type = "number | null")]
     pub last_seen: Option<i64>,
+    #[ts(type = "number")]
     pub total_turns: i64,
+    #[ts(type = "number")]
     pub total_sessions: i64,
 }
 
@@ -92,12 +98,18 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
+    #[ts(type = "number")]
     pub total_input_tokens: u64,
+    #[ts(type = "number")]
     pub total_output_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_read_tokens: u64,
+    #[ts(type = "number")]
     pub total_cache_creation_tokens: u64,
     pub cache_hit_ratio: f64,
+    #[ts(type = "number")]
     pub turns_count: u64,
+    #[ts(type = "number")]
     pub sessions_count: u64,
 }
 
@@ -106,8 +118,11 @@ pub struct TokenStats {
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
+    #[ts(type = "number")]
     pub total_sessions: i64,
+    #[ts(type = "number")]
     pub total_invocations: i64,
+    #[ts(type = "number")]
     pub unique_invocables_used: i64,
     pub top_invocables: Vec<InvocableWithCount>,
 }
@@ -1336,6 +1351,10 @@ pub async fn update_session_deep_fields_tx(
     lines_added: i32,
     lines_removed: i32,
     loc_source: i32,
+    ai_lines_added: i32,
+    ai_lines_removed: i32,
+    work_type: Option<&str>,
+    git_branch: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1384,7 +1403,11 @@ pub async fn update_session_deep_fields_tx(
             file_mtime_at_index = ?41,
             lines_added = ?42,
             lines_removed = ?43,
-            loc_source = ?44
+            loc_source = ?44,
+            ai_lines_added = ?45,
+            ai_lines_removed = ?46,
+            work_type = ?47,
+            git_branch = COALESCE(git_branch, ?48)
         WHERE id = ?1
         "#,
     )
@@ -1432,6 +1455,10 @@ pub async fn update_session_deep_fields_tx(
     .bind(lines_added)
     .bind(lines_removed)
     .bind(loc_source)
+    .bind(ai_lines_added)
+    .bind(ai_lines_removed)
+    .bind(work_type)
+    .bind(git_branch)
     .execute(&mut **tx)
     .await?;
 

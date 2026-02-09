@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-06
+> **Last updated:** 2026-02-07
 
 ---
 
@@ -54,6 +54,8 @@
 | **Export Markdown** | **DONE** | Download + clipboard copy for context resumption | Personal |
 | **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
 | **Session Discovery & Navigation** | **DONE** | 6/6 phases (A-F) — sidebar tree, project view, branch filters, expand/collapse, 438 tests | Personal |
+| **Theme 3: Git & AI Contributions** | **DONE** | 6/6 phases — data collection, API, UI foundation, dashboard integration, advanced UI, polish | Personal |
+| **Theme 3: UI/UX Enhancement** | **DONE** | 7/7 tasks — project filter fix, metric tooltips, efficiency chart, model/skill bar charts, branch grouping, sidebar filtering | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
@@ -61,7 +63,7 @@
 
 **Current focus:** Cold Start UX (pending), UI Testing Strategy (pending), README media (pending)
 
-**Recently completed:** Session Discovery & Navigation (6 phases, 438 tests), v0.2.4 shipped, Deep Index Perf (rusqlite write phase), Session Loading Perf, Security Audit (critical/medium/low), Export Markdown
+**Recently completed:** Theme 3 UI/UX Enhancement (7 tasks — project filter fix, tooltips, charts, branch grouping, sidebar filtering), Theme 3 (Git & AI Contribution Tracking — 6 phases, full /contributions page), Session Discovery & Navigation (6 phases, 438 tests), v0.2.4 shipped, Deep Index Perf (rusqlite write phase), Session Loading Perf, Security Audit (critical/medium/low), Export Markdown
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -332,7 +334,8 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-03-readme-media-guide.md` | pending | **README media** — screenshot + demo GIF preparation guide |
 | `2026-02-04-session-discovery-design.md` | pending | **Theme 1** — Session discovery & navigation enhancements |
 | `2026-02-05-dashboard-analytics-design.md` | pending | **Theme 2** — Dashboard & analytics enhancements |
-| `2026-02-05-theme3-git-ai-contribution-design.md` | pending | **Theme 3** — Git integration & AI contribution tracking page |
+| `2026-02-05-theme3-git-ai-contribution-design.md` | done | **Theme 3** — Git integration & AI contribution tracking page |
+| `2026-02-07-stacked-trend-by-project-design.md` | draft | **Theme 3 add-on** — Stacked trend chart by project (deferred to separate PR) |
 | `2026-02-05-theme4-chat-insights-design.md` | pending | **Theme 4** — Chat insights & pattern discovery (see `theme4/PROGRESS.md` for detailed tracking) |
 | `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
 
