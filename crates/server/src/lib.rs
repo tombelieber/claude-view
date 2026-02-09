@@ -84,6 +84,23 @@ pub fn create_app_with_indexing(db: Database, indexing: Arc<IndexingState>) -> R
     create_app_with_indexing_and_static(db, indexing, None)
 }
 
+/// Create app with an external `GitSyncState` (API-only mode, for testing).
+///
+/// Sets up an `AppState` with a default `IndexingState` but a caller-provided
+/// `GitSyncState`, allowing tests to pre-configure sync progress/phase and
+/// then assert on the SSE endpoint output.
+pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Router {
+    let state = Arc::new(state::AppState {
+        start_time: std::time::Instant::now(),
+        db,
+        indexing: Arc::new(IndexingState::new()),
+        git_sync,
+        registry: Arc::new(std::sync::RwLock::new(None)),
+        pricing: vibe_recall_db::default_pricing(),
+    });
+    api_routes(state)
+}
+
 /// Create the full Axum application with external `IndexingState`, shared
 /// registry holder, and optional static file serving.
 ///
