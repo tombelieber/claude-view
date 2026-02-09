@@ -11,7 +11,7 @@ import {
 import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
-import { sessionSlug } from '../lib/url-slugs'
+import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 
 export type SortColumn = 'time' | 'branch' | 'prompts' | 'files' | 'commits' | 'duration'
@@ -61,7 +61,7 @@ function formatTokens(inputTokens: bigint | null, outputTokens: bigint | null): 
 }
 
 function sessionUrl(session: SessionInfo): string {
-  return `/project/${encodeURIComponent(session.project)}/session/${sessionSlug(session.preview, session.id)}`
+  return buildSessionUrl(session.id)
 }
 
 // --- Column definitions ---

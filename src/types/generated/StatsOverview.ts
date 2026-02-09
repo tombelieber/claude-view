@@ -4,4 +4,4 @@ import type { InvocableWithCount } from "./InvocableWithCount";
 /**
  * Aggregate statistics overview for the API.
  */
-export type StatsOverview = { totalSessions: bigint, totalInvocations: bigint, uniqueInvocablesUsed: bigint, topInvocables: Array<InvocableWithCount>, };
+export type StatsOverview = { totalSessions: number, totalInvocations: number, uniqueInvocablesUsed: number, topInvocables: Array<InvocableWithCount>, };
