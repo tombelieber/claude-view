@@ -2,10 +2,11 @@
 //! Application state for the Axum server.
 
 use crate::indexing_state::IndexingState;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use vibe_recall_core::Registry;
-use vibe_recall_db::Database;
+use vibe_recall_db::{Database, ModelPricing};
 
 /// Type alias for the shared registry holder.
 ///
@@ -27,6 +28,8 @@ pub struct AppState {
     /// Invocable registry (skills, commands, MCP tools, built-in tools).
     /// `None` until background indexing completes registry build.
     pub registry: RegistryHolder,
+    /// Per-model pricing table for accurate cost calculation.
+    pub pricing: HashMap<String, ModelPricing>,
 }
 
 impl AppState {
@@ -39,6 +42,7 @@ impl AppState {
             db,
             indexing: Arc::new(IndexingState::new()),
             registry: Arc::new(RwLock::new(None)),
+            pricing: vibe_recall_db::default_pricing(),
         })
     }
 
@@ -50,6 +54,7 @@ impl AppState {
             db,
             indexing,
             registry: Arc::new(RwLock::new(None)),
+            pricing: vibe_recall_db::default_pricing(),
         })
     }
 
@@ -64,6 +69,7 @@ impl AppState {
             db,
             indexing,
             registry,
+            pricing: vibe_recall_db::default_pricing(),
         })
     }
 

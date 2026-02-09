@@ -72,6 +72,24 @@ async fn run_git_sync_logged(db: &Database, label: &str) {
     }
 }
 
+/// Generate contribution snapshots for historical days.
+/// Initial run backfills 365 days; periodic runs only need 2 days (today + yesterday).
+async fn run_snapshot_generation(db: &Database, label: &str) {
+    let days_back = if label == "initial" { 365 } else { 2 };
+    match db.generate_missing_snapshots(days_back).await {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!("{} snapshot generation: {} snapshots created", label, count);
+            } else {
+                tracing::debug!("{} snapshot generation: all snapshots up to date", label);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("{} snapshot generation failed (non-fatal): {}", label, e);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing (quiet — startup UX uses eprintln)
@@ -150,6 +168,9 @@ async fn main() -> Result<()> {
                 // Auto git-sync: correlate commits with sessions after indexing completes.
                 run_git_sync_logged(&idx_db, "initial").await;
 
+                // Build contribution snapshots for all historical days.
+                run_snapshot_generation(&idx_db, "initial").await;
+
                 // Periodic git-sync: re-scan to pick up new commits.
                 // Interval is user-configurable via Settings UI (stored in DB).
                 // At 10x scale (~100 repos, ~5000 sessions), each run takes ~4-6s.
@@ -159,6 +180,7 @@ async fn main() -> Result<()> {
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
                     run_git_sync_logged(&idx_db, "periodic").await;
+                    run_snapshot_generation(&idx_db, "periodic").await;
                 }
             }
             Err(e) => {

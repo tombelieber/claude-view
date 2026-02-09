@@ -7,6 +7,8 @@ pub mod session_index;
 pub mod registry;
 pub mod invocation;
 pub mod metrics;
+pub mod contribution;
+pub mod work_type;
 
 pub use error::*;
 pub use types::*;
@@ -16,3 +18,5 @@ pub use session_index::*;
 pub use registry::*;
 pub use invocation::*;
 pub use metrics::*;
+pub use contribution::*;
+pub use work_type::*;

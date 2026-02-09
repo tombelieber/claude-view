@@ -68,10 +68,13 @@ pub fn previous_week_bounds() -> (i64, i64) {
 #[serde(rename_all = "camelCase")]
 pub struct TrendMetric {
     /// Current period value.
+    #[ts(type = "number")]
     pub current: i64,
     /// Previous period value.
+    #[ts(type = "number")]
     pub previous: i64,
     /// Absolute change (current - previous).
+    #[ts(type = "number")]
     pub delta: i64,
     /// Percentage change, rounded to 1 decimal place.
     /// None if previous == 0 (cannot calculate percentage).
@@ -128,22 +131,31 @@ pub struct WeekTrends {
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {
     /// Unix timestamp of last successful index completion.
+    #[ts(type = "number | null")]
     pub last_indexed_at: Option<i64>,
     /// Duration of last successful index in milliseconds.
+    #[ts(type = "number | null")]
     pub last_index_duration_ms: Option<i64>,
     /// Number of sessions indexed in last run.
+    #[ts(type = "number")]
     pub sessions_indexed: i64,
     /// Number of projects indexed in last run.
+    #[ts(type = "number")]
     pub projects_indexed: i64,
     /// Unix timestamp of last successful git sync.
+    #[ts(type = "number | null")]
     pub last_git_sync_at: Option<i64>,
     /// Number of commits found in last git sync.
+    #[ts(type = "number")]
     pub commits_found: i64,
     /// Number of session-commit links created in last git sync.
+    #[ts(type = "number")]
     pub links_created: i64,
     /// Unix timestamp of last metadata update.
+    #[ts(type = "number")]
     pub updated_at: i64,
     /// User-configurable git sync interval in seconds (default 60).
+    #[ts(type = "number")]
     pub git_sync_interval_secs: i64,
 }
 

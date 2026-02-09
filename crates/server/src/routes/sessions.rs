@@ -99,6 +99,7 @@ pub struct CommitWithTier {
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    #[ts(type = "number")]
     pub timestamp: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
