@@ -168,6 +168,60 @@ describe('useTimeRange', () => {
     })
   })
 
+  describe('today preset', () => {
+    it('updates preset to today with correct timestamps', () => {
+      const { result } = renderHook(() => useTimeRange(), { wrapper })
+
+      act(() => {
+        result.current.setPreset('today')
+      })
+
+      expect(result.current.state.preset).toBe('today')
+      expect(result.current.state.fromTimestamp).not.toBeNull()
+      expect(result.current.state.toTimestamp).not.toBeNull()
+      const midnight = new Date()
+      midnight.setHours(0, 0, 0, 0)
+      expect(result.current.state.fromTimestamp).toBe(Math.floor(midnight.getTime() / 1000))
+    })
+
+    it('returns "Today" label for today preset', () => {
+      const { result } = renderHook(() => useTimeRange(), { wrapper })
+
+      act(() => {
+        result.current.setPreset('today')
+      })
+
+      expect(result.current.label).toBe('Today')
+      expect(result.current.comparisonLabel).toBe('vs yesterday')
+    })
+  })
+
+  describe('legacy URL migration', () => {
+    it('migrates legacy ?range=week to 7d', () => {
+      function legacyWrapper({ children }: { children: React.ReactNode }) {
+        return <MemoryRouter initialEntries={['/?range=week']}>{children}</MemoryRouter>
+      }
+      const { result } = renderHook(() => useTimeRange(), { wrapper: legacyWrapper })
+      expect(result.current.state.preset).toBe('7d')
+    })
+
+    it('migrates legacy ?range=month to 30d', () => {
+      function legacyWrapper({ children }: { children: React.ReactNode }) {
+        return <MemoryRouter initialEntries={['/?range=month']}>{children}</MemoryRouter>
+      }
+      const { result } = renderHook(() => useTimeRange(), { wrapper: legacyWrapper })
+      expect(result.current.state.preset).toBe('30d')
+    })
+
+    it('migrates legacy ?range=90days to 90d', () => {
+      function legacyWrapper({ children }: { children: React.ReactNode }) {
+        return <MemoryRouter initialEntries={['/?range=90days']}>{children}</MemoryRouter>
+      }
+      const { result } = renderHook(() => useTimeRange(), { wrapper: legacyWrapper })
+      expect(result.current.state.preset).toBe('90d')
+    })
+  })
+
   describe('localStorage persistence', () => {
     it('persists preset to localStorage', () => {
       const { result } = renderHook(() => useTimeRange(), { wrapper })
