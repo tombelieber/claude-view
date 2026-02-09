@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 date: 2026-02-10
 ---
 
