@@ -1354,6 +1354,7 @@ pub async fn update_session_deep_fields_tx(
     ai_lines_added: i32,
     ai_lines_removed: i32,
     work_type: Option<&str>,
+    git_branch: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -1405,7 +1406,8 @@ pub async fn update_session_deep_fields_tx(
             loc_source = ?44,
             ai_lines_added = ?45,
             ai_lines_removed = ?46,
-            work_type = ?47
+            work_type = ?47,
+            git_branch = COALESCE(git_branch, ?48)
         WHERE id = ?1
         "#,
     )
@@ -1456,6 +1458,7 @@ pub async fn update_session_deep_fields_tx(
     .bind(ai_lines_added)
     .bind(ai_lines_removed)
     .bind(work_type)
+    .bind(git_branch)
     .execute(&mut **tx)
     .await?;
 

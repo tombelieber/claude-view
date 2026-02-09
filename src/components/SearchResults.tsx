@@ -2,6 +2,7 @@ import { useMemo, useEffect } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { X, Loader2 } from 'lucide-react'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
+import { buildSessionUrl } from '../lib/url-utils'
 import { parseQuery, filterSessions } from '../lib/search'
 import { SessionCard } from './SessionCard'
 import { useAppStore } from '../store/app-store'
@@ -87,7 +88,7 @@ export function SearchResults() {
           {results.map((session) => (
             <Link
               key={session.id}
-              to={`/session/${encodeURIComponent(session.id)}`}
+              to={buildSessionUrl(session.id, searchParams)}
               className="block focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-lg"
             >
               <SessionCard
