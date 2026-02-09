@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react'
 import {
-  Database,
   GitBranch,
   Download,
   Info,
@@ -60,18 +59,18 @@ function InfoRow({ label, value, className }: InfoRowProps) {
 }
 
 /**
- * Settings page with data status, git sync, export, and about sections.
+ * Settings page with storage overview, git sync, export, and about sections.
  *
  * Route: /settings
  *
  * Sections:
- * 1. DATA STATUS: Last indexed, duration, sessions, projects
+ * 1. DATA & STORAGE: Donut chart, counts grid, rebuild index, performance stats
  * 2. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
  * 3. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
  * 4. ABOUT: Version, keyboard shortcuts
  */
 export function SettingsPage() {
-  const { data: status, isLoading: isStatusLoading } = useStatus()
+  const { data: status } = useStatus()
   const { triggerSync, status: syncStatus, isLoading: isSyncing, error: syncError, reset: resetSync } = useGitSync()
   const { exportSessions, isExporting, error: exportError, clearError: clearExportError } = useExport()
 
@@ -116,51 +115,12 @@ export function SettingsPage() {
     await exportSessions(exportFormat)
   }
 
-  // Format duration in milliseconds to human-readable
-  const formatDurationMs = (ms: bigint | null): string => {
-    if (ms === null) return '--'
-    const seconds = Number(ms) / 1000
-    if (seconds < 1) return `${Number(ms)}ms`
-    return `${seconds.toFixed(1)}s`
-  }
-
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-6">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Settings</h1>
 
         <div className="space-y-4">
-          {/* DATA STATUS */}
-          <SettingsSection icon={<Database className="w-4 h-4" />} title="Data Status">
-            {isStatusLoading ? (
-              <div className="flex items-center gap-2 text-gray-400 py-4">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Loading status...</span>
-              </div>
-            ) : status ? (
-              <div className="space-y-0">
-                <InfoRow
-                  label="Last indexed"
-                  value={status.lastIndexedAt ? formatRelativeTime(status.lastIndexedAt) : 'Never'}
-                />
-                <InfoRow
-                  label="Index duration"
-                  value={formatDurationMs(status.lastIndexDurationMs)}
-                />
-                <InfoRow
-                  label="Sessions"
-                  value={formatNumber(status.sessionsIndexed)}
-                />
-                <InfoRow
-                  label="Projects"
-                  value={formatNumber(status.projectsIndexed)}
-                />
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No status data available</p>
-            )}
-          </SettingsSection>
-
           {/* STORAGE OVERVIEW */}
           <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
             <StorageOverview />

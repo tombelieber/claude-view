@@ -61,6 +61,7 @@ export function formatTimestamp(timestamp: bigint | null): string {
   if (timestamp === null) return 'Never'
 
   const ts = Number(timestamp)
+  if (ts <= 0) return 'Never'
   const date = new Date(ts * 1000)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()

@@ -1,12 +1,34 @@
 import { Link } from 'react-router-dom'
 import { TrendingUp, ArrowRight, GitBranch, Code2, RefreshCcw } from 'lucide-react'
 import { useContributions } from '../hooks/use-contributions'
+import type { TimeRange } from '../hooks/use-contributions'
 import { formatNumber, formatPercent } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 
 export interface ContributionSummaryCardProps {
-  /** Optional className for additional styling */
   className?: string
+  timeRange?: { preset: string; fromTimestamp: number | null; toTimestamp: number | null }
+  project?: string
+  branch?: string
+}
+
+function mapPresetToRange(preset?: string, fromTs?: number | null, toTs?: number | null): TimeRange {
+  switch (preset) {
+    case '7d': return 'week'
+    case '30d': return 'month'
+    case '90d': return '90days'
+    case 'all': return 'all'
+    case 'custom': {
+      if (fromTs != null && toTs != null) {
+        const days = Math.round((toTs - fromTs) / 86400)
+        if (days <= 7) return 'week'
+        if (days <= 30) return 'month'
+        if (days <= 90) return '90days'
+      }
+      return 'all'
+    }
+    default: return 'week'
+  }
 }
 
 /**
@@ -20,8 +42,9 @@ export interface ContributionSummaryCardProps {
  * - Insight line with trend comparison
  * - "View All" link to /contributions
  */
-export function ContributionSummaryCard({ className }: ContributionSummaryCardProps) {
-  const { data, isLoading, error } = useContributions('week')
+export function ContributionSummaryCard({ className, timeRange, project, branch }: ContributionSummaryCardProps) {
+  const range = mapPresetToRange(timeRange?.preset, timeRange?.fromTimestamp, timeRange?.toTimestamp)
+  const { data, isLoading, error } = useContributions(range, project, branch)
 
   // Loading state
   if (isLoading) {
@@ -85,12 +108,22 @@ export function ContributionSummaryCard({ className }: ContributionSummaryCardPr
   const reeditRate = overview.effectiveness.reeditRate
   const fluencyTrend = overview.fluency.trend
 
-  // Calculate AI contribution percentage (simplified: based on commit rate)
-  const commitRate = overview.effectiveness.commitRate
-  const aiContributionPercent = commitRate !== null ? commitRate : 0
+  // AI lines share: lines added by AI / total lines — more meaningful than commit rate
+  const totalLines = linesAdded + linesRemoved
+  const aiLinesPercent = totalLines > 0 ? (linesAdded / totalLines) * 100 : 0
 
   // Determine insight text
   const insightText = overview.output.insight?.text || overview.fluency.insight?.text || ''
+
+  const titleLabel = (() => {
+    switch (timeRange?.preset) {
+      case '30d': return 'AI Contribution This Month'
+      case '90d': return 'AI Contribution (90 Days)'
+      case 'all': return 'AI Contribution (All Time)'
+      case 'custom': return 'AI Contribution (Custom Range)'
+      default: return 'AI Contribution This Week'
+    }
+  })()
 
   return (
     <Link
@@ -106,7 +139,7 @@ export function ContributionSummaryCard({ className }: ContributionSummaryCardPr
         <div className="flex items-center gap-2">
           <GitBranch className="w-5 h-5 text-[#7c9885]" />
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            AI Contribution This Week
+            {titleLabel}
           </h2>
         </div>
         <span className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -114,21 +147,23 @@ export function ContributionSummaryCard({ className }: ContributionSummaryCardPr
         </span>
       </div>
 
-      {/* Progress bar */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-          <span>AI-assisted commits</span>
-          <span className="tabular-nums font-medium">
-            {formatPercent(aiContributionPercent)}
-          </span>
+      {/* AI lines share bar */}
+      {totalLines > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+            <span>AI lines written</span>
+            <span className="tabular-nums font-medium">
+              {formatPercent(aiLinesPercent)}
+            </span>
+          </div>
+          <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#7c9885] rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(aiLinesPercent, 100)}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#7c9885] rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(aiContributionPercent, 100)}%` }}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Metrics row */}
       <div className="flex items-center gap-4 text-sm">
