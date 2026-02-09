@@ -50,12 +50,12 @@ export function StorageOverview() {
     setRebuildStatus('idle')
 
     try {
-      // Trigger full Tantivy index rebuild via /api/sync/deep
+      // Trigger full deep index rebuild via /api/sync/deep
       const response = await fetch('/api/sync/deep', { method: 'POST' })
       if (response.ok || response.status === 202) {
         setRebuildStatus('success')
         toast.success('Index rebuild started', {
-          description: 'Full Tantivy index rebuild initiated. This may take a moment.',
+          description: 'Full deep index rebuild initiated. This may take a moment.',
         })
         // Invalidate queries to refresh data
         queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
@@ -68,14 +68,19 @@ export function StorageOverview() {
         })
       } else {
         setRebuildStatus('error')
+        const errorText = await response.text().catch(() => '')
         toast.error('Failed to rebuild index', {
-          description: 'An unexpected error occurred. Please try again.',
+          description: errorText
+            ? `Server error (${response.status}): ${errorText}`
+            : `Unexpected error (HTTP ${response.status}). Please try again.`,
         })
       }
-    } catch {
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error'
+      console.error('Failed to rebuild index:', e)
       setRebuildStatus('error')
       toast.error('Failed to rebuild index', {
-        description: 'Network error. Please check your connection and try again.',
+        description: `Network error: ${message}. Please check your connection and try again.`,
       })
     } finally {
       setIsRebuilding(false)
@@ -94,9 +99,19 @@ export function StorageOverview() {
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 text-red-500 py-4">
-        <AlertCircle className="w-4 h-4" />
-        <span className="text-sm">Failed to load storage data</span>
+      <div className="flex flex-col items-start gap-2 py-4">
+        <div className="flex items-center gap-2 text-red-500">
+          <AlertCircle className="w-4 h-4" />
+          <span className="text-sm">Failed to load storage data</span>
+        </div>
+        <p className="text-xs text-red-400 ml-6">{error.message}</p>
+        <button
+          type="button"
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['storage-stats'] })}
+          className="ml-6 text-xs text-blue-500 hover:text-blue-400 underline cursor-pointer"
+        >
+          Retry
+        </button>
       </div>
     )
   }
