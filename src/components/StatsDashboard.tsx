@@ -2,18 +2,52 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { BarChart3, Sparkles, TerminalSquare, Plug, Bot, FolderOpen, Calendar, Pencil, Eye, Terminal, Clock, ArrowRight, Search } from 'lucide-react'
 import { useDashboardStats } from '../hooks/use-dashboard'
 import { buildSessionUrl } from '../lib/url-utils'
+import { useTimeRange } from '../hooks/use-time-range'
 import { cn } from '../lib/utils'
 import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { RecentCommits } from './RecentCommits'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
+import { SegmentedControl } from './ui/SegmentedControl'
+import { DateRangePicker } from './ui/DateRangePicker'
+import { FEATURES } from '../config/features'
+
+/** Format a timestamp to a human-readable date */
+function formatTimestampDate(ts: number | null | undefined): string {
+  if (ts === null || ts === undefined) return ''
+  return new Date(ts * 1000).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+/** Format a timestamp to short date (month + year) */
+function formatShortDate(ts: number | null | undefined): string {
+  if (ts === null || ts === undefined) return ''
+  return new Date(ts * 1000).toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric',
+  })
+}
 
 export function StatsDashboard() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const projectFilter = searchParams.get("project") || undefined
   const branchFilter = searchParams.get("branch") || undefined
-  const { data: stats, isLoading, error, refetch } = useDashboardStats(projectFilter, branchFilter)
+
+  // Time range state
+  const { state: timeRange, setPreset, setCustomRange, comparisonLabel } = useTimeRange()
+
+  // Fetch dashboard stats with project/branch + time range filters
+  const { data: stats, isLoading, error, refetch } = useDashboardStats(
+    projectFilter,
+    branchFilter,
+    FEATURES.timeRange
+      ? { from: timeRange.fromTimestamp, to: timeRange.toTimestamp }
+      : null
+  )
 
   // Loading state with skeleton
   if (isLoading) {
@@ -63,25 +97,50 @@ export function StatsDashboard() {
       <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Card */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-[#7c9885]" />
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            {projectFilter
-              ? `${projectFilter} Usage`
-              : "Your Claude Code Usage"}
-          </h1>
-          {projectFilter && (
-            <button
-              onClick={() => {
-                const params = new URLSearchParams(searchParams)
-                params.delete("project")
-                params.delete("branch")
-                setSearchParams(params)
-              }}
-              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              Clear filter
-            </button>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-[#7c9885]" />
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              {projectFilter
+                ? `${projectFilter} Usage`
+                : "Your Claude Code Usage"}
+            </h1>
+            {projectFilter && (
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams)
+                  params.delete("project")
+                  params.delete("branch")
+                  setSearchParams(params)
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* Time Range Selector (Feature flag gated) */}
+          {FEATURES.timeRange && (
+            <div className="flex items-center gap-2">
+              <SegmentedControl
+                value={timeRange.preset}
+                onChange={setPreset}
+                options={[
+                  { value: '7d', label: '7d' },
+                  { value: '30d', label: '30d' },
+                  { value: '90d', label: '90d' },
+                  { value: 'all', label: 'All' },
+                  { value: 'custom', label: 'Custom' },
+                ]}
+              />
+              {timeRange.preset === 'custom' && (
+                <DateRangePicker
+                  value={timeRange.customRange}
+                  onChange={setCustomRange}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -96,11 +155,27 @@ export function StatsDashboard() {
             <span className="ml-1">projects</span>
           </div>
         </div>
+
+        {/* Date Range Caption (Feature flag gated) */}
+        {FEATURES.timeRange && (
+          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
+            <span>
+              {stats.periodStart && stats.periodEnd
+                ? `Showing stats from ${formatTimestampDate(stats.periodStart)} - ${formatTimestampDate(stats.periodEnd)}`
+                : 'Showing all-time stats'}
+            </span>
+            {stats.dataStartDate && (
+              <span className="text-gray-400 dark:text-gray-500">
+                since {formatShortDate(stats.dataStartDate)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Phase 3: Week-over-week metrics grid */}
       {stats.trends && (
-        <DashboardMetricsGrid trends={stats.trends} />
+        <DashboardMetricsGrid trends={stats.trends} comparisonLabel={comparisonLabel} />
       )}
 
       {/* Theme 3: AI Contribution Summary Card */}
