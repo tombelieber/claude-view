@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useContributions, type TimeRange } from '../hooks/use-contributions'
-import { useProjectSummaries } from '../hooks/use-projects'
 import { ContributionsHeader } from '../components/contributions/ContributionsHeader'
 import { OverviewCards } from '../components/contributions/OverviewCards'
 import { TrendChart } from '../components/contributions/TrendChart'
@@ -30,18 +29,19 @@ import { DashboardSkeleton, ErrorState } from '../components/LoadingStates'
  * - Warnings for incomplete data
  */
 export function ContributionsPage() {
-  // URL-persisted time range and project filter
+  // Navigation + project/branch from query params
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const projectId = searchParams.get('project')
+  const branchFilter = searchParams.get('branches') || undefined
+
+  // URL-persisted time range
   const initialRange = (searchParams.get('range') as TimeRange) || 'week'
   const [range, setRange] = useState<TimeRange>(initialRange)
-  const projectId = searchParams.get('projectId')
 
   // Session drill-down state
   const [drillDownSessionId, setDrillDownSessionId] = useState<string | null>(null)
   const [drillDownBranch, setDrillDownBranch] = useState<string | undefined>(undefined)
-
-  // Fetch projects for dropdown
-  const { data: projects, isLoading: projectsLoading } = useProjectSummaries()
 
   // Fetch contributions data (with project filter)
   const { data, isLoading, error, refetch } = useContributions(range, projectId ?? undefined)
@@ -51,17 +51,6 @@ export function ContributionsPage() {
     setRange(newRange)
     const params = new URLSearchParams(searchParams)
     params.set('range', newRange)
-    setSearchParams(params)
-  }
-
-  // Update URL when project changes (preserve existing params per CLAUDE.md rule)
-  const handleProjectChange = (id: string | null) => {
-    const params = new URLSearchParams(searchParams)
-    if (id) {
-      params.set('projectId', id)
-    } else {
-      params.delete('projectId')
-    }
     setSearchParams(params)
   }
 
@@ -108,10 +97,13 @@ export function ContributionsPage() {
             range={range}
             onRangeChange={handleRangeChange}
             sessionCount={0}
-            projects={projects}
-            projectId={projectId}
-            onProjectChange={handleProjectChange}
-            projectsLoading={projectsLoading}
+            projectFilter={projectId}
+            onClearProjectFilter={() => {
+              const params = new URLSearchParams(searchParams)
+              params.delete('project')
+              params.delete('branches')
+              setSearchParams(params)
+            }}
           />
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
             <ContributionsEmptyState range={range} onRangeChange={handleRangeChange} />
@@ -131,10 +123,13 @@ export function ContributionsPage() {
           range={range}
           onRangeChange={handleRangeChange}
           sessionCount={sessionCount}
-          projects={projects}
-          projectId={projectId}
-          onProjectChange={handleProjectChange}
-          projectsLoading={projectsLoading}
+          projectFilter={projectId}
+          onClearProjectFilter={() => {
+            const params = new URLSearchParams(searchParams)
+            params.delete('project')
+            params.delete('branches')
+            setSearchParams(params)
+          }}
         />
 
         {/* Warnings */}
@@ -194,8 +189,7 @@ export function ContributionsPage() {
               branchName={drillDownBranch}
               onClose={handleCloseDrillDown}
               onOpenFullSession={(sessionId) => {
-                // Navigate to full session view (if implemented)
-                window.location.href = `/sessions/${sessionId}`
+                navigate(`/session/${sessionId}`)
               }}
             />
           </div>
