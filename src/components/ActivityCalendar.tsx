@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback, useId } from 'react'
+import { useMemo, useState, useRef, useCallback, useId, useEffect } from 'react'
 import { DayPicker, type DateRange } from 'react-day-picker'
 import type { DayButtonProps } from 'react-day-picker'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -137,6 +137,10 @@ export function ActivityCalendar({
     }
   }, [])
 
+  /**
+   * HeatmapDayButton with controlled tooltip state for 150ms close delay.
+   * AC-2.4: Tooltip stays open for 150ms after mouse leaves to prevent flickering.
+   */
   function HeatmapDayButton({ day, modifiers: _modifiers, ...buttonProps }: DayButtonProps) {
     const dateKey = toDateKey(day.date)
     const count = countsByDay.get(dateKey) ?? 0
@@ -153,8 +157,39 @@ export function ActivityCalendar({
     const cellIndex = cellKeysRef.current.indexOf(dateKey)
     const isFocusedCell = cellIndex === focusedIndex
 
+    // Controlled tooltip state with 150ms close delay (AC-2.4)
+    const [isTooltipOpen, setIsTooltipOpen] = useState(false)
+    const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const handleOpenChange = useCallback((open: boolean) => {
+      // Clear any pending close timeout
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = null
+      }
+
+      if (open) {
+        // Open immediately
+        setIsTooltipOpen(true)
+      } else {
+        // Close with 150ms delay (AC-2.4)
+        closeTimeoutRef.current = setTimeout(() => {
+          setIsTooltipOpen(false)
+        }, 150)
+      }
+    }, [])
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (closeTimeoutRef.current) {
+          clearTimeout(closeTimeoutRef.current)
+        }
+      }
+    }, [])
+
     return (
-      <Tooltip.Root delayDuration={0}>
+      <Tooltip.Root delayDuration={0} open={isTooltipOpen} onOpenChange={handleOpenChange}>
         <Tooltip.Trigger asChild>
           <button
             {...buttonProps}
@@ -197,7 +232,7 @@ export function ActivityCalendar({
   }
 
   return (
-    <Tooltip.Provider delayDuration={0} skipDelayDuration={150}>
+    <Tooltip.Provider delayDuration={0}>
       <div
         className="activity-calendar"
         role="grid"
