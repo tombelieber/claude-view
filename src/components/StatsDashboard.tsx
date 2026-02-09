@@ -15,7 +15,7 @@ import { useIsMobile } from '../hooks/use-media-query'
 
 /** Format a timestamp to a human-readable date */
 function formatTimestampDate(ts: number | null | undefined): string {
-  if (ts === null || ts === undefined) return ''
+  if (ts === null || ts === undefined || ts <= 0) return ''
   return new Date(ts * 1000).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -25,7 +25,7 @@ function formatTimestampDate(ts: number | null | undefined): string {
 
 /** Format a timestamp to short date (month + year) */
 function formatShortDate(ts: number | null | undefined): string {
-  if (ts === null || ts === undefined) return ''
+  if (ts === null || ts === undefined || ts <= 0) return ''
   return new Date(ts * 1000).toLocaleDateString('en-US', {
     month: 'short',
     year: 'numeric',
@@ -175,11 +175,17 @@ export function StatsDashboard() {
       )}
 
       {/* Theme 3: AI Contribution Summary Card */}
-      <ContributionSummaryCard />
+      <ContributionSummaryCard
+        timeRange={timeRange}
+        project={projectFilter}
+        branch={branchFilter}
+      />
 
       {/* AI Generation Breakdown */}
       <AIGenerationStats
         timeRange={{ from: timeRange.fromTimestamp, to: timeRange.toTimestamp }}
+        project={projectFilter}
+        branch={branchFilter}
       />
 
       <div className="grid md:grid-cols-2 gap-6">

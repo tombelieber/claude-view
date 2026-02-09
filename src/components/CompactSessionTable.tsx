@@ -27,6 +27,7 @@ interface CompactSessionTableProps {
 // --- Formatters ---
 
 function formatDatePrefix(timestamp: number): string {
+  if (timestamp <= 0) return '--'
   const date = new Date(timestamp * 1000)
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -38,6 +39,7 @@ function formatDatePrefix(timestamp: number): string {
 }
 
 function formatTimeShort(timestamp: number): string {
+  if (timestamp <= 0) return '--'
   return new Date(timestamp * 1000).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
