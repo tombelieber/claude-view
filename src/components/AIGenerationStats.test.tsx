@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { AIGenerationStats, formatModelName } from './AIGenerationStats'
+import { AIGenerationStats } from './AIGenerationStats'
+import { formatModelName } from '../lib/format-model'
 
 // Mock hooks
 const mockUseAIGenerationStats = vi.fn()
@@ -237,7 +238,7 @@ describe('AIGenerationStats', () => {
       const timeRange = { from: 1000, to: 2000 }
       render(<AIGenerationStats timeRange={timeRange} />)
 
-      expect(mockUseAIGenerationStats).toHaveBeenCalledWith(timeRange)
+      expect(mockUseAIGenerationStats).toHaveBeenCalledWith(timeRange, undefined, undefined)
     })
   })
 })
@@ -293,6 +294,38 @@ describe('formatModelName', () => {
     it('should handle model with multiple name parts', () => {
       expect(formatModelName('claude-3-super-fast-20260101')).toBe('Claude 3 Super Fast')
     })
+
+    it('should handle claude-opus-4-6 (no date suffix)', () => {
+      expect(formatModelName('claude-opus-4-6')).toBe('Claude Opus 4.6')
+    })
+
+    it('should handle claude-opus-4-1-20250805 (with date suffix)', () => {
+      expect(formatModelName('claude-opus-4-1-20250805')).toBe('Claude Opus 4.1')
+    })
+
+    it('should handle claude-sonnet-4-5-20250929 (with date suffix)', () => {
+      expect(formatModelName('claude-sonnet-4-5-20250929')).toBe('Claude Sonnet 4.5')
+    })
+
+    it('should handle claude-haiku-4-5-20251001 (with date suffix)', () => {
+      expect(formatModelName('claude-haiku-4-5-20251001')).toBe('Claude Haiku 4.5')
+    })
+
+    it('should handle claude-opus-4-20250514 (major only, with date)', () => {
+      expect(formatModelName('claude-opus-4-20250514')).toBe('Claude Opus 4')
+    })
+
+    it('should handle claude-haiku-4-20250514 (major only, with date)', () => {
+      expect(formatModelName('claude-haiku-4-20250514')).toBe('Claude Haiku 4')
+    })
+
+    it('should handle hypothetical claude-sonnet-5-0-20270101', () => {
+      expect(formatModelName('claude-sonnet-5-0-20270101')).toBe('Claude Sonnet 5.0')
+    })
+
+    it('should handle hypothetical claude-opus-5-20270601 (major only)', () => {
+      expect(formatModelName('claude-opus-5-20270601')).toBe('Claude Opus 5')
+    })
   })
 
   describe('edge cases', () => {
@@ -304,16 +337,28 @@ describe('formatModelName', () => {
       expect(formatModelName('gpt-4-turbo')).toBe('gpt-4-turbo')
     })
 
-    it('should return short non-claude string as-is', () => {
-      expect(formatModelName('unknown')).toBe('unknown')
+    it('should capitalize short non-claude single-word string', () => {
+      expect(formatModelName('unknown')).toBe('Unknown')
     })
 
     it('should handle claude with only two parts (below 3-part threshold)', () => {
       expect(formatModelName('claude-opus')).toBe('claude-opus')
     })
 
-    it('should handle model ID that is just "claude"', () => {
-      expect(formatModelName('claude')).toBe('claude')
+    it('should capitalize bare single-word "claude"', () => {
+      expect(formatModelName('claude')).toBe('Claude')
+    })
+
+    it('should capitalize bare alias "opus"', () => {
+      expect(formatModelName('opus')).toBe('Opus')
+    })
+
+    it('should capitalize bare alias "sonnet"', () => {
+      expect(formatModelName('sonnet')).toBe('Sonnet')
+    })
+
+    it('should capitalize bare alias "haiku"', () => {
+      expect(formatModelName('haiku')).toBe('Haiku')
     })
   })
 })

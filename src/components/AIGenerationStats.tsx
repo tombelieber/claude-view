@@ -2,10 +2,15 @@ import { Sparkles, FileCode2, AlertCircle } from 'lucide-react'
 import { useAIGenerationStats, formatTokens, formatLineCount, type TimeRangeParams } from '../hooks/use-ai-generation'
 import { MetricCard, ProgressBar } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
+import { formatModelName } from '../lib/format-model'
 
 interface AIGenerationStatsProps {
   /** Optional time range filter */
   timeRange?: TimeRangeParams | null
+  /** Optional project filter */
+  project?: string
+  /** Optional branch filter */
+  branch?: string
 }
 
 /**
@@ -16,8 +21,8 @@ interface AIGenerationStatsProps {
  * 2. Token usage by model (progress bars)
  * 3. Top projects by token usage (progress bars)
  */
-export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
-  const { data: stats, isLoading, error, refetch } = useAIGenerationStats(timeRange)
+export function AIGenerationStats({ timeRange, project, branch }: AIGenerationStatsProps) {
+  const { data: stats, isLoading, error, refetch } = useAIGenerationStats(timeRange, project, branch)
   const isMobile = useIsMobile()
 
   if (isLoading) {
@@ -147,50 +152,6 @@ export function AIGenerationStats({ timeRange }: AIGenerationStatsProps) {
       </div>
     </div>
   )
-}
-
-/**
- * Format model name to be more readable.
- * e.g., "claude-3-5-sonnet-20241022" -> "Claude 3.5 Sonnet"
- */
-export function formatModelName(modelId: string): string {
-  // Map common model IDs to friendly names
-  const modelMap: Record<string, string> = {
-    'claude-opus-4-5-20251101': 'Claude Opus 4.5',
-    'claude-opus-4-20250514': 'Claude Opus 4',
-    'claude-sonnet-4-20250514': 'Claude Sonnet 4',
-    'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet',
-    'claude-3-5-haiku-20241022': 'Claude 3.5 Haiku',
-    'claude-3-opus-20240229': 'Claude 3 Opus',
-    'claude-3-sonnet-20240229': 'Claude 3 Sonnet',
-    'claude-3-haiku-20240307': 'Claude 3 Haiku',
-  }
-
-  if (modelMap[modelId]) {
-    return modelMap[modelId]
-  }
-
-  // Try to parse model name from ID
-  // e.g., "claude-3-5-sonnet-20241022" -> "claude-3-5-sonnet"
-  const parts = modelId.split('-')
-  if (parts.length >= 3 && parts[0] === 'claude') {
-    // Remove date suffix if present (8 digits)
-    if (parts[parts.length - 1].match(/^\d{8}$/)) {
-      parts.pop()
-    }
-    // Capitalize and format
-    return parts
-      .map((p, i) => {
-        if (i === 0) return 'Claude'
-        if (p === '3' || p === '4' || p === '5') return p
-        return p.charAt(0).toUpperCase() + p.slice(1)
-      })
-      .join(' ')
-      .replace(' 3 5 ', ' 3.5 ')
-      .replace(' 4 5 ', ' 4.5 ')
-  }
-
-  return modelId
 }
 
 /**
