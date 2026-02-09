@@ -14,15 +14,24 @@ export type { TimeRangeParams } from '../types/time-range'
  * - tokensByModel: Token breakdown by AI model
  * - tokensByProject: Top 5 projects by token usage + "Others"
  */
-async function fetchAIGenerationStats(params?: TimeRangeParams): Promise<AIGenerationStats> {
+async function fetchAIGenerationStats(params?: TimeRangeParams, project?: string, branch?: string): Promise<AIGenerationStats> {
   let url = '/api/stats/ai-generation'
+  const searchParams = new URLSearchParams()
 
   // Add time range params if provided (not all-time)
   if (params?.from != null && params?.to != null) {
-    const searchParams = new URLSearchParams()
     searchParams.set('from', params.from.toString())
     searchParams.set('to', params.to.toString())
-    url += `?${searchParams.toString()}`
+  }
+  if (project) {
+    searchParams.set('project', project)
+  }
+  if (branch) {
+    searchParams.set('branch', branch)
+  }
+  const qs = searchParams.toString()
+  if (qs) {
+    url += `?${qs}`
   }
 
   const response = await fetch(url)
@@ -46,10 +55,10 @@ async function fetchAIGenerationStats(params?: TimeRangeParams): Promise<AIGener
  * - tokensByModel (breakdown by model)
  * - tokensByProject (top 5 + "Others")
  */
-export function useAIGenerationStats(timeRange?: TimeRangeParams | null) {
+export function useAIGenerationStats(timeRange?: TimeRangeParams | null, project?: string, branch?: string) {
   return useQuery({
-    queryKey: ['ai-generation-stats', timeRange?.from, timeRange?.to],
-    queryFn: () => fetchAIGenerationStats(timeRange ?? undefined),
+    queryKey: ['ai-generation-stats', timeRange?.from, timeRange?.to, project, branch],
+    queryFn: () => fetchAIGenerationStats(timeRange ?? undefined, project, branch),
     staleTime: 30_000, // Consider data fresh for 30 seconds
   })
 }
