@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FilterPopover } from './FilterPopover';
 import { DEFAULT_FILTERS } from '../hooks/use-session-filters';
+import { formatModelName } from '../lib/format-model';
 
 const TEST_BRANCHES = ['main', 'dev', 'feature/auth'];
 
@@ -47,9 +48,10 @@ describe('FilterPopover', () => {
   it('shows all filter options when open', () => {
     const onChange = vi.fn();
     const onClear = vi.fn();
+    const models = ['claude-opus-4-6'];
 
     render(
-      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} />
+      <FilterPopover filters={DEFAULT_FILTERS} onChange={onChange} onClear={onClear} activeCount={0} branches={TEST_BRANCHES} models={models} />
     );
 
     const trigger = screen.getByRole('button', { name: /filters/i });
@@ -215,5 +217,52 @@ describe('FilterPopover', () => {
     fireEvent.click(trigger);
 
     expect(screen.queryByPlaceholderText(/search branches/i)).not.toBeInTheDocument();
+  });
+
+  it('renders model checkboxes from models prop instead of hardcoded list', () => {
+    const onChange = vi.fn();
+    const onClear = vi.fn();
+    const models = ['claude-opus-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'];
+
+    render(
+      <FilterPopover
+        filters={DEFAULT_FILTERS}
+        onChange={onChange}
+        onClear={onClear}
+        activeCount={0}
+        branches={TEST_BRANCHES}
+        models={models}
+      />
+    );
+
+    const trigger = screen.getByRole('button', { name: /filters/i });
+    fireEvent.click(trigger);
+
+    // Should show formatted model names from data-driven list
+    expect(screen.getByText('Claude Opus 4.6')).toBeInTheDocument();
+    expect(screen.getByText('Claude Sonnet 4.5')).toBeInTheDocument();
+    expect(screen.getByText('Claude Haiku 4.5')).toBeInTheDocument();
+  });
+
+  it('hides model section when models prop is empty', () => {
+    const onChange = vi.fn();
+    const onClear = vi.fn();
+
+    render(
+      <FilterPopover
+        filters={DEFAULT_FILTERS}
+        onChange={onChange}
+        onClear={onClear}
+        activeCount={0}
+        branches={TEST_BRANCHES}
+        models={[]}
+      />
+    );
+
+    const trigger = screen.getByRole('button', { name: /filters/i });
+    fireEvent.click(trigger);
+
+    // Model section label should not appear
+    expect(screen.queryByText('Model')).not.toBeInTheDocument();
   });
 });
