@@ -90,6 +90,22 @@ pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
     }
 }
 
+/// If the encoded project name represents a git worktree, return the parent
+/// project's encoded name. Otherwise return None.
+///
+/// Worktree paths: `-Users-dev-project--worktrees-branch-name`
+/// Parent:         `-Users-dev-project`
+///
+/// The `--worktrees-` segment maps to `/.worktrees/` on disk.
+pub fn resolve_worktree_parent(encoded_name: &str) -> Option<String> {
+    let marker = "--worktrees-";
+    let pos = encoded_name.find(marker)?;
+    if pos == 0 {
+        return None; // edge case: name starts with marker
+    }
+    Some(encoded_name[..pos].to_string())
+}
+
 /// Tokenize an encoded project name into path segments.
 ///
 /// Handles `--` → `/@` conversion for scoped packages.
@@ -1780,5 +1796,36 @@ mod tests {
         let name = derive_display_name(&deep.to_string_lossy());
         // No .git within 5 levels → falls back to last component
         assert_eq!(name, "some-dir");
+    }
+
+    // ========================================================================
+    // resolve_worktree_parent Tests
+    // ========================================================================
+
+    #[test]
+    fn test_worktree_parent_basic() {
+        assert_eq!(
+            resolve_worktree_parent("-Users-dev-project--worktrees-feature-branch"),
+            Some("-Users-dev-project".to_string())
+        );
+    }
+
+    #[test]
+    fn test_non_worktree_returns_none() {
+        assert_eq!(resolve_worktree_parent("-Users-dev-project"), None);
+    }
+
+    #[test]
+    fn test_worktree_parent_edge_cases() {
+        assert_eq!(resolve_worktree_parent(""), None);
+        assert_eq!(resolve_worktree_parent("--worktrees-foo"), None); // marker at pos 0
+    }
+
+    #[test]
+    fn test_worktree_parent_preserves_complex_parent() {
+        assert_eq!(
+            resolve_worktree_parent("-Users-dev--vicky-ai-claude-view--worktrees-theme3-contributions"),
+            Some("-Users-dev--vicky-ai-claude-view".to_string())
+        );
     }
 }

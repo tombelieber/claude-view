@@ -31,8 +31,8 @@ export function Header() {
         label: 'Contributions',
         path: location.pathname + location.search
       })
-    } else if (location.pathname.match(/^\/session\/[^/]+$/)) {
-      // Flat session page: /session/:sessionId
+    } else if (location.pathname.match(/^\/sessions\/[^/]+$/)) {
+      // Session detail page: /sessions/:sessionId
       crumbs.push({
         label: 'Session',
         path: location.pathname

@@ -1,4 +1,4 @@
-import { GitBranch, Clock, ChevronRight, FileCode2, GitCommit } from 'lucide-react'
+import { GitBranch, Clock, ChevronRight, FileCode2, GitCommit, Filter } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useBranchSessions, type TimeRange } from '../../hooks/use-contributions'
 import type { BranchBreakdown, BranchSession } from '../../types/generated'
@@ -9,6 +9,9 @@ interface BranchCardProps {
   onToggle: () => void
   onDrillDown?: (sessionId: string) => void
   timeRange?: TimeRange
+  projectId?: string
+  isFiltered?: boolean
+  onFilter?: (branchName: string) => void
 }
 
 /**
@@ -25,6 +28,9 @@ export function BranchCard({
   onToggle,
   onDrillDown,
   timeRange = 'week',
+  projectId,
+  isFiltered,
+  onFilter,
 }: BranchCardProps) {
   const {
     branch: branchName,
@@ -36,8 +42,8 @@ export function BranchCard({
     lastActivity,
   } = branch
 
-  // Fetch sessions when expanded
-  const { data, isLoading } = useBranchSessions(branchName, timeRange, isExpanded)
+  // Fetch sessions when expanded (pass projectId to filter by project)
+  const { data, isLoading } = useBranchSessions(branchName, timeRange, isExpanded, projectId)
 
   const aiSharePercent = aiShare !== null ? Math.round(aiShare * 100) : null
   const lastActivityText = lastActivity !== null ? formatRelativeTime(lastActivity) : null
@@ -49,9 +55,11 @@ export function BranchCard({
     <div
       className={cn(
         'border rounded-lg transition-all',
-        isExpanded
-          ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
-          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
+        isFiltered
+          ? 'border-blue-500 dark:border-blue-400 bg-blue-50/30 dark:bg-blue-900/20'
+          : isExpanded
+            ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
+            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
       )}
     >
       <button
@@ -65,9 +73,35 @@ export function BranchCard({
           <span className="font-medium text-gray-900 dark:text-gray-100 truncate">
             {branchName}
           </span>
+          {branchName !== '(no branch)' && onFilter && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                onFilter(branchName)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onFilter(branchName)
+                }
+              }}
+              className={cn(
+                'p-1 rounded transition-colors flex-shrink-0',
+                isFiltered
+                  ? 'text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              )}
+              title={isFiltered ? 'Remove branch filter' : 'Filter to this branch'}
+            >
+              <Filter className="w-3.5 h-3.5" />
+            </span>
+          )}
           <ChevronRight
             className={cn(
-              'w-4 h-4 text-gray-400 transition-transform ml-auto',
+              'w-4 h-4 text-gray-400 transition-transform ml-auto flex-shrink-0',
               isExpanded && 'rotate-90'
             )}
             aria-hidden="true"
