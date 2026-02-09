@@ -20,12 +20,6 @@ vi.mock('../hooks/use-media-query', () => ({
   useIsMobile: () => false,
 }))
 
-// Feature flags — default all on
-let mockFeatures = { timeRange: true, aiGeneration: true, heatmapTooltip: true, syncRedesign: true, storageOverview: true }
-vi.mock('../config/features', () => ({
-  get FEATURES() { return mockFeatures },
-}))
-
 // Mock child components that fetch their own data
 vi.mock('./AIGenerationStats', () => ({
   AIGenerationStats: () => <div data-testid="ai-generation-stats">AI Generation Stats</div>,
@@ -33,6 +27,10 @@ vi.mock('./AIGenerationStats', () => ({
 
 vi.mock('./RecentCommits', () => ({
   RecentCommits: () => <div data-testid="recent-commits">Recent Commits</div>,
+}))
+
+vi.mock('./ContributionSummaryCard', () => ({
+  ContributionSummaryCard: () => <div data-testid="contribution-summary">Contribution Summary</div>,
 }))
 
 function makeStats(overrides = {}) {
@@ -97,7 +95,6 @@ function renderDashboard() {
 describe('StatsDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFeatures = { timeRange: true, aiGeneration: true, heatmapTooltip: true, syncRedesign: true, storageOverview: true }
     mockUseTimeRange.mockReturnValue(defaultTimeRange())
     mockUseDashboardStats.mockReturnValue({
       data: makeStats(),
@@ -215,14 +212,14 @@ describe('StatsDashboard', () => {
       expect(screen.getByText('1.0h')).toBeInTheDocument()
     })
 
-    it('should render AIGenerationStats when feature flag is on', () => {
+    it('should render AIGenerationStats', () => {
       renderDashboard()
       expect(screen.getByTestId('ai-generation-stats')).toBeInTheDocument()
     })
   })
 
   describe('time range integration', () => {
-    it('should show TimeRangeSelector when feature flag is on', () => {
+    it('should show TimeRangeSelector', () => {
       renderDashboard()
       // TimeRangeSelector renders buttons with preset labels
       expect(screen.getByText('30d')).toBeInTheDocument()
@@ -230,29 +227,18 @@ describe('StatsDashboard', () => {
       expect(screen.getByText('All')).toBeInTheDocument()
     })
 
-    it('should hide TimeRangeSelector when feature flag is off', () => {
-      mockFeatures = { ...mockFeatures, timeRange: false }
-      renderDashboard()
-      expect(screen.queryByText('Custom')).not.toBeInTheDocument()
-    })
-
     it('should pass time range to useDashboardStats', () => {
       renderDashboard()
-      expect(mockUseDashboardStats).toHaveBeenCalledWith({
-        from: 1706745600,
-        to: 1707350400,
-      })
-    })
-
-    it('should pass null to useDashboardStats when time range feature is off', () => {
-      mockFeatures = { ...mockFeatures, timeRange: false }
-      renderDashboard()
-      expect(mockUseDashboardStats).toHaveBeenCalledWith(null)
+      expect(mockUseDashboardStats).toHaveBeenCalledWith(
+        undefined,
+        undefined,
+        { from: 1706745600, to: 1707350400 },
+      )
     })
   })
 
   describe('date caption', () => {
-    it('should show date range caption when time range feature is on', () => {
+    it('should show date range caption when period bounds are set', () => {
       renderDashboard()
       // "Showing stats from Feb 1, 2024 - Feb 8, 2024"
       expect(screen.getByText(/Showing stats from/)).toBeInTheDocument()
@@ -269,19 +255,5 @@ describe('StatsDashboard', () => {
       expect(screen.getByText('Showing all-time stats')).toBeInTheDocument()
     })
 
-    it('should hide date caption when time range feature is off', () => {
-      mockFeatures = { ...mockFeatures, timeRange: false }
-      renderDashboard()
-      expect(screen.queryByText(/Showing stats from/)).not.toBeInTheDocument()
-      expect(screen.queryByText('Showing all-time stats')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('AI generation feature flag', () => {
-    it('should hide AIGenerationStats when feature flag is off', () => {
-      mockFeatures = { ...mockFeatures, aiGeneration: false }
-      renderDashboard()
-      expect(screen.queryByTestId('ai-generation-stats')).not.toBeInTheDocument()
-    })
   })
 })
