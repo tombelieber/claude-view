@@ -1,7 +1,7 @@
-//! SSE endpoint for real-time indexing progress.
+//! Indexing progress endpoints.
 //!
-//! `GET /api/indexing/progress` streams Server-Sent Events that reflect the
-//! current [`IndexingStatus`] of the background indexer.
+//! - `GET /api/indexing/progress` — SSE stream (kept for direct-connect production use)
+//! - `GET /api/indexing/status`   — JSON snapshot (reliable through any proxy)
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -9,17 +9,64 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::response::sse::{Event, Sse};
 use axum::routing::get;
-use axum::Router;
+use axum::{Json, Router};
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::indexing_state::IndexingStatus;
 use crate::state::AppState;
+
+/// JSON snapshot of current indexing progress (for polling).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct IndexingStatusResponse {
+    pub phase: String,
+    pub indexed: usize,
+    pub total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
 
 /// Build the indexing sub-router.
 ///
 /// Routes:
 /// - `GET /indexing/progress` - SSE stream of indexing progress events
+/// - `GET /indexing/status`   - JSON snapshot for polling
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/indexing/progress", get(indexing_progress))
+    Router::new()
+        .route("/indexing/progress", get(indexing_progress))
+        .route("/indexing/status", get(indexing_status))
+}
+
+/// GET /api/indexing/status — lightweight JSON snapshot of indexing progress.
+///
+/// Returns the current phase, indexed count, and total count.
+/// Designed for polling (every 200–300 ms) from the frontend during rebuilds.
+pub async fn indexing_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<IndexingStatusResponse> {
+    let indexing = &state.indexing;
+    let status = indexing.status();
+
+    let phase = match status {
+        IndexingStatus::Idle => "idle",
+        IndexingStatus::ReadingIndexes => "reading-indexes",
+        IndexingStatus::DeepIndexing => "deep-indexing",
+        IndexingStatus::Done => "done",
+        IndexingStatus::Error => "error",
+    };
+
+    Json(IndexingStatusResponse {
+        phase: phase.to_string(),
+        indexed: indexing.indexed(),
+        total: indexing.total(),
+        error_message: if status == IndexingStatus::Error {
+            indexing.error()
+        } else {
+            None
+        },
+    })
 }
 
 /// SSE handler that streams indexing progress events.
@@ -210,6 +257,91 @@ mod tests {
             "Expected 'event: done' in body: {}",
             body_str
         );
+    }
+
+    #[tokio::test]
+    async fn test_polling_status_idle() {
+        let db = Database::new_in_memory().await.unwrap();
+        let state = Arc::new(IndexingState::new());
+
+        let app = create_app_with_indexing(db, state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/indexing/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["phase"], "idle");
+        assert_eq!(json["indexed"], 0);
+        assert_eq!(json["total"], 0);
+        assert!(json.get("errorMessage").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_polling_status_deep_indexing() {
+        let db = Database::new_in_memory().await.unwrap();
+        let state = Arc::new(IndexingState::new());
+        state.set_status(IndexingStatus::DeepIndexing);
+        state.set_indexed(50);
+        state.set_total(100);
+
+        let app = create_app_with_indexing(db, state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/indexing/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["phase"], "deep-indexing");
+        assert_eq!(json["indexed"], 50);
+        assert_eq!(json["total"], 100);
+    }
+
+    #[tokio::test]
+    async fn test_polling_status_error() {
+        let db = Database::new_in_memory().await.unwrap();
+        let state = Arc::new(IndexingState::new());
+        state.set_error("disk full".to_string());
+
+        let app = create_app_with_indexing(db, state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/indexing/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["phase"], "error");
+        assert_eq!(json["errorMessage"], "disk full");
     }
 
     #[tokio::test]

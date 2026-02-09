@@ -58,6 +58,7 @@
 | **GTM Launch** | **In Progress** | README rewrite done, GTM strategy doc done, AI Fluency Score in progress (separate branch) | Personal |
 | **Cold Start UX** | Pending | 0/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay) | Personal |
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
+| Phase 7: Multi-Tool Providers | Draft | Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 | **Theme 4: Chat Insights** | Pending | 0/8 phases, 0/39 tasks — see `theme4/PROGRESS.md` | Personal |
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
@@ -358,6 +359,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-05-theme4-chat-insights-design.md` | pending | **Theme 4** — Chat insights & pattern discovery (see `theme4/PROGRESS.md` for detailed tracking) |
 | `2026-02-07-gtm-launch-strategy.md` | in-progress | **GTM Launch** — positioning, competitive landscape, content strategy, Show HN plan |
 | `2026-02-07-rename-to-claude-score.md` | approved | **Rename** — full rename plan: vibe-recall/claude-view → claude-score (60+ files, 4 tiers) |
+| `2026-02-10-multi-tool-provider-design.md` | draft | **Phase 7** — Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline support |
 | `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
 
 ### Reference Plans (in `/docs/plans/archived/`)
