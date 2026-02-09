@@ -108,6 +108,15 @@ export function HistoryView() {
     return [...set].sort()
   }, [allSessions])
 
+  // Extract unique models from sessions for the filter popover
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of allSessions) {
+      if (s.primaryModel) set.add(s.primaryModel)
+    }
+    return [...set].sort()
+  }, [allSessions])
+
   // Map session IDs to project display names
   const projectDisplayNames = useMemo(() => {
     if (!summaries) return new Map<string, string>()
@@ -397,6 +406,7 @@ export function HistoryView() {
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
               branches={availableBranches}
+              models={availableModels}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
