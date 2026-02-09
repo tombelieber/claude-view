@@ -13,10 +13,13 @@ export type TimeRange = 'today' | 'week' | 'month' | '90days' | 'all'
 /**
  * Fetch contributions data from the API.
  */
-async function fetchContributions(range: TimeRange, projectId?: string): Promise<ContributionsResponse> {
+async function fetchContributions(range: TimeRange, projectId?: string, branch?: string): Promise<ContributionsResponse> {
   let url = `/api/contributions?range=${encodeURIComponent(range)}`
   if (projectId) {
     url += `&projectId=${encodeURIComponent(projectId)}`
+  }
+  if (branch) {
+    url += `&branch=${encodeURIComponent(branch)}`
   }
   const response = await fetch(url)
   if (!response.ok) {
@@ -52,10 +55,10 @@ async function fetchSessionContribution(sessionId: string): Promise<SessionContr
  * - uncommitted: Array<UncommittedWork>
  * - warnings: Array<ContributionWarning>
  */
-export function useContributions(range: TimeRange = 'week', projectId?: string) {
+export function useContributions(range: TimeRange = 'week', projectId?: string, branch?: string) {
   return useQuery({
-    queryKey: ['contributions', range, projectId],
-    queryFn: () => fetchContributions(range, projectId),
+    queryKey: ['contributions', range, projectId, branch],
+    queryFn: () => fetchContributions(range, projectId, branch),
     staleTime: getStaleTime(range),
     gcTime: 30 * 60 * 1000, // 30 min garbage collection
   })
