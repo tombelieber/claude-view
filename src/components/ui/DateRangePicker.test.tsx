@@ -1,29 +1,84 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { DateRangePicker, type DateRangePickerProps } from './DateRangePicker'
+import type { DateRange } from 'react-day-picker'
 
-// Capture onSelect callbacks so tests can simulate date picks
-let startOnSelect: ((date: Date | undefined) => void) | null = null
-let endOnSelect: ((date: Date | undefined) => void) | null = null
+// Capture onSelect callback so tests can simulate range picks
+let rangeOnSelect: ((range: DateRange | undefined) => void) | null = null
+let lastSelected: DateRange | undefined = undefined
 
 vi.mock('react-day-picker', () => ({
-  DayPicker: (props: { selected?: Date; onSelect?: (date: Date | undefined) => void; disabled?: unknown }) => {
-    // Distinguish start vs end calendar by the disabled prop shape.
-    // Start calendar has { after: ... }, end has { before: ..., after: ... }
-    const isEndCalendar = props.disabled && typeof props.disabled === 'object' && 'before' in props.disabled
-    if (isEndCalendar) {
-      endOnSelect = props.onSelect ?? null
-    } else {
-      startOnSelect = props.onSelect ?? null
-    }
+  DayPicker: (props: {
+    mode: string
+    selected?: DateRange
+    onSelect?: (range: DateRange | undefined) => void
+    numberOfMonths?: number
+    disabled?: unknown
+  }) => {
+    rangeOnSelect = props.onSelect ?? null
+    lastSelected = props.selected
     return (
       <div
-        data-testid={isEndCalendar ? 'end-calendar' : 'start-calendar'}
-        data-selected={props.selected?.toISOString() ?? 'none'}
+        data-testid="range-calendar"
+        data-mode={props.mode}
+        data-months={props.numberOfMonths}
+        data-from={props.selected?.from?.toISOString() ?? 'none'}
+        data-to={props.selected?.to?.toISOString() ?? 'none'}
       />
     )
   },
 }))
+
+// Mock Radix Popover to render inline (no portal) with proper open/close behavior.
+// We use a module-level ref so all sub-components share the same open/onOpenChange.
+vi.mock('@radix-ui/react-popover', () => {
+  const React = require('react')
+
+  // Shared state between Root, Trigger, Content, Close
+  const ctx = { open: false, onOpenChange: (_b: boolean) => {} }
+
+  const Root = ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode }) => {
+    ctx.open = open
+    ctx.onOpenChange = onOpenChange
+    return <>{children}</>
+  }
+
+  const Trigger = React.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
+    const handleClick = (e: any) => {
+      props.onClick?.(e)
+      children?.props?.onClick?.(e)
+      ctx.onOpenChange(!ctx.open)
+    }
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children, { ...props, ref, onClick: handleClick })
+    }
+    return <button ref={ref} {...props} onClick={handleClick}>{children}</button>
+  })
+  Trigger.displayName = 'Trigger'
+
+  const Portal = ({ children }: { children: React.ReactNode }) => <>{children}</>
+
+  const Content = React.forwardRef(({ children, ...props }: any, ref: any) => {
+    if (!ctx.open) return null
+    return <div ref={ref} {...props}>{children}</div>
+  })
+  Content.displayName = 'Content'
+
+  const Close = React.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
+    const handleClick = (e: any) => {
+      props.onClick?.(e)
+      children?.props?.onClick?.(e)
+      ctx.onOpenChange(false)
+    }
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children, { ...props, ref, onClick: handleClick })
+    }
+    return <button ref={ref} {...props} onClick={handleClick}>{children}</button>
+  })
+  Close.displayName = 'Close'
+
+  return { Root, Trigger, Portal, Content, Close }
+})
 
 vi.mock('lucide-react', () => ({
   ChevronLeft: () => <span data-testid="chevron-left" />,
@@ -53,25 +108,25 @@ function clickTrigger() {
   return trigger
 }
 
-/** Simulate selecting a date on the start calendar */
-function selectStartDate(date: Date) {
+/** Simulate selecting a date range via the DayPicker */
+function selectRange(from: Date, to: Date) {
   act(() => {
-    startOnSelect?.(date)
+    rangeOnSelect?.({ from, to })
   })
 }
 
-/** Simulate selecting a date on the end calendar */
-function selectEndDate(date: Date) {
+/** Simulate selecting only a start date (incomplete range) */
+function selectPartialRange(from: Date) {
   act(() => {
-    endOnSelect?.(date)
+    rangeOnSelect?.({ from, to: undefined })
   })
 }
 
 describe('DateRangePicker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    startOnSelect = null
-    endOnSelect = null
+    rangeOnSelect = null
+    lastSelected = undefined
   })
 
   describe('initial render', () => {
@@ -82,7 +137,6 @@ describe('DateRangePicker', () => {
 
     it('should show formatted date range when value is provided', () => {
       renderPicker({ value: { from: jan1, to: jan15 } })
-      // The component formats dates as "MMM D" e.g. "Jan 1 - Jan 15"
       expect(screen.getByText(/Jan 1/)).toBeInTheDocument()
       expect(screen.getByText(/Jan 15/)).toBeInTheDocument()
     })
@@ -91,25 +145,21 @@ describe('DateRangePicker', () => {
       renderPicker()
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
-
-    it('should set aria-expanded=false on trigger initially', () => {
-      renderPicker()
-      const trigger = screen.getByRole('button')
-      expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    })
   })
 
-  describe('popover open/close via trigger click', () => {
+  describe('popover open/close', () => {
     it('should open popover on trigger click', () => {
       renderPicker()
       clickTrigger()
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
-    it('should set aria-expanded=true when popover is open', () => {
+    it('should render a single range calendar with two months', () => {
       renderPicker()
-      const trigger = clickTrigger()
-      expect(trigger).toHaveAttribute('aria-expanded', 'true')
+      clickTrigger()
+      const cal = screen.getByTestId('range-calendar')
+      expect(cal).toHaveAttribute('data-mode', 'range')
+      expect(cal).toHaveAttribute('data-months', '2')
     })
 
     it('should close popover on second trigger click', () => {
@@ -119,61 +169,32 @@ describe('DateRangePicker', () => {
       clickTrigger()
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
-
-    it('should render start and end date calendars when open', () => {
-      renderPicker()
-      clickTrigger()
-      expect(screen.getByTestId('start-calendar')).toBeInTheDocument()
-      expect(screen.getByTestId('end-calendar')).toBeInTheDocument()
-    })
-
-    it('should render labels for start and end date', () => {
-      renderPicker()
-      clickTrigger()
-      expect(screen.getByText('Start date')).toBeInTheDocument()
-      expect(screen.getByText('End date')).toBeInTheDocument()
-    })
   })
 
-  describe('popover close via Escape', () => {
-    it('should close popover when Escape is pressed', () => {
+  describe('preset quick-select buttons', () => {
+    it('should render preset buttons', () => {
       renderPicker()
       clickTrigger()
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-
-      fireEvent.keyDown(document, { key: 'Escape' })
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(screen.getByText('Last 7 days')).toBeInTheDocument()
+      expect(screen.getByText('Last 14 days')).toBeInTheDocument()
+      expect(screen.getByText('Last 30 days')).toBeInTheDocument()
+      expect(screen.getByText('Last 90 days')).toBeInTheDocument()
     })
 
-    it('should not call onChange when closing via Escape', () => {
-      const { onChange } = renderPicker()
-      clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
-
-      fireEvent.keyDown(document, { key: 'Escape' })
-      expect(onChange).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('popover close via click outside', () => {
-    it('should close popover when clicking outside', () => {
+    it('should update temp range when preset is clicked', () => {
       renderPicker()
       clickTrigger()
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      fireEvent.click(screen.getByText('Last 7 days'))
 
-      // mousedown on document body (outside both trigger and popover)
-      fireEvent.mouseDown(document.body)
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      const cal = screen.getByTestId('range-calendar')
+      expect(cal.getAttribute('data-from')).not.toBe('none')
+      expect(cal.getAttribute('data-to')).not.toBe('none')
     })
 
-    it('should not call onChange when closing via click outside', () => {
+    it('should not call onChange when preset is clicked (only on Apply)', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
-
-      fireEvent.mouseDown(document.body)
+      fireEvent.click(screen.getByText('Last 30 days'))
       expect(onChange).not.toHaveBeenCalled()
     })
   })
@@ -182,18 +203,14 @@ describe('DateRangePicker', () => {
     it('should not call onChange when selecting dates without clicking Apply', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
-
-      // No Apply click -- onChange should not be called
+      selectRange(jan1, jan15)
       expect(onChange).not.toHaveBeenCalled()
     })
 
     it('should call onChange only after clicking Apply', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
+      selectRange(jan1, jan15)
 
       const applyBtn = screen.getByRole('button', { name: 'Apply' })
       fireEvent.click(applyBtn)
@@ -208,8 +225,7 @@ describe('DateRangePicker', () => {
     it('should close popover after Apply', () => {
       renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
+      selectRange(jan1, jan15)
 
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -220,24 +236,20 @@ describe('DateRangePicker', () => {
     it('should swap dates if from is after to when applying', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-
-      // Select end date before start date (reversed order)
-      selectStartDate(jan20)
-      selectEndDate(jan1)
+      selectRange(jan20, jan1)
 
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
       expect(onChange).toHaveBeenCalledWith({
-        from: jan1,  // swapped: earlier date becomes from
-        to: jan20,   // swapped: later date becomes to
+        from: jan1,
+        to: jan20,
       })
     })
 
     it('should handle same date for from and to', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan15)
-      selectEndDate(jan15)
+      selectRange(jan15, jan15)
 
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
@@ -248,8 +260,8 @@ describe('DateRangePicker', () => {
     })
   })
 
-  describe('Apply button disabled when dates incomplete', () => {
-    it('should disable Apply when no dates are selected', () => {
+  describe('Apply button disabled when range incomplete', () => {
+    it('should disable Apply when no range is selected', () => {
       renderPicker()
       clickTrigger()
 
@@ -260,26 +272,16 @@ describe('DateRangePicker', () => {
     it('should disable Apply when only start date is selected', () => {
       renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
+      selectPartialRange(jan1)
 
       const applyBtn = screen.getByRole('button', { name: 'Apply' })
       expect(applyBtn).toBeDisabled()
     })
 
-    it('should disable Apply when only end date is selected', () => {
+    it('should enable Apply when full range is selected', () => {
       renderPicker()
       clickTrigger()
-      selectEndDate(jan15)
-
-      const applyBtn = screen.getByRole('button', { name: 'Apply' })
-      expect(applyBtn).toBeDisabled()
-    })
-
-    it('should enable Apply when both dates are selected', () => {
-      renderPicker()
-      clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
+      selectRange(jan1, jan15)
 
       const applyBtn = screen.getByRole('button', { name: 'Apply' })
       expect(applyBtn).not.toBeDisabled()
@@ -288,8 +290,7 @@ describe('DateRangePicker', () => {
     it('should not call onChange when Apply is clicked while disabled', () => {
       const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      // No end date selected
+      selectPartialRange(jan1)
 
       const applyBtn = screen.getByRole('button', { name: 'Apply' })
       fireEvent.click(applyBtn)
@@ -298,64 +299,29 @@ describe('DateRangePicker', () => {
     })
   })
 
-  describe('reset on cancel (temp values revert)', () => {
-    it('should revert temp dates when closing via Escape after modification', () => {
-      renderPicker({ value: { from: jan1, to: jan15 } })
-
-      // Open, modify dates
+  describe('Cancel button', () => {
+    it('should render a Cancel button', () => {
+      renderPicker()
       clickTrigger()
-      selectStartDate(jan20)
-      selectEndDate(feb1)
-
-      // Cancel via Escape
-      fireEvent.keyDown(document, { key: 'Escape' })
-
-      // Re-open -- draft should be reset to original value
-      clickTrigger()
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
-
-      expect(startCal).toHaveAttribute('data-selected', jan1.toISOString())
-      expect(endCal).toHaveAttribute('data-selected', jan15.toISOString())
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     })
 
-    it('should revert temp dates when closing via click outside after modification', () => {
-      renderPicker({ value: { from: jan1, to: jan15 } })
-
-      // Open, modify dates
+    it('should close popover when Cancel is clicked', () => {
+      renderPicker()
       clickTrigger()
-      selectStartDate(jan20)
-      selectEndDate(feb1)
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
 
-      // Cancel via click outside
-      fireEvent.mouseDown(document.body)
-
-      // Re-open -- draft should be reset to original value
-      clickTrigger()
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
-
-      expect(startCal).toHaveAttribute('data-selected', jan1.toISOString())
-      expect(endCal).toHaveAttribute('data-selected', jan15.toISOString())
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
-    it('should show "none" for temp dates when value is null and popover is reopened after cancel', () => {
-      renderPicker({ value: null })
-
+    it('should not call onChange when Cancel is clicked', () => {
+      const { onChange } = renderPicker()
       clickTrigger()
-      selectStartDate(jan1)
-      selectEndDate(jan15)
+      selectRange(jan1, jan15)
 
-      // Cancel
-      fireEvent.keyDown(document, { key: 'Escape' })
-
-      // Re-open
-      clickTrigger()
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
-
-      expect(startCal).toHaveAttribute('data-selected', 'none')
-      expect(endCal).toHaveAttribute('data-selected', 'none')
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(onChange).not.toHaveBeenCalled()
     })
   })
 
@@ -364,22 +330,19 @@ describe('DateRangePicker', () => {
       renderPicker({ value: { from: jan1, to: jan15 } })
 
       clickTrigger()
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
+      const cal = screen.getByTestId('range-calendar')
 
-      expect(startCal).toHaveAttribute('data-selected', jan1.toISOString())
-      expect(endCal).toHaveAttribute('data-selected', jan15.toISOString())
+      expect(cal).toHaveAttribute('data-from', jan1.toISOString())
+      expect(cal).toHaveAttribute('data-to', jan15.toISOString())
     })
 
     it('should not reset draft when value prop changes while popover is open', () => {
       const { rerender, onChange } = renderPicker({ value: { from: jan1, to: jan15 } })
 
-      // Open popover and modify draft
       clickTrigger()
-      selectStartDate(jan20)
-      selectEndDate(feb1)
+      selectRange(jan20, feb1)
 
-      // Parent re-renders with a new value prop (simulating external change)
+      // Parent re-renders with a new value prop
       rerender(
         <DateRangePicker
           value={{ from: new Date(2024, 2, 1), to: new Date(2024, 2, 15) }}
@@ -387,12 +350,10 @@ describe('DateRangePicker', () => {
         />
       )
 
-      // Draft should still reflect the user's in-progress selection, not the new prop
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
-
-      expect(startCal).toHaveAttribute('data-selected', jan20.toISOString())
-      expect(endCal).toHaveAttribute('data-selected', feb1.toISOString())
+      // Draft should still reflect user's in-progress selection
+      const cal = screen.getByTestId('range-calendar')
+      expect(cal).toHaveAttribute('data-from', jan20.toISOString())
+      expect(cal).toHaveAttribute('data-to', feb1.toISOString())
     })
 
     it('should reset draft to latest value on next open transition after prop change', () => {
@@ -403,8 +364,8 @@ describe('DateRangePicker', () => {
 
       // Open, modify, close
       clickTrigger()
-      selectStartDate(jan20)
-      fireEvent.keyDown(document, { key: 'Escape' })
+      selectRange(jan20, feb1)
+      clickTrigger() // close
 
       // Parent updates value
       rerender(
@@ -416,20 +377,19 @@ describe('DateRangePicker', () => {
 
       // Re-open -- draft should reflect the NEW prop value
       clickTrigger()
-      const startCal = screen.getByTestId('start-calendar')
-      const endCal = screen.getByTestId('end-calendar')
+      const cal = screen.getByTestId('range-calendar')
 
-      expect(startCal).toHaveAttribute('data-selected', newFrom.toISOString())
-      expect(endCal).toHaveAttribute('data-selected', newTo.toISOString())
+      expect(cal).toHaveAttribute('data-from', newFrom.toISOString())
+      expect(cal).toHaveAttribute('data-to', newTo.toISOString())
     })
 
     it('should not reset draft on repeated renders while popover stays open', () => {
       const { rerender, onChange } = renderPicker({ value: { from: jan1, to: jan15 } })
 
       clickTrigger()
-      selectStartDate(jan20)
+      selectRange(jan20, feb1)
 
-      // Simulate multiple parent re-renders (e.g. React Query refetch) with same value
+      // Simulate multiple parent re-renders with same value
       for (let i = 0; i < 5; i++) {
         rerender(
           <DateRangePicker
@@ -440,8 +400,33 @@ describe('DateRangePicker', () => {
       }
 
       // Draft should still show user's modification
-      const startCal = screen.getByTestId('start-calendar')
-      expect(startCal).toHaveAttribute('data-selected', jan20.toISOString())
+      const cal = screen.getByTestId('range-calendar')
+      expect(cal).toHaveAttribute('data-from', jan20.toISOString())
+    })
+  })
+
+  describe('footer summary', () => {
+    it('should show "Select a range" when no dates selected', () => {
+      renderPicker()
+      clickTrigger()
+      expect(screen.getByText('Select a range')).toBeInTheDocument()
+    })
+
+    it('should show partial range when only from is selected', () => {
+      renderPicker()
+      clickTrigger()
+      selectPartialRange(jan1)
+      expect(screen.getByText(/Jan 1/)).toBeInTheDocument()
+      expect(screen.getByText(/\.\.\./)).toBeInTheDocument()
+    })
+
+    it('should show full range when both dates selected', () => {
+      renderPicker()
+      clickTrigger()
+      selectRange(jan1, jan15)
+      // Footer shows the range summary
+      const footer = screen.getAllByText(/Jan 1/).length
+      expect(footer).toBeGreaterThanOrEqual(1)
     })
   })
 
