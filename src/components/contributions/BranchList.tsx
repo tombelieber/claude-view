@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { GitBranch, ChevronDown, ArrowUpDown, FolderOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { BranchCard } from './BranchCard'
@@ -9,6 +9,9 @@ interface BranchListProps {
   byBranch: BranchBreakdown[]
   onSessionDrillDown?: (sessionId: string) => void
   timeRange?: TimeRange
+  projectId?: string
+  activeBranchFilter?: string
+  onBranchFilter?: (branch: string | null) => void
 }
 
 type SortKey = 'lines' | 'sessions' | 'commits' | 'recent'
@@ -28,7 +31,7 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
  * - Expand/collapse individual branches
  * - Shows AI share progress for each branch
  */
-export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }: BranchListProps) {
+export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week', projectId, activeBranchFilter, onBranchFilter }: BranchListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('lines')
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null)
   const [showSortMenu, setShowSortMenu] = useState(false)
@@ -66,6 +69,20 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }:
   const handleToggleBranch = (branchKey: string) => {
     setExpandedBranch((prev) => (prev === branchKey ? null : branchKey))
   }
+
+  // Auto-expand the filtered branch (dep on primitive only per CLAUDE.md React Hook Rules)
+  useEffect(() => {
+    if (activeBranchFilter) {
+      for (const group of groupedBranches) {
+        for (const branch of group.branches) {
+          if (branch.branch === activeBranchFilter) {
+            setExpandedBranch(`${group.name}-${branch.branch}`)
+            return
+          }
+        }
+      }
+    }
+  }, [activeBranchFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (byBranch.length === 0) {
     return (
@@ -177,6 +194,15 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week' }:
                   onToggle={() => handleToggleBranch(branchKey)}
                   onDrillDown={onSessionDrillDown}
                   timeRange={timeRange}
+                  projectId={projectId}
+                  isFiltered={activeBranchFilter === branch.branch}
+                  onFilter={(name) => {
+                    if (activeBranchFilter === name) {
+                      onBranchFilter?.(null)
+                    } else {
+                      onBranchFilter?.(name)
+                    }
+                  }}
                 />
               )
             })}
