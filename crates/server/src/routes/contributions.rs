@@ -54,6 +54,8 @@ pub struct ContributionsQuery {
     pub to: Option<String>,
     /// Optional project filter
     pub project_id: Option<String>,
+    /// Optional branch filter (requires project_id)
+    pub branch: Option<String>,
 }
 
 fn default_range() -> String {
@@ -242,41 +244,42 @@ pub async fn get_contributions(
     let from_date = params.from.as_deref();
     let to_date = params.to.as_deref();
     let project_id = params.project_id.as_deref();
+    let branch = params.branch.as_deref();
 
     // Get aggregated contributions
     let agg = state
         .db
-        .get_aggregated_contributions(range, from_date, to_date, project_id)
+        .get_aggregated_contributions(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Get previous period for comparison (for fluency trend)
-    let prev_agg = get_previous_period_contributions(&state, range, project_id).await?;
+    let prev_agg = get_previous_period_contributions(&state, range, project_id, branch).await?;
 
     // Get trend data (mutable — handler redistributes cost below)
     let mut trend = state
         .db
-        .get_contribution_trend(range, from_date, to_date, project_id)
+        .get_contribution_trend(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Get branch breakdown
     let by_branch = state
         .db
-        .get_branch_breakdown(range, from_date, to_date, project_id)
+        .get_branch_breakdown(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Get model breakdown (mutable — handler fills in cost_per_line per model)
     let mut by_model = state
         .db
-        .get_model_breakdown(range, from_date, to_date, project_id)
+        .get_model_breakdown(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Get learning curve
-    let learning_curve = state.db.get_learning_curve(project_id).await?;
+    let learning_curve = state.db.get_learning_curve(project_id, branch).await?;
 
     // Get skill breakdown
     let by_skill = state
         .db
-        .get_skill_breakdown(range, from_date, to_date, project_id)
+        .get_skill_breakdown(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Get uncommitted work
@@ -285,17 +288,17 @@ pub async fn get_contributions(
     // Get rates
     let commit_rate = state
         .db
-        .get_commit_rate(range, from_date, to_date, project_id)
+        .get_commit_rate(range, from_date, to_date, project_id, branch)
         .await?;
     let reedit_rate = state
         .db
-        .get_reedit_rate(range, from_date, to_date, project_id)
+        .get_reedit_rate(range, from_date, to_date, project_id, branch)
         .await?;
 
     // Calculate derived metrics using real prompt counts from sessions
     let total_prompts = state
         .db
-        .get_total_prompts(range, from_date, to_date, project_id)
+        .get_total_prompts(range, from_date, to_date, project_id, branch)
         .await?;
     let prompts_per_session = if agg.sessions_count > 0 {
         total_prompts as f64 / agg.sessions_count as f64
@@ -565,6 +568,7 @@ async fn get_previous_period_contributions(
     state: &Arc<AppState>,
     range: TimeRange,
     project_id: Option<&str>,
+    branch: Option<&str>,
 ) -> ApiResult<AggregatedContributions> {
     // Calculate the previous period based on current range
     let (prev_from, prev_to) = match range {
@@ -608,6 +612,7 @@ async fn get_previous_period_contributions(
             Some(&prev_from),
             Some(&prev_to),
             project_id,
+            branch,
         )
         .await
         .map_err(Into::into)

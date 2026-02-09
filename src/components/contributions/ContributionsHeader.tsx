@@ -8,6 +8,8 @@ interface ContributionsHeaderProps {
   sessionCount: number
   projectFilter?: string | null
   onClearProjectFilter?: () => void
+  branchFilter?: string | null
+  onClearBranchFilter?: () => void
 }
 
 /**
@@ -20,6 +22,8 @@ export function ContributionsHeader({
   sessionCount,
   projectFilter,
   onClearProjectFilter,
+  branchFilter,
+  onClearBranchFilter,
 }: ContributionsHeaderProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -33,7 +37,7 @@ export function ContributionsHeader({
               AI Contributions
               {projectFilter ? (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
-                  {' '}&mdash; {projectFilter}
+                  {' '}&mdash; {projectFilter}{branchFilter ? ` / ${branchFilter}` : ''}
                 </span>
               ) : (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
@@ -56,6 +60,19 @@ export function ContributionsHeader({
                   title="Clear project filter"
                 >
                   {projectFilter}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {branchFilter && onClearBranchFilter && (
+                <button
+                  onClick={onClearBranchFilter}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full
+                    bg-orange-500/10 text-orange-600 hover:bg-orange-500/20
+                    transition-colors cursor-pointer"
+                  title="Clear branch filter"
+                >
+                  <GitBranch className="w-3 h-3" />
+                  {branchFilter}
                   <X className="w-3 h-3" />
                 </button>
               )}
