@@ -1,4 +1,4 @@
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { Home, Search, HelpCircle, Settings, ChevronRight, Sun, Moon, Monitor } from 'lucide-react'
 import { useAppStore } from '../store/app-store'
 import { useTheme } from '../hooks/use-theme'
@@ -10,6 +10,7 @@ const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 export function Header() {
   const location = useLocation()
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const { openCommandPalette, searchQuery } = useAppStore()
   const { theme, cycleTheme } = useTheme()
   const ThemeIcon = THEME_ICONS[theme]
@@ -18,32 +19,30 @@ export function Header() {
   const getBreadcrumbs = () => {
     const crumbs: { label: string; path: string }[] = []
 
-    if (location.pathname.startsWith('/project/') && params.slug) {
-      // Session page: /project/:projectId/session/:slug
+    if (location.pathname === '/contributions') {
+      const projectFilter = searchParams.get('project')
+      if (projectFilter) {
+        crumbs.push({
+          label: projectFilter.split('/').pop() || 'Project',
+          path: `/?project=${encodeURIComponent(projectFilter)}`
+        })
+      }
       crumbs.push({
-        label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
-        path: `/project/${params.projectId}`
+        label: 'Contributions',
+        path: location.pathname + location.search
       })
+    } else if (location.pathname.match(/^\/session\/[^/]+$/)) {
+      // Flat session page: /session/:sessionId
       crumbs.push({
         label: 'Session',
         path: location.pathname
       })
     } else if (location.pathname.startsWith('/project/')) {
+      // Legacy project routes (still supported via router redirects)
+      const projectName = decodeURIComponent(params.projectId || '')
       crumbs.push({
-        label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
-        path: location.pathname
-      })
-    }
-
-    if (location.pathname.startsWith('/session/')) {
-      // Legacy URL — redirect will handle it, but show breadcrumbs in the meantime
-      crumbs.push({
-        label: decodeURIComponent(params.projectId || '').split('/').pop() || 'Project',
-        path: `/project/${params.projectId}`
-      })
-      crumbs.push({
-        label: 'Session',
-        path: location.pathname
+        label: projectName.split('/').pop() || 'Project',
+        path: `/?project=${encodeURIComponent(projectName)}`
       })
     }
 
@@ -51,16 +50,12 @@ export function Header() {
       crumbs.push({ label: 'Search', path: '/search' })
     }
 
-    if (location.pathname === '/history') {
-      crumbs.push({ label: 'History', path: '/history' })
+    if (location.pathname === '/sessions') {
+      crumbs.push({ label: 'Sessions', path: '/sessions' })
     }
 
     if (location.pathname === '/settings') {
       crumbs.push({ label: 'Settings', path: '/settings' })
-    }
-
-    if (location.pathname === '/contributions') {
-      crumbs.push({ label: 'Contributions', path: '/contributions' })
     }
 
     return crumbs
