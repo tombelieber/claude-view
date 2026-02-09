@@ -10,8 +10,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use vibe_recall_core::{
-    classify_work_type, count_ai_lines, read_all_session_indexes, resolve_project_path,
-    ClassificationInput, ClassifyResult, Registry, ToolCounts,
+    classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
+    resolve_project_path, resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry,
+    ToolCounts,
 };
 
 use crate::Database;
@@ -23,7 +24,9 @@ pub const CURRENT_PARSE_VERSION: i32 = 2;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// These must exactly match the SQL used in the sqlx `_tx` functions in queries.rs.
+// Note: the sqlx `_tx` function in queries.rs has additional columns
+// (lines_added, lines_removed, loc_source) that this constant omits.
+// Both paths must share the same column set for columns they both update.
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -70,7 +73,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         file_mtime_at_index = ?41,
         ai_lines_added = ?42,
         ai_lines_removed = ?43,
-        work_type = ?44
+        work_type = ?44,
+        git_branch = COALESCE(git_branch, ?45)
     WHERE id = ?1
 "#;
 
@@ -380,6 +384,7 @@ pub struct ParseResult {
     pub diagnostics: ParseDiagnostics,
     pub lines_added: u32,
     pub lines_removed: u32,
+    pub git_branch: Option<String>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -570,6 +575,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
     let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
+    // gitBranch extraction
+    let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -577,6 +585,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         }
 
         diag.lines_total += 1;
+
+        // Extract gitBranch (appears on every JSONL line, grab from the first match)
+        if result.git_branch.is_none() {
+            if let Some(pos) = git_branch_finder.find(line) {
+                let start = pos + b"\"gitBranch\":\"".len();
+                if let Some(branch) = extract_quoted_string(&line[start..]) {
+                    if !branch.is_empty() {
+                        result.git_branch = Some(branch);
+                    }
+                }
+            }
+        }
 
         // SIMD fast path: lightweight types that don't need full JSON parse
         if type_progress.find(line).is_some() {
@@ -1405,6 +1425,13 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// This is extremely fast (<10ms) because it reads pre-computed JSON indexes
 /// that Claude Code maintains. No JSONL parsing is needed.
 ///
+/// Worktree consolidation: sessions from worktree project directories
+/// (e.g. `project--worktrees-branch`) are reparented under the main project
+/// so they appear together in the UI.
+///
+/// Orphan discovery: project directories that lack a `sessions-index.json`
+/// (common for worktree dirs) are scanned for `.jsonl` files and included.
+///
 /// Returns `(num_projects, num_sessions)`.
 pub async fn pass_1_read_indexes(
     claude_dir: &Path,
@@ -1415,17 +1442,28 @@ pub async fn pass_1_read_indexes(
     let mut total_projects = 0usize;
     let mut total_sessions = 0usize;
 
-    for (project_encoded, entries) in &all_indexes {
-        if entries.is_empty() {
-            continue;
-        }
+    // Helper: insert sessions for one project (handles worktree consolidation)
+    async fn insert_project_sessions(
+        claude_dir: &Path,
+        db: &Database,
+        project_encoded: &str,
+        entries: &[vibe_recall_core::SessionIndexEntry],
+        total_sessions: &mut usize,
+    ) -> Result<(), String> {
+        // Worktree consolidation — reparent under the main project
+        let (effective_encoded, effective_resolved) =
+            if let Some(parent_encoded) = resolve_worktree_parent(project_encoded) {
+                let resolved = resolve_project_path(&parent_encoded);
+                (parent_encoded, resolved)
+            } else {
+                (
+                    project_encoded.to_string(),
+                    resolve_project_path(project_encoded),
+                )
+            };
 
-        total_projects += 1;
-
-        // Resolve the project path and display name from the encoded directory name
-        let resolved = resolve_project_path(project_encoded);
-        let project_display_name = &resolved.display_name;
-        let project_path = &resolved.full_path;
+        let project_display_name = &effective_resolved.display_name;
+        let project_path = &effective_resolved.full_path;
 
         for entry in entries {
             // Parse modified ISO string to unix timestamp
@@ -1462,7 +1500,7 @@ pub async fn pass_1_read_indexes(
 
             db.insert_session_from_index(
                 &entry.session_id,
-                project_encoded,
+                &effective_encoded,
                 project_display_name,
                 entry_project_path,
                 &file_path,
@@ -1477,8 +1515,38 @@ pub async fn pass_1_read_indexes(
             .await
             .map_err(|e| format!("Failed to insert session {}: {}", entry.session_id, e))?;
 
-            total_sessions += 1;
+            *total_sessions += 1;
         }
+
+        Ok(())
+    }
+
+    // Loop 1: Sessions from sessions-index.json files
+    for (project_encoded, entries) in &all_indexes {
+        if entries.is_empty() {
+            continue;
+        }
+        total_projects += 1;
+        insert_project_sessions(claude_dir, db, project_encoded, entries, &mut total_sessions)
+            .await?;
+    }
+
+    // Loop 2: Orphan sessions from dirs without sessions-index.json
+    let orphans = discover_orphan_sessions(claude_dir).map_err(|e| e.to_string())?;
+
+    for (project_encoded, entries) in &orphans {
+        if entries.is_empty() {
+            continue;
+        }
+        total_projects += 1;
+        insert_project_sessions(
+            claude_dir,
+            db,
+            project_encoded,
+            entries,
+            &mut total_sessions,
+        )
+        .await?;
     }
 
     Ok((total_projects, total_sessions))
@@ -1794,7 +1862,7 @@ where
                     );
                     let work_type = classify_work_type(&work_type_input);
 
-                    // UPDATE session deep fields (44 params: ?1=id, ?2-?44=fields)
+                    // UPDATE session deep fields (45 params: ?1=id, ?2-?45=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1840,6 +1908,7 @@ where
                         meta.ai_lines_added as i32,       // ?42
                         meta.ai_lines_removed as i32,     // ?43
                         work_type.as_str(),               // ?44
+                        result.parse_result.git_branch.as_deref(),  // ?45
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // INSERT invocations
@@ -2031,6 +2100,7 @@ async fn write_results_sqlx(
             meta.ai_lines_added as i32,
             meta.ai_lines_removed as i32,
             Some(work_type.as_str()),
+            result.parse_result.git_branch.as_deref(),
         )
         .await
         .map_err(|e| {
