@@ -132,6 +132,15 @@ pub async fn trigger_deep_index(
     match mutex.try_lock() {
         Ok(guard) => {
             let db = state.db.clone();
+            let indexing = state.indexing.clone();
+
+            // Reset indexing state BEFORE spawning so SSE clients that
+            // connect after receiving the 202 never see stale `Done` from
+            // a previous run.
+            indexing.set_indexed(0);
+            indexing.set_total(0);
+            indexing.set_status(crate::indexing_state::IndexingStatus::ReadingIndexes);
+
             tokio::spawn(async move {
                 // Hold the mutex guard for the entire duration of the rebuild.
                 let _guard = guard;
@@ -152,16 +161,22 @@ pub async fn trigger_deep_index(
                             error = %e,
                             "Failed to mark sessions for re-indexing"
                         );
+                        indexing.set_error(format!("Failed to mark sessions: {e}"));
                         return;
                     }
                 }
 
-                // Step 2: Run deep indexing pass
+                // Transition to deep indexing phase
+                indexing.set_status(crate::indexing_state::IndexingStatus::DeepIndexing);
+
+                // Step 2: Run deep indexing pass with progress wired to IndexingState
+                let indexing_cb = indexing.clone();
                 let result = vibe_recall_db::indexer_parallel::pass_2_deep_index(
                     &db,
                     None, // No registry needed for rebuild
-                    |_indexed, _total| {
-                        // Progress callback - could be wired to SSE in the future
+                    move |indexed, total| {
+                        indexing_cb.set_total(total);
+                        indexing_cb.set_indexed(indexed);
                     },
                 )
                 .await;
@@ -174,6 +189,7 @@ pub async fn trigger_deep_index(
                             duration_secs = duration.as_secs_f64(),
                             "Deep index rebuild complete"
                         );
+                        indexing.set_status(crate::indexing_state::IndexingStatus::Done);
                         // Record sync metrics
                         record_sync("deep", duration, Some(indexed_count as u64));
                     }
@@ -184,6 +200,7 @@ pub async fn trigger_deep_index(
                             duration_secs = duration.as_secs_f64(),
                             "Deep index rebuild failed"
                         );
+                        indexing.set_error(format!("Deep index failed: {e}"));
                         // Still record duration for failed rebuilds
                         record_sync("deep", duration, None);
                     }

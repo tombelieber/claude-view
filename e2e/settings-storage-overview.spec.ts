@@ -15,24 +15,24 @@ test.describe('Feature 2E: Storage Overview (Settings Page)', () => {
     await page.screenshot({ path: 'e2e/screenshots/storage-section-visible.png' })
   })
 
-  test('TC-2E-02: Storage Breakdown Progress Bars', async ({ page }) => {
+  test('TC-2E-02: Storage Breakdown Donut Chart', async ({ page }) => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for settings page to fully render
     await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
-    // Wait for storage data to load (progress bars appear after API response)
-    // Look for the three progress bar labels
+    // Wait for storage data to load (legend items appear after API response)
+    // Look for the three legend labels in the donut chart
     await expect(page.locator('text=JSONL Sessions')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('text=SQLite Database')).toBeVisible()
     await expect(page.locator('text=Search Index')).toBeVisible()
 
-    // Verify "Total:" summary is displayed
-    await expect(page.locator('text=Total:')).toBeVisible()
+    // Verify "Total" label is displayed in donut center
+    await expect(page.locator('text=Total')).toBeVisible()
 
-    // Take screenshot of storage breakdown
-    await page.screenshot({ path: 'e2e/screenshots/storage-progress-bars.png' })
+    // Take screenshot of storage donut chart
+    await page.screenshot({ path: 'e2e/screenshots/storage-donut-chart.png' })
   })
 
   test('TC-2E-03: Counts Grid Display', async ({ page }) => {
