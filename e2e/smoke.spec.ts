@@ -36,11 +36,9 @@ test.describe('Smoke Tests', () => {
       }
     }
 
-    // Verify no console errors (excluding favicon 404 and network resource errors which are benign)
-    // Network "Failed to load resource" errors can occur when optional API endpoints
-    // (e.g. ai-generation stats) return 500 on databases that haven't been deep-indexed
+    // Verify no console errors (excluding favicon 404 which is benign)
     expect(errors.filter(e =>
-      !e.includes('favicon') && !e.includes('Failed to load resource')
+      !e.includes('favicon')
     )).toHaveLength(0)
   })
 

@@ -12,23 +12,23 @@ export type AIGenerationStats = {
 /**
  * Total lines of code added (currently not tracked, returns 0)
  */
-linesAdded: bigint, 
+linesAdded: number, 
 /**
  * Total lines of code removed (currently not tracked, returns 0)
  */
-linesRemoved: bigint, 
+linesRemoved: number, 
 /**
  * Total files created/edited by AI (based on files_edited_count)
  */
-filesCreated: bigint, 
+filesCreated: number, 
 /**
  * Total input tokens consumed
  */
-totalInputTokens: bigint, 
+totalInputTokens: number, 
 /**
  * Total output tokens generated
  */
-totalOutputTokens: bigint, 
+totalOutputTokens: number, 
 /**
  * Token usage breakdown by model
  */

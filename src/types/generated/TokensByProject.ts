@@ -3,4 +3,4 @@
 /**
  * Token usage breakdown by project.
  */
-export type TokensByProject = { project: string, inputTokens: bigint, outputTokens: bigint, };
+export type TokensByProject = { project: string, inputTokens: number, outputTokens: number, };
