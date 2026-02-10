@@ -67,13 +67,13 @@ export function InsightLineCompact({ insight, className }: InsightLineProps) {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400',
+        'flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400',
         className
       )}
       aria-label={insight.text}
     >
-      <Icon className={cn('w-3 h-3 flex-shrink-0', iconColor)} aria-hidden="true" />
-      <span className="truncate" title={insight.text}>{insight.text}</span>
+      <Icon className={cn('w-3 h-3 flex-shrink-0 mt-0.5', iconColor)} aria-hidden="true" />
+      <span className="leading-relaxed">{insight.text}</span>
     </div>
   )
 }
