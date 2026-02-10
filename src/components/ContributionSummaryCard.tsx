@@ -29,7 +29,7 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
     from: timeRange?.fromTimestamp,
     to: timeRange?.toTimestamp,
   }
-  const { data, isLoading, error } = useContributions(contribTime, project, branch)
+  const { data, isLoading, error, refetch } = useContributions(contribTime, project, branch)
 
   // Loading state
   if (isLoading) {
@@ -55,17 +55,13 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
     )
   }
 
-  // Error state - show minimal card with link
+  // Error state - show minimal card with link and retry
   if (error || !data) {
     return (
-      <Link
-        to="/contributions"
-        className={cn(
-          'block bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-          'hover:border-gray-300 dark:hover:border-gray-600 transition-colors',
-          className
-        )}
-      >
+      <div className={cn(
+        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+        className
+      )}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5 text-[#7c9885]" />
@@ -73,14 +69,21 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
               AI Contributions
             </h2>
           </div>
-          <span className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+          <Link to="/contributions" className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
             View All <ArrowRight className="w-3.5 h-3.5" />
-          </span>
+          </Link>
         </div>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          {error ? 'Unable to load contribution data' : 'No contribution data available'}
+          {error ? (
+            <>
+              Unable to load contribution data.{' '}
+              <button onClick={(e) => { e.preventDefault(); refetch() }} className="underline hover:text-blue-600 dark:hover:text-blue-400">
+                Retry
+              </button>
+            </>
+          ) : 'No contribution data available'}
         </p>
-      </Link>
+      </div>
     )
   }
 

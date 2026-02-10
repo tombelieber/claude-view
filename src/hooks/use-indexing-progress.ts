@@ -47,14 +47,38 @@ export function useIndexingProgress(enabled: boolean): IndexingProgress {
     const es = new EventSource(sseUrl())
 
     es.addEventListener('status', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          phase: 'error',
+          indexed: 0,
+          total: 0,
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       if (data.status === 'reading-indexes') {
         setProgress((prev) => ({ ...prev, phase: 'reading-indexes' }))
       }
     })
 
     es.addEventListener('deep-progress', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          phase: 'error',
+          indexed: 0,
+          total: 0,
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       setProgress({
         phase: 'deep-indexing',
         indexed: data.indexed ?? 0,
@@ -63,7 +87,19 @@ export function useIndexingProgress(enabled: boolean): IndexingProgress {
     })
 
     es.addEventListener('done', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          phase: 'error',
+          indexed: 0,
+          total: 0,
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       setProgress({
         phase: 'done',
         indexed: data.indexed ?? 0,
@@ -76,7 +112,19 @@ export function useIndexingProgress(enabled: boolean): IndexingProgress {
     // with data. Browser connection errors arrive as plain Events without data.
     es.addEventListener('error', (e: Event) => {
       if ('data' in e && (e as MessageEvent).data) {
-        const data = JSON.parse((e as MessageEvent).data)
+        let data
+        try {
+          data = JSON.parse((e as MessageEvent).data)
+        } catch {
+          setProgress({
+            phase: 'error',
+            indexed: 0,
+            total: 0,
+            errorMessage: 'Received malformed progress data from server',
+          })
+          es.close()
+          return
+        }
         setProgress({
           phase: 'error',
           indexed: 0,
@@ -89,6 +137,13 @@ export function useIndexingProgress(enabled: boolean): IndexingProgress {
           indexed: 0,
           total: 0,
           errorMessage: 'Lost connection to server',
+        })
+      } else {
+        setProgress({
+          phase: 'error',
+          indexed: 0,
+          total: 0,
+          errorMessage: 'Connection to server failed',
         })
       }
       es.close()
