@@ -52,7 +52,18 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
     const es = new EventSource(sseUrl())
 
     es.addEventListener('scanning', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          ...INITIAL_STATE,
+          phase: 'error',
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       setProgress((prev) => ({
         ...prev,
         phase: 'scanning',
@@ -63,7 +74,18 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
     })
 
     es.addEventListener('correlating', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          ...INITIAL_STATE,
+          phase: 'error',
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       setProgress((prev) => ({
         ...prev,
         phase: 'correlating',
@@ -75,7 +97,18 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
     })
 
     es.addEventListener('done', (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          ...INITIAL_STATE,
+          phase: 'error',
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
       setProgress((prev) => ({
         ...prev,
         phase: 'done',
@@ -90,7 +123,18 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
     // with data. Browser connection errors arrive as plain Events without data.
     es.addEventListener('error', (e: Event) => {
       if ('data' in e && (e as MessageEvent).data) {
-        const data = JSON.parse((e as MessageEvent).data)
+        let data
+        try {
+          data = JSON.parse((e as MessageEvent).data)
+        } catch {
+          setProgress({
+            ...INITIAL_STATE,
+            phase: 'error',
+            errorMessage: 'Received malformed progress data from server',
+          })
+          es.close()
+          return
+        }
         setProgress({
           ...INITIAL_STATE,
           phase: 'error',
@@ -101,6 +145,12 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
           ...INITIAL_STATE,
           phase: 'error',
           errorMessage: 'Lost connection to server',
+        })
+      } else {
+        setProgress({
+          ...INITIAL_STATE,
+          phase: 'error',
+          errorMessage: 'Connection to server failed',
         })
       }
       es.close()
