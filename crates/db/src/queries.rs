@@ -1187,10 +1187,10 @@ impl Database {
     ) -> DbResult<Vec<crate::BranchCount>> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
-            SELECT git_branch as branch, COUNT(*) as count
+            SELECT NULLIF(git_branch, '') as branch, COUNT(*) as count
             FROM sessions
             WHERE project_id = ?1 AND is_sidechain = 0
-            GROUP BY git_branch
+            GROUP BY NULLIF(git_branch, '')
             ORDER BY count DESC
             "#,
         )
