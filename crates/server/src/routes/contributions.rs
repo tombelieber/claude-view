@@ -574,27 +574,27 @@ async fn get_previous_period_contributions(
     let (prev_from, prev_to) = match range {
         TimeRange::Today => {
             // Yesterday
-            let yesterday = chrono::Utc::now() - chrono::Duration::days(1);
+            let yesterday = chrono::Local::now() - chrono::Duration::days(1);
             let date = yesterday.format("%Y-%m-%d").to_string();
             (date.clone(), date)
         }
         TimeRange::Week => {
             // Previous 7 days
-            let now = chrono::Utc::now();
+            let now = chrono::Local::now();
             let from = (now - chrono::Duration::days(14)).format("%Y-%m-%d").to_string();
             let to = (now - chrono::Duration::days(8)).format("%Y-%m-%d").to_string();
             (from, to)
         }
         TimeRange::Month => {
             // Previous 30 days
-            let now = chrono::Utc::now();
+            let now = chrono::Local::now();
             let from = (now - chrono::Duration::days(60)).format("%Y-%m-%d").to_string();
             let to = (now - chrono::Duration::days(31)).format("%Y-%m-%d").to_string();
             (from, to)
         }
         TimeRange::NinetyDays => {
             // Previous 90 days
-            let now = chrono::Utc::now();
+            let now = chrono::Local::now();
             let from = (now - chrono::Duration::days(180)).format("%Y-%m-%d").to_string();
             let to = (now - chrono::Duration::days(91)).format("%Y-%m-%d").to_string();
             (from, to)

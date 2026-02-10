@@ -241,7 +241,7 @@ impl Database {
                 project_id = excluded.project_id,
                 preview = excluded.preview,
                 turn_count = excluded.turn_count,
-                last_message_at = excluded.last_message_at,
+                last_message_at = CASE WHEN excluded.last_message_at > 0 THEN excluded.last_message_at ELSE sessions.last_message_at END,
                 file_path = excluded.file_path,
                 indexed_at = excluded.indexed_at,
                 project_path = excluded.project_path,
@@ -256,7 +256,7 @@ impl Database {
                 tool_counts_write = excluded.tool_counts_write,
                 message_count = excluded.message_count,
                 summary = excluded.summary,
-                git_branch = excluded.git_branch,
+                git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
                 is_sidechain = excluded.is_sidechain,
                 user_prompt_count = excluded.user_prompt_count,
                 api_call_count = excluded.api_call_count,
@@ -532,8 +532,8 @@ impl Database {
                 preview = excluded.preview,
                 summary = excluded.summary,
                 message_count = excluded.message_count,
-                last_message_at = excluded.last_message_at,
-                git_branch = excluded.git_branch,
+                last_message_at = CASE WHEN excluded.last_message_at > 0 THEN excluded.last_message_at ELSE sessions.last_message_at END,
+                git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
                 is_sidechain = excluded.is_sidechain,
                 size_bytes = excluded.size_bytes,
                 indexed_at = excluded.indexed_at
@@ -1314,7 +1314,7 @@ impl Database {
         let ninety_days_ago = now - (90 * 86400);
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
-            SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
+            SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM sessions
             WHERE last_message_at >= ?1 AND is_sidechain = 0
               AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
@@ -1456,7 +1456,7 @@ impl Database {
         let ninety_days_ago = now - (90 * 86400);
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
-            SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
+            SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM sessions
             WHERE last_message_at >= ?1 AND is_sidechain = 0
               AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
