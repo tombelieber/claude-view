@@ -29,7 +29,6 @@ export interface DateRangePickerProps {
  * Accessibility:
  * - Uses button + popover pattern
  * - Keyboard navigation within calendars
- * - Focus trap within popover
  */
 export function DateRangePicker({
   value,
@@ -42,11 +41,15 @@ export function DateRangePicker({
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  // Sync temp values when value prop changes
+  // Only reset draft state when popover opens (prevIsOpenRef pattern)
+  const prevIsOpenRef = useRef(false)
   useEffect(() => {
-    setTempFrom(value?.from)
-    setTempTo(value?.to)
-  }, [value])
+    if (isOpen && !prevIsOpenRef.current) {
+      setTempFrom(value?.from)
+      setTempTo(value?.to)
+    }
+    prevIsOpenRef.current = isOpen
+  }, [isOpen, value])
 
   // Handle click outside to close
   useEffect(() => {
