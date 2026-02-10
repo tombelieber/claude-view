@@ -193,3 +193,188 @@ impl Default for GitSyncState {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn initial_state_is_idle_with_zeroes() {
+        let state = GitSyncState::new();
+        assert_eq!(state.phase(), GitSyncPhase::Idle);
+        assert_eq!(state.repos_scanned(), 0);
+        assert_eq!(state.total_repos(), 0);
+        assert_eq!(state.commits_found(), 0);
+        assert_eq!(state.sessions_correlated(), 0);
+        assert_eq!(state.total_correlatable_sessions(), 0);
+        assert_eq!(state.links_created(), 0);
+        assert!(state.error().is_none());
+    }
+
+    #[test]
+    fn phase_transitions() {
+        let state = GitSyncState::new();
+
+        // Idle -> Scanning
+        state.set_phase(GitSyncPhase::Scanning);
+        assert_eq!(state.phase(), GitSyncPhase::Scanning);
+
+        // Scanning -> Correlating
+        state.set_phase(GitSyncPhase::Correlating);
+        assert_eq!(state.phase(), GitSyncPhase::Correlating);
+
+        // Correlating -> Done
+        state.set_phase(GitSyncPhase::Done);
+        assert_eq!(state.phase(), GitSyncPhase::Done);
+
+        // Done -> Idle (via reset)
+        state.reset();
+        assert_eq!(state.phase(), GitSyncPhase::Idle);
+    }
+
+    #[test]
+    fn counter_increments_store() {
+        let state = GitSyncState::new();
+
+        state.set_repos_scanned(5);
+        assert_eq!(state.repos_scanned(), 5);
+
+        state.set_total_repos(10);
+        assert_eq!(state.total_repos(), 10);
+
+        state.set_sessions_correlated(3);
+        assert_eq!(state.sessions_correlated(), 3);
+
+        state.set_total_correlatable_sessions(20);
+        assert_eq!(state.total_correlatable_sessions(), 20);
+
+        // Overwrite works
+        state.set_repos_scanned(7);
+        assert_eq!(state.repos_scanned(), 7);
+    }
+
+    #[test]
+    fn counter_increments_fetch_add() {
+        let state = GitSyncState::new();
+
+        // add_commits_found accumulates
+        let prev = state.add_commits_found(10);
+        assert_eq!(prev, 0); // previous value was 0
+        assert_eq!(state.commits_found(), 10);
+
+        let prev = state.add_commits_found(5);
+        assert_eq!(prev, 10); // previous value was 10
+        assert_eq!(state.commits_found(), 15);
+
+        let prev = state.add_commits_found(3);
+        assert_eq!(prev, 15);
+        assert_eq!(state.commits_found(), 18);
+
+        // add_links_created accumulates
+        let prev = state.add_links_created(7);
+        assert_eq!(prev, 0);
+        assert_eq!(state.links_created(), 7);
+
+        let prev = state.add_links_created(2);
+        assert_eq!(prev, 7);
+        assert_eq!(state.links_created(), 9);
+    }
+
+    #[test]
+    fn error_state() {
+        let state = GitSyncState::new();
+
+        state.set_error("disk full".to_string());
+        assert_eq!(state.phase(), GitSyncPhase::Error);
+        assert_eq!(state.error(), Some("disk full".to_string()));
+
+        // Overwrite works
+        state.set_error("timeout".to_string());
+        assert_eq!(state.phase(), GitSyncPhase::Error);
+        assert_eq!(state.error(), Some("timeout".to_string()));
+    }
+
+    #[test]
+    fn reset_clears_everything() {
+        let state = GitSyncState::new();
+
+        // Set all fields to non-zero / non-idle values
+        state.set_phase(GitSyncPhase::Correlating);
+        state.set_repos_scanned(5);
+        state.set_total_repos(10);
+        state.add_commits_found(42);
+        state.set_sessions_correlated(3);
+        state.set_total_correlatable_sessions(20);
+        state.add_links_created(7);
+        state.set_error("some error".to_string());
+
+        // Verify non-zero before reset
+        assert_eq!(state.commits_found(), 42);
+        assert_eq!(state.links_created(), 7);
+        assert!(state.error().is_some());
+
+        // Reset
+        state.reset();
+
+        // Verify all cleared
+        assert_eq!(state.phase(), GitSyncPhase::Idle);
+        assert_eq!(state.repos_scanned(), 0);
+        assert_eq!(state.total_repos(), 0);
+        assert_eq!(state.commits_found(), 0);
+        assert_eq!(state.sessions_correlated(), 0);
+        assert_eq!(state.total_correlatable_sessions(), 0);
+        assert_eq!(state.links_created(), 0);
+        assert!(state.error().is_none());
+    }
+
+    #[test]
+    fn thread_safety_concurrent_access() {
+        let state = Arc::new(GitSyncState::new());
+        state.set_phase(GitSyncPhase::Scanning);
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let s = Arc::clone(&state);
+                std::thread::spawn(move || {
+                    for _ in 0..100 {
+                        s.add_commits_found(1);
+                        s.add_links_created(1);
+                        s.set_repos_scanned(1);
+                        // Also exercise reads to stress concurrency
+                        let _ = s.phase();
+                        let _ = s.repos_scanned();
+                        let _ = s.commits_found();
+                        let _ = s.links_created();
+                    }
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread panicked");
+        }
+
+        assert_eq!(state.commits_found(), 800);
+        assert_eq!(state.links_created(), 800);
+    }
+
+    #[test]
+    fn from_u8_invalid_returns_none() {
+        assert!(GitSyncPhase::from_u8(5).is_none());
+        assert!(GitSyncPhase::from_u8(255).is_none());
+    }
+
+    #[test]
+    fn default_impl() {
+        let state = GitSyncState::default();
+        assert_eq!(state.phase(), GitSyncPhase::Idle);
+        assert_eq!(state.repos_scanned(), 0);
+        assert_eq!(state.total_repos(), 0);
+        assert_eq!(state.commits_found(), 0);
+        assert_eq!(state.sessions_correlated(), 0);
+        assert_eq!(state.total_correlatable_sessions(), 0);
+        assert_eq!(state.links_created(), 0);
+        assert!(state.error().is_none());
+    }
+}
