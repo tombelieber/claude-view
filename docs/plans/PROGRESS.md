@@ -2,7 +2,40 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-07
+> **Last updated:** 2026-02-10
+
+---
+
+## Product Evolution
+
+The product has evolved through 3 distinct stages. Each stage builds on the previous, not replacing it.
+
+```
+Stage 1: SESSION VIEWER (v0.1–v0.3)               ✅ SHIPPED
+  "Browse and search Claude Code conversation history"
+  └── Session browsing, JSONL parsing, search, export
+
+Stage 2: AI FLUENCY COACH (v0.4–v1.0)             🔧 IN PROGRESS
+  "Your AI fluency, measured"
+  └── AI Fluency Score, metrics dashboard, analytics, insights
+  └── Rename: claude-view → claude-score
+
+Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
+  "Mission Control for your AI workforce"
+  └── Live session monitoring across all terminals
+  └── Cost tracking, context usage, sub-agent visualization
+  └── Resume sessions from web dashboard (Agent SDK)
+  └── Kanban view of agent tasks
+  └── Mobile access via Tailscale/Cloudflare tunnel
+```
+
+**Each stage expands the TAM:**
+
+| Stage | Target User | Value Prop | TAM |
+|-------|------------|------------|-----|
+| Session Viewer | Claude Code user curious about history | "See your past sessions" | ~100K devs |
+| AI Fluency Coach | Dev wanting to improve their AI workflow | "Get better at AI-assisted coding" | ~500K devs |
+| AI Agent OS | Power user running 10-20+ concurrent agents | "Manage your AI workforce" | ~50K power users (but high willingness to pay) |
 
 ---
 
@@ -14,6 +47,9 @@
 │  - Browse, search, export sessions                      │
 │  - Full metrics: atomic units, derived stats, trends    │
 │  - Git correlation (ultra-conservative, provable only)  │
+│  - Mission Control: monitor all active sessions         │
+│  - Cost tracking, context usage, sub-agent viz          │
+│  - Resume sessions from web dashboard                   │
 │  - `npx claude-view` — zero friction install            │
 │                                                         │
 │  ══════════════════════════════════════════════════════ │
@@ -22,11 +58,13 @@
 │  - Team aggregation (multi-user data)                   │
 │  - Manager dashboards & admin controls                  │
 │  - AI fluency scoring across employees                  │
+│  - Multi-agent orchestration policies                   │
+│  - Cost budgets & alerts per team/project               │
 │  - Export for HR/compliance/audits                      │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Strategy:** Build all analytics features (enterprise-grade quality) in Personal tier first. Enterprise tier adds the **team aggregation layer** on top — same features, but across multiple users.
+**Strategy:** Build all analytics features (enterprise-grade quality) in Personal tier first. Enterprise tier adds the **team aggregation layer** on top — same features, but across multiple users. Mission Control monitoring is Personal tier; orchestration policies and team cost budgets are Enterprise.
 
 ---
 
@@ -60,6 +98,7 @@
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 | **Theme 4: Chat Insights** | Pending | 0/8 phases, 0/39 tasks — see `theme4/PROGRESS.md` | Personal |
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
+| **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
 
 **Current focus:** GTM Launch (README repositioning, AI Fluency Score, demo GIF, Show HN prep)
 
@@ -358,6 +397,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-07-gtm-launch-strategy.md` | in-progress | **GTM Launch** — positioning, competitive landscape, content strategy, Show HN plan |
 | `2026-02-07-rename-to-claude-score.md` | approved | **Rename** — full rename plan: vibe-recall/claude-view → claude-score (60+ files, 4 tiers) |
 | `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
+| `mission-control/` | approved | **Mission Control** — live session monitoring, cost tracking, resume, sub-agent viz (6 phases, 8 files, see `mission-control/PROGRESS.md`) |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
