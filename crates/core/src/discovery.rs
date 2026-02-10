@@ -570,7 +570,7 @@ async fn get_project_sessions(
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             // Phase C: LOC estimation
             lines_added: 0,
@@ -1357,7 +1357,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             // Phase C: LOC estimation
             lines_added: 0,
