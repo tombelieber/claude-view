@@ -540,13 +540,22 @@ vibe-recall-releases/
 
 ## 11. Post-MVP Roadmap
 
-| Phase | Features |
-|-------|----------|
-| v2.1 | Linux support, LLM batch tagging |
-| v2.2 | Windows support, "Resume where I left off" |
-| v2.3 | Vector search toggle |
-| v3.0 | Tauri desktop app |
-| v3.1 | Multi-AI support (Codex, Gemini CLI) |
+| Phase | Features | Product Stage |
+|-------|----------|---------------|
+| v0.4 | AI Fluency Score, metrics dashboard | Stage 2: AI Fluency Coach |
+| v0.5 | Chat insights, pattern discovery (Theme 4) | Stage 2 |
+| v1.0 | Rename to claude-score, public launch, Show HN | Stage 2 |
+| v1.1 | **Mission Control Phase A**: Live session monitoring, cost tracking, context gauge | **Stage 3: AI Agent OS** |
+| v1.2 | **Mission Control Phase B-C**: List/Kanban/Monitor views, xterm.js live grid | Stage 3 |
+| v1.3 | **Mission Control Phase D-E**: Sub-agent swim lanes, custom layout (react-mosaic) | Stage 3 |
+| v1.4 | **Mission Control Phase F**: Agent SDK resume, dashboard chat, permission routing | Stage 3 |
+| v2.0 | Full-text search (Tantivy), Linux support | Stage 3 |
+| v2.1 | Windows support, vector search | Stage 3 |
+| v3.0 | Enterprise team layer, multi-agent orchestration policies | Enterprise |
+
+> **Design doc:** See `docs/plans/mission-control/` for full 7,900-line Mission Control design (6 phases, 8 files).
+>
+> **Superseded items:** Tauri desktop app (deferred indefinitely — web dashboard + mobile via Tailscale is the primary UX). Multi-AI support (deferred to v3.0+ under Enterprise).
 
 ---
 
