@@ -1,6 +1,7 @@
 // crates/server/src/state.rs
 //! Application state for the Axum server.
 
+use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -25,6 +26,8 @@ pub struct AppState {
     pub db: Database,
     /// Shared indexing progress state (lock-free atomics).
     pub indexing: Arc<IndexingState>,
+    /// Shared git-sync progress state (lock-free atomics, resettable).
+    pub git_sync: Arc<GitSyncState>,
     /// Invocable registry (skills, commands, MCP tools, built-in tools).
     /// `None` until background indexing completes registry build.
     pub registry: RegistryHolder,
@@ -41,6 +44,7 @@ impl AppState {
             start_time: Instant::now(),
             db,
             indexing: Arc::new(IndexingState::new()),
+            git_sync: Arc::new(GitSyncState::new()),
             registry: Arc::new(RwLock::new(None)),
             pricing: vibe_recall_db::default_pricing(),
         })
@@ -53,6 +57,7 @@ impl AppState {
             start_time: Instant::now(),
             db,
             indexing,
+            git_sync: Arc::new(GitSyncState::new()),
             registry: Arc::new(RwLock::new(None)),
             pricing: vibe_recall_db::default_pricing(),
         })
@@ -68,6 +73,7 @@ impl AppState {
             start_time: Instant::now(),
             db,
             indexing,
+            git_sync: Arc::new(GitSyncState::new()),
             registry,
             pricing: vibe_recall_db::default_pricing(),
         })

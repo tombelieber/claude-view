@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Filter, Search } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { formatModelName } from '../lib/format-model';
 import type { SessionFilters } from '../hooks/use-session-filters';
 
 interface FilterPopoverProps {
@@ -11,9 +12,11 @@ interface FilterPopoverProps {
   activeCount: number;
   /** Available branch names derived from loaded sessions */
   branches: string[];
+  /** Available model IDs from indexed session data (data-driven) */
+  models?: string[];
 }
 
-export function FilterPopover({ filters, onChange, onClear, activeCount, branches = [] }: FilterPopoverProps) {
+export function FilterPopover({ filters, onChange, onClear, activeCount, branches = [], models = [] }: FilterPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [branchSearch, setBranchSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -63,8 +66,7 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
     .filter((branch) => branch !== '')
     .filter((branch) => branch.toLowerCase().includes(debouncedSearch.toLowerCase()));
 
-  // Model options (hardcoded for now)
-  const modelOptions = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4'];
+  const modelOptions = models;
 
   const hasAnyFiltersSet = activeCount > 0;
 
@@ -211,6 +213,7 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
             </div>
 
             {/* Model filter */}
+            {modelOptions.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Model
@@ -233,12 +236,13 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
-                      {model.replace('claude-', '')}
+                      {formatModelName(model)}
                     </span>
                   </label>
                 ))}
               </div>
             </div>
+            )}
 
             {/* Has skills filter */}
             <div>

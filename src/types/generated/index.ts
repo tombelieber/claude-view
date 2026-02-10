@@ -24,6 +24,7 @@ export type { ProjectStat } from './ProjectStat'
 export type { SessionDurationStat } from './SessionDurationStat'
 
 // Extended dashboard (Phase 3)
+export type { CurrentPeriodMetrics } from './CurrentPeriodMetrics'
 export type { CurrentWeekMetrics } from './CurrentWeekMetrics'
 export type { DashboardTrends } from './DashboardTrends'
 export type { ExtendedDashboardStats } from './ExtendedDashboardStats'
@@ -41,6 +42,15 @@ export type { ExportResponse } from './ExportResponse'
 
 // Sync types (Phase 3)
 export type { SyncAcceptedResponse } from './SyncAcceptedResponse'
+export type { SyncStatus } from './SyncStatus'
+
+// Storage types (Phase 3)
+export type { StorageStats } from './StorageStats'
+
+// AI Generation types (Phase 3)
+export type { AIGenerationStats } from './AIGenerationStats'
+export type { TokensByModel } from './TokensByModel'
+export type { TokensByProject } from './TokensByProject'
 
 // Session detail types (Phase 3)
 export type { CommitWithTier } from './CommitWithTier'

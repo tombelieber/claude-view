@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { GitBranch, ChevronDown, ArrowUpDown, FolderOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { BranchCard } from './BranchCard'
-import type { TimeRange } from '../../hooks/use-contributions'
+import type { ContributionsTimeRange } from '../../hooks/use-contributions'
 import type { BranchBreakdown } from '../../types/generated'
 
 interface BranchListProps {
   byBranch: BranchBreakdown[]
   onSessionDrillDown?: (sessionId: string) => void
-  timeRange?: TimeRange
+  timeRange?: ContributionsTimeRange
   projectId?: string
   activeBranchFilter?: string
   onBranchFilter?: (branch: string | null) => void
@@ -31,7 +31,7 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
  * - Expand/collapse individual branches
  * - Shows AI share progress for each branch
  */
-export function BranchList({ byBranch, onSessionDrillDown, timeRange = 'week', projectId, activeBranchFilter, onBranchFilter }: BranchListProps) {
+export function BranchList({ byBranch, onSessionDrillDown, timeRange = { preset: '7d' }, projectId, activeBranchFilter, onBranchFilter }: BranchListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('lines')
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null)
   const [showSortMenu, setShowSortMenu] = useState(false)
