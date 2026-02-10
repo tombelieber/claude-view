@@ -69,6 +69,7 @@ mod tests {
             registry: Arc::new(std::sync::RwLock::new(None)),
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(crate::classify_state::ClassifyState::new()),
+            facet_ingest: Arc::new(crate::facet_ingest::FacetIngestState::new()),
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
             pricing: std::collections::HashMap::new(),
         });

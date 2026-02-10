@@ -2,6 +2,7 @@
 //! Application state for the Axum server.
 
 use crate::classify_state::ClassifyState;
+use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
@@ -37,6 +38,8 @@ pub struct AppState {
     pub jobs: Arc<JobRunner>,
     /// Classification progress state (lock-free atomics for SSE streaming).
     pub classify: Arc<ClassifyState>,
+    /// Facet ingest progress state (lock-free atomics for SSE streaming).
+    pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
     pub pricing: HashMap<String, ModelPricing>,
 }
@@ -54,6 +57,7 @@ impl AppState {
             registry: Arc::new(RwLock::new(None)),
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
@@ -69,6 +73,7 @@ impl AppState {
             registry: Arc::new(RwLock::new(None)),
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
@@ -87,6 +92,7 @@ impl AppState {
             registry,
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
