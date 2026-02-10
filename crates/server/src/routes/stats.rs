@@ -324,39 +324,16 @@ pub async fn storage_stats(
         }
     };
 
-    // Get counts from database
-    let session_count = match state.db.get_session_count().await {
-        Ok(count) => count,
-        Err(e) => {
-            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get session count");
-            record_request("storage_stats", "500", start.elapsed());
-            return Err(e.into());
-        }
-    };
-    let project_count = match state.db.get_project_count().await {
-        Ok(count) => count,
-        Err(e) => {
-            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get project count");
-            record_request("storage_stats", "500", start.elapsed());
-            return Err(e.into());
-        }
-    };
-    let commit_count = match state.db.get_commit_count().await {
-        Ok(count) => count,
-        Err(e) => {
-            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get commit count");
-            record_request("storage_stats", "500", start.elapsed());
-            return Err(e.into());
-        }
-    };
-    let oldest_session_date = match state.db.get_oldest_session_date(None, None).await {
-        Ok(date) => date,
-        Err(e) => {
-            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get oldest session date");
-            record_request("storage_stats", "500", start.elapsed());
-            return Err(e.into());
-        }
-    };
+    // Get all counts in a single query (replaces 4 separate queries)
+    let (session_count, project_count, commit_count, oldest_session_date) =
+        match state.db.get_storage_counts().await {
+            Ok(counts) => counts,
+            Err(e) => {
+                tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get storage counts");
+                record_request("storage_stats", "500", start.elapsed());
+                return Err(e.into());
+            }
+        };
 
     // Calculate JSONL storage size
     let jsonl_bytes = calculate_jsonl_size().await;
