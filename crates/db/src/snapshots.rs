@@ -15,7 +15,7 @@
 //! - Metrics: sessions_count, ai_lines_added/removed, commits_count, etc.
 
 use crate::{Database, DbResult};
-use chrono::Utc;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -511,16 +511,16 @@ impl Database {
             TimeRange::All => self.get_all_contributions(project_id, branch).await,
             TimeRange::Custom => {
                 let from = from_date.unwrap_or("1970-01-01");
-                let to_default = Utc::now().format("%Y-%m-%d").to_string();
+                let to_default = Local::now().format("%Y-%m-%d").to_string();
                 let to = to_date.unwrap_or(&to_default);
                 self.get_contributions_in_range(from, to, project_id, branch).await
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 self.get_contributions_in_range(&from, &to, project_id, branch).await
             }
         }
@@ -532,8 +532,8 @@ impl Database {
         project_id: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<AggregatedContributions> {
-        let today = Utc::now().format("%Y-%m-%d").to_string();
-        let today_start = format!("{}T00:00:00Z", today);
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let today_start = format!("{} 00:00:00", today);
 
         let row: (i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
             sqlx::query_as(
@@ -547,7 +547,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE project_id = ?1
-                  AND datetime(last_message_at, 'unixepoch') >= ?2
+                  AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
@@ -567,7 +567,7 @@ impl Database {
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
-                WHERE datetime(last_message_at, 'unixepoch') >= ?1
+                WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND (?2 IS NULL OR git_branch = ?2)
                 "#,
             )
@@ -590,7 +590,7 @@ impl Database {
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
-                      AND datetime(s.last_message_at, 'unixepoch') >= ?2
+                      AND datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
                     "#,
                 )
@@ -609,7 +609,7 @@ impl Database {
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
-                    WHERE datetime(s.last_message_at, 'unixepoch') >= ?1
+                    WHERE datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
                     "#,
                 )
@@ -809,8 +809,8 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
@@ -832,8 +832,8 @@ impl Database {
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
-                      AND date(s.last_message_at, 'unixepoch') >= ?2
-                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
                     "#,
                 )
@@ -869,8 +869,8 @@ impl Database {
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND git_branch = ?3
                 "#,
             )
@@ -890,8 +890,8 @@ impl Database {
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
-                    WHERE date(s.last_message_at, 'unixepoch') >= ?1
-                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                    WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                       AND s.git_branch = ?3
                     "#,
                 )
@@ -966,25 +966,25 @@ impl Database {
     ) -> DbResult<Vec<DailyTrendPoint>> {
         let (from, to) = match range {
             TimeRange::Today => {
-                let today = Utc::now().format("%Y-%m-%d").to_string();
+                let today = Local::now().format("%Y-%m-%d").to_string();
                 (today.clone(), today)
             }
             TimeRange::Custom => {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         };
@@ -995,7 +995,7 @@ impl Database {
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
-                    date(last_message_at, 'unixepoch') as date,
+                    date(last_message_at, 'unixepoch', 'localtime') as date,
                     COALESCE(SUM(ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
                     COALESCE(SUM(commit_count), 0) as commits_count,
@@ -1003,10 +1003,10 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
-                GROUP BY date(last_message_at, 'unixepoch')
+                GROUP BY date(last_message_at, 'unixepoch', 'localtime')
                 ORDER BY date ASC
                 "#,
             )
@@ -1037,17 +1037,17 @@ impl Database {
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
-                    date(last_message_at, 'unixepoch') as date,
+                    date(last_message_at, 'unixepoch', 'localtime') as date,
                     COALESCE(SUM(ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
                     COALESCE(SUM(commit_count), 0) as commits_count,
                     COUNT(*) as sessions_count,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND git_branch = ?3
-                GROUP BY date(last_message_at, 'unixepoch')
+                GROUP BY date(last_message_at, 'unixepoch', 'localtime')
                 ORDER BY date ASC
                 "#,
             )
@@ -1127,18 +1127,18 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         };
@@ -1158,8 +1158,8 @@ impl Database {
                     MAX(last_message_at) as last_activity
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
                 GROUP BY git_branch
                 ORDER BY sessions_count DESC
@@ -1205,8 +1205,8 @@ impl Database {
                     project_id,
                     COALESCE(project_display_name, project_id) as project_name
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 GROUP BY project_id, git_branch
                 ORDER BY sessions_count DESC
@@ -1280,8 +1280,8 @@ impl Database {
                     FROM sessions
                     WHERE project_id = ?1
                       AND git_branch = ?2
-                      AND date(last_message_at, 'unixepoch') >= ?3
-                      AND date(last_message_at, 'unixepoch') <= ?4
+                      AND date(last_message_at, 'unixepoch', 'localtime') >= ?3
+                      AND date(last_message_at, 'unixepoch', 'localtime') <= ?4
                     ORDER BY last_message_at DESC
                     LIMIT ?5
                     "#,
@@ -1307,8 +1307,8 @@ impl Database {
                     FROM sessions
                     WHERE project_id = ?1
                       AND git_branch IS NULL
-                      AND date(last_message_at, 'unixepoch') >= ?2
-                      AND date(last_message_at, 'unixepoch') <= ?3
+                      AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                     ORDER BY last_message_at DESC
                     LIMIT ?4
                     "#,
@@ -1333,8 +1333,8 @@ impl Database {
                     last_message_at
                 FROM sessions
                 WHERE git_branch = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                 ORDER BY last_message_at DESC
                 LIMIT ?4
                 "#,
@@ -1358,8 +1358,8 @@ impl Database {
                     last_message_at
                 FROM sessions
                 WHERE git_branch IS NULL
-                  AND date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                 ORDER BY last_message_at DESC
                 LIMIT ?3
                 "#,
@@ -1505,8 +1505,8 @@ impl Database {
                     JOIN sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND s.project_id = ?1
-                      AND date(s.last_message_at, 'unixepoch') >= ?2
-                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
                     GROUP BY t.model_id
                 ),
@@ -1519,8 +1519,8 @@ impl Database {
                     JOIN sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND s.project_id = ?1
-                      AND date(s.last_message_at, 'unixepoch') >= ?2
-                      AND date(s.last_message_at, 'unixepoch') <= ?3
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
                     GROUP BY t.session_id, t.model_id
                 ),
@@ -1590,8 +1590,8 @@ impl Database {
                     FROM turns t
                     JOIN sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
-                      AND date(s.last_message_at, 'unixepoch') >= ?1
-                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
                     GROUP BY t.model_id
                 ),
@@ -1603,8 +1603,8 @@ impl Database {
                     FROM turns t
                     JOIN sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
-                      AND date(s.last_message_at, 'unixepoch') >= ?1
-                      AND date(s.last_message_at, 'unixepoch') <= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
                     GROUP BY t.session_id, t.model_id
                 ),
@@ -1712,7 +1712,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                    strftime('%Y-%m', datetime(last_message_at, 'unixepoch')) as period,
+                    strftime('%Y-%m', datetime(last_message_at, 'unixepoch', 'localtime')) as period,
                     COALESCE(SUM(reedited_files_count), 0) as reedited,
                     COALESCE(SUM(files_edited_count), 0) as files_edited
                 FROM sessions
@@ -1731,7 +1731,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                    strftime('%Y-%m', datetime(last_message_at, 'unixepoch')) as period,
+                    strftime('%Y-%m', datetime(last_message_at, 'unixepoch', 'localtime')) as period,
                     COALESCE(SUM(reedited_files_count), 0) as reedited,
                     COALESCE(SUM(files_edited_count), 0) as files_edited
                 FROM sessions
@@ -1838,8 +1838,8 @@ impl Database {
                     ) as reedit_rate
                 FROM skill_sessions ss
                 JOIN sessions s ON ss.session_id = s.id
-                WHERE date(s.last_message_at, 'unixepoch') >= ?1
-                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND s.project_id = ?3
                   AND (?4 IS NULL OR s.git_branch = ?4)
                 GROUP BY ss.skill_name
@@ -1878,8 +1878,8 @@ impl Database {
                     ) as reedit_rate
                 FROM skill_sessions ss
                 JOIN sessions s ON ss.session_id = s.id
-                WHERE date(s.last_message_at, 'unixepoch') >= ?1
-                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR s.git_branch = ?3)
                 GROUP BY ss.skill_name
                 ORDER BY session_count DESC
@@ -1917,8 +1917,8 @@ impl Database {
                     WHERE inv2.kind = 'skill'
                 ) skill_sessions ON s.id = skill_sessions.session_id
                 WHERE skill_sessions.session_id IS NULL
-                  AND date(s.last_message_at, 'unixepoch') >= ?1
-                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND s.project_id = ?3
                   AND (?4 IS NULL OR s.git_branch = ?4)
                 "#,
@@ -1953,8 +1953,8 @@ impl Database {
                     WHERE inv2.kind = 'skill'
                 ) skill_sessions ON s.id = skill_sessions.session_id
                 WHERE skill_sessions.session_id IS NULL
-                  AND date(s.last_message_at, 'unixepoch') >= ?1
-                  AND date(s.last_message_at, 'unixepoch') <= ?2
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR s.git_branch = ?3)
                 "#,
             )
@@ -2042,7 +2042,7 @@ impl Database {
             .fetch_all(self.pool())
             .await?;
 
-        let now = Utc::now().timestamp();
+        let now = Local::now().timestamp();
 
         Ok(rows
             .into_iter()
@@ -2147,25 +2147,25 @@ impl Database {
     ) -> (String, String) {
         match range {
             TimeRange::Today => {
-                let today = Utc::now().format("%Y-%m-%d").to_string();
+                let today = Local::now().format("%Y-%m-%d").to_string();
                 (today.clone(), today)
             }
             TimeRange::Custom => {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         }
@@ -2190,7 +2190,7 @@ impl Database {
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                 COALESCE(SUM(files_edited_count), 0) as files_edited_count
             FROM sessions
-            WHERE date(last_message_at, 'unixepoch') = ?1
+            WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
             "#,
         )
         .bind(date)
@@ -2207,7 +2207,7 @@ impl Database {
             FROM session_commits sc
             JOIN commits c ON sc.commit_hash = c.hash
             JOIN sessions s ON sc.session_id = s.id
-            WHERE date(s.last_message_at, 'unixepoch') = ?1
+            WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
             "#,
         )
         .bind(date)
@@ -2236,40 +2236,32 @@ impl Database {
         Ok(())
     }
 
-    /// Generate daily snapshots for all dates missing in the range.
+    /// Generate daily snapshots for all dates in the range.
     ///
-    /// Typically called by the nightly job to backfill any missing days.
+    /// Always refreshes snapshots (DELETE + INSERT) so that data stays
+    /// current after incremental re-indexing updates session metrics.
+    /// Includes today (i=0) so the trend chart shows the current day.
     pub async fn generate_missing_snapshots(&self, days_back: i64) -> DbResult<u32> {
-        let today = Utc::now().date_naive();
+        let today = Local::now().date_naive();
 
-        // Collect all missing dates first
-        let mut missing_dates = Vec::new();
-        for i in 1..=days_back {
-            let date = (today - chrono::Duration::days(i))
-                .format("%Y-%m-%d")
-                .to_string();
+        // Collect all dates in the range (including today)
+        let dates: Vec<String> = (0..=days_back)
+            .map(|i| {
+                (today - chrono::Duration::days(i))
+                    .format("%Y-%m-%d")
+                    .to_string()
+            })
+            .collect();
 
-            let exists: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1 AND project_id IS NULL",
-            )
-            .bind(&date)
-            .fetch_one(self.pool())
-            .await?;
-
-            if exists.0 == 0 {
-                missing_dates.push(date);
-            }
-        }
-
-        if missing_dates.is_empty() {
+        if dates.is_empty() {
             return Ok(0);
         }
 
         // Batch all snapshot generation in a single transaction
         let mut tx = self.pool().begin().await?;
-        let count = missing_dates.len() as u32;
+        let mut count = 0u32;
 
-        for date in &missing_dates {
+        for date in &dates {
             // Inline the snapshot generation to use the transaction
             let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
                 r#"
@@ -2280,7 +2272,7 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') = ?1
+                WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
                 "#,
             )
             .bind(date)
@@ -2296,16 +2288,21 @@ impl Database {
                 FROM session_commits sc
                 JOIN commits c ON sc.commit_hash = c.hash
                 JOIN sessions s ON sc.session_id = s.id
-                WHERE date(s.last_message_at, 'unixepoch') = ?1
+                WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
                 "#,
             )
             .bind(date)
             .fetch_one(&mut *tx)
             .await?;
 
+            // Skip dates with no session activity
+            if session_agg.0 == 0 && commit_agg.0 == 0 {
+                continue;
+            }
+
             let cost_cents = estimate_cost_cents(session_agg.3);
 
-            // First delete any existing row for this (date, NULL, NULL) combo,
+            // Delete any existing row for this (date, NULL, NULL) combo,
             // since UNIQUE(date, project_id, branch) doesn't catch NULL duplicates.
             sqlx::query(
                 "DELETE FROM contribution_snapshots WHERE date = ?1 AND project_id IS NULL AND branch IS NULL",
@@ -2334,6 +2331,8 @@ impl Database {
             .bind(session_agg.4)
             .execute(&mut *tx)
             .await?;
+
+            count += 1;
         }
 
         tx.commit().await?;
@@ -2357,7 +2356,7 @@ impl Database {
     /// # Returns
     /// * Number of weekly snapshots created
     pub async fn rollup_weekly_snapshots(&self, retention_days: i64) -> DbResult<u32> {
-        let cutoff_date = (Utc::now() - chrono::Duration::days(retention_days))
+        let cutoff_date = (Local::now() - chrono::Duration::days(retention_days))
             .format("%Y-%m-%d")
             .to_string();
 
@@ -2515,18 +2514,18 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         };
@@ -2539,8 +2538,8 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0)
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
@@ -2557,8 +2556,8 @@ impl Database {
                     COALESCE(SUM(reedited_files_count), 0),
                     COALESCE(SUM(files_edited_count), 0)
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
@@ -2596,18 +2595,18 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         };
@@ -2620,8 +2619,8 @@ impl Database {
                     COUNT(*)
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
@@ -2638,8 +2637,8 @@ impl Database {
                     SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
@@ -2673,18 +2672,18 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01").to_string();
                 let to = to_date
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+                    .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
             TimeRange::All => {
-                ("1970-01-01".to_string(), Utc::now().format("%Y-%m-%d").to_string())
+                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
-                let from = (Utc::now() - chrono::Duration::days(days))
+                let from = (Local::now() - chrono::Duration::days(days))
                     .format("%Y-%m-%d")
                     .to_string();
-                let to = Utc::now().format("%Y-%m-%d").to_string();
+                let to = Local::now().format("%Y-%m-%d").to_string();
                 (from, to)
             }
         };
@@ -2695,8 +2694,8 @@ impl Database {
                 SELECT COALESCE(SUM(user_prompt_count), 0)
                 FROM sessions
                 WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch') >= ?2
-                  AND date(last_message_at, 'unixepoch') <= ?3
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
@@ -2711,8 +2710,8 @@ impl Database {
                 r#"
                 SELECT COALESCE(SUM(user_prompt_count), 0)
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch') >= ?1
-                  AND date(last_message_at, 'unixepoch') <= ?2
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
@@ -2991,7 +2990,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_skill_breakdown_with_data() {
         let db = Database::new_in_memory().await.unwrap();
-        let now = Utc::now().timestamp();
+        let now = Local::now().timestamp();
 
         // Insert sessions
         sqlx::query(
@@ -3216,7 +3215,7 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert recent snapshot (should NOT be rolled up)
-        let today = Utc::now().format("%Y-%m-%d").to_string();
+        let today = Local::now().format("%Y-%m-%d").to_string();
         db.upsert_snapshot(&today, None, None, 10, 500, 100, 5, 450, 80, 50000, 13, 8)
             .await
             .unwrap();

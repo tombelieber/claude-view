@@ -68,6 +68,9 @@ pub fn parse_session_index(path: &Path) -> Result<Vec<SessionIndexEntry>, Sessio
 /// Returns a list of `(project_dir_name, entries)` tuples. Directories without
 /// a `sessions-index.json` are silently skipped. Malformed files produce a
 /// warning log but do not stop processing of other projects.
+///
+/// After reading the index, also scans for `.jsonl` files in the same directory
+/// that are not listed in the index (catch-up for stale index files).
 pub fn read_all_session_indexes(
     claude_dir: &Path,
 ) -> Result<Vec<(String, Vec<SessionIndexEntry>)>, SessionIndexError> {
@@ -111,7 +114,41 @@ pub fn read_all_session_indexes(
         };
 
         match parse_session_index(&index_path) {
-            Ok(session_entries) => {
+            Ok(mut session_entries) => {
+                // Catch-up: scan for JSONL files not listed in the index.
+                // Claude Code may create sessions without updating sessions-index.json.
+                let indexed_ids: std::collections::HashSet<String> =
+                    session_entries.iter().map(|e| e.session_id.clone()).collect();
+
+                if let Ok(dir_contents) = std::fs::read_dir(&path) {
+                    for file_entry in dir_contents.flatten() {
+                        let file_path = file_entry.path();
+                        if file_path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+                            continue;
+                        }
+                        let session_id = match file_path.file_stem().and_then(|s| s.to_str()) {
+                            Some(stem) => stem,
+                            None => continue,
+                        };
+                        if indexed_ids.contains(session_id) {
+                            continue;
+                        }
+                        session_entries.push(SessionIndexEntry {
+                            session_id: session_id.to_string(),
+                            full_path: Some(file_path.to_string_lossy().to_string()),
+                            file_mtime: None,
+                            first_prompt: None,
+                            summary: None,
+                            message_count: None,
+                            created: None,
+                            modified: None,
+                            git_branch: None,
+                            project_path: None,
+                            is_sidechain: None,
+                        });
+                    }
+                }
+
                 results.push((dir_name, session_entries));
             }
             Err(e) => {
@@ -387,6 +424,43 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "project-a");
         assert_eq!(results[0].1.len(), 2);
+    }
+
+    #[test]
+    fn test_read_all_catches_unlisted_jsonl_files() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let proj = projects_dir.join("my-project");
+        std::fs::create_dir(&proj).unwrap();
+
+        // Index lists only sess-1
+        let json = r#"{"version":1,"entries":[{"sessionId": "sess-1"}]}"#;
+        std::fs::write(proj.join("sessions-index.json"), json).unwrap();
+
+        // But there are also sess-2.jsonl and sess-3.jsonl on disk
+        std::fs::write(proj.join("sess-1.jsonl"), "{}").unwrap();
+        std::fs::write(proj.join("sess-2.jsonl"), "{}").unwrap();
+        std::fs::write(proj.join("sess-3.jsonl"), "{}").unwrap();
+
+        let results = read_all_session_indexes(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "my-project");
+        // Should discover all 3: 1 from index + 2 unlisted
+        assert_eq!(results[0].1.len(), 3);
+
+        let ids: Vec<&str> = results[0].1.iter().map(|e| e.session_id.as_str()).collect();
+        assert!(ids.contains(&"sess-1"));
+        assert!(ids.contains(&"sess-2"));
+        assert!(ids.contains(&"sess-3"));
+
+        // Unlisted entries should have full_path set
+        let unlisted: Vec<_> = results[0].1.iter().filter(|e| e.session_id != "sess-1").collect();
+        for entry in unlisted {
+            assert!(entry.full_path.is_some());
+            assert!(entry.full_path.as_ref().unwrap().ends_with(".jsonl"));
+        }
     }
 
     #[test]
