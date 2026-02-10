@@ -14,6 +14,7 @@ pub mod cli;
 pub mod classification;
 pub mod patterns;
 pub mod insights;
+pub mod facets;
 
 pub use error::*;
 pub use types::*;
