@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useContributions, type TimeRange } from '../hooks/use-contributions'
+import { useTimeRange } from '../hooks/use-time-range'
+import { useContributions, type ContributionsTimeRange } from '../hooks/use-contributions'
 import { ContributionsHeader } from '../components/contributions/ContributionsHeader'
 import { OverviewCards } from '../components/contributions/OverviewCards'
 import { TrendChart } from '../components/contributions/TrendChart'
@@ -36,24 +37,22 @@ export function ContributionsPage() {
   const projectId = searchParams.get('project')
   const branchFilter = searchParams.get('branch') || undefined
 
-  // URL-persisted time range
-  const initialRange = (searchParams.get('range') as TimeRange) || 'week'
-  const [range, setRange] = useState<TimeRange>(initialRange)
+  // Shared time range state (URL-synced via useTimeRange)
+  const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
+
+  // Build ContributionsTimeRange for the API hooks
+  const contribTime: ContributionsTimeRange = {
+    preset: timeRange.preset,
+    from: timeRange.fromTimestamp,
+    to: timeRange.toTimestamp,
+  }
 
   // Session drill-down state
   const [drillDownSessionId, setDrillDownSessionId] = useState<string | null>(null)
   const [drillDownBranch, setDrillDownBranch] = useState<string | undefined>(undefined)
 
   // Fetch contributions data (with project + branch filter)
-  const { data, isLoading, error, refetch } = useContributions(range, projectId ?? undefined, branchFilter)
-
-  // Update URL when range changes (preserve existing params per CLAUDE.md rule)
-  const handleRangeChange = (newRange: TimeRange) => {
-    setRange(newRange)
-    const params = new URLSearchParams(searchParams)
-    params.set('range', newRange)
-    setSearchParams(params)
-  }
+  const { data, isLoading, error, refetch } = useContributions(contribTime, projectId ?? undefined, branchFilter)
 
   // Handle branch filter (copy-then-modify per CLAUDE.md rule)
   const handleBranchFilter = (branch: string | null) => {
@@ -112,8 +111,10 @@ export function ContributionsPage() {
       <div className="h-full overflow-y-auto p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <ContributionsHeader
-            range={range}
-            onRangeChange={handleRangeChange}
+            preset={timeRange.preset}
+            customRange={timeRange.customRange}
+            onPresetChange={setPreset}
+            onCustomRangeChange={setCustomRange}
             sessionCount={0}
             projectFilter={projectId}
             onClearProjectFilter={() => {
@@ -126,7 +127,7 @@ export function ContributionsPage() {
             onClearBranchFilter={handleClearBranchFilter}
           />
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
-            <ContributionsEmptyState range={range} onRangeChange={handleRangeChange} />
+            <ContributionsEmptyState preset={timeRange.preset} onPresetChange={setPreset} />
           </div>
         </div>
       </div>
@@ -140,8 +141,10 @@ export function ContributionsPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header with time + project filter */}
         <ContributionsHeader
-          range={range}
-          onRangeChange={handleRangeChange}
+          preset={timeRange.preset}
+          customRange={timeRange.customRange}
+          onPresetChange={setPreset}
+          onCustomRangeChange={setCustomRange}
           sessionCount={sessionCount}
           projectFilter={projectId}
           onClearProjectFilter={() => {
@@ -200,7 +203,7 @@ export function ContributionsPage() {
           byBranch={data.byBranch}
           onSessionDrillDown={(sessionId) => handleSessionDrillDown(sessionId)}
           projectId={projectId ?? undefined}
-          timeRange={range}
+          timeRange={contribTime}
           activeBranchFilter={branchFilter}
           onBranchFilter={handleBranchFilter}
         />

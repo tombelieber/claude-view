@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { TrendingUp, ArrowRight, GitBranch, Code2, RefreshCcw } from 'lucide-react'
-import { useContributions } from '../hooks/use-contributions'
-import type { TimeRange } from '../hooks/use-contributions'
+import { useContributions, type ContributionsTimeRange } from '../hooks/use-contributions'
 import { formatNumber, formatPercent } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 
@@ -12,24 +11,6 @@ export interface ContributionSummaryCardProps {
   branch?: string
 }
 
-function mapPresetToRange(preset?: string, fromTs?: number | null, toTs?: number | null): TimeRange {
-  switch (preset) {
-    case '7d': return 'week'
-    case '30d': return 'month'
-    case '90d': return '90days'
-    case 'all': return 'all'
-    case 'custom': {
-      if (fromTs != null && toTs != null) {
-        const days = Math.round((toTs - fromTs) / 86400)
-        if (days <= 7) return 'week'
-        if (days <= 30) return 'month'
-        if (days <= 90) return '90days'
-      }
-      return 'all'
-    }
-    default: return 'week'
-  }
-}
 
 /**
  * ContributionSummaryCard displays a summary of AI contributions for the dashboard.
@@ -43,8 +24,12 @@ function mapPresetToRange(preset?: string, fromTs?: number | null, toTs?: number
  * - "View All" link to /contributions
  */
 export function ContributionSummaryCard({ className, timeRange, project, branch }: ContributionSummaryCardProps) {
-  const range = mapPresetToRange(timeRange?.preset, timeRange?.fromTimestamp, timeRange?.toTimestamp)
-  const { data, isLoading, error } = useContributions(range, project, branch)
+  const contribTime: ContributionsTimeRange = {
+    preset: (timeRange?.preset as ContributionsTimeRange['preset']) || '30d',
+    from: timeRange?.fromTimestamp,
+    to: timeRange?.toTimestamp,
+  }
+  const { data, isLoading, error } = useContributions(contribTime, project, branch)
 
   // Loading state
   if (isLoading) {
@@ -117,11 +102,13 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
 
   const titleLabel = (() => {
     switch (timeRange?.preset) {
+      case 'today': return 'AI Contribution Today'
+      case '7d': return 'AI Contribution This Week'
       case '30d': return 'AI Contribution This Month'
       case '90d': return 'AI Contribution (90 Days)'
       case 'all': return 'AI Contribution (All Time)'
       case 'custom': return 'AI Contribution (Custom Range)'
-      default: return 'AI Contribution This Week'
+      default: return 'AI Contribution This Month'
     }
   })()
 
