@@ -605,7 +605,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
@@ -687,7 +687,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             lines_added: 0,
             lines_removed: 0,
@@ -796,7 +796,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session, "project-a", "Project A")
@@ -907,7 +907,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
@@ -1054,7 +1054,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session, "project-range", "Project Range").await.unwrap();
@@ -1157,7 +1157,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
@@ -1253,7 +1253,7 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
-            summary_text: None,
+
             parse_version: 0,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();

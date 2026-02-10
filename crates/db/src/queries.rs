@@ -325,7 +325,8 @@ impl Database {
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
-                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                COALESCE(s.summary_text, s.summary) AS summary,
+                s.git_branch, s.is_sidechain, s.deep_indexed_at,
                 tok.total_input_tokens,
                 tok.total_output_tokens,
                 tok.total_cache_read_tokens,
@@ -339,7 +340,7 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version,
+                s.parse_version,
                 s.lines_added, s.lines_removed, s.loc_source
             FROM sessions s
             LEFT JOIN (
@@ -1104,7 +1105,8 @@ impl Database {
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
-                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                COALESCE(s.summary_text, s.summary) AS summary,
+                s.git_branch, s.is_sidechain, s.deep_indexed_at,
                 tok.total_input_tokens,
                 tok.total_output_tokens,
                 tok.total_cache_read_tokens,
@@ -1118,7 +1120,7 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
-                s.summary_text, s.parse_version,
+                s.parse_version,
                 s.lines_added, s.lines_removed, s.loc_source
             FROM sessions s
             LEFT JOIN (
@@ -2268,7 +2270,6 @@ struct SessionRow {
     bash_progress_count: i32,
     hook_progress_count: i32,
     mcp_progress_count: i32,
-    summary_text: Option<String>,
     parse_version: i32,
     // Phase C: LOC estimation
     lines_added: i32,
@@ -2329,7 +2330,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             bash_progress_count: row.try_get("bash_progress_count")?,
             hook_progress_count: row.try_get("hook_progress_count")?,
             mcp_progress_count: row.try_get("mcp_progress_count")?,
-            summary_text: row.try_get("summary_text")?,
             parse_version: row.try_get("parse_version")?,
             // Phase C: LOC estimation
             lines_added: row.try_get("lines_added")?,
@@ -2401,7 +2401,6 @@ impl SessionRow {
             bash_progress_count: self.bash_progress_count as u32,
             hook_progress_count: self.hook_progress_count as u32,
             mcp_progress_count: self.mcp_progress_count as u32,
-            summary_text: self.summary_text,
             parse_version: self.parse_version as u32,
             // Phase C: LOC estimation
             lines_added: self.lines_added as u32,
@@ -2473,7 +2472,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             // Phase C: LOC estimation
             lines_added: 0,
