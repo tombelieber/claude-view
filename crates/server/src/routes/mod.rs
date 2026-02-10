@@ -30,6 +30,7 @@ use crate::state::AppState;
 /// - GET /api/sessions - List all sessions with filter/sort
 /// - GET /api/sessions/:id - Get extended session detail with commits
 /// - GET /api/indexing/progress - SSE stream of indexing progress
+/// - GET /api/indexing/status - JSON snapshot of indexing progress (polling)
 /// - GET /api/invocables - List all invocables with usage counts
 /// - GET /api/stats/dashboard - Pre-computed dashboard stats with trends
 /// - GET /api/models - List all observed models with usage counts

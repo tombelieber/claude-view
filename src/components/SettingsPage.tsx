@@ -18,10 +18,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 import { StorageOverview } from './StorageOverview'
-import { FEATURES } from '../config/features'
 
-// Hardcoded version - should match package.json
-const APP_VERSION = '0.1.0'
+declare const __APP_VERSION__: string
+const APP_VERSION = __APP_VERSION__
 
 interface SettingsSectionProps {
   icon: React.ReactNode
@@ -163,11 +162,9 @@ export function SettingsPage() {
           </SettingsSection>
 
           {/* STORAGE OVERVIEW */}
-          {FEATURES.storageOverview && (
-            <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
-              <StorageOverview />
-            </SettingsSection>
-          )}
+          <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
+            <StorageOverview />
+          </SettingsSection>
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
