@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import type { PaginatedMessages } from '../types/generated'
+import { HttpError, isNotFoundError } from './use-session'
 
 const PAGE_SIZE = 100
 
@@ -12,7 +13,7 @@ async function fetchMessages(
   const response = await fetch(
     `/api/session/${encodeURIComponent(projectDir)}/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}`
   )
-  if (!response.ok) throw new Error('Failed to fetch messages')
+  if (!response.ok) throw new HttpError('Failed to fetch messages', response.status)
   return response.json()
 }
 
@@ -41,5 +42,6 @@ export function useSessionMessages(projectDir: string | null, sessionId: string 
       return prevOffset
     },
     enabled: !!projectDir && !!sessionId,
+    retry: (_, error) => !isNotFoundError(error),
   })
 }

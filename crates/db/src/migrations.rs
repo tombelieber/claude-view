@@ -445,6 +445,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(projec
 CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);
 COMMIT;
 "#,
+    // Migration 19: Normalize empty/whitespace-only git_branch values to NULL.
+    // Fixes duplicate "(no branch)" entries caused by NULL vs '' in GROUP BY.
+    r#"UPDATE sessions SET git_branch = NULL WHERE git_branch = '' OR TRIM(git_branch) = '';"#,
 ];
 
 // ============================================================================
