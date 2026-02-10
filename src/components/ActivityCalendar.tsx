@@ -254,9 +254,9 @@ export function ActivityCalendar({
           }}
         />
 
-        {/* Summary + Legend */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+        {/* Summary + Legend - responsive layout */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mt-4 pt-4 border-t border-gray-100">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm text-gray-500">
             <span className="font-semibold text-gray-900 tabular-nums">{totalSessions}</span>
             <span>sessions</span>
             {totalProjects != null && (
