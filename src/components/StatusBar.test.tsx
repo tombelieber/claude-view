@@ -36,6 +36,12 @@ vi.mock('../hooks/use-git-sync', () => ({
   useGitSync: () => mockUseGitSync(),
 }))
 
+// Mock use-git-sync-progress hook
+const mockUseGitSyncProgress = vi.fn()
+vi.mock('../hooks/use-git-sync-progress', () => ({
+  useGitSyncProgress: (enabled: boolean) => mockUseGitSyncProgress(enabled),
+}))
+
 // Mock fetch for polling
 const mockFetch = vi.fn()
 
@@ -94,6 +100,16 @@ describe('StatusBar', () => {
       error: null,
       response: null,
       reset: mockResetSync,
+    })
+
+    mockUseGitSyncProgress.mockReturnValue({
+      phase: 'idle',
+      reposScanned: 0,
+      totalRepos: 0,
+      commitsFound: 0,
+      sessionsCorrelated: 0,
+      totalCorrelatableSessions: 0,
+      linksCreated: 0,
     })
   })
 
@@ -207,13 +223,16 @@ describe('StatusBar', () => {
 
   describe('AC-3.6/3.7: Error toast with retry button', () => {
     it('should show error toast when sync fails', async () => {
-      mockUseGitSync.mockReturnValue({
-        triggerSync: mockTriggerSync,
-        status: 'error',
-        isLoading: false,
-        error: 'Network error',
-        response: null,
-        reset: mockResetSync,
+      // Error toasts are driven by SSE progress phase, not useGitSync status
+      mockUseGitSyncProgress.mockReturnValue({
+        phase: 'error',
+        reposScanned: 0,
+        totalRepos: 0,
+        commitsFound: 0,
+        sessionsCorrelated: 0,
+        totalCorrelatableSessions: 0,
+        linksCreated: 0,
+        errorMessage: 'Network error',
       })
 
       render(<StatusBar projects={mockProjects} />, { wrapper: createWrapper() })
@@ -230,13 +249,15 @@ describe('StatusBar', () => {
     })
 
     it('should not show duplicate error toasts', async () => {
-      mockUseGitSync.mockReturnValue({
-        triggerSync: mockTriggerSync,
-        status: 'error',
-        isLoading: false,
-        error: 'Network error',
-        response: null,
-        reset: mockResetSync,
+      mockUseGitSyncProgress.mockReturnValue({
+        phase: 'error',
+        reposScanned: 0,
+        totalRepos: 0,
+        commitsFound: 0,
+        sessionsCorrelated: 0,
+        totalCorrelatableSessions: 0,
+        linksCreated: 0,
+        errorMessage: 'Network error',
       })
 
       const { rerender } = render(<StatusBar projects={mockProjects} />, { wrapper: createWrapper() })
@@ -248,7 +269,7 @@ describe('StatusBar', () => {
       // Re-render with same error
       rerender(<StatusBar projects={mockProjects} />)
 
-      // Should still only have one call (deduplication)
+      // Should still only have one call (deduplication via doneHandledRef)
       expect(mockToastError).toHaveBeenCalledTimes(1)
     })
   })
