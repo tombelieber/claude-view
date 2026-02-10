@@ -25,6 +25,7 @@ pub use queries::StorageStats;
 pub use queries::HealthStats;
 pub use queries::HealthStatus;
 pub use queries::ClassificationStatus;
+pub use queries::facets::{FacetRow, FacetAggregateStats};
 
 // Re-export trends types
 pub use trends::current_week_bounds;

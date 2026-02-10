@@ -9,6 +9,7 @@ mod models;
 mod sessions;
 mod system;
 mod ai_generation;
+pub mod facets;
 mod types;
 
 pub use types::*;
