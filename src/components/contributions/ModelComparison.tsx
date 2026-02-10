@@ -30,7 +30,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
       [...byModel]
         .sort((a, b) => b.lines - a.lines)
         .map((m) => ({
-          displayName: formatModelName(m.model),
+          displayName: formatModelFamily(m.model),
           lines: m.lines,
           model: m.model,
           reeditRate: m.reeditRate,
@@ -171,7 +171,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                   >
                     <td className="py-3 pr-4">
                       <span className="font-medium text-gray-900 dark:text-gray-100">
-                        {formatModelName(model.model)}
+                        {formatModelFamily(model.model)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
@@ -226,9 +226,9 @@ function getModelColor(model: string): string {
 }
 
 /**
- * Format model name for display (capitalize, handle claude-X-Y-sonnet format).
+ * Extract model family name for space-constrained chart labels (e.g. "Opus", "Sonnet").
  */
-function formatModelName(model: string): string {
+function formatModelFamily(model: string): string {
   // Handle common Claude model naming patterns
   if (model.toLowerCase().includes('opus')) return 'Opus'
   if (model.toLowerCase().includes('sonnet')) return 'Sonnet'
@@ -268,7 +268,7 @@ function generateModelInsight(models: ModelStats[]): string | null {
   const reeditReduction = (1 - (best.reeditRate ?? 0) / (worst.reeditRate ?? 1)) * 100
 
   if (costRatio > 1 && reeditReduction > 10) {
-    return `${formatModelName(best.model)} costs ${costRatio.toFixed(1)}x more but needs ${reeditReduction.toFixed(0)}% fewer re-edits \u2014 worth it for complex work; use ${formatModelName(worst.model)} for routine tasks to save cost.`
+    return `${formatModelFamily(best.model)} costs ${costRatio.toFixed(1)}x more but needs ${reeditReduction.toFixed(0)}% fewer re-edits \u2014 worth it for complex work; use ${formatModelFamily(worst.model)} for routine tasks to save cost.`
   }
 
   return null
