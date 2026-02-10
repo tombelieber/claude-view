@@ -8,14 +8,21 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
+import { QualityBadge } from './QualityBadge'
 
 export type SortColumn = 'time' | 'branch' | 'prompts' | 'files' | 'commits' | 'duration'
 export type SortDirection = 'asc' | 'desc'
+
+interface BadgeData {
+  outcome?: string | null
+  satisfaction?: string | null
+}
 
 interface CompactSessionTableProps {
   sessions: SessionInfo[]
@@ -70,162 +77,182 @@ function sessionUrl(session: SessionInfo): string {
 
 const columnHelper = createColumnHelper<SessionInfo>()
 
-const columns: ColumnDef<SessionInfo, any>[] = [
-  columnHelper.accessor('modifiedAt', {
-    id: 'time',
-    header: 'Time',
-    size: 115,
-    enableSorting: true,
-    cell: ({ row }) => {
-      const s = row.original
-      const end = Number(s.modifiedAt)
-      return (
-        <Link to={sessionUrl(s)} className="block whitespace-nowrap text-[12px] text-gray-700 dark:text-gray-300">
-          <span className="font-medium text-gray-900 dark:text-gray-100">{formatDatePrefix(end)}</span>
-          {' '}
-          <span className="text-gray-400 dark:text-gray-500">{formatTimeShort(end)}</span>
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('gitBranch', {
-    id: 'branch',
-    header: 'Branch',
-    size: 120,
-    enableSorting: true,
-    cell: ({ row }) => {
-      const s = row.original
-      return (
-        <Link to={sessionUrl(s)} className="block">
-          {s.gitBranch ? (
-            <span className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 text-[11px] font-mono text-gray-600 dark:text-gray-400">
-              <GitBranch className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-              <span className="truncate">{s.gitBranch}</span>
+function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<SessionInfo, any>[] {
+  return [
+    columnHelper.accessor('modifiedAt', {
+      id: 'time',
+      header: 'Time',
+      size: 115,
+      enableSorting: true,
+      cell: ({ row }) => {
+        const s = row.original
+        const end = Number(s.modifiedAt)
+        return (
+          <Link to={sessionUrl(s)} className="block whitespace-nowrap text-[12px] text-gray-700 dark:text-gray-300">
+            <span className="font-medium text-gray-900 dark:text-gray-100">{formatDatePrefix(end)}</span>
+            {' '}
+            <span className="text-gray-400 dark:text-gray-500">{formatTimeShort(end)}</span>
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('gitBranch', {
+      id: 'branch',
+      header: 'Branch',
+      size: 120,
+      enableSorting: true,
+      cell: ({ row }) => {
+        const s = row.original
+        return (
+          <Link to={sessionUrl(s)} className="block">
+            {s.gitBranch ? (
+              <span className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 text-[11px] font-mono text-gray-600 dark:text-gray-400">
+                <GitBranch className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+                <span className="truncate">{s.gitBranch}</span>
+              </span>
+            ) : (
+              <span className="text-[11px] text-gray-300 dark:text-gray-600">--</span>
+            )}
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('preview', {
+      id: 'preview',
+      header: 'Preview',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const s = row.original
+        return (
+          <Link to={sessionUrl(s)} className="block">
+            <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate max-w-full">
+              <QualityBadge
+                outcome={badges?.[s.id]?.outcome}
+                satisfaction={badges?.[s.id]?.satisfaction}
+              />
+              <span className="truncate">{s.preview || 'Untitled session'}</span>
             </span>
-          ) : (
-            <span className="text-[11px] text-gray-300 dark:text-gray-600">--</span>
-          )}
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('preview', {
-    id: 'preview',
-    header: 'Preview',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const s = row.original
-      return (
-        <Link to={sessionUrl(s)} className="block">
-          <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate block">
-            {s.preview || 'Untitled session'}
-          </span>
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('userPromptCount', {
-    id: 'prompts',
-    header: 'Activity',
-    size: 85,
-    enableSorting: true,
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const s = row.original
-      const totalTokens = formatTokens(s.totalInputTokens, s.totalOutputTokens)
-      const hasActivity = s.userPromptCount > 0 || totalTokens !== '0'
-      return (
-        <Link to={sessionUrl(s)} className="block whitespace-nowrap">
-          {hasActivity ? (
-            <span className="text-[12px]">
-              <span className="font-medium text-gray-900 dark:text-gray-100">{s.userPromptCount}</span>
-              <span className="text-gray-300 dark:text-gray-600 mx-0.5">/</span>
-              <span className="text-gray-500 dark:text-gray-400">{totalTokens}</span>
-            </span>
-          ) : (
-            <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
-          )}
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('filesEditedCount', {
-    id: 'files',
-    header: 'Changes',
-    size: 100,
-    enableSorting: true,
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const s = row.original
-      const hasLOC = s.linesAdded > 0 || s.linesRemoved > 0
-      return (
-        <Link to={sessionUrl(s)} className="block whitespace-nowrap">
-          {s.filesEditedCount > 0 ? (
-            <span className="text-[12px]">
-              <span className="font-medium text-gray-900 dark:text-gray-100">{s.filesEditedCount}f</span>
-              {hasLOC && (
-                <>
-                  {' '}
-                  <span className="text-green-600 dark:text-green-400">+{formatNumber(s.linesAdded)}</span>
-                  <span className="text-gray-300 dark:text-gray-600">/</span>
-                  <span className="text-red-500 dark:text-red-400">-{formatNumber(s.linesRemoved)}</span>
-                </>
-              )}
-            </span>
-          ) : (
-            <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
-          )}
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('commitCount', {
-    id: 'commits',
-    header: 'Commits',
-    size: 62,
-    enableSorting: true,
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const s = row.original
-      return (
-        <Link to={sessionUrl(s)} className="block">
-          {s.commitCount > 0 ? (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold tabular-nums">
-              <GitCommit className="w-3 h-3" />
-              {s.commitCount}
-            </span>
-          ) : (
-            <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
-          )}
-        </Link>
-      )
-    },
-  }),
-  columnHelper.accessor('durationSeconds', {
-    id: 'duration',
-    header: 'Dur.',
-    size: 52,
-    enableSorting: true,
-    meta: { align: 'right' },
-    cell: ({ row }) => {
-      const s = row.original
-      const duration = s.durationSeconds > 0 ? formatDuration(s.durationSeconds) : null
-      return (
-        <Link to={sessionUrl(s)} className="block text-[12px]">
-          {duration ? (
-            <span className="font-medium text-gray-700 dark:text-gray-300">{duration}</span>
-          ) : (
-            <span className="text-gray-300 dark:text-gray-600">--</span>
-          )}
-        </Link>
-      )
-    },
-  }),
-]
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('userPromptCount', {
+      id: 'prompts',
+      header: 'Activity',
+      size: 85,
+      enableSorting: true,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const s = row.original
+        const totalTokens = formatTokens(s.totalInputTokens, s.totalOutputTokens)
+        const hasActivity = s.userPromptCount > 0 || totalTokens !== '0'
+        return (
+          <Link to={sessionUrl(s)} className="block whitespace-nowrap">
+            {hasActivity ? (
+              <span className="text-[12px]">
+                <span className="font-medium text-gray-900 dark:text-gray-100">{s.userPromptCount}</span>
+                <span className="text-gray-300 dark:text-gray-600 mx-0.5">/</span>
+                <span className="text-gray-500 dark:text-gray-400">{totalTokens}</span>
+              </span>
+            ) : (
+              <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
+            )}
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('filesEditedCount', {
+      id: 'files',
+      header: 'Changes',
+      size: 100,
+      enableSorting: true,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const s = row.original
+        const hasLOC = s.linesAdded > 0 || s.linesRemoved > 0
+        return (
+          <Link to={sessionUrl(s)} className="block whitespace-nowrap">
+            {s.filesEditedCount > 0 ? (
+              <span className="text-[12px]">
+                <span className="font-medium text-gray-900 dark:text-gray-100">{s.filesEditedCount}f</span>
+                {hasLOC && (
+                  <>
+                    {' '}
+                    <span className="text-green-600 dark:text-green-400">+{formatNumber(s.linesAdded)}</span>
+                    <span className="text-gray-300 dark:text-gray-600">/</span>
+                    <span className="text-red-500 dark:text-red-400">-{formatNumber(s.linesRemoved)}</span>
+                  </>
+                )}
+              </span>
+            ) : (
+              <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
+            )}
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('commitCount', {
+      id: 'commits',
+      header: 'Commits',
+      size: 62,
+      enableSorting: true,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const s = row.original
+        return (
+          <Link to={sessionUrl(s)} className="block">
+            {s.commitCount > 0 ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold tabular-nums">
+                <GitCommit className="w-3 h-3" />
+                {s.commitCount}
+              </span>
+            ) : (
+              <span className="text-[12px] text-gray-300 dark:text-gray-600">--</span>
+            )}
+          </Link>
+        )
+      },
+    }),
+    columnHelper.accessor('durationSeconds', {
+      id: 'duration',
+      header: 'Dur.',
+      size: 52,
+      enableSorting: true,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const s = row.original
+        const duration = s.durationSeconds > 0 ? formatDuration(s.durationSeconds) : null
+        return (
+          <Link to={sessionUrl(s)} className="block text-[12px]">
+            {duration ? (
+              <span className="font-medium text-gray-700 dark:text-gray-300">{duration}</span>
+            ) : (
+              <span className="text-gray-300 dark:text-gray-600">--</span>
+            )}
+          </Link>
+        )
+      },
+    }),
+  ]
+}
 
 // --- Component ---
 
 export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirection }: CompactSessionTableProps) {
+  const sessionIds = sessions.map(s => s.id).join(',')
+  const { data: badges } = useQuery<Record<string, BadgeData>>({
+    queryKey: ['facet-badges', sessionIds],
+    queryFn: async () => {
+      if (!sessionIds) return {}
+      const res = await fetch(`/api/facets/badges?ids=${encodeURIComponent(sessionIds)}`)
+      return res.json()
+    },
+    enabled: !!sessionIds,
+    staleTime: 60_000,
+  })
+
+  const columns = useMemo(() => buildColumns(badges), [badges])
+
   const sorting: SortingState = useMemo(
     () => [{ id: sortColumn, desc: sortDirection === 'desc' }],
     [sortColumn, sortDirection]
