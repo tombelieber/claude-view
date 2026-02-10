@@ -5,13 +5,17 @@
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
 pub mod error;
+pub mod git_sync_state;
 pub mod indexing_state;
 pub mod insights;
+pub mod metrics;
 pub mod routes;
 pub mod state;
 
 pub use error::*;
+pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
+pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
@@ -78,6 +82,23 @@ pub fn create_app_with_static(db: Database, static_dir: Option<PathBuf>) -> Rout
 /// background indexing task.
 pub fn create_app_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Router {
     create_app_with_indexing_and_static(db, indexing, None)
+}
+
+/// Create app with an external `GitSyncState` (API-only mode, for testing).
+///
+/// Sets up an `AppState` with a default `IndexingState` but a caller-provided
+/// `GitSyncState`, allowing tests to pre-configure sync progress/phase and
+/// then assert on the SSE endpoint output.
+pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Router {
+    let state = Arc::new(state::AppState {
+        start_time: std::time::Instant::now(),
+        db,
+        indexing: Arc::new(IndexingState::new()),
+        git_sync,
+        registry: Arc::new(std::sync::RwLock::new(None)),
+        pricing: vibe_recall_db::default_pricing(),
+    });
+    api_routes(state)
 }
 
 /// Create the full Axum application with external `IndexingState`, shared

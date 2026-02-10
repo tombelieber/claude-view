@@ -1,25 +1,26 @@
 import { GitBranch, Calendar, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { TimeRange } from '../../hooks/use-contributions'
+import type { TimeRangePreset } from '../../hooks/use-time-range'
 
 interface ContributionsEmptyStateProps {
-  range: TimeRange
-  onRangeChange: (range: TimeRange) => void
+  preset: TimeRangePreset
+  onPresetChange: (preset: TimeRangePreset) => void
 }
 
-const RANGE_LABELS: Record<TimeRange, string> = {
+const RANGE_LABELS: Record<TimeRangePreset, string> = {
   today: 'today',
-  week: 'this week',
-  month: 'this month',
-  '90days': 'the last 90 days',
+  '7d': 'this week',
+  '30d': 'this month',
+  '90d': 'the last 90 days',
   all: 'all time',
+  custom: 'the selected range',
 }
 
 /**
  * Empty state for the contributions page when no sessions exist.
  */
-export function ContributionsEmptyState({ range, onRangeChange }: ContributionsEmptyStateProps) {
-  const isFiltered = range !== 'all'
+export function ContributionsEmptyState({ preset, onPresetChange }: ContributionsEmptyStateProps) {
+  const isFiltered = preset !== 'all'
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -34,7 +35,7 @@ export function ContributionsEmptyState({ range, onRangeChange }: ContributionsE
       {isFiltered ? (
         <>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            No sessions {RANGE_LABELS[range]}
+            No sessions {RANGE_LABELS[preset]}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mb-6">
             There are no Claude Code sessions recorded for this time period.
@@ -42,7 +43,7 @@ export function ContributionsEmptyState({ range, onRangeChange }: ContributionsE
           </p>
           <button
             type="button"
-            onClick={() => onRangeChange('all')}
+            onClick={() => onPresetChange('all')}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors cursor-pointer"
           >
             View All Time

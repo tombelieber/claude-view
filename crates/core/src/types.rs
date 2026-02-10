@@ -264,8 +264,6 @@ pub struct SessionInfo {
     pub hook_progress_count: u32,
     #[serde(default)]
     pub mcp_progress_count: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub summary_text: Option<String>,
     // Phase C: LOC estimation
     #[serde(default)]
     pub lines_added: u32,
@@ -747,7 +745,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             // Phase C: LOC estimation
             lines_added: 0,
@@ -860,7 +858,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             // Phase C: LOC estimation
             lines_added: 0,
