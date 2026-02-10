@@ -7,8 +7,9 @@ use serde::Serialize;
 use std::collections::HashMap;
 use ts_rs::TS;
 use vibe_recall_core::{
-    parse_model_id, DashboardStats, DayActivity, ProjectInfo, ProjectStat, ProjectSummary,
-    RawTurn, SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
+    parse_model_id, BranchFilter, DashboardStats, DayActivity, ProjectInfo, ProjectStat,
+    ProjectSummary, RawTurn, SessionDurationStat, SessionInfo, SessionsPage, SkillStat,
+    ToolCounts,
 };
 
 /// Branch count for a project.
@@ -231,7 +232,7 @@ impl Database {
                 ?10, ?11, ?12, ?13,
                 ?14, ?15, ?16, ?17,
                 ?18,
-                ?19, ?20, ?21,
+                ?19, NULLIF(TRIM(?20), ''), ?21,
                 ?22, ?23, ?24,
                 ?25, ?26,
                 ?27, ?28, ?29,
@@ -256,7 +257,7 @@ impl Database {
                 tool_counts_write = excluded.tool_counts_write,
                 message_count = excluded.message_count,
                 summary = excluded.summary,
-                git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
+                git_branch = COALESCE(NULLIF(TRIM(excluded.git_branch), ''), sessions.git_branch),
                 is_sidechain = excluded.is_sidechain,
                 user_prompt_count = excluded.user_prompt_count,
                 api_call_count = excluded.api_call_count,
@@ -518,7 +519,7 @@ impl Database {
             ) VALUES (
                 ?1, ?2, ?3, ?4,
                 ?5, ?6, ?7, ?8,
-                ?9, ?10, ?11,
+                ?9, NULLIF(TRIM(?10), ''), ?11,
                 ?12, ?13,
                 '', '[]', '[]',
                 0, 0, 0, 0,
@@ -533,7 +534,7 @@ impl Database {
                 summary = excluded.summary,
                 message_count = excluded.message_count,
                 last_message_at = CASE WHEN excluded.last_message_at > 0 THEN excluded.last_message_at ELSE sessions.last_message_at END,
-                git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
+                git_branch = COALESCE(NULLIF(TRIM(excluded.git_branch), ''), sessions.git_branch),
                 is_sidechain = excluded.is_sidechain,
                 size_bytes = excluded.size_bytes,
                 indexed_at = excluded.indexed_at
@@ -669,7 +670,7 @@ impl Database {
                 ai_lines_added = ?45,
                 ai_lines_removed = ?46,
                 work_type = ?47,
-                git_branch = COALESCE(git_branch, ?48),
+                git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
                 primary_model = ?49,
                 last_message_at = COALESCE(?50, last_message_at)
             WHERE id = ?1
@@ -1063,16 +1064,24 @@ impl Database {
         limit: i64,
         offset: i64,
         sort: &str,
-        branch: Option<&str>,
+        branch_filter: &BranchFilter<'_>,
         include_sidechains: bool,
     ) -> DbResult<SessionsPage> {
-        // Build WHERE clause dynamically
+        // Build WHERE clause dynamically.
+        // Bind indices: ?1 = project_id, ?2 = limit, ?3 = offset.
+        // ?4 is used only for BranchFilter::Named (a concrete branch name).
         let mut conditions = vec!["s.project_id = ?1".to_string()];
         if !include_sidechains {
             conditions.push("s.is_sidechain = 0".to_string());
         }
-        if branch.is_some() {
-            conditions.push("s.git_branch = ?4".to_string());
+        match branch_filter {
+            BranchFilter::All => { /* no condition */ }
+            BranchFilter::NoBranch => {
+                conditions.push("s.git_branch IS NULL".to_string());
+            }
+            BranchFilter::Named(_) => {
+                conditions.push("s.git_branch = ?4".to_string());
+            }
         }
 
         let where_clause = conditions.join(" AND ");
@@ -1090,8 +1099,8 @@ impl Database {
         );
         let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql)
             .bind(project_id);
-        if let Some(b) = branch {
-            count_query = count_query.bind(b);
+        if let BranchFilter::Named(name) = branch_filter {
+            count_query = count_query.bind(*name);
         }
         let (total,) = count_query.fetch_one(self.pool()).await?;
 
@@ -1148,8 +1157,8 @@ impl Database {
             .bind(project_id)
             .bind(limit)
             .bind(offset);
-        if let Some(b) = branch {
-            query = query.bind(b);
+        if let BranchFilter::Named(name) = branch_filter {
+            query = query.bind(*name);
         }
 
         let rows: Vec<SessionRow> = query.fetch_all(self.pool()).await?;
@@ -1597,6 +1606,19 @@ impl Database {
         ))
     }
 
+    /// Get all session file_paths from the database.
+    ///
+    /// Returns every non-empty `file_path` in the sessions table.
+    /// Used by the stale-session pruning step to check which files still exist on disk.
+    pub async fn get_all_session_file_paths(&self) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT file_path FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|(path,)| path).collect())
+    }
+
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
     /// Also cleans up corresponding indexer_state entries.
     /// Both deletes run in a transaction for consistency.
@@ -2024,7 +2046,7 @@ pub async fn update_session_deep_fields_tx(
             ai_lines_added = ?45,
             ai_lines_removed = ?46,
             work_type = ?47,
-            git_branch = COALESCE(git_branch, ?48),
+            git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
             primary_model = ?49,
             last_message_at = COALESCE(?50, last_message_at)
         WHERE id = ?1
@@ -2921,13 +2943,13 @@ mod tests {
         }
 
         // Page 1: limit=2, offset=0
-        let page1 = db.list_sessions_for_project("project-a", 2, 0, "recent", None, false).await.unwrap();
+        let page1 = db.list_sessions_for_project("project-a", 2, 0, "recent", &BranchFilter::All, false).await.unwrap();
         assert_eq!(page1.total, 5);
         assert_eq!(page1.sessions.len(), 2);
         assert_eq!(page1.sessions[0].id, "sess-5"); // Most recent first
 
         // Page 2: limit=2, offset=2
-        let page2 = db.list_sessions_for_project("project-a", 2, 2, "recent", None, false).await.unwrap();
+        let page2 = db.list_sessions_for_project("project-a", 2, 2, "recent", &BranchFilter::All, false).await.unwrap();
         assert_eq!(page2.total, 5);
         assert_eq!(page2.sessions.len(), 2);
         assert_eq!(page2.sessions[0].id, "sess-3");
@@ -2946,11 +2968,11 @@ mod tests {
         db.insert_session(&s3, "project-a", "Project A").await.unwrap();
 
         // Sort by oldest
-        let oldest = db.list_sessions_for_project("project-a", 10, 0, "oldest", None, false).await.unwrap();
+        let oldest = db.list_sessions_for_project("project-a", 10, 0, "oldest", &BranchFilter::All, false).await.unwrap();
         assert_eq!(oldest.sessions[0].id, "sess-1");
 
         // Sort by messages
-        let by_msg = db.list_sessions_for_project("project-a", 10, 0, "messages", None, false).await.unwrap();
+        let by_msg = db.list_sessions_for_project("project-a", 10, 0, "messages", &BranchFilter::All, false).await.unwrap();
         assert_eq!(by_msg.sessions[0].id, "sess-1"); // 100 messages
     }
 
@@ -2965,12 +2987,12 @@ mod tests {
         db.insert_session(&s2, "project-a", "Project A").await.unwrap();
 
         // Default: exclude sidechains
-        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", None, false).await.unwrap();
+        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", &BranchFilter::All, false).await.unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.sessions[0].id, "sess-1");
 
         // Include sidechains
-        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", None, true).await.unwrap();
+        let page = db.list_sessions_for_project("project-a", 10, 0, "recent", &BranchFilter::All, true).await.unwrap();
         assert_eq!(page.total, 2);
     }
 
@@ -3180,7 +3202,7 @@ mod tests {
         .unwrap();
 
         // Test paginated retrieval includes Phase 3 fields
-        let page = db.list_sessions_for_project("proj-paginated", 10, 0, "recent", None, false).await.unwrap();
+        let page = db.list_sessions_for_project("proj-paginated", 10, 0, "recent", &BranchFilter::All, false).await.unwrap();
         assert_eq!(page.sessions.len(), 1);
 
         let session = &page.sessions[0];
