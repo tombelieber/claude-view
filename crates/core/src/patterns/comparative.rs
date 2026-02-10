@@ -27,19 +27,18 @@ fn cp01_you_vs_baseline(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 
     let editing_sessions: Vec<_> = sessions
         .iter()
-        .filter(|s| s.files_edited_count > 0 && s.duration_seconds > 0)
+        .filter(|s| s.files_edited_count > 0 && s.duration_seconds > 0 && s.modified_at > 0)
         .collect();
 
     if editing_sessions.len() < 20 {
         return None;
     }
 
-    // Find the max timestamp to determine "recent"
-    let max_ts = editing_sessions
-        .iter()
-        .map(|s| s.modified_at)
-        .max()
-        .unwrap_or(0);
+    // Find the max timestamp to determine "recent" (guard epoch-zero)
+    let max_ts = match editing_sessions.iter().map(|s| s.modified_at).max() {
+        Some(ts) if ts > 0 => ts,
+        _ => return None,
+    };
 
     let week_ago = max_ts - 7 * 86400;
 
