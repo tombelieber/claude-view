@@ -195,7 +195,13 @@ pub async fn dashboard_stats(
     }
 
     // Get earliest session date for "since [date]" display
-    let data_start_date = state.db.get_oldest_session_date(query.project.as_deref(), query.branch.as_deref()).await.ok().flatten();
+    let data_start_date = match state.db.get_oldest_session_date(query.project.as_deref(), query.branch.as_deref()).await {
+        Ok(date) => date,
+        Err(e) => {
+            tracing::warn!(endpoint = "dashboard_stats", error = %e, "Failed to fetch oldest session date");
+            None
+        }
+    };
 
     // Determine if we have a time range filter
     let has_time_range = query.from.is_some() && query.to.is_some();
@@ -322,29 +328,33 @@ pub async fn storage_stats(
     let session_count = match state.db.get_session_count().await {
         Ok(count) => count,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to get session count");
-            0
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get session count");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
         }
     };
     let project_count = match state.db.get_project_count().await {
         Ok(count) => count,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to get project count");
-            0
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get project count");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
         }
     };
     let commit_count = match state.db.get_commit_count().await {
         Ok(count) => count,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to get commit count");
-            0
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get commit count");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
         }
     };
     let oldest_session_date = match state.db.get_oldest_session_date(None, None).await {
         Ok(date) => date,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to get oldest session date");
-            None
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get oldest session date");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
         }
     };
 
@@ -355,8 +365,9 @@ pub async fn storage_stats(
     let sqlite_bytes = match state.db.get_database_size().await {
         Ok(size) => size as u64,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to get database size");
-            0
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get database size");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
         }
     };
 
