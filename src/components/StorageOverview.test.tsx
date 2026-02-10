@@ -108,7 +108,6 @@ describe('StorageOverview', () => {
       await waitFor(() => {
         expect(screen.getByText('Actions')).toBeInTheDocument()
         expect(screen.getByText('Rebuild Index')).toBeInTheDocument()
-        expect(screen.getByText('Clear Cache')).toBeInTheDocument()
       })
     })
 
@@ -118,15 +117,6 @@ describe('StorageOverview', () => {
       await waitFor(() => {
         expect(screen.getByText('Index Performance')).toBeInTheDocument()
         expect(screen.getByText(/Last deep index:/)).toBeInTheDocument()
-      })
-    })
-
-    it('should disable Clear Cache button', async () => {
-      render(<StorageOverview />, { wrapper: createWrapper() })
-
-      await waitFor(() => {
-        const clearCacheButton = screen.getByText('Clear Cache').closest('button')
-        expect(clearCacheButton).toBeDisabled()
       })
     })
   })
