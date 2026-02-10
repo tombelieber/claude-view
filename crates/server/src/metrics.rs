@@ -33,7 +33,9 @@ pub fn init_metrics() -> bool {
     }
 
     // Store the handle for later rendering
-    let _ = PROMETHEUS_HANDLE.set(handle);
+    if PROMETHEUS_HANDLE.set(handle).is_err() {
+        tracing::warn!("Failed to store Prometheus handle (already set)");
+    }
 
     // Describe all metrics
     describe_metrics();
