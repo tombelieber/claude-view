@@ -114,7 +114,11 @@ function getGroupKey(session: SessionInfo, groupBy: GroupBy): string {
       const ts = Number(session.modifiedAt);
       if (ts <= 0) return '(unknown date)';
       const date = new Date(ts * 1000);
-      return date.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Use local date, not UTC — toISOString() shifts the date for east-of-UTC users
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
     case 'week': {
@@ -122,7 +126,10 @@ function getGroupKey(session: SessionInfo, groupBy: GroupBy): string {
       if (ts <= 0) return '(unknown date)';
       const date = new Date(ts * 1000);
       const startOfWeek = getStartOfWeek(date);
-      return startOfWeek.toISOString().split('T')[0]; // YYYY-MM-DD of week start
+      const year = startOfWeek.getFullYear();
+      const month = String(startOfWeek.getMonth() + 1).padStart(2, '0');
+      const day = String(startOfWeek.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
     case 'month': {
