@@ -296,7 +296,7 @@ function ClassificationSection({
         <MetricRow
           label="Last Run"
           value={
-            classification.lastRunAt
+            classification.lastRunAt && !classification.lastRunAt.startsWith('1970')
               ? formatRelativeTimestamp(classification.lastRunAt)
               : 'Never'
           }

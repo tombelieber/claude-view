@@ -543,16 +543,28 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
         }
 
         // Batch write to database (single transaction)
-        if !batch_updates.is_empty() {
-            if let Err(e) = db.batch_update_session_classifications(&batch_updates).await {
-                tracing::error!(error = %e, "Failed to persist batch classifications");
-                // Count the batch as failed since results weren't persisted
-                failed_total += batch_updates.len() as u64;
-                classified_total -= batch_updates.len() as u64;
+        let batch_persisted = if !batch_updates.is_empty() {
+            match db.batch_update_session_classifications(&batch_updates).await {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to persist batch classifications");
+                    // Undo the per-item classified_total increments since nothing was persisted
+                    let batch_classified = batch_updates.len() as u64;
+                    if classified_total >= batch_classified {
+                        classified_total -= batch_classified;
+                    }
+                    failed_total += batch_classified;
+                    false
+                }
             }
-        }
+        } else {
+            true
+        };
 
-        classify_state.increment_classified(batch_updates.len() as u64);
+        // Only report progress for successfully persisted batches
+        if batch_persisted {
+            classify_state.increment_classified(batch_updates.len() as u64);
+        }
 
         // Update job progress in database
         if let Err(e) = db
