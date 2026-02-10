@@ -9,6 +9,7 @@ pub mod invocation;
 pub mod metrics;
 pub mod contribution;
 pub mod work_type;
+pub mod branch_filter;
 
 pub use error::*;
 pub use types::*;
@@ -20,3 +21,4 @@ pub use invocation::*;
 pub use metrics::*;
 pub use contribution::*;
 pub use work_type::*;
+pub use branch_filter::*;

@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
 import { buildSessionUrl } from '../lib/url-utils'
+import { NO_BRANCH } from '../lib/constants'
 import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
 import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
@@ -147,7 +148,13 @@ export function HistoryView() {
       if (sidebarProject && s.project !== sidebarProject) return false
 
       // Sidebar branch filter (global, from URL ?branch= param)
-      if (sidebarBranch && s.gitBranch !== sidebarBranch) return false
+      if (sidebarBranch) {
+        if (sidebarBranch === NO_BRANCH) {
+          if (s.gitBranch) return false // Keep only null-branch sessions
+        } else {
+          if (s.gitBranch !== sidebarBranch) return false
+        }
+      }
 
       // Date filter (from sparkline click)
       if (selectedDate) {
@@ -159,7 +166,11 @@ export function HistoryView() {
 
       // NEW FILTER LOGIC: Branch filter
       if (filters.branches.length > 0) {
-        if (!s.gitBranch || !filters.branches.includes(s.gitBranch)) return false
+        const wantNoBranch = filters.branches.includes(NO_BRANCH)
+        const namedBranches = filters.branches.filter(b => b !== NO_BRANCH)
+        const matchesNoBranch = wantNoBranch && !s.gitBranch
+        const matchesNamed = s.gitBranch && namedBranches.includes(s.gitBranch)
+        if (!matchesNoBranch && !matchesNamed) return false
       }
 
       // NEW FILTER LOGIC: Model filter
@@ -368,7 +379,9 @@ export function HistoryView() {
               {sidebarBranch && (
                 <>
                   <span className="text-blue-300 dark:text-blue-600">/</span>
-                  <span className="text-blue-600 dark:text-blue-400 truncate">{sidebarBranch}</span>
+                  <span className={cn("text-blue-600 dark:text-blue-400 truncate", sidebarBranch === NO_BRANCH && 'italic')}>
+                    {sidebarBranch === NO_BRANCH ? '(no branch)' : sidebarBranch}
+                  </span>
                 </>
               )}
               <button
