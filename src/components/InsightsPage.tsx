@@ -9,11 +9,12 @@ import { PatternsTab } from './insights/PatternsTab'
 import { CategoriesTab } from './insights/CategoriesTab'
 import { TrendsTab } from './insights/TrendsTab'
 import { BenchmarksTab } from './insights/BenchmarksTab'
+import { QualityTab } from './insights/QualityTab'
 import { TimeRangeFilter } from './insights/TimeRangeFilter'
 import { InsightsSkeleton } from './insights/InsightsSkeleton'
 
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
-const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks']
+const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks', 'quality']
 
 function isValidTimeRange(value: string | null): value is TimeRange {
   return value !== null && VALID_RANGES.includes(value as TimeRange)
@@ -160,6 +161,10 @@ export function InsightsPage() {
 
           {activeTab === 'benchmarks' && (
             <BenchmarksTab timeRange={timeRange} />
+          )}
+
+          {activeTab === 'quality' && (
+            <QualityTab />
           )}
         </div>
       </div>

@@ -8,7 +8,7 @@ import type { GeneratedInsight } from '../types/generated/GeneratedInsight'
 
 export type TimeRange = '7d' | '30d' | '90d' | 'all'
 
-export type TabId = 'patterns' | 'trends' | 'categories' | 'benchmarks'
+export type TabId = 'patterns' | 'trends' | 'categories' | 'benchmarks' | 'quality'
 
 // ============================================================================
 // UI Data Types (mapped from API response)

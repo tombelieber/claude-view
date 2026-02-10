@@ -12,6 +12,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'categories', label: 'Categories' },
   { id: 'trends', label: 'Trends' },
   { id: 'benchmarks', label: 'Benchmarks' },
+  { id: 'quality', label: 'Quality' },
 ]
 
 export function PatternsTabs({
