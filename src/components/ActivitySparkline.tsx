@@ -50,6 +50,7 @@ export function ActivitySparkline({
     let earliest = new Date(today)
     earliest.setDate(earliest.getDate() - 13) // minimum 14 days
     for (const s of sessions) {
+      if (s.modifiedAt <= 0) continue
       const d = new Date(s.modifiedAt * 1000)
       d.setHours(0, 0, 0, 0)
       if (d < earliest) earliest = d
@@ -184,7 +185,6 @@ export function ActivitySparkline({
         <div
           ref={scrollRef}
           className="overflow-x-auto"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: isDark ? '#4b5563 transparent' : '#d1d5db transparent' }}
         >
           <div style={{ minWidth: chartWidth, width: '100%' }}>
             <ResponsiveContainer width="100%" height={140}>

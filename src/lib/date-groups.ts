@@ -65,6 +65,7 @@ export function groupSessionsByDate(sessions: SessionInfo[]): DateGroup[] {
   let currentGroup: SessionInfo[] = []
 
   for (const session of sessions) {
+    if (session.modifiedAt <= 0) continue
     const date = new Date(session.modifiedAt * 1000)
     const label = getTierLabel(date, now)
 
@@ -93,6 +94,7 @@ export function groupSessionsByDate(sessions: SessionInfo[]): DateGroup[] {
 export function countSessionsByDay(sessions: SessionInfo[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const session of sessions) {
+    if (session.modifiedAt <= 0) continue
     const date = new Date(session.modifiedAt * 1000)
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     counts.set(key, (counts.get(key) ?? 0) + 1)

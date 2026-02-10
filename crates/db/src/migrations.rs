@@ -229,19 +229,235 @@ CREATE TABLE IF NOT EXISTS api_errors (
     // they only slow down bulk writes (~24k unnecessary B-tree ops per reindex).
     r#"DROP INDEX IF EXISTS idx_invocations_session;"#,
     r#"DROP INDEX IF EXISTS idx_invocations_timestamp;"#,
-    // Migration 13: Theme 4 Foundation
-    // 13a: Classification hierarchy columns on sessions
+    // Migration 13: Add lines_added and lines_removed to sessions (Phase C: LOC estimation)
+    r#"ALTER TABLE sessions ADD COLUMN lines_added INTEGER NOT NULL DEFAULT 0 CHECK (lines_added >= 0);"#,
+    r#"ALTER TABLE sessions ADD COLUMN lines_removed INTEGER NOT NULL DEFAULT 0 CHECK (lines_removed >= 0);"#,
+    // Source tracking: 0 = not computed, 1 = tool-call estimate, 2 = git diff
+    r#"ALTER TABLE sessions ADD COLUMN loc_source INTEGER NOT NULL DEFAULT 0 CHECK (loc_source IN (0, 1, 2));"#,
+    // Migration 14: Theme 3 contribution tracking fields
+    // 14a: Add AI contribution metrics to sessions table
+    r#"ALTER TABLE sessions ADD COLUMN ai_lines_added INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN ai_lines_removed INTEGER NOT NULL DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN work_type TEXT;"#,  // 'deep_work', 'quick_ask', 'planning', 'bug_fix', 'standard'
+    // 14b: Add diff stats to commits table (nullable: diff stats may not be available initially)
+    r#"ALTER TABLE commits ADD COLUMN files_changed INTEGER;"#,
+    r#"ALTER TABLE commits ADD COLUMN insertions INTEGER;"#,
+    r#"ALTER TABLE commits ADD COLUMN deletions INTEGER;"#,
+    // 14c: Add contribution_snapshots table for daily aggregates
+    r#"
+CREATE TABLE IF NOT EXISTS contribution_snapshots (
+    id INTEGER PRIMARY KEY,
+    date TEXT NOT NULL,              -- YYYY-MM-DD
+    project_id TEXT,                 -- NULL for global
+    branch TEXT,                     -- NULL for project-wide
+    sessions_count INTEGER DEFAULT 0,
+    ai_lines_added INTEGER DEFAULT 0,
+    ai_lines_removed INTEGER DEFAULT 0,
+    commits_count INTEGER DEFAULT 0,
+    commit_insertions INTEGER DEFAULT 0,
+    commit_deletions INTEGER DEFAULT 0,
+    tokens_used INTEGER DEFAULT 0,
+    cost_cents INTEGER DEFAULT 0,
+    UNIQUE(date, project_id, branch)
+);
+"#,
+    // 14d: Indexes for contribution_snapshots
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_date ON contribution_snapshots(date);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_project_date ON contribution_snapshots(project_id, date);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_snapshots_branch_date ON contribution_snapshots(project_id, branch, date);"#,
+    // Migration 15: Add files_edited_count to contribution_snapshots
+    // This replaces the fabricated estimate_files_count (lines/50) with real data.
+    r#"ALTER TABLE contribution_snapshots ADD COLUMN files_edited_count INTEGER NOT NULL DEFAULT 0;"#,
+    // Migration 16: Dashboard analytics indexes (Phase 2A time-range filtering)
+    // 16a: Add primary_model column for efficient model-based grouping
+    // This denormalizes the most-used model from turns table to avoid expensive subqueries.
+    r#"ALTER TABLE sessions ADD COLUMN primary_model TEXT;"#,
+    // 16b: Index for time-range queries on first_message_at
+    // Supports "sessions started in date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);"#,
+    // 16c: Composite index for time-range queries scoped to project
+    // Supports "sessions in project X during date range" queries.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);"#,
+    // 16d: Index for model-based grouping and filtering
+    // Supports "token usage by model" queries in AI Generation Breakdown.
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
+    // Migration 17: Add CASCADE FKs to turns and invocations tables.
+    // SQLite can't ALTER TABLE to add constraints, so we recreate the tables.
+    // IMPORTANT: This is a multi-statement migration executed via sqlx::raw_sql()
+    // within a single transaction to prevent data loss if the app crashes mid-migration.
+    // The migration runner detects multi-statement migrations (containing ";\n") and
+    // uses raw_sql() instead of query().
+    r#"
+BEGIN;
+CREATE TABLE turns_new (
+    session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    uuid                  TEXT NOT NULL,
+    seq                   INTEGER NOT NULL,
+    model_id              TEXT REFERENCES models(id),
+    parent_uuid           TEXT,
+    content_type          TEXT,
+    input_tokens          INTEGER,
+    output_tokens         INTEGER,
+    cache_read_tokens     INTEGER,
+    cache_creation_tokens INTEGER,
+    service_tier          TEXT,
+    timestamp             INTEGER,
+    PRIMARY KEY (session_id, uuid)
+);
+INSERT INTO turns_new SELECT * FROM turns;
+DROP TABLE turns;
+ALTER TABLE turns_new RENAME TO turns;
+CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_turns_model ON turns(model_id);
+CREATE TABLE invocations_new (
+    source_file  TEXT NOT NULL,
+    byte_offset  INTEGER NOT NULL,
+    invocable_id TEXT NOT NULL REFERENCES invocables(id),
+    session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project      TEXT NOT NULL,
+    timestamp    INTEGER NOT NULL,
+    PRIMARY KEY (source_file, byte_offset)
+);
+INSERT INTO invocations_new SELECT * FROM invocations;
+DROP TABLE invocations;
+ALTER TABLE invocations_new RENAME TO invocations;
+CREATE INDEX IF NOT EXISTS idx_invocations_invocable ON invocations(invocable_id);
+COMMIT;
+"#,
+    // Migration 18: Drop dead `file_hash` column from sessions table.
+    // SQLite requires table recreation to drop a column.
+    // IMPORTANT: Multi-statement migration in a single transaction via raw_sql()
+    // to prevent data loss if the app crashes between DROP and RENAME.
+    r#"
+BEGIN;
+CREATE TABLE sessions_new (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT,
+    preview TEXT NOT NULL DEFAULT '',
+    turn_count INTEGER NOT NULL DEFAULT 0,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    first_message_at INTEGER,
+    last_message_at INTEGER,
+    file_path TEXT NOT NULL UNIQUE,
+    indexed_at INTEGER,
+    project_path TEXT NOT NULL DEFAULT '',
+    project_display_name TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    last_message TEXT NOT NULL DEFAULT '',
+    files_touched TEXT NOT NULL DEFAULT '[]',
+    skills_used TEXT NOT NULL DEFAULT '[]',
+    tool_counts_edit INTEGER NOT NULL DEFAULT 0,
+    tool_counts_read INTEGER NOT NULL DEFAULT 0,
+    tool_counts_bash INTEGER NOT NULL DEFAULT 0,
+    tool_counts_write INTEGER NOT NULL DEFAULT 0,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    summary TEXT,
+    git_branch TEXT,
+    is_sidechain BOOLEAN NOT NULL DEFAULT 0,
+    deep_indexed_at INTEGER,
+    user_prompt_count INTEGER NOT NULL DEFAULT 0 CHECK (user_prompt_count >= 0),
+    api_call_count INTEGER NOT NULL DEFAULT 0 CHECK (api_call_count >= 0),
+    tool_call_count INTEGER NOT NULL DEFAULT 0 CHECK (tool_call_count >= 0),
+    files_read TEXT NOT NULL DEFAULT '[]',
+    files_edited TEXT NOT NULL DEFAULT '[]',
+    files_read_count INTEGER NOT NULL DEFAULT 0 CHECK (files_read_count >= 0),
+    files_edited_count INTEGER NOT NULL DEFAULT 0 CHECK (files_edited_count >= 0),
+    reedited_files_count INTEGER NOT NULL DEFAULT 0 CHECK (reedited_files_count >= 0),
+    duration_seconds INTEGER NOT NULL DEFAULT 0 CHECK (duration_seconds >= 0),
+    commit_count INTEGER NOT NULL DEFAULT 0 CHECK (commit_count >= 0),
+    total_input_tokens INTEGER NOT NULL DEFAULT 0,
+    total_output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+    thinking_block_count INTEGER NOT NULL DEFAULT 0,
+    turn_duration_avg_ms INTEGER,
+    turn_duration_max_ms INTEGER,
+    turn_duration_total_ms INTEGER,
+    api_error_count INTEGER NOT NULL DEFAULT 0,
+    api_retry_count INTEGER NOT NULL DEFAULT 0,
+    compaction_count INTEGER NOT NULL DEFAULT 0,
+    hook_blocked_count INTEGER NOT NULL DEFAULT 0,
+    agent_spawn_count INTEGER NOT NULL DEFAULT 0,
+    bash_progress_count INTEGER NOT NULL DEFAULT 0,
+    hook_progress_count INTEGER NOT NULL DEFAULT 0,
+    mcp_progress_count INTEGER NOT NULL DEFAULT 0,
+    summary_text TEXT,
+    parse_version INTEGER NOT NULL DEFAULT 0,
+    file_size_at_index INTEGER,
+    file_mtime_at_index INTEGER,
+    lines_added INTEGER NOT NULL DEFAULT 0 CHECK (lines_added >= 0),
+    lines_removed INTEGER NOT NULL DEFAULT 0 CHECK (lines_removed >= 0),
+    loc_source INTEGER NOT NULL DEFAULT 0 CHECK (loc_source IN (0, 1, 2)),
+    ai_lines_added INTEGER NOT NULL DEFAULT 0,
+    ai_lines_removed INTEGER NOT NULL DEFAULT 0,
+    work_type TEXT,
+    primary_model TEXT
+);
+INSERT INTO sessions_new (
+    id, project_id, title, preview, turn_count, file_count,
+    first_message_at, last_message_at, file_path, indexed_at,
+    project_path, project_display_name, size_bytes, last_message,
+    files_touched, skills_used,
+    tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
+    message_count, summary, git_branch, is_sidechain, deep_indexed_at,
+    user_prompt_count, api_call_count, tool_call_count,
+    files_read, files_edited, files_read_count, files_edited_count,
+    reedited_files_count, duration_seconds, commit_count,
+    total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens,
+    thinking_block_count, turn_duration_avg_ms, turn_duration_max_ms, turn_duration_total_ms,
+    api_error_count, api_retry_count, compaction_count, hook_blocked_count,
+    agent_spawn_count, bash_progress_count, hook_progress_count, mcp_progress_count,
+    summary_text, parse_version, file_size_at_index, file_mtime_at_index,
+    lines_added, lines_removed, loc_source,
+    ai_lines_added, ai_lines_removed, work_type, primary_model
+)
+SELECT
+    id, project_id, title, preview, turn_count, file_count,
+    first_message_at, last_message_at, file_path, indexed_at,
+    project_path, project_display_name, size_bytes, last_message,
+    files_touched, skills_used,
+    tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
+    message_count, summary, git_branch, is_sidechain, deep_indexed_at,
+    user_prompt_count, api_call_count, tool_call_count,
+    files_read, files_edited, files_read_count, files_edited_count,
+    reedited_files_count, duration_seconds, commit_count,
+    total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens,
+    thinking_block_count, turn_duration_avg_ms, turn_duration_max_ms, turn_duration_total_ms,
+    api_error_count, api_retry_count, compaction_count, hook_blocked_count,
+    agent_spawn_count, bash_progress_count, hook_progress_count, mcp_progress_count,
+    summary_text, parse_version, file_size_at_index, file_mtime_at_index,
+    lines_added, lines_removed, loc_source,
+    ai_lines_added, ai_lines_removed, work_type, primary_model
+FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_new RENAME TO sessions;
+CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project_id, git_branch);
+CREATE INDEX IF NOT EXISTS idx_sessions_sidechain ON sessions(is_sidechain);
+CREATE INDEX IF NOT EXISTS idx_sessions_commit_count ON sessions(commit_count) WHERE commit_count > 0;
+CREATE INDEX IF NOT EXISTS idx_sessions_reedit ON sessions(reedited_files_count) WHERE reedited_files_count > 0;
+CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration_seconds);
+CREATE INDEX IF NOT EXISTS idx_sessions_needs_reindex ON sessions(id, file_path) WHERE parse_version < 1;
+CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);
+COMMIT;
+"#,
+    // Migration 19: Theme 4 Foundation
+    // 19a: Classification hierarchy columns on sessions
     r#"ALTER TABLE sessions ADD COLUMN category_l1 TEXT;"#,
     r#"ALTER TABLE sessions ADD COLUMN category_l2 TEXT;"#,
     r#"ALTER TABLE sessions ADD COLUMN category_l3 TEXT;"#,
     r#"ALTER TABLE sessions ADD COLUMN category_confidence REAL;"#,
     r#"ALTER TABLE sessions ADD COLUMN category_source TEXT;"#,
     r#"ALTER TABLE sessions ADD COLUMN classified_at TEXT;"#,
-    // 13b: Behavioral metrics columns on sessions
+    // 19b: Behavioral metrics columns on sessions
     r#"ALTER TABLE sessions ADD COLUMN prompt_word_count INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN correction_count INTEGER DEFAULT 0;"#,
     r#"ALTER TABLE sessions ADD COLUMN same_file_edit_count INTEGER DEFAULT 0;"#,
-    // 13c: classification_jobs table
+    // 19c: classification_jobs table
     r#"
 CREATE TABLE IF NOT EXISTS classification_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +477,7 @@ CREATE TABLE IF NOT EXISTS classification_jobs (
     CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
 );
 "#,
-    // 13d: index_runs table
+    // 19d: index_runs table
     r#"
 CREATE TABLE IF NOT EXISTS index_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -278,7 +494,7 @@ CREATE TABLE IF NOT EXISTS index_runs (
     CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'failed'))
 );
 "#,
-    // 13e: Indexes for classification and index_runs
+    // 19e: Indexes for classification and index_runs
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_category_l1 ON sessions(category_l1) WHERE category_l1 IS NOT NULL;"#,
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_classified ON sessions(classified_at) WHERE classified_at IS NOT NULL;"#,
     r#"CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);"#,
@@ -298,6 +514,12 @@ mod tests {
     async fn setup_db() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 
+        // Enable foreign keys (required for CASCADE)
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+
         // Create migration tracking table
         sqlx::query("CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)")
             .execute(&pool)
@@ -307,7 +529,14 @@ mod tests {
         // Run all migrations
         for (i, migration) in super::MIGRATIONS.iter().enumerate() {
             let version = i + 1;
-            match sqlx::query(migration).execute(&pool).await {
+            // Multi-statement migrations (with BEGIN/COMMIT) use raw_sql()
+            let is_multi = migration.contains("BEGIN;") || migration.contains("BEGIN\n");
+            let result = if is_multi {
+                sqlx::raw_sql(migration).execute(&pool).await.map(|_| ())
+            } else {
+                sqlx::query(migration).execute(&pool).await.map(|_| ())
+            };
+            match result {
                 Ok(_) => {}
                 Err(e) if e.to_string().contains("duplicate column name") => {}
                 Err(e) => panic!("Migration {} failed: {}", version, e),
@@ -839,5 +1068,461 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count.0, 0, "session_commits should be deleted via CASCADE");
+    }
+
+    // ========================================================================
+    // Migration 13: LOC estimation columns (from main)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration13_loc_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"lines_added"), "Missing lines_added column");
+        assert!(column_names.contains(&"lines_removed"), "Missing lines_removed column");
+        assert!(column_names.contains(&"loc_source"), "Missing loc_source column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_loc_defaults() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-test', 'proj', '/tmp/loc.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "lines_added default should be 0");
+        assert_eq!(row.1, 0, "lines_removed default should be 0");
+        assert_eq!(row.2, 0, "loc_source default should be 0");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_loc_check_constraints() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-check', 'proj', '/tmp/c.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Test that negative values are rejected for lines_added
+        let result = sqlx::query(
+            "UPDATE sessions SET lines_added = -1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Negative lines_added should be rejected");
+
+        // Test that negative values are rejected for lines_removed
+        let result = sqlx::query(
+            "UPDATE sessions SET lines_removed = -1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Negative lines_removed should be rejected");
+
+        // Test that valid loc_source values work (0, 1, 2)
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 1 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "loc_source=1 should be valid");
+
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 2 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "loc_source=2 should be valid");
+
+        // Test that invalid loc_source value is rejected
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 3 WHERE id = 'loc-check'"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "loc_source=3 should be rejected (only 0, 1, 2 allowed)");
+    }
+
+    // ========================================================================
+    // Migration 14: Theme 3 contribution tracking
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration14_sessions_contribution_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
+        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
+        assert!(column_names.contains(&"work_type"), "Missing work_type column");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_commits_diff_stats_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('commits')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"files_changed"), "Missing files_changed column");
+        assert!(column_names.contains(&"insertions"), "Missing insertions column");
+        assert!(column_names.contains(&"deletions"), "Missing deletions column");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_contribution_snapshots_table_exists() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('contribution_snapshots')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"date"), "Missing date column");
+        assert!(column_names.contains(&"project_id"), "Missing project_id column");
+        assert!(column_names.contains(&"branch"), "Missing branch column");
+        assert!(column_names.contains(&"sessions_count"), "Missing sessions_count column");
+        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
+        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
+        assert!(column_names.contains(&"commits_count"), "Missing commits_count column");
+        assert!(column_names.contains(&"commit_insertions"), "Missing commit_insertions column");
+        assert!(column_names.contains(&"commit_deletions"), "Missing commit_deletions column");
+        assert!(column_names.contains(&"tokens_used"), "Missing tokens_used column");
+        assert!(column_names.contains(&"cost_cents"), "Missing cost_cents column");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_contribution_snapshots_unique_constraint() {
+        let pool = setup_db().await;
+
+        // Insert first snapshot
+        sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-05', 'proj1', 'main', 5)"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Insert second snapshot - same date+project+branch should fail
+        let result = sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-05', 'proj1', 'main', 10)"
+        )
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_err(), "Should reject duplicate date+project_id+branch combination");
+
+        // Insert different date - should succeed
+        let result = sqlx::query(
+            "INSERT INTO contribution_snapshots (date, project_id, branch, sessions_count) VALUES ('2026-02-06', 'proj1', 'main', 10)"
+        )
+        .execute(&pool)
+        .await;
+
+        assert!(result.is_ok(), "Should allow different date");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_sessions_default_values() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('contrib-test', 'proj', '/tmp/c.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, Option<String>) = sqlx::query_as(
+            "SELECT ai_lines_added, ai_lines_removed, work_type FROM sessions WHERE id = 'contrib-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "ai_lines_added default should be 0");
+        assert_eq!(row.1, 0, "ai_lines_removed default should be 0");
+        assert!(row.2.is_none(), "work_type default should be NULL");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_commits_default_values() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO commits (hash, repo_path, message, timestamp) VALUES ('abc123def456789012345678901234567890abcd', '/repo', 'test', 1000)"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT files_changed, insertions, deletions FROM commits WHERE hash = 'abc123def456789012345678901234567890abcd'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "files_changed default should be 0");
+        assert_eq!(row.1, 0, "insertions default should be 0");
+        assert_eq!(row.2, 0, "deletions default should be 0");
+    }
+
+    #[tokio::test]
+    async fn test_migration14_indexes_created() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_snapshots%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_snapshots_date"), "Missing idx_snapshots_date index");
+        assert!(index_names.contains(&"idx_snapshots_project_date"), "Missing idx_snapshots_project_date index");
+        assert!(index_names.contains(&"idx_snapshots_branch_date"), "Missing idx_snapshots_branch_date index");
+    }
+
+    // ========================================================================
+    // Migration 16: Dashboard analytics indexes (renumbered from branch's 13)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration16_dashboard_analytics_indexes() {
+        let pool = setup_db().await;
+
+        // Verify primary_model column was added
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
+
+        // Verify new indexes were created
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_sessions_first_message"),
+            "Missing idx_sessions_first_message index");
+        assert!(index_names.contains(&"idx_sessions_project_first_message"),
+            "Missing idx_sessions_project_first_message index");
+        assert!(index_names.contains(&"idx_sessions_primary_model"),
+            "Missing idx_sessions_primary_model index");
+    }
+
+    #[tokio::test]
+    async fn test_migration16_primary_model_can_be_set() {
+        let pool = setup_db().await;
+
+        // Insert a session with primary_model
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, primary_model) VALUES ('pm-test', 'proj', '/tmp/pm.jsonl', 'Test', 'claude-sonnet-4')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Verify the value
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT primary_model FROM sessions WHERE id = 'pm-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, Some("claude-sonnet-4".to_string()));
+    }
+
+    // ========================================================================
+    // Migration 18: Drop file_hash, verify schema cleanup
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration18_file_hash_column_dropped() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        // file_hash should be gone
+        assert!(!column_names.contains(&"file_hash"),
+            "file_hash column should be dropped by migration 18");
+
+        // All other essential columns should still exist
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"project_id"), "Missing project_id column");
+        assert!(column_names.contains(&"file_path"), "Missing file_path column");
+        assert!(column_names.contains(&"summary"), "Missing summary column");
+        assert!(column_names.contains(&"summary_text"), "Missing summary_text column");
+        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
+        assert!(column_names.contains(&"work_type"), "Missing work_type column");
+    }
+
+    #[tokio::test]
+    async fn test_migration18_indexes_preserved() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_sessions%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        // All session indexes should be recreated
+        assert!(index_names.contains(&"idx_sessions_project"), "Missing idx_sessions_project");
+        assert!(index_names.contains(&"idx_sessions_last_message"), "Missing idx_sessions_last_message");
+        assert!(index_names.contains(&"idx_sessions_project_branch"), "Missing idx_sessions_project_branch");
+        assert!(index_names.contains(&"idx_sessions_sidechain"), "Missing idx_sessions_sidechain");
+        assert!(index_names.contains(&"idx_sessions_commit_count"), "Missing idx_sessions_commit_count");
+        assert!(index_names.contains(&"idx_sessions_reedit"), "Missing idx_sessions_reedit");
+        assert!(index_names.contains(&"idx_sessions_duration"), "Missing idx_sessions_duration");
+        assert!(index_names.contains(&"idx_sessions_needs_reindex"), "Missing idx_sessions_needs_reindex");
+        assert!(index_names.contains(&"idx_sessions_first_message"), "Missing idx_sessions_first_message");
+        assert!(index_names.contains(&"idx_sessions_project_first_message"), "Missing idx_sessions_project_first_message");
+        assert!(index_names.contains(&"idx_sessions_primary_model"), "Missing idx_sessions_primary_model");
+    }
+
+    #[tokio::test]
+    async fn test_migration18_data_preserved() {
+        let pool = setup_db().await;
+
+        // Insert a session before migration runs (it already ran via setup_db)
+        // Instead, insert and verify data round-trips correctly
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, summary, summary_text, primary_model) VALUES ('m18-test', 'proj', '/tmp/m18.jsonl', 'Test', 'index summary', 'deep summary', 'claude-sonnet-4')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT summary, summary_text, primary_model FROM sessions WHERE id = 'm18-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0.as_deref(), Some("index summary"));
+        assert_eq!(row.1.as_deref(), Some("deep summary"));
+        assert_eq!(row.2.as_deref(), Some("claude-sonnet-4"));
+    }
+
+    #[tokio::test]
+    async fn test_migration18_coalesce_summary_behavior() {
+        let pool = setup_db().await;
+
+        // Session with both summaries: summary_text wins
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, summary, summary_text) VALUES ('coal-1', 'proj', '/tmp/c1.jsonl', 'Test', 'from index', 'from deep')"
+        ).execute(&pool).await.unwrap();
+
+        // Session with only index summary: summary as fallback
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, summary) VALUES ('coal-2', 'proj', '/tmp/c2.jsonl', 'Test', 'from index only')"
+        ).execute(&pool).await.unwrap();
+
+        // Session with neither
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('coal-3', 'proj', '/tmp/c3.jsonl', 'Test')"
+        ).execute(&pool).await.unwrap();
+
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-1'"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0.as_deref(), Some("from deep"), "summary_text should win when both present");
+
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-2'"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(row.0.as_deref(), Some("from index only"), "summary should be fallback");
+
+        let row: (Option<String>,) = sqlx::query_as(
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-3'"
+        ).fetch_one(&pool).await.unwrap();
+        assert!(row.0.is_none(), "Both NULL should yield NULL");
+    }
+
+    #[tokio::test]
+    async fn test_migration18_check_constraints_preserved() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('m18-chk', 'proj', '/tmp/chk.jsonl', 'Test')"
+        ).execute(&pool).await.unwrap();
+
+        // Verify CHECK constraints survived the table recreation
+        let result = sqlx::query(
+            "UPDATE sessions SET lines_added = -1 WHERE id = 'm18-chk'"
+        ).execute(&pool).await;
+        assert!(result.is_err(), "CHECK constraint on lines_added should survive migration 18");
+
+        let result = sqlx::query(
+            "UPDATE sessions SET loc_source = 3 WHERE id = 'm18-chk'"
+        ).execute(&pool).await;
+        assert!(result.is_err(), "CHECK constraint on loc_source should survive migration 18");
     }
 }
