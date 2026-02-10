@@ -1,4 +1,5 @@
 import { GitBranch, X } from 'lucide-react'
+import { NO_BRANCH } from '../../lib/constants'
 import type { TimeRangePreset, CustomDateRange } from '../../hooks/use-time-range'
 import { TimeRangeSelector, DateRangePicker } from '../ui'
 import { useIsMobile } from '../../hooks/use-media-query'
@@ -44,7 +45,7 @@ export function ContributionsHeader({
               AI Contributions
               {projectFilter ? (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
-                  {' '}&mdash; {projectFilter}{branchFilter ? ` / ${branchFilter}` : ''}
+                  {' '}&mdash; {projectFilter}{branchFilter ? ` / ${branchFilter === NO_BRANCH ? '(no branch)' : branchFilter}` : ''}
                 </span>
               ) : (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
@@ -79,7 +80,7 @@ export function ContributionsHeader({
                   title="Clear branch filter"
                 >
                   <GitBranch className="w-3 h-3" />
-                  {branchFilter}
+                  {branchFilter === NO_BRANCH ? '(no branch)' : branchFilter}
                   <X className="w-3 h-3" />
                 </button>
               )}
