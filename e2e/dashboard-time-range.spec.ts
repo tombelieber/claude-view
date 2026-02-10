@@ -96,6 +96,8 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     const segmentedControl = page.locator('[role="radiogroup"][aria-label="Time range selector"]')
 
     // Wait for the period metrics region to appear (contains Sessions, Tokens, etc.)
+    // The aria-label is "Period metrics" when trends data is loaded,
+    // or "Week-over-week metrics (loading)" while loading
     const periodMetrics = page.locator('[aria-label="Period metrics"]')
     await expect(periodMetrics).toBeVisible({ timeout: 10000 })
 
@@ -120,8 +122,10 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     // "All" range shows "Showing all-time stats" caption
     await expect(page.locator('text=Showing all-time stats')).toBeVisible({ timeout: 10000 })
 
-    // Metrics should still be visible
-    await expect(periodMetrics).toBeVisible()
+    // In "All" mode, the API returns trends: null, so the DashboardMetricsGrid
+    // is intentionally hidden (not rendered). Verify the caption is correct instead.
+    // The dashboard should still show the overall session/project counts.
+    await expect(page.locator('span.ml-1:text("sessions")')).toBeVisible()
 
     await page.screenshot({ path: 'e2e/screenshots/time-range-all-selected.png' })
   })
