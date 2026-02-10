@@ -59,11 +59,10 @@ fn c03_project_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Opt
         .collect();
     let overall_avg = mean(&overall_rates)?;
 
-    let multiplier = if overall_avg > 0.0 {
-        worst.value / overall_avg
-    } else {
-        1.0
-    };
+    if overall_avg <= 0.0 {
+        return None; // No re-edits across sessions — pattern not applicable
+    }
+    let multiplier = worst.value / overall_avg;
 
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
     let mut vars = HashMap::new();

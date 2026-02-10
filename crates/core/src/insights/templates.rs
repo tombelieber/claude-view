@@ -48,8 +48,8 @@ pub static TEMPLATES: &[InsightTemplate] = &[
     InsightTemplate {
         pattern_id: "S01",
         title: "Session Duration Sweet Spot",
-        body_template: "Your {optimal_duration} sessions produce {improvement}% more edits per minute than {worst_duration} sessions.",
-        recommendation_template: Some("Consider breaking longer sessions into {optimal_duration} chunks."),
+        body_template: "Your {optimal_duration} sessions have {improvement}% lower re-edit rate than {worst_duration} sessions.",
+        recommendation_template: Some("Consider aiming for {optimal_duration} sessions when possible."),
     },
     InsightTemplate {
         pattern_id: "S02",
@@ -66,8 +66,8 @@ pub static TEMPLATES: &[InsightTemplate] = &[
     InsightTemplate {
         pattern_id: "S08",
         title: "File Count Correlation",
-        body_template: "Sessions editing more than {threshold} files have {improvement}% higher re-edit rate.",
-        recommendation_template: Some("Keep sessions focused on fewer than {threshold} files when possible."),
+        body_template: "Sessions editing {threshold} files have the highest re-edit rate ({improvement}% above the best bucket).",
+        recommendation_template: Some("Aim for fewer files per session to reduce re-edits."),
     },
     // ============================
     // Temporal Patterns (T01-T07)
