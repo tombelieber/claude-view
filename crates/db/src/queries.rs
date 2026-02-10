@@ -1195,55 +1195,119 @@ impl Database {
             .collect())
     }
 
-    /// Fetch top 10 invocables by kind from the invocations table.
-    async fn top_invocables_by_kind(&self, kind: &str, project: Option<&str>, branch: Option<&str>) -> DbResult<Vec<SkillStat>> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
+    /// Fetch top 10 invocables for all 4 kinds in a single query (no time range).
+    /// Returns (skills, commands, mcp_tools, agents) — each Vec has at most 10 entries.
+    async fn all_top_invocables_by_kind(
+        &self,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let rows: Vec<(String, String, i64)> = sqlx::query_as(
             r#"
-            SELECT inv.name, COUNT(*) as cnt
+            SELECT inv.kind, inv.name, COUNT(*) as cnt
             FROM invocations i
             JOIN invocables inv ON i.invocable_id = inv.id
             INNER JOIN sessions s ON i.session_id = s.id
-            WHERE inv.kind = ?1 AND s.is_sidechain = 0
-              AND (?2 IS NULL OR s.project_id = ?2)
-              AND (?3 IS NULL OR s.git_branch = ?3)
-            GROUP BY inv.name
-            ORDER BY cnt DESC
-            LIMIT 10
+            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
+              AND s.is_sidechain = 0
+              AND (?1 IS NULL OR s.project_id = ?1)
+              AND (?2 IS NULL OR s.git_branch = ?2)
+            GROUP BY inv.kind, inv.name
+            ORDER BY inv.kind, cnt DESC
             "#,
         )
-        .bind(kind)
         .bind(project)
         .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|(name, count)| SkillStat {
-                name,
-                count: count as usize,
-            })
-            .collect())
+        Self::partition_invocables_by_kind(rows)
+    }
+
+    /// Fetch top 10 invocables for all 4 kinds in a single query (with time range).
+    /// Returns (skills, commands, mcp_tools, agents) — each Vec has at most 10 entries.
+    async fn all_top_invocables_by_kind_with_range(
+        &self,
+        from: i64,
+        to: i64,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT inv.kind, inv.name, COUNT(*) as cnt
+            FROM invocations i
+            JOIN invocables inv ON i.invocable_id = inv.id
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
+              AND s.is_sidechain = 0
+              AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
+              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?4 IS NULL OR s.git_branch = ?4)
+            GROUP BY inv.kind, inv.name
+            ORDER BY inv.kind, cnt DESC
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        Self::partition_invocables_by_kind(rows)
+    }
+
+    /// Partition (kind, name, count) rows into per-kind top-10 vectors.
+    fn partition_invocables_by_kind(
+        rows: Vec<(String, String, i64)>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let mut skills = Vec::new();
+        let mut commands = Vec::new();
+        let mut mcp_tools = Vec::new();
+        let mut agents = Vec::new();
+
+        for (kind, name, count) in rows {
+            let stat = SkillStat { name, count: count as usize };
+            let target = match kind.as_str() {
+                "skill" => &mut skills,
+                "command" => &mut commands,
+                "mcp_tool" => &mut mcp_tools,
+                "agent" => &mut agents,
+                _ => continue,
+            };
+            if target.len() < 10 {
+                target.push(stat);
+            }
+        }
+
+        Ok((skills, commands, mcp_tools, agents))
     }
 
     /// Get pre-computed dashboard statistics.
     ///
     /// Returns heatmap (90 days), top 10 invocables per kind, top 5 projects, tool totals.
+    /// Optimized: counts+tools merged (3→1), invocables merged (4→1) = 5 queries total.
     pub async fn get_dashboard_stats(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<DashboardStats> {
-        // Total sessions and projects
-        let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
-                .bind(project)
-                .bind(branch)
-                .fetch_one(self.pool())
-                .await?;
-
-        let (total_projects,): (i64,) =
-            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
-                .bind(project)
-                .bind(branch)
-                .fetch_one(self.pool())
-                .await?;
+        // Merged query: session count + project count + tool totals (replaces 3 queries)
+        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+              COUNT(*),
+              COUNT(DISTINCT project_id),
+              COALESCE(SUM(tool_counts_edit), 0),
+              COALESCE(SUM(tool_counts_read), 0),
+              COALESCE(SUM(tool_counts_bash), 0),
+              COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            "#,
+        )
+        .bind(project)
+        .bind(branch)
+        .fetch_one(self.pool())
+        .await?;
 
         // Heatmap: 90-day activity (sessions per day)
         let now = Utc::now().timestamp();
@@ -1272,11 +1336,9 @@ impl Database {
             })
             .collect();
 
-        // Top invocables by kind (from Phase 2A-2 invocations table)
-        let top_skills = self.top_invocables_by_kind("skill", project, branch).await?;
-        let top_commands = self.top_invocables_by_kind("command", project, branch).await?;
-        let top_mcp_tools = self.top_invocables_by_kind("mcp_tool", project, branch).await?;
-        let top_agents = self.top_invocables_by_kind("agent", project, branch).await?;
+        // Merged invocables query: all 4 kinds in one scan (replaces 4 queries)
+        let (top_skills, top_commands, top_mcp_tools, top_agents) =
+            self.all_top_invocables_by_kind(project, branch).await?;
 
         // Top 5 projects by session count
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1333,24 +1395,6 @@ impl Database {
             })
             .collect();
 
-        // Tool totals (aggregate across all non-sidechain sessions)
-        let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(tool_counts_edit), 0),
-                COALESCE(SUM(tool_counts_read), 0),
-                COALESCE(SUM(tool_counts_bash), 0),
-                COALESCE(SUM(tool_counts_write), 0)
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
-            "#,
-        )
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
-
         Ok(DashboardStats {
             total_sessions: total_sessions as usize,
             total_projects: total_projects as usize,
@@ -1374,6 +1418,7 @@ impl Database {
     ///
     /// Stats are filtered to sessions with `last_message_at` within [from, to].
     /// Heatmap always shows the last 90 days regardless of the filter.
+    /// Optimized: counts+tools merged (3→1), invocables merged (4→1) = 5 queries total.
     pub async fn get_dashboard_stats_with_range(
         &self,
         from: Option<i64>,
@@ -1384,19 +1429,20 @@ impl Database {
         let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
-        // Total sessions and projects (filtered)
-        let (total_sessions,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2 AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)",
-        )
-        .bind(from)
-        .bind(to)
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
-
-        let (total_projects,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2 AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)",
+        // Merged query: session count + project count + tool totals (replaces 3 queries)
+        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+              COUNT(*),
+              COUNT(DISTINCT project_id),
+              COALESCE(SUM(tool_counts_edit), 0),
+              COALESCE(SUM(tool_counts_read), 0),
+              COALESCE(SUM(tool_counts_bash), 0),
+              COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+            "#,
         )
         .bind(from)
         .bind(to)
@@ -1432,11 +1478,9 @@ impl Database {
             })
             .collect();
 
-        // Top invocables by kind (filtered by time range via invocations table)
-        let top_skills = self.top_invocables_by_kind_with_range("skill", from, to, project, branch).await?;
-        let top_commands = self.top_invocables_by_kind_with_range("command", from, to, project, branch).await?;
-        let top_mcp_tools = self.top_invocables_by_kind_with_range("mcp_tool", from, to, project, branch).await?;
-        let top_agents = self.top_invocables_by_kind_with_range("agent", from, to, project, branch).await?;
+        // Merged invocables query with time range: all 4 kinds in one scan (replaces 4 queries)
+        let (top_skills, top_commands, top_mcp_tools, top_agents) =
+            self.all_top_invocables_by_kind_with_range(from, to, project, branch).await?;
 
         // Top 5 projects by session count (filtered)
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1497,26 +1541,6 @@ impl Database {
             })
             .collect();
 
-        // Tool totals (filtered)
-        let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(tool_counts_edit), 0),
-                COALESCE(SUM(tool_counts_read), 0),
-                COALESCE(SUM(tool_counts_bash), 0),
-                COALESCE(SUM(tool_counts_write), 0)
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
-            "#,
-        )
-        .bind(from)
-        .bind(to)
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
-
         Ok(DashboardStats {
             total_sessions: total_sessions as usize,
             total_projects: total_projects as usize,
@@ -1539,53 +1563,31 @@ impl Database {
     /// Get all-time aggregate metrics for the dashboard.
     ///
     /// Returns (session_count, total_tokens, total_files_edited, commit_count).
+    /// Optimized: 4 queries → 1 via scalar subqueries in a single round-trip.
     pub async fn get_all_time_metrics(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<(u64, u64, u64, u64)> {
-        // Session count
-        let (session_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)")
-                .bind(project)
-                .bind(branch)
-                .fetch_one(self.pool())
-                .await?;
-
-        // Total tokens (from turns table)
-        let (total_tokens,): (i64,) = sqlx::query_as(
-            r#"
-            SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
-            FROM turns t
-            INNER JOIN sessions s ON t.session_id = s.id
-            WHERE s.is_sidechain = 0
-              AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)
-            "#,
-        )
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
-
-        // Total files edited
-        let (total_files_edited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
-        )
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
-
-        // Total commits linked
-        let (commit_count,): (i64,) = sqlx::query_as(
-            r#"
-            SELECT COUNT(*)
-            FROM session_commits sc
-            INNER JOIN sessions s ON sc.session_id = s.id
-            WHERE s.is_sidechain = 0
-              AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)
-            "#,
-        )
-        .bind(project)
-        .bind(branch)
-        .fetch_one(self.pool())
-        .await?;
+        let (session_count, total_tokens, total_files_edited, commit_count): (i64, i64, i64, i64) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                  (SELECT COUNT(*) FROM sessions
+                     WHERE is_sidechain = 0
+                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
+                     FROM turns t INNER JOIN sessions s ON t.session_id = s.id
+                     WHERE s.is_sidechain = 0
+                     AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)),
+                  (SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions
+                     WHERE is_sidechain = 0
+                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COUNT(*) FROM session_commits sc INNER JOIN sessions s ON sc.session_id = s.id
+                     WHERE s.is_sidechain = 0
+                     AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
+                "#,
+            )
+            .bind(project)
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?;
 
         Ok((
             session_count as u64,
@@ -1593,46 +1595,6 @@ impl Database {
             total_files_edited as u64,
             commit_count as u64,
         ))
-    }
-
-    /// Helper: Get top invocables by kind within a time range.
-    async fn top_invocables_by_kind_with_range(
-        &self,
-        kind: &str,
-        from: i64,
-        to: i64,
-        project: Option<&str>,
-        branch: Option<&str>,
-    ) -> DbResult<Vec<SkillStat>> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"
-            SELECT i.name, COUNT(*) as cnt
-            FROM invocations inv
-            INNER JOIN invocables i ON inv.invocable_id = i.id
-            INNER JOIN sessions s ON inv.session_id = s.id
-            WHERE i.kind = ?1 AND s.is_sidechain = 0 AND s.last_message_at >= ?2 AND s.last_message_at <= ?3
-              AND (?4 IS NULL OR s.project_id = ?4)
-              AND (?5 IS NULL OR s.git_branch = ?5)
-            GROUP BY i.name
-            ORDER BY cnt DESC
-            LIMIT 10
-            "#,
-        )
-        .bind(kind)
-        .bind(from)
-        .bind(to)
-        .bind(project)
-        .bind(branch)
-        .fetch_all(self.pool())
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|(name, count)| SkillStat {
-                name,
-                count: count as usize,
-            })
-            .collect())
     }
 
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
@@ -1722,6 +1684,26 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
         Ok(result.0)
+    }
+
+    /// Get all storage-related counts in a single query (replaces 4 separate queries).
+    ///
+    /// Returns (session_count, project_count, commit_count, oldest_session_date).
+    pub async fn get_storage_counts(&self) -> DbResult<(i64, i64, i64, Option<i64>)> {
+        let (session_count, project_count, commit_count, oldest_date): (i64, i64, i64, Option<i64>) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                  (SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0),
+                  (SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0),
+                  (SELECT COUNT(*) FROM session_commits),
+                  (SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0)
+                "#,
+            )
+            .fetch_one(self.pool())
+            .await?;
+
+        Ok((session_count, project_count, commit_count, oldest_date))
     }
 
     /// Get the SQLite database file size in bytes.
