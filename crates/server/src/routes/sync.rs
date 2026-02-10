@@ -181,6 +181,8 @@ pub async fn git_sync_progress(
         let mut last_phase = GitSyncPhase::Idle;
         let mut last_repos_scanned = 0usize;
         let mut last_sessions_correlated = 0usize;
+        let started = std::time::Instant::now();
+        let max_duration = std::time::Duration::from_secs(300); // 5 minute timeout
 
         loop {
             let phase = git_sync.phase();
@@ -245,6 +247,16 @@ pub async fn git_sync_progress(
                     yield Ok(Event::default().event("error").data(data.to_string()));
                     break;
                 }
+            }
+
+            // Safety: timeout after 5 minutes to prevent infinite loops if background task panics
+            if started.elapsed() > max_duration {
+                let data = serde_json::json!({
+                    "phase": "error",
+                    "message": "Sync timed out after 5 minutes",
+                });
+                yield Ok(Event::default().event("error").data(data.to_string()));
+                break;
             }
 
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
