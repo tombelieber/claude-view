@@ -63,11 +63,14 @@ test.describe('Settings Page', () => {
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for status data to load
-    await expect(page.locator('text=Data Status')).toBeVisible({ timeout: 10000 })
+    const dataStatusHeading = page.locator('h2:text("Data Status")')
+    await expect(dataStatusHeading).toBeVisible({ timeout: 10000 })
 
-    // Verify index metadata is displayed
-    await expect(page.locator('text=Last indexed')).toBeVisible()
-    await expect(page.locator('text=Sessions')).toBeVisible()
-    await expect(page.locator('text=Projects')).toBeVisible()
+    // Scope assertions to the Data Status section to avoid ambiguity
+    // with other sections (e.g. "Data & Storage") that also contain "Sessions"
+    const dataStatusSection = dataStatusHeading.locator('..').locator('..')
+    await expect(dataStatusSection.locator('text=Last indexed')).toBeVisible({ timeout: 15000 })
+    await expect(dataStatusSection.locator('text=Sessions')).toBeVisible()
+    await expect(dataStatusSection.locator('text=Projects')).toBeVisible()
   })
 })
