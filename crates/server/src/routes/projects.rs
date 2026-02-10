@@ -9,7 +9,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::{ProjectSummary, SessionsPage};
+use vibe_recall_core::{BranchFilter, ProjectSummary, SessionsPage};
 use vibe_recall_db::BranchCount;
 
 use crate::error::ApiResult;
@@ -56,6 +56,7 @@ pub async fn list_project_sessions(
     Path(project_id): Path<String>,
     Query(params): Query<SessionsQuery>,
 ) -> ApiResult<Json<SessionsPage>> {
+    let branch_filter = BranchFilter::from_param(params.branch.as_deref());
     let page = state
         .db
         .list_sessions_for_project(
@@ -63,7 +64,7 @@ pub async fn list_project_sessions(
             params.limit,
             params.offset,
             &params.sort,
-            params.branch.as_deref(),
+            &branch_filter,
             params.include_sidechains,
         )
         .await?;
