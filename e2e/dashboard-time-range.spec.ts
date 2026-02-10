@@ -4,7 +4,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
   /**
    * TC-2A-01: Segmented Control Rendering (Desktop)
    * At desktop viewport (>=1024px), verify segmented control renders
-   * with 7d, 30d, 90d, All, Custom options. Default is "30d".
+   * with Today, 7d, 30d, 90d, All, Custom options. Default is "30d".
    */
   test('TC-2A-01: renders segmented control on desktop with correct options', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
@@ -16,25 +16,27 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     const segmentedControl = page.locator('[role="radiogroup"][aria-label="Time range selector"]')
     await expect(segmentedControl).toBeVisible()
 
-    // Verify all 5 options exist as radio buttons
+    // Verify all 6 options exist as radio buttons
     const radioButtons = segmentedControl.locator('button[role="radio"]')
-    await expect(radioButtons).toHaveCount(5)
+    await expect(radioButtons).toHaveCount(6)
 
-    // Verify the labels
-    await expect(radioButtons.nth(0)).toHaveText('7d')
-    await expect(radioButtons.nth(1)).toHaveText('30d')
-    await expect(radioButtons.nth(2)).toHaveText('90d')
-    await expect(radioButtons.nth(3)).toHaveText('All')
-    await expect(radioButtons.nth(4)).toHaveText('Custom')
+    // Verify the labels (Today is now first)
+    await expect(radioButtons.nth(0)).toHaveText('Today')
+    await expect(radioButtons.nth(1)).toHaveText('7d')
+    await expect(radioButtons.nth(2)).toHaveText('30d')
+    await expect(radioButtons.nth(3)).toHaveText('90d')
+    await expect(radioButtons.nth(4)).toHaveText('All')
+    await expect(radioButtons.nth(5)).toHaveText('Custom')
 
     // Verify "30d" is selected by default (aria-checked="true")
-    await expect(radioButtons.nth(1)).toHaveAttribute('aria-checked', 'true')
+    await expect(radioButtons.nth(2)).toHaveAttribute('aria-checked', 'true')
 
     // Verify others are not selected
     await expect(radioButtons.nth(0)).toHaveAttribute('aria-checked', 'false')
-    await expect(radioButtons.nth(2)).toHaveAttribute('aria-checked', 'false')
+    await expect(radioButtons.nth(1)).toHaveAttribute('aria-checked', 'false')
     await expect(radioButtons.nth(3)).toHaveAttribute('aria-checked', 'false')
     await expect(radioButtons.nth(4)).toHaveAttribute('aria-checked', 'false')
+    await expect(radioButtons.nth(5)).toHaveAttribute('aria-checked', 'false')
 
     await page.screenshot({ path: 'e2e/screenshots/time-range-desktop-segmented.png' })
   })
@@ -60,14 +62,15 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
 
     // Verify dropdown options
     const options = dropdown.locator('option')
-    await expect(options).toHaveCount(5)
+    await expect(options).toHaveCount(6)
 
     // Mobile labels are longer (e.g. "7 days" instead of "7d")
-    await expect(options.nth(0)).toHaveText('7 days')
-    await expect(options.nth(1)).toHaveText('30 days')
-    await expect(options.nth(2)).toHaveText('90 days')
-    await expect(options.nth(3)).toHaveText('All time')
-    await expect(options.nth(4)).toHaveText('Custom')
+    await expect(options.nth(0)).toHaveText('Today')
+    await expect(options.nth(1)).toHaveText('7 days')
+    await expect(options.nth(2)).toHaveText('30 days')
+    await expect(options.nth(3)).toHaveText('90 days')
+    await expect(options.nth(4)).toHaveText('All time')
+    await expect(options.nth(5)).toHaveText('Custom')
 
     // Verify "30 days" is selected by default
     await expect(dropdown).toHaveValue('30d')
@@ -190,6 +193,14 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     // Clear localStorage to avoid stale state interfering
     await page.goto('/')
     await page.evaluate(() => localStorage.removeItem('dashboard-time-range'))
+
+    // --- Navigate with ?range=today ---
+    await page.goto('/?range=today')
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
+
+    const btnToday = segmentedControl.locator('button[role="radio"]', { hasText: 'Today' })
+    await expect(btnToday).toHaveAttribute('aria-checked', 'true')
 
     // --- Navigate with ?range=7d ---
     await page.goto('/?range=7d')
