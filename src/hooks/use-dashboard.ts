@@ -14,10 +14,10 @@ export type { TimeRangeParams } from '../types/time-range'
  * - periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
  * - dataStartDate: earliest session in database
  */
-async function fetchDashboardStats(project?: string, branches?: string, timeRange?: TimeRangeParams): Promise<ExtendedDashboardStats> {
+async function fetchDashboardStats(project?: string, branch?: string, timeRange?: TimeRangeParams): Promise<ExtendedDashboardStats> {
   const params = new URLSearchParams()
   if (project) params.set('project', project)
-  if (branches) params.set('branches', branches)
+  if (branch) params.set('branch', branch)
   // Add time range params if provided (not all-time)
   if (timeRange?.from != null && timeRange?.to != null) {
     params.set('from', timeRange.from.toString())
@@ -50,10 +50,10 @@ async function fetchDashboardStats(project?: string, branches?: string, timeRang
  * - periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
  * - dataStartDate - earliest session date ("since [date]")
  */
-export function useDashboardStats(project?: string, branches?: string, timeRange?: TimeRangeParams | null) {
+export function useDashboardStats(project?: string, branch?: string, timeRange?: TimeRangeParams | null) {
   return useQuery({
-    queryKey: ['dashboard-stats', project, branches, timeRange?.from, timeRange?.to],
-    queryFn: () => fetchDashboardStats(project, branches, timeRange ?? undefined),
+    queryKey: ['dashboard-stats', project, branch, timeRange?.from, timeRange?.to],
+    queryFn: () => fetchDashboardStats(project, branch, timeRange ?? undefined),
     staleTime: 30_000, // Consider data fresh for 30 seconds
   })
 }
