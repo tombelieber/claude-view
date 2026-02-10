@@ -14,7 +14,7 @@ use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use vibe_recall_db::indexer_parallel::run_background_index;
+use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
 use vibe_recall_db::Database;
 use vibe_recall_server::{create_app_full, init_metrics, record_sync, IndexingState, IndexingStatus};
 
@@ -160,6 +160,7 @@ async fn main() -> Result<()> {
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
+    let periodic_registry = registry_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -207,14 +208,39 @@ async fn main() -> Result<()> {
                 // Build contribution snapshots for all historical days.
                 run_snapshot_generation(&idx_db, "initial").await;
 
-                // Periodic git-sync: re-scan to pick up new commits.
+                // Periodic sync loop: re-index new/changed sessions, git-sync, snapshots.
                 // Interval is user-configurable via Settings UI (stored in DB).
-                // At 10x scale (~100 repos, ~5000 sessions), each run takes ~4-6s.
                 // Re-read interval from DB each cycle so changes take effect without restart.
+                let mut prev_session_count = idx_db.get_session_count().await.unwrap_or(0);
                 loop {
                     let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(60);
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
+
+                    // Incremental re-index: pick up new/changed sessions (<10ms for Pass 1)
+                    match pass_1_read_indexes(&claude_dir, &idx_db).await {
+                        Ok((_projects, sessions)) => {
+                            let new_sessions = sessions as i64 - prev_session_count as i64;
+                            if new_sessions > 0 {
+                                tracing::info!(new_sessions, "Incremental index: discovered new sessions");
+                            }
+                            // Run Pass 2 for any changed files (skips unchanged via size+mtime)
+                            // Clone registry out of the lock (guard dropped at end of let-statement)
+                            let registry_clone = periodic_registry.read().unwrap().clone();
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_, _| {}).await {
+                                Ok(indexed) => {
+                                    if indexed > 0 {
+                                        tracing::info!(indexed, "Incremental deep index complete");
+                                        record_sync("incremental-index", Instant::now().elapsed(), Some(indexed as u64));
+                                    }
+                                }
+                                Err(e) => tracing::warn!(error = %e, "Incremental deep index failed (non-fatal)"),
+                            }
+                            prev_session_count = sessions as i64;
+                        }
+                        Err(e) => tracing::warn!(error = %e, "Incremental Pass 1 failed (non-fatal)"),
+                    }
+
                     run_git_sync_logged(&idx_db, "periodic").await;
                     run_snapshot_generation(&idx_db, "periodic").await;
                 }
