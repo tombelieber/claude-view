@@ -4,7 +4,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/tombelieber/claude-view"
@@ -41,6 +41,10 @@ anyhow = "1"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Metrics (Prometheus)
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 
 # Terminal UI
 indicatif = "0.17"

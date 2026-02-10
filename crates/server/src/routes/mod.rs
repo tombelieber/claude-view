@@ -1,12 +1,14 @@
 //! API route handlers for the vibe-recall server.
 
 pub mod classify;
+pub mod contributions;
 pub mod export;
 pub mod health;
 pub mod indexing;
 pub mod insights;
 pub mod invocables;
 pub mod jobs;
+pub mod metrics;
 pub mod models;
 pub mod projects;
 pub mod sessions;
@@ -32,6 +34,7 @@ use crate::state::AppState;
 /// - GET /api/sessions - List all sessions with filter/sort
 /// - GET /api/sessions/:id - Get extended session detail with commits
 /// - GET /api/indexing/progress - SSE stream of indexing progress
+/// - GET /api/indexing/status - JSON snapshot of indexing progress (polling)
 /// - GET /api/invocables - List all invocables with usage counts
 /// - GET /api/stats/dashboard - Pre-computed dashboard stats with trends
 /// - GET /api/models - List all observed models with usage counts
@@ -39,6 +42,8 @@ use crate::state::AppState;
 /// - GET /api/status - Index metadata and data freshness
 /// - GET /api/export/sessions - Export sessions as JSON or CSV
 /// - POST /api/sync/git - Trigger git commit scanning
+/// - GET  /api/sync/git/progress - SSE stream of git sync progress
+/// - POST /api/sync/deep - Trigger full deep index rebuild
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
 /// - GET /api/system - Comprehensive system status
 /// - POST /api/system/reindex - Trigger full re-index
@@ -50,9 +55,9 @@ use crate::state::AppState;
 /// - GET  /api/classify/stream - SSE stream of classification progress
 /// - POST /api/classify/cancel - Cancel running classification
 /// - GET  /api/insights - Computed behavioral insights and patterns
-///
-/// Note: /api/jobs routes are defined but not registered (no frontend consumer).
-/// The job runner infrastructure is used internally by classification.
+/// - GET /api/contributions - Contribution metrics and insights
+/// - GET /api/contributions/sessions/:id - Session contribution detail
+/// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
         .nest("/api", health::router())
@@ -69,6 +74,9 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", system::router())
         .nest("/api", classify::router())
         .nest("/api", insights::router())
+        .nest("/api", contributions::router())
+        // Metrics endpoint at root level (Prometheus convention)
+        .merge(metrics::router())
         .with_state(state)
 }
 

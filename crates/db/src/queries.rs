@@ -3,12 +3,23 @@
 
 use crate::{Database, DbResult};
 use chrono::Utc;
+use serde::Serialize;
 use std::collections::HashMap;
 use ts_rs::TS;
 use vibe_recall_core::{
     parse_model_id, DashboardStats, DayActivity, ProjectInfo, ProjectStat, ProjectSummary,
     RawTurn, SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
+
+/// Branch count for a project.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct BranchCount {
+    pub branch: Option<String>,
+    #[ts(type = "number")]
+    pub count: i64,
+}
 
 /// Indexer state entry returned from the database.
 #[derive(Debug, Clone)]
@@ -101,6 +112,49 @@ pub struct TokenStats {
     pub turns_count: u64,
     #[ts(type = "number")]
     pub sessions_count: u64,
+}
+
+/// Token usage breakdown by model.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct TokensByModel {
+    pub model: String,
+    #[ts(type = "number")]
+    pub input_tokens: i64,
+    #[ts(type = "number")]
+    pub output_tokens: i64,
+}
+
+/// Token usage breakdown by project.
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct TokensByProject {
+    pub project: String,
+    #[ts(type = "number")]
+    pub input_tokens: i64,
+    #[ts(type = "number")]
+    pub output_tokens: i64,
+}
+
+/// AI Generation statistics (for GET /api/stats/ai-generation).
+#[derive(Debug, Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct AIGenerationStats {
+    #[ts(type = "number")]
+    pub lines_added: i64,
+    #[ts(type = "number")]
+    pub lines_removed: i64,
+    #[ts(type = "number")]
+    pub files_created: i64,
+    #[ts(type = "number")]
+    pub total_input_tokens: i64,
+    #[ts(type = "number")]
+    pub total_output_tokens: i64,
+    pub tokens_by_model: Vec<TokensByModel>,
+    pub tokens_by_project: Vec<TokensByProject>,
 }
 
 /// Storage statistics for the system page.
@@ -327,7 +381,8 @@ impl Database {
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
-                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                COALESCE(s.summary_text, s.summary) AS summary,
+                s.git_branch, s.is_sidechain, s.deep_indexed_at,
                 tok.total_input_tokens,
                 tok.total_output_tokens,
                 tok.total_cache_read_tokens,
@@ -341,6 +396,7 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
+                s.lines_added, s.lines_removed, s.loc_source,
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
@@ -610,6 +666,16 @@ impl Database {
         parse_version: i32,
         file_size: i64,
         file_mtime: i64,
+        // LOC + work classification (must match _tx path)
+        lines_added: i32,
+        lines_removed: i32,
+        loc_source: i32,
+        ai_lines_added: i32,
+        ai_lines_removed: i32,
+        work_type: Option<&str>,
+        git_branch: Option<&str>,
+        primary_model: Option<&str>,
+        last_message_at: Option<i64>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -655,7 +721,16 @@ impl Database {
                 summary_text = ?38,
                 parse_version = ?39,
                 file_size_at_index = ?40,
-                file_mtime_at_index = ?41
+                file_mtime_at_index = ?41,
+                lines_added = ?42,
+                lines_removed = ?43,
+                loc_source = ?44,
+                ai_lines_added = ?45,
+                ai_lines_removed = ?46,
+                work_type = ?47,
+                git_branch = COALESCE(git_branch, ?48),
+                primary_model = ?49,
+                last_message_at = COALESCE(?50, last_message_at)
             WHERE id = ?1
             "#,
         )
@@ -700,6 +775,15 @@ impl Database {
         .bind(parse_version)
         .bind(file_size)
         .bind(file_mtime)
+        .bind(lines_added)
+        .bind(lines_removed)
+        .bind(loc_source)
+        .bind(ai_lines_added)
+        .bind(ai_lines_removed)
+        .bind(work_type)
+        .bind(git_branch)
+        .bind(primary_model)
+        .bind(last_message_at)
         .execute(self.pool())
         .await?;
 
@@ -723,6 +807,21 @@ impl Database {
             .fetch_all(self.pool())
             .await?;
         Ok(rows)
+    }
+
+    /// Mark all sessions for re-indexing by clearing their deep_indexed_at timestamps.
+    ///
+    /// This forces the next deep index pass to reprocess all sessions.
+    /// Used by the "Rebuild Index" feature in the Settings UI.
+    ///
+    /// Returns the number of sessions marked for re-indexing.
+    pub async fn mark_all_sessions_for_reindex(&self) -> DbResult<u64> {
+        let result = sqlx::query(
+            "UPDATE sessions SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
+        )
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
     }
 
     // ========================================================================
@@ -986,7 +1085,7 @@ impl Database {
                 COALESCE(project_path, ''),
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
-                MAX(last_message_at) as last_activity_at
+                MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity_at
             FROM sessions
             WHERE is_sidechain = 0
             GROUP BY project_id
@@ -1066,7 +1165,8 @@ impl Database {
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
-                s.summary, s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                COALESCE(s.summary_text, s.summary) AS summary,
+                s.git_branch, s.is_sidechain, s.deep_indexed_at,
                 tok.total_input_tokens,
                 tok.total_output_tokens,
                 tok.total_cache_read_tokens,
@@ -1080,6 +1180,7 @@ impl Database {
                 s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
                 s.api_error_count, s.compaction_count, s.agent_spawn_count,
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
+                s.lines_added, s.lines_removed, s.loc_source,
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
@@ -1130,46 +1231,146 @@ impl Database {
         })
     }
 
-    /// Fetch top 10 invocables by kind from the invocations table.
-    async fn top_invocables_by_kind(&self, kind: &str) -> DbResult<Vec<SkillStat>> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
+    /// List distinct branches with session counts for a project.
+    ///
+    /// Returns branches sorted by session count DESC.
+    /// Includes sessions with `git_branch = NULL` as a separate entry.
+    pub async fn list_branches_for_project(
+        &self,
+        project_id: &str,
+    ) -> DbResult<Vec<crate::BranchCount>> {
+        let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
-            SELECT inv.name, COUNT(*) as cnt
-            FROM invocations i
-            JOIN invocables inv ON i.invocable_id = inv.id
-            WHERE inv.kind = ?1
-            GROUP BY inv.name
-            ORDER BY cnt DESC
-            LIMIT 10
+            SELECT git_branch as branch, COUNT(*) as count
+            FROM sessions
+            WHERE project_id = ?1 AND is_sidechain = 0
+            GROUP BY git_branch
+            ORDER BY count DESC
             "#,
         )
-        .bind(kind)
+        .bind(project_id)
         .fetch_all(self.pool())
         .await?;
 
         Ok(rows
             .into_iter()
-            .map(|(name, count)| SkillStat {
-                name,
-                count: count as usize,
-            })
+            .map(|(branch, count)| crate::BranchCount { branch, count })
             .collect())
+    }
+
+    /// Fetch top 10 invocables for all 4 kinds in a single query (no time range).
+    /// Returns (skills, commands, mcp_tools, agents) — each Vec has at most 10 entries.
+    async fn all_top_invocables_by_kind(
+        &self,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT inv.kind, inv.name, COUNT(*) as cnt
+            FROM invocations i
+            JOIN invocables inv ON i.invocable_id = inv.id
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
+              AND s.is_sidechain = 0
+              AND (?1 IS NULL OR s.project_id = ?1)
+              AND (?2 IS NULL OR s.git_branch = ?2)
+            GROUP BY inv.kind, inv.name
+            ORDER BY inv.kind, cnt DESC
+            "#,
+        )
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        Self::partition_invocables_by_kind(rows)
+    }
+
+    /// Fetch top 10 invocables for all 4 kinds in a single query (with time range).
+    /// Returns (skills, commands, mcp_tools, agents) — each Vec has at most 10 entries.
+    async fn all_top_invocables_by_kind_with_range(
+        &self,
+        from: i64,
+        to: i64,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT inv.kind, inv.name, COUNT(*) as cnt
+            FROM invocations i
+            JOIN invocables inv ON i.invocable_id = inv.id
+            INNER JOIN sessions s ON i.session_id = s.id
+            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
+              AND s.is_sidechain = 0
+              AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
+              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?4 IS NULL OR s.git_branch = ?4)
+            GROUP BY inv.kind, inv.name
+            ORDER BY inv.kind, cnt DESC
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        Self::partition_invocables_by_kind(rows)
+    }
+
+    /// Partition (kind, name, count) rows into per-kind top-10 vectors.
+    fn partition_invocables_by_kind(
+        rows: Vec<(String, String, i64)>,
+    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+        let mut skills = Vec::new();
+        let mut commands = Vec::new();
+        let mut mcp_tools = Vec::new();
+        let mut agents = Vec::new();
+
+        for (kind, name, count) in rows {
+            let stat = SkillStat { name, count: count as usize };
+            let target = match kind.as_str() {
+                "skill" => &mut skills,
+                "command" => &mut commands,
+                "mcp_tool" => &mut mcp_tools,
+                "agent" => &mut agents,
+                _ => continue,
+            };
+            if target.len() < 10 {
+                target.push(stat);
+            }
+        }
+
+        Ok((skills, commands, mcp_tools, agents))
     }
 
     /// Get pre-computed dashboard statistics.
     ///
     /// Returns heatmap (90 days), top 10 invocables per kind, top 5 projects, tool totals.
-    pub async fn get_dashboard_stats(&self) -> DbResult<DashboardStats> {
-        // Total sessions and projects
-        let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
-                .fetch_one(self.pool())
-                .await?;
-
-        let (total_projects,): (i64,) =
-            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0")
-                .fetch_one(self.pool())
-                .await?;
+    /// Optimized: counts+tools merged (3→1), invocables merged (4→1) = 5 queries total.
+    pub async fn get_dashboard_stats(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<DashboardStats> {
+        // Merged query: session count + project count + tool totals (replaces 3 queries)
+        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+              COUNT(*),
+              COUNT(DISTINCT project_id),
+              COALESCE(SUM(tool_counts_edit), 0),
+              COALESCE(SUM(tool_counts_read), 0),
+              COALESCE(SUM(tool_counts_bash), 0),
+              COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            "#,
+        )
+        .bind(project)
+        .bind(branch)
+        .fetch_one(self.pool())
+        .await?;
 
         // Heatmap: 90-day activity (sessions per day)
         let now = Utc::now().timestamp();
@@ -1179,11 +1380,14 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
             FROM sessions
             WHERE last_message_at >= ?1 AND is_sidechain = 0
+              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
         )
         .bind(ninety_days_ago)
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1195,11 +1399,9 @@ impl Database {
             })
             .collect();
 
-        // Top invocables by kind (from Phase 2A-2 invocations table)
-        let top_skills = self.top_invocables_by_kind("skill").await?;
-        let top_commands = self.top_invocables_by_kind("command").await?;
-        let top_mcp_tools = self.top_invocables_by_kind("mcp_tool").await?;
-        let top_agents = self.top_invocables_by_kind("agent").await?;
+        // Merged invocables query: all 4 kinds in one scan (replaces 4 queries)
+        let (top_skills, top_commands, top_mcp_tools, top_agents) =
+            self.all_top_invocables_by_kind(project, branch).await?;
 
         // Top 5 projects by session count
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -1207,11 +1409,14 @@ impl Database {
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM sessions
             WHERE is_sidechain = 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1230,10 +1435,13 @@ impl Database {
             SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
             FROM sessions
             WHERE is_sidechain = 0 AND duration_seconds > 0
+              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             ORDER BY duration_seconds DESC
             LIMIT 5
             "#,
         )
+        .bind(project)
+        .bind(branch)
         .fetch_all(self.pool())
         .await?;
 
@@ -1249,21 +1457,6 @@ impl Database {
                 }
             })
             .collect();
-
-        // Tool totals (aggregate across all non-sidechain sessions)
-        let (edit, read, bash, write): (i64, i64, i64, i64) = sqlx::query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(tool_counts_edit), 0),
-                COALESCE(SUM(tool_counts_read), 0),
-                COALESCE(SUM(tool_counts_bash), 0),
-                COALESCE(SUM(tool_counts_write), 0)
-            FROM sessions
-            WHERE is_sidechain = 0
-            "#,
-        )
-        .fetch_one(self.pool())
-        .await?;
 
         Ok(DashboardStats {
             total_sessions: total_sessions as usize,
@@ -1282,6 +1475,189 @@ impl Database {
             },
             longest_sessions,
         })
+    }
+
+    /// Get dashboard statistics filtered by a time range.
+    ///
+    /// Stats are filtered to sessions with `last_message_at` within [from, to].
+    /// Heatmap always shows the last 90 days regardless of the filter.
+    /// Optimized: counts+tools merged (3→1), invocables merged (4→1) = 5 queries total.
+    pub async fn get_dashboard_stats_with_range(
+        &self,
+        from: Option<i64>,
+        to: Option<i64>,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<DashboardStats> {
+        let from = from.unwrap_or(1);
+        let to = to.unwrap_or(i64::MAX);
+
+        // Merged query: session count + project count + tool totals (replaces 3 queries)
+        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+              COUNT(*),
+              COUNT(DISTINCT project_id),
+              COALESCE(SUM(tool_counts_edit), 0),
+              COALESCE(SUM(tool_counts_read), 0),
+              COALESCE(SUM(tool_counts_bash), 0),
+              COALESCE(SUM(tool_counts_write), 0)
+            FROM sessions
+            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_one(self.pool())
+        .await?;
+
+        // Heatmap: always 90 days (not affected by time range filter)
+        let now = Utc::now().timestamp();
+        let ninety_days_ago = now - (90 * 86400);
+        let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT date(last_message_at, 'unixepoch') as day, COUNT(*) as cnt
+            FROM sessions
+            WHERE last_message_at >= ?1 AND is_sidechain = 0
+              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
+            GROUP BY day
+            ORDER BY day ASC
+            "#,
+        )
+        .bind(ninety_days_ago)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        let heatmap: Vec<DayActivity> = heatmap_rows
+            .into_iter()
+            .map(|(date, count)| DayActivity {
+                date,
+                count: count as usize,
+            })
+            .collect();
+
+        // Merged invocables query with time range: all 4 kinds in one scan (replaces 4 queries)
+        let (top_skills, top_commands, top_mcp_tools, top_agents) =
+            self.all_top_invocables_by_kind_with_range(from, to, project, branch).await?;
+
+        // Top 5 projects by session count (filtered)
+        let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
+            r#"
+            SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
+            FROM sessions
+            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+            GROUP BY project_id
+            ORDER BY cnt DESC
+            LIMIT 5
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        let top_projects: Vec<ProjectStat> = project_rows
+            .into_iter()
+            .map(|(name, display_name, session_count)| ProjectStat {
+                name,
+                display_name,
+                session_count: session_count as usize,
+            })
+            .collect();
+
+        // Top 5 longest sessions by duration (filtered)
+        let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
+            r#"
+            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
+            FROM sessions
+            WHERE is_sidechain = 0 AND duration_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+            ORDER BY duration_seconds DESC
+            LIMIT 5
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        let longest_sessions: Vec<SessionDurationStat> = longest_rows
+            .into_iter()
+            .map(|(id, preview, project_name, project_display_name, duration_seconds)| {
+                SessionDurationStat {
+                    id,
+                    preview,
+                    project_name,
+                    project_display_name,
+                    duration_seconds: duration_seconds as u32,
+                }
+            })
+            .collect();
+
+        Ok(DashboardStats {
+            total_sessions: total_sessions as usize,
+            total_projects: total_projects as usize,
+            heatmap,
+            top_skills,
+            top_commands,
+            top_mcp_tools,
+            top_agents,
+            top_projects,
+            tool_totals: ToolCounts {
+                edit: edit as usize,
+                read: read as usize,
+                bash: bash as usize,
+                write: write as usize,
+            },
+            longest_sessions,
+        })
+    }
+
+    /// Get all-time aggregate metrics for the dashboard.
+    ///
+    /// Returns (session_count, total_tokens, total_files_edited, commit_count).
+    /// Optimized: 4 queries → 1 via scalar subqueries in a single round-trip.
+    pub async fn get_all_time_metrics(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<(u64, u64, u64, u64)> {
+        let (session_count, total_tokens, total_files_edited, commit_count): (i64, i64, i64, i64) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                  (SELECT COUNT(*) FROM sessions
+                     WHERE is_sidechain = 0
+                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
+                     FROM turns t INNER JOIN sessions s ON t.session_id = s.id
+                     WHERE s.is_sidechain = 0
+                     AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2)),
+                  (SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions
+                     WHERE is_sidechain = 0
+                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COUNT(*) FROM session_commits sc INNER JOIN sessions s ON sc.session_id = s.id
+                     WHERE s.is_sidechain = 0
+                     AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
+                "#,
+            )
+            .bind(project)
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?;
+
+        Ok((
+            session_count as u64,
+            total_tokens as u64,
+            total_files_edited as u64,
+            commit_count as u64,
+        ))
     }
 
     /// Remove sessions whose file_path is NOT in the given list of valid paths.
@@ -1700,6 +2076,109 @@ impl Database {
     }
 
     // ========================================================================
+    // Storage statistics queries (for Settings page storage overview)
+    // ========================================================================
+
+    /// Get the total count of sessions (excluding sidechains).
+    pub async fn get_session_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+                .fetch_one(self.pool())
+                .await?;
+        Ok(count)
+    }
+
+    /// Get the total count of projects.
+    pub async fn get_project_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0",
+        )
+        .fetch_one(self.pool())
+        .await?;
+        Ok(count)
+    }
+
+    /// Get the total count of linked commits.
+    pub async fn get_commit_count(&self) -> DbResult<i64> {
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_commits")
+            .fetch_one(self.pool())
+            .await?;
+        Ok(count)
+    }
+
+    /// Get the oldest session date (Unix timestamp).
+    pub async fn get_oldest_session_date(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<Option<i64>> {
+        let result: (Option<i64>,) = sqlx::query_as(
+            "SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0 AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
+        )
+        .bind(project)
+        .bind(branch)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(result.0)
+    }
+
+    /// Get all storage-related counts in a single query (replaces 4 separate queries).
+    ///
+    /// Returns (session_count, project_count, commit_count, oldest_session_date).
+    pub async fn get_storage_counts(&self) -> DbResult<(i64, i64, i64, Option<i64>)> {
+        let (session_count, project_count, commit_count, oldest_date): (i64, i64, i64, Option<i64>) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                  (SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0),
+                  (SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0),
+                  (SELECT COUNT(*) FROM session_commits),
+                  (SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0)
+                "#,
+            )
+            .fetch_one(self.pool())
+            .await?;
+
+        Ok((session_count, project_count, commit_count, oldest_date))
+    }
+
+    /// Get the SQLite database file size in bytes.
+    /// Uses SQLite pragma to calculate page_count * page_size.
+    pub async fn get_database_size(&self) -> DbResult<i64> {
+        let (page_count,): (i64,) = sqlx::query_as("SELECT page_count FROM pragma_page_count()")
+            .fetch_one(self.pool())
+            .await?;
+        let (page_size,): (i64,) = sqlx::query_as("SELECT page_size FROM pragma_page_size()")
+            .fetch_one(self.pool())
+            .await?;
+        Ok(page_count * page_size)
+    }
+
+    /// Set the primary model for a session (used for testing and indexing).
+    pub async fn set_session_primary_model(&self, session_id: &str, model: &str) -> DbResult<()> {
+        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
+            .bind(model)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Backfill primary_model from turns table for sessions that were deep-indexed
+    /// before primary_model was populated during indexing.
+    pub async fn backfill_primary_models(&self) -> DbResult<u64> {
+        let result = sqlx::query(
+            r#"
+            UPDATE sessions SET primary_model = (
+                SELECT model_id FROM turns
+                WHERE turns.session_id = sessions.id
+                GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
+            )
+            WHERE primary_model IS NULL AND deep_indexed_at IS NOT NULL
+            "#,
+        )
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    // ========================================================================
     // Theme 4 Phase 3: System Page Queries
     // ========================================================================
 
@@ -1993,6 +2472,148 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    // ========================================================================
+    // AI Generation Statistics (for dashboard AI generation breakdown)
+    // ========================================================================
+
+    /// Get AI generation statistics with optional time range filter.
+    pub async fn get_ai_generation_stats(
+        &self,
+        from: Option<i64>,
+        to: Option<i64>,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<AIGenerationStats> {
+        let from = from.unwrap_or(1);
+        let to = to.unwrap_or(i64::MAX);
+
+        let (files_created, total_input_tokens, total_output_tokens): (i64, i64, i64) =
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COALESCE(SUM(files_edited_count), 0),
+                    COALESCE(SUM(total_input_tokens), 0),
+                    COALESCE(SUM(total_output_tokens), 0)
+                FROM sessions
+                WHERE is_sidechain = 0
+                  AND last_message_at >= ?1
+                  AND last_message_at <= ?2
+                  AND (?3 IS NULL OR project_id = ?3)
+                  AND (?4 IS NULL OR git_branch = ?4)
+                "#,
+            )
+            .bind(from)
+            .bind(to)
+            .bind(project)
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?;
+
+        let model_rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                primary_model,
+                COALESCE(SUM(total_input_tokens), 0) as input_tokens,
+                COALESCE(SUM(total_output_tokens), 0) as output_tokens
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND last_message_at >= ?1
+              AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3)
+              AND (?4 IS NULL OR git_branch = ?4)
+              AND primary_model IS NOT NULL
+            GROUP BY primary_model
+            ORDER BY (input_tokens + output_tokens) DESC
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        let tokens_by_model: Vec<TokensByModel> = model_rows
+            .into_iter()
+            .filter_map(|(model, input_tokens, output_tokens)| {
+                model.map(|m| TokensByModel {
+                    model: m,
+                    input_tokens,
+                    output_tokens,
+                })
+            })
+            .collect();
+
+        let project_rows: Vec<(String, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(project_display_name, project_id) as project,
+                COALESCE(SUM(total_input_tokens), 0) as input_tokens,
+                COALESCE(SUM(total_output_tokens), 0) as output_tokens
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND last_message_at >= ?1
+              AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3)
+              AND (?4 IS NULL OR git_branch = ?4)
+            GROUP BY project_id
+            ORDER BY (input_tokens + output_tokens) DESC
+            LIMIT 6
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        let tokens_by_project: Vec<TokensByProject> = if project_rows.len() > 5 {
+            let mut result: Vec<TokensByProject> = project_rows
+                .iter()
+                .take(5)
+                .map(|(project, input_tokens, output_tokens)| TokensByProject {
+                    project: project.clone(),
+                    input_tokens: *input_tokens,
+                    output_tokens: *output_tokens,
+                })
+                .collect();
+
+            let top5_input: i64 = result.iter().map(|p| p.input_tokens).sum();
+            let top5_output: i64 = result.iter().map(|p| p.output_tokens).sum();
+            let others_input = (total_input_tokens - top5_input).max(0);
+            let others_output = (total_output_tokens - top5_output).max(0);
+
+            if others_input > 0 || others_output > 0 {
+                result.push(TokensByProject {
+                    project: "Others".to_string(),
+                    input_tokens: others_input,
+                    output_tokens: others_output,
+                });
+            }
+            result
+        } else {
+            project_rows
+                .into_iter()
+                .map(|(project, input_tokens, output_tokens)| TokensByProject {
+                    project,
+                    input_tokens,
+                    output_tokens,
+                })
+                .collect()
+        };
+
+        Ok(AIGenerationStats {
+            lines_added: 0,
+            lines_removed: 0,
+            files_created,
+            total_input_tokens,
+            total_output_tokens,
+            tokens_by_model,
+            tokens_by_project,
+        })
+    }
 }
 
 // ============================================================================
@@ -2160,6 +2781,15 @@ pub async fn update_session_deep_fields_tx(
     parse_version: i32,
     file_size: i64,
     file_mtime: i64,
+    lines_added: i32,
+    lines_removed: i32,
+    loc_source: i32,
+    ai_lines_added: i32,
+    ai_lines_removed: i32,
+    work_type: Option<&str>,
+    git_branch: Option<&str>,
+    primary_model: Option<&str>,
+    last_message_at: Option<i64>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -2205,7 +2835,16 @@ pub async fn update_session_deep_fields_tx(
             summary_text = ?38,
             parse_version = ?39,
             file_size_at_index = ?40,
-            file_mtime_at_index = ?41
+            file_mtime_at_index = ?41,
+            lines_added = ?42,
+            lines_removed = ?43,
+            loc_source = ?44,
+            ai_lines_added = ?45,
+            ai_lines_removed = ?46,
+            work_type = ?47,
+            git_branch = COALESCE(git_branch, ?48),
+            primary_model = ?49,
+            last_message_at = COALESCE(?50, last_message_at)
         WHERE id = ?1
         "#,
     )
@@ -2250,6 +2889,15 @@ pub async fn update_session_deep_fields_tx(
     .bind(parse_version)
     .bind(file_size)
     .bind(file_mtime)
+    .bind(lines_added)
+    .bind(lines_removed)
+    .bind(loc_source)
+    .bind(ai_lines_added)
+    .bind(ai_lines_removed)
+    .bind(work_type)
+    .bind(git_branch)
+    .bind(primary_model)
+    .bind(last_message_at)
     .execute(&mut **tx)
     .await?;
 
@@ -2422,8 +3070,11 @@ struct SessionRow {
     bash_progress_count: i32,
     hook_progress_count: i32,
     mcp_progress_count: i32,
-    summary_text: Option<String>,
     parse_version: i32,
+    // Phase C: LOC estimation
+    lines_added: i32,
+    lines_removed: i32,
+    loc_source: i32,
     // Theme 4: Classification
     category_l1: Option<String>,
     category_l2: Option<String>,
@@ -2490,8 +3141,11 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             bash_progress_count: row.try_get("bash_progress_count")?,
             hook_progress_count: row.try_get("hook_progress_count")?,
             mcp_progress_count: row.try_get("mcp_progress_count")?,
-            summary_text: row.try_get("summary_text")?,
             parse_version: row.try_get("parse_version")?,
+            // Phase C: LOC estimation
+            lines_added: row.try_get("lines_added")?,
+            lines_removed: row.try_get("lines_removed")?,
+            loc_source: row.try_get("loc_source")?,
             // Theme 4: Classification
             category_l1: row.try_get("category_l1").ok().flatten(),
             category_l2: row.try_get("category_l2").ok().flatten(),
@@ -2569,8 +3223,11 @@ impl SessionRow {
             bash_progress_count: self.bash_progress_count as u32,
             hook_progress_count: self.hook_progress_count as u32,
             mcp_progress_count: self.mcp_progress_count as u32,
-            summary_text: self.summary_text,
             parse_version: self.parse_version as u32,
+            // Phase C: LOC estimation
+            lines_added: self.lines_added as u32,
+            lines_removed: self.lines_removed as u32,
+            loc_source: self.loc_source as u8,
             // Theme 4: Classification
             category_l1: self.category_l1,
             category_l2: self.category_l2,
@@ -2648,8 +3305,12 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
+            // Phase C: LOC estimation
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             // Theme 4: Classification
             category_l1: None,
             category_l2: None,
@@ -2940,6 +3601,11 @@ mod tests {
             .await
             .unwrap();
 
+        // Must insert sessions first (FK constraint on invocations.session_id)
+        for sid in &["sess-1", "sess-2"] {
+            db.insert_session_from_index(sid, "proj-a", "proj-a", "/tmp", &format!("/tmp/{}.jsonl", sid), "", None, 0, 1000, None, false, 0).await.unwrap();
+        }
+
         let invocations = vec![
             ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
             ("file1.jsonl".to_string(), 200, "tool::Edit".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1001),
@@ -2957,6 +3623,9 @@ mod tests {
         db.upsert_invocable("tool::Read", None, "Read", "tool", "")
             .await
             .unwrap();
+
+        // Must insert session first (FK constraint on invocations.session_id)
+        db.insert_session_from_index("sess-1", "proj-a", "proj-a", "/tmp", "/tmp/f.jsonl", "", None, 0, 1000, None, false, 0).await.unwrap();
 
         let invocations = vec![
             ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
@@ -2983,6 +3652,11 @@ mod tests {
         db.upsert_invocable("tool::Bash", None, "Bash", "tool", "Run commands")
             .await
             .unwrap();
+
+        // Must insert sessions first (FK constraint on invocations.session_id)
+        for sid in &["s1", "s2"] {
+            db.insert_session_from_index(sid, "p", "p", "/tmp", &format!("/tmp/{}.jsonl", sid), "", None, 0, 1000, None, false, 0).await.unwrap();
+        }
 
         // Add invocations: Read x3, Edit x1, Bash x0
         let invocations = vec![
@@ -3174,7 +3848,7 @@ mod tests {
         db.insert_session(&s2, "project-a", "Project A").await.unwrap();
         db.insert_session(&s3, "project-b", "Project B").await.unwrap();
 
-        let stats = db.get_dashboard_stats().await.unwrap();
+        let stats = db.get_dashboard_stats(None, None).await.unwrap();
         assert_eq!(stats.total_sessions, 3);
         assert_eq!(stats.total_projects, 2);
         assert!(!stats.heatmap.is_empty());
@@ -3271,6 +3945,15 @@ mod tests {
             1,     // parse_version
             5000,  // file_size
             1706200000, // file_mtime
+            0,     // lines_added
+            0,     // lines_removed
+            0,     // loc_source
+            0,     // ai_lines_added
+            0,     // ai_lines_removed
+            None,  // work_type
+            None,  // git_branch
+            None,  // primary_model
+            None,  // last_message_at
         )
         .await
         .unwrap();
@@ -3344,6 +4027,15 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            0,           // lines_added
+            0,           // lines_removed
+            0,           // loc_source
+            0,           // ai_lines_added
+            0,           // ai_lines_removed
+            None,        // work_type
+            None,        // git_branch
+            None,        // primary_model
+            None,        // last_message_at
         )
         .await
         .unwrap();
@@ -3399,5 +4091,472 @@ mod tests {
         assert_eq!(session.reedited_files_count, 0);
         assert_eq!(session.duration_seconds, 0);
         assert_eq!(session.commit_count, 0);
+    }
+
+    // ========================================================================
+    // Dashboard Analytics: Time-range queries
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_range() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 3 sessions at different timestamps
+        let s1 = SessionInfo {
+            modified_at: 1000,
+            ..make_session("sess-1", "project-a", 1000)
+        };
+        let s2 = SessionInfo {
+            modified_at: 2000,
+            ..make_session("sess-2", "project-a", 2000)
+        };
+        let s3 = SessionInfo {
+            modified_at: 3000,
+            ..make_session("sess-3", "project-b", 3000)
+        };
+
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s3, "project-b", "Project B")
+            .await
+            .unwrap();
+
+        // Filter to only sess-2 (last_message_at = 2000)
+        let stats = db
+            .get_dashboard_stats_with_range(Some(1500), Some(2500), None, None)
+            .await
+            .unwrap();
+        assert_eq!(stats.total_sessions, 1, "Only 1 session within range");
+        assert_eq!(stats.total_projects, 1, "Only 1 project within range");
+
+        // Tool totals should reflect only the filtered session
+        assert_eq!(stats.tool_totals.edit, 5);
+        assert_eq!(stats.tool_totals.read, 10);
+        assert_eq!(stats.tool_totals.bash, 3);
+        assert_eq!(stats.tool_totals.write, 2);
+
+        // Full range should include all 3
+        let all = db
+            .get_dashboard_stats_with_range(None, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(all.total_sessions, 3);
+        assert_eq!(all.total_projects, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_time_metrics() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 2 sessions with known files_edited_count
+        db.insert_session_from_index(
+            "metrics-1",
+            "proj-m",
+            "Project M",
+            "/tmp/proj-m",
+            "/tmp/m1.jsonl",
+            "Preview 1",
+            None,
+            10,
+            1000,
+            None,
+            false,
+            2000,
+        )
+        .await
+        .unwrap();
+
+        db.insert_session_from_index(
+            "metrics-2",
+            "proj-m",
+            "Project M",
+            "/tmp/proj-m",
+            "/tmp/m2.jsonl",
+            "Preview 2",
+            None,
+            5,
+            2000,
+            None,
+            false,
+            1000,
+        )
+        .await
+        .unwrap();
+
+        // Update deep fields to set files_edited_count
+        db.update_session_deep_fields(
+            "metrics-1",
+            "Last msg 1",
+            3,
+            2, 4, 1, 0,
+            "[]", "[]",
+            5, 8, 15,
+            "[]", "[]",
+            0, 3, 0,
+            120, 1,
+            Some(900),
+            0, 0, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            2000,
+            1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
+            None, // primary_model
+            None, // last_message_at
+        )
+        .await
+        .unwrap();
+
+        db.update_session_deep_fields(
+            "metrics-2",
+            "Last msg 2",
+            2,
+            1, 2, 0, 1,
+            "[]", "[]",
+            3, 5, 10,
+            "[]", "[]",
+            0, 2, 0,
+            60, 0,
+            Some(1900),
+            0, 0, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            1000,
+            1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
+            None, // primary_model
+            None, // last_message_at
+        )
+        .await
+        .unwrap();
+
+        let (session_count, total_tokens, total_files_edited, commit_count) =
+            db.get_all_time_metrics(None, None).await.unwrap();
+
+        assert_eq!(session_count, 2, "Should have 2 sessions");
+        // Tokens come from turns table, which we didn't populate
+        assert_eq!(total_tokens, 0, "No turns data, so 0 tokens");
+        // files_edited_count: 3 + 2 = 5
+        assert_eq!(total_files_edited, 5, "Sum of files_edited_count");
+        // commit_count from session_commits table (not populated in this test)
+        assert_eq!(commit_count, 0, "No session_commits data");
+    }
+
+    #[tokio::test]
+    async fn test_get_ai_generation_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 2 sessions with different primary_model values
+        db.insert_session_from_index(
+            "ai-gen-1",
+            "proj-ai",
+            "Project AI",
+            "/tmp/proj-ai",
+            "/tmp/ai1.jsonl",
+            "Preview 1",
+            None,
+            10,
+            1000,
+            None,
+            false,
+            2000,
+        )
+        .await
+        .unwrap();
+
+        db.insert_session_from_index(
+            "ai-gen-2",
+            "proj-ai2",
+            "Project AI 2",
+            "/tmp/proj-ai2",
+            "/tmp/ai2.jsonl",
+            "Preview 2",
+            None,
+            5,
+            2000,
+            None,
+            false,
+            1000,
+        )
+        .await
+        .unwrap();
+
+        // Update deep fields with token data and primary_model
+        db.update_session_deep_fields(
+            "ai-gen-1",
+            "Last msg",
+            3,
+            5, 10, 3, 2,
+            "[]", "[]",
+            5, 8, 15,
+            "[]", "[]",
+            0, 4, 0,
+            120, 1,
+            Some(500),
+            3000, 2000, 0, 0, // total_input, total_output, cache_read, cache_creation
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            2000,
+            1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
+            Some("claude-opus-4-5-20251101"),
+            None, // last_message_at
+        )
+        .await
+        .unwrap();
+
+        db.update_session_deep_fields(
+            "ai-gen-2",
+            "Last msg 2",
+            2,
+            3, 5, 1, 1,
+            "[]", "[]",
+            3, 5, 10,
+            "[]", "[]",
+            0, 2, 0,
+            60, 0,
+            Some(1500),
+            1000, 500, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            1000,
+            1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
+            Some("claude-sonnet-4-20250514"),
+            None, // last_message_at
+        )
+        .await
+        .unwrap();
+
+        // Test all-time (no range filter)
+        let stats = db.get_ai_generation_stats(None, None, None, None).await.unwrap();
+
+        // files_created = sum of files_edited_count: 4 + 2 = 6
+        assert_eq!(stats.files_created, 6, "Sum of files_edited_count");
+        // Total tokens from sessions table
+        assert_eq!(stats.total_input_tokens, 4000, "3000 + 1000");
+        assert_eq!(stats.total_output_tokens, 2500, "2000 + 500");
+        // lines not tracked yet
+        assert_eq!(stats.lines_added, 0);
+        assert_eq!(stats.lines_removed, 0);
+
+        // 2 model entries
+        assert_eq!(stats.tokens_by_model.len(), 2, "Should have 2 model entries");
+        let opus = stats
+            .tokens_by_model
+            .iter()
+            .find(|m| m.model == "claude-opus-4-5-20251101")
+            .unwrap();
+        assert_eq!(opus.input_tokens, 3000);
+        assert_eq!(opus.output_tokens, 2000);
+
+        let sonnet = stats
+            .tokens_by_model
+            .iter()
+            .find(|m| m.model == "claude-sonnet-4-20250514")
+            .unwrap();
+        assert_eq!(sonnet.input_tokens, 1000);
+        assert_eq!(sonnet.output_tokens, 500);
+
+        // Project breakdown (2 projects)
+        assert_eq!(
+            stats.tokens_by_project.len(),
+            2,
+            "Should have 2 project entries"
+        );
+
+        // Test with time range: only ai-gen-1 has last_message_at = 1000
+        let ranged = db
+            .get_ai_generation_stats(Some(900), Some(1100), None, None)
+            .await
+            .unwrap();
+        assert_eq!(ranged.files_created, 4, "Only ai-gen-1 within range");
+        assert_eq!(ranged.total_input_tokens, 3000);
+        assert_eq!(ranged.total_output_tokens, 2000);
+        assert_eq!(ranged.tokens_by_model.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            duration_seconds: 600,
+            ..make_session("sess-filter-a", "proj-x", now - 100)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let s2 = SessionInfo {
+            git_branch: Some("develop".to_string()),
+            duration_seconds: 300,
+            ..make_session("sess-filter-b", "proj-y", now - 200)
+        };
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter — should see both
+        let stats = db.get_dashboard_stats(None, None).await.unwrap();
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.total_projects, 2);
+
+        // Project filter — should see only proj-x
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+        assert_eq!(stats.total_projects, 1);
+
+        // Project + branch filter — matching
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("main")).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Project + wrong branch = 0
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 0);
+
+        // Branch-only filter (no project)
+        let stats = db.get_dashboard_stats(None, Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Tool totals should reflect filtered sessions
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.tool_totals.edit, 5); // make_session sets edit=5
+
+        // Longest sessions should be filtered (duration_seconds > 0, so they appear)
+        let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.longest_sessions.len(), 1, "only proj-x's session");
+        assert_eq!(stats.longest_sessions[0].id, "sess-filter-a");
+
+        let stats = db.get_dashboard_stats(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.longest_sessions.len(), 0, "wrong branch = no sessions");
+    }
+
+    #[tokio::test]
+    async fn test_get_all_time_metrics_with_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-atm-a", "proj-x", now - 100)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let mut s2 = make_session("sess-atm-b", "proj-y", now - 200);
+        s2.git_branch = Some("develop".to_string());
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(None, None).await.unwrap();
+        assert_eq!(sessions, 2);
+
+        // Project filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), None).await.unwrap();
+        assert_eq!(sessions, 1);
+
+        // Project + branch filter
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), Some("main")).await.unwrap();
+        assert_eq!(sessions, 1);
+
+        // Project + wrong branch
+        let (sessions, _, _, _) = db.get_all_time_metrics(Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(sessions, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_oldest_session_date_with_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-old-a", "proj-x", now - 200)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        let mut s2 = make_session("sess-old-b", "proj-y", now - 100);
+        s2.git_branch = Some("develop".to_string());
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter — oldest across all
+        let oldest = db.get_oldest_session_date(None, None).await.unwrap();
+        assert!(oldest.is_some());
+
+        // Filter proj-y — should get session_b's timestamp
+        let oldest = db.get_oldest_session_date(Some("proj-y"), None).await.unwrap();
+        assert!(oldest.is_some());
+
+        // Filter non-existent project — should be None
+        let oldest = db.get_oldest_session_date(Some("proj-z"), None).await.unwrap();
+        assert!(oldest.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_range_and_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // 3 sessions: proj-x at t=1000, proj-x at t=2000, proj-y at t=2000
+        let s1 = SessionInfo {
+            modified_at: 1000,
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-rp-1", "proj-x", 1000)
+        };
+        let s2 = SessionInfo {
+            modified_at: 2000,
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-rp-2", "proj-x", 2000)
+        };
+        let mut s3 = SessionInfo {
+            modified_at: 2000,
+            ..make_session("sess-rp-3", "proj-y", 2000)
+        };
+        s3.git_branch = Some("develop".to_string());
+
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+        db.insert_session(&s2, "proj-x", "Project X").await.unwrap();
+        db.insert_session(&s3, "proj-y", "Project Y").await.unwrap();
+
+        // Time range 1500-2500 + no project filter: sess-rp-2 and sess-rp-3
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), None, None).await.unwrap();
+        assert_eq!(stats.total_sessions, 2);
+
+        // Time range 1500-2500 + project filter proj-x: only sess-rp-2
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), Some("proj-x"), None).await.unwrap();
+        assert_eq!(stats.total_sessions, 1);
+
+        // Time range 1500-2500 + project proj-x + branch develop: 0
+        let stats = db.get_dashboard_stats_with_range(Some(1500), Some(2500), Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(stats.total_sessions, 0);
     }
 }
