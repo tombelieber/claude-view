@@ -88,8 +88,9 @@ impl GitSyncState {
         self.sessions_correlated.store(0, Ordering::Relaxed);
         self.total_correlatable_sessions.store(0, Ordering::Relaxed);
         self.links_created.store(0, Ordering::Relaxed);
-        if let Ok(mut guard) = self.error.write() {
-            *guard = None;
+        match self.error.write() {
+            Ok(mut guard) => *guard = None,
+            Err(e) => tracing::error!("GitSyncState error lock poisoned during reset: {e}"),
         }
     }
 
@@ -177,14 +178,21 @@ impl GitSyncState {
     /// Record an error message (also sets phase to [`GitSyncPhase::Error`]).
     pub fn set_error(&self, msg: String) {
         self.set_phase(GitSyncPhase::Error);
-        if let Ok(mut guard) = self.error.write() {
-            *guard = Some(msg);
+        match self.error.write() {
+            Ok(mut guard) => *guard = Some(msg),
+            Err(e) => tracing::error!("GitSyncState error lock poisoned during set_error: {e}"),
         }
     }
 
     /// Retrieve the current error message, if any.
     pub fn error(&self) -> Option<String> {
-        self.error.read().ok().and_then(|g| g.clone())
+        match self.error.read() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                tracing::error!("GitSyncState error lock poisoned during read: {e}");
+                None
+            }
+        }
     }
 }
 

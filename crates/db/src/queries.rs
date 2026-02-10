@@ -1025,7 +1025,7 @@ impl Database {
                 COALESCE(project_path, ''),
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
-                MAX(last_message_at) as last_activity_at
+                MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity_at
             FROM sessions
             WHERE is_sidechain = 0
             GROUP BY project_id
@@ -1381,7 +1381,7 @@ impl Database {
         project: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<DashboardStats> {
-        let from = from.unwrap_or(0);
+        let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
         // Total sessions and projects (filtered)
@@ -1783,7 +1783,7 @@ impl Database {
         project: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<AIGenerationStats> {
-        let from = from.unwrap_or(0);
+        let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
         // Note: lines_added and lines_removed columns don't exist in the schema yet.
