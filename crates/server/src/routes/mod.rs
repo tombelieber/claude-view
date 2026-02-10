@@ -3,6 +3,7 @@
 pub mod classify;
 pub mod contributions;
 pub mod export;
+pub mod facets;
 pub mod health;
 pub mod indexing;
 pub mod insights;
@@ -59,6 +60,11 @@ use crate::state::AppState;
 /// - GET /api/contributions - Contribution metrics and insights
 /// - GET /api/contributions/sessions/:id - Session contribution detail
 /// - GET /api/score - AI Fluency Score (composite 0-100)
+/// - GET  /api/facets/ingest/stream  - SSE stream of facet ingest progress
+/// - POST /api/facets/ingest/trigger - Trigger facet ingest
+/// - GET  /api/facets/stats          - Aggregate facet statistics
+/// - GET  /api/facets/badges         - Quality badges for sessions
+/// - GET  /api/facets/pattern-alert  - Negative satisfaction pattern alert
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -78,6 +84,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", insights::router())
         .nest("/api", contributions::router())
         .nest("/api", score::router())
+        .nest("/api", facets::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
