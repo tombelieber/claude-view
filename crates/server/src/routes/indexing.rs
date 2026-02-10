@@ -90,6 +90,10 @@ pub async fn indexing_progress(
     let stream = async_stream::stream! {
         let mut last_status = IndexingStatus::Idle;
         let mut last_indexed = 0usize;
+        let started = std::time::Instant::now();
+        // Safety: timeout after 10 minutes to prevent infinite loops if background task panics.
+        // Indexing can take longer than git sync, so use a 10-minute timeout (vs 5 for git sync).
+        let max_duration = std::time::Duration::from_secs(600);
 
         loop {
             let status = indexing.status();
@@ -161,6 +165,16 @@ pub async fn indexing_progress(
                     break;
                 }
                 _ => {}
+            }
+
+            // Safety: timeout to prevent infinite loops if background task panics
+            if started.elapsed() > max_duration {
+                let data = serde_json::json!({
+                    "status": "error",
+                    "message": "Indexing timed out after 10 minutes",
+                });
+                yield Ok(Event::default().event("error").data(data.to_string()));
+                break;
             }
 
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
