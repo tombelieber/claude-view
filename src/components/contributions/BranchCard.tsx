@@ -1,6 +1,6 @@
 import { GitBranch, Clock, ChevronRight, FileCode2, GitCommit, Filter } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useBranchSessions, type TimeRange } from '../../hooks/use-contributions'
+import { useBranchSessions, type ContributionsTimeRange } from '../../hooks/use-contributions'
 import type { BranchBreakdown, BranchSession } from '../../types/generated'
 
 interface BranchCardProps {
@@ -8,7 +8,7 @@ interface BranchCardProps {
   isExpanded: boolean
   onToggle: () => void
   onDrillDown?: (sessionId: string) => void
-  timeRange?: TimeRange
+  timeRange?: ContributionsTimeRange
   projectId?: string
   isFiltered?: boolean
   onFilter?: (branchName: string) => void
@@ -27,7 +27,7 @@ export function BranchCard({
   isExpanded,
   onToggle,
   onDrillDown,
-  timeRange = 'week',
+  timeRange = { preset: '7d' },
   projectId,
   isFiltered,
   onFilter,
