@@ -47,6 +47,9 @@ export function useStatus() {
  */
 export function formatRelativeTime(timestamp: bigint | null): string | null {
   if (timestamp === null) return null
+  // Guard against epoch-zero: ts=0 means "never synced", not Jan 1 1970.
+  // See CLAUDE.md: "Every function that does new Date(ts * 1000) must check ts <= 0 first."
+  if (Number(timestamp) <= 0) return null
 
   const now = Date.now()
   const timestampMs = Number(timestamp) * 1000
