@@ -281,10 +281,14 @@ CREATE TABLE IF NOT EXISTS contribution_snapshots (
     // 16d: Index for model-based grouping and filtering
     // Supports "token usage by model" queries in AI Generation Breakdown.
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
-    // Migration 17: Add CASCADE FKs to turns and invocations tables
+    // Migration 17: Add CASCADE FKs to turns and invocations tables.
     // SQLite can't ALTER TABLE to add constraints, so we recreate the tables.
-    // 17a: Recreate turns with CASCADE FK on session_id
+    // IMPORTANT: This is a multi-statement migration executed via sqlx::raw_sql()
+    // within a single transaction to prevent data loss if the app crashes mid-migration.
+    // The migration runner detects multi-statement migrations (containing ";\n") and
+    // uses raw_sql() instead of query().
     r#"
+BEGIN;
 CREATE TABLE turns_new (
     session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     uuid                  TEXT NOT NULL,
@@ -300,14 +304,11 @@ CREATE TABLE turns_new (
     timestamp             INTEGER,
     PRIMARY KEY (session_id, uuid)
 );
-"#,
-    r#"INSERT INTO turns_new SELECT * FROM turns;"#,
-    r#"DROP TABLE turns;"#,
-    r#"ALTER TABLE turns_new RENAME TO turns;"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_turns_model ON turns(model_id);"#,
-    // 17b: Recreate invocations with CASCADE FK on session_id
-    r#"
+INSERT INTO turns_new SELECT * FROM turns;
+DROP TABLE turns;
+ALTER TABLE turns_new RENAME TO turns;
+CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_turns_model ON turns(model_id);
 CREATE TABLE invocations_new (
     source_file  TEXT NOT NULL,
     byte_offset  INTEGER NOT NULL,
@@ -317,15 +318,18 @@ CREATE TABLE invocations_new (
     timestamp    INTEGER NOT NULL,
     PRIMARY KEY (source_file, byte_offset)
 );
+INSERT INTO invocations_new SELECT * FROM invocations;
+DROP TABLE invocations;
+ALTER TABLE invocations_new RENAME TO invocations;
+CREATE INDEX IF NOT EXISTS idx_invocations_invocable ON invocations(invocable_id);
+COMMIT;
 "#,
-    r#"INSERT INTO invocations_new SELECT * FROM invocations;"#,
-    r#"DROP TABLE invocations;"#,
-    r#"ALTER TABLE invocations_new RENAME TO invocations;"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_invocations_invocable ON invocations(invocable_id);"#,
     // Migration 18: Drop dead `file_hash` column from sessions table.
     // SQLite requires table recreation to drop a column.
-    // 18a: Create sessions_new with full schema minus file_hash
+    // IMPORTANT: Multi-statement migration in a single transaction via raw_sql()
+    // to prevent data loss if the app crashes between DROP and RENAME.
     r#"
+BEGIN;
 CREATE TABLE sessions_new (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
@@ -390,9 +394,6 @@ CREATE TABLE sessions_new (
     work_type TEXT,
     primary_model TEXT
 );
-"#,
-    // 18b: Copy data (explicit column list, omitting file_hash)
-    r#"
 INSERT INTO sessions_new (
     id, project_id, title, preview, turn_count, file_count,
     first_message_at, last_message_at, file_path, indexed_at,
@@ -429,22 +430,21 @@ SELECT
     lines_added, lines_removed, loc_source,
     ai_lines_added, ai_lines_removed, work_type, primary_model
 FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_new RENAME TO sessions;
+CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project_id, git_branch);
+CREATE INDEX IF NOT EXISTS idx_sessions_sidechain ON sessions(is_sidechain);
+CREATE INDEX IF NOT EXISTS idx_sessions_commit_count ON sessions(commit_count) WHERE commit_count > 0;
+CREATE INDEX IF NOT EXISTS idx_sessions_reedit ON sessions(reedited_files_count) WHERE reedited_files_count > 0;
+CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration_seconds);
+CREATE INDEX IF NOT EXISTS idx_sessions_needs_reindex ON sessions(id, file_path) WHERE parse_version < 1;
+CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);
+COMMIT;
 "#,
-    // 18c: Swap tables
-    r#"DROP TABLE sessions;"#,
-    r#"ALTER TABLE sessions_new RENAME TO sessions;"#,
-    // 18d: Recreate ALL indexes (dropped with the old table)
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at DESC);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_branch ON sessions(project_id, git_branch);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_sidechain ON sessions(is_sidechain);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_commit_count ON sessions(commit_count) WHERE commit_count > 0;"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_reedit ON sessions(reedited_files_count) WHERE reedited_files_count > 0;"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration_seconds);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_needs_reindex ON sessions(id, file_path) WHERE parse_version < 1;"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_first_message ON sessions(first_message_at);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_project_first_message ON sessions(project_id, first_message_at);"#,
-    r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
 ];
 
 // ============================================================================
@@ -459,6 +459,12 @@ mod tests {
     async fn setup_db() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
 
+        // Enable foreign keys (required for CASCADE)
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+
         // Create migration tracking table
         sqlx::query("CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)")
             .execute(&pool)
@@ -468,7 +474,14 @@ mod tests {
         // Run all migrations
         for (i, migration) in super::MIGRATIONS.iter().enumerate() {
             let version = i + 1;
-            match sqlx::query(migration).execute(&pool).await {
+            // Multi-statement migrations (with BEGIN/COMMIT) use raw_sql()
+            let is_multi = migration.contains("BEGIN;") || migration.contains("BEGIN\n");
+            let result = if is_multi {
+                sqlx::raw_sql(migration).execute(&pool).await.map(|_| ())
+            } else {
+                sqlx::query(migration).execute(&pool).await.map(|_| ())
+            };
+            match result {
                 Ok(_) => {}
                 Err(e) if e.to_string().contains("duplicate column name") => {}
                 Err(e) => panic!("Migration {} failed: {}", version, e),
