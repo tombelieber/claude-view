@@ -37,6 +37,7 @@ export function truncateMessage(message: string, maxLength: number = 60): string
 /** Format timestamp as relative time (e.g., "5m ago", "2h ago", "3d ago") */
 export function formatRelativeTime(timestamp: bigint | number): string {
   const ts = typeof timestamp === 'bigint' ? Number(timestamp) : timestamp
+  if (ts <= 0) return '--'
   const date = new Date(ts * 1000)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
