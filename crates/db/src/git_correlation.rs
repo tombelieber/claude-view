@@ -2366,7 +2366,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_git_sync_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.commits_found, 0);
@@ -2395,7 +2395,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.commits_found, 0);
@@ -2465,7 +2465,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 1);
         assert_eq!(result.commits_found, 1);
@@ -2552,7 +2552,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         // Only 1 repo scanned despite 2 sessions
         assert_eq!(result.repos_scanned, 1);
@@ -2572,7 +2572,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.links_created, 0);
@@ -3253,7 +3253,7 @@ mod tests {
         .unwrap();
 
         // Run git sync (Phase F: should extract LOC stats)
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 1);
         assert_eq!(result.commits_found, 1);
@@ -3326,8 +3326,8 @@ mod tests {
         .unwrap();
 
         // Run sync TWICE
-        let result1 = run_git_sync(&db).await.unwrap();
-        let result2 = run_git_sync(&db).await.unwrap();
+        let result1 = run_git_sync(&db, |_| {}).await.unwrap();
+        let result2 = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result1.links_created, 1);
         // Second run: link already exists at same tier, so 0 new links

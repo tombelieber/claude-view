@@ -20,13 +20,12 @@ use crate::Database;
 /// Current parse version. Bump when parser logic changes to trigger re-indexing.
 /// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
 /// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
-pub const CURRENT_PARSE_VERSION: i32 = 2;
+/// Version 3: Deep indexing now updates last_message_at from parsed timestamps.
+pub const CURRENT_PARSE_VERSION: i32 = 3;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Note: the sqlx `_tx` function in queries.rs has additional columns
-// (lines_added, lines_removed, loc_source) that this constant omits.
-// Both paths must share the same column set for columns they both update.
+// Must match the sqlx `_tx` function in queries.rs exactly (50 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -71,11 +70,15 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         parse_version = ?39,
         file_size_at_index = ?40,
         file_mtime_at_index = ?41,
-        ai_lines_added = ?42,
-        ai_lines_removed = ?43,
-        work_type = ?44,
-        git_branch = COALESCE(git_branch, ?45),
-        primary_model = ?46
+        lines_added = ?42,
+        lines_removed = ?43,
+        loc_source = ?44,
+        ai_lines_added = ?45,
+        ai_lines_removed = ?46,
+        work_type = ?47,
+        git_branch = COALESCE(git_branch, ?48),
+        primary_model = ?49,
+        last_message_at = COALESCE(?50, last_message_at)
     WHERE id = ?1
 "#;
 
@@ -1832,6 +1835,10 @@ where
                     .map_err(|e| format!("prepare INSERT_INVOC error: {}", e))?;
                 let mut model_stmt = conn.prepare(UPSERT_MODEL_SQL)
                     .map_err(|e| format!("prepare UPSERT_MODEL error: {}", e))?;
+                let mut del_turns_stmt = conn.prepare("DELETE FROM turns WHERE session_id = ?1")
+                    .map_err(|e| format!("prepare DELETE turns error: {}", e))?;
+                let mut del_inv_stmt = conn.prepare("DELETE FROM invocations WHERE session_id = ?1")
+                    .map_err(|e| format!("prepare DELETE invocations error: {}", e))?;
 
                 let tx = conn.unchecked_transaction()
                     .map_err(|e| format!("rusqlite begin error: {}", e))?;
@@ -1880,7 +1887,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (46 params: ?1=id, ?2-?46=fields)
+                    // UPDATE session deep fields (50 params: ?1=id, ?2-?50=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1923,12 +1930,22 @@ where
                         CURRENT_PARSE_VERSION,            // ?39
                         result.file_size,                 // ?40
                         result.file_mtime,                // ?41
-                        meta.ai_lines_added as i32,       // ?42
-                        meta.ai_lines_removed as i32,     // ?43
-                        work_type.as_str(),               // ?44
-                        result.parse_result.git_branch.as_deref(),  // ?45
-                        primary_model,                    // ?46 (Option<String>)
+                        result.parse_result.lines_added as i32,   // ?42
+                        result.parse_result.lines_removed as i32, // ?43
+                        1_i32,                            // ?44 loc_source = 1 (tool-call estimate)
+                        meta.ai_lines_added as i32,       // ?45
+                        meta.ai_lines_removed as i32,     // ?46
+                        work_type.as_str(),               // ?47
+                        result.parse_result.git_branch.as_deref(),  // ?48
+                        primary_model,                    // ?49 (Option<String>)
+                        meta.last_timestamp,              // ?50 (Option<i64>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
+
+                    // DELETE stale turns/invocations before re-inserting
+                    del_turns_stmt.execute(rusqlite::params![result.session_id])
+                        .map_err(|e| format!("DELETE turns for {} error: {}", result.session_id, e))?;
+                    del_inv_stmt.execute(rusqlite::params![result.session_id])
+                        .map_err(|e| format!("DELETE invocations for {} error: {}", result.session_id, e))?;
 
                     // INSERT invocations
                     for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in &result.classified_invocations {
@@ -2123,6 +2140,7 @@ async fn write_results_sqlx(
             Some(work_type.as_str()),
             result.parse_result.git_branch.as_deref(),
             primary_model.as_deref(),
+            meta.last_timestamp,
         )
         .await
         .map_err(|e| {
@@ -2131,6 +2149,19 @@ async fn write_results_sqlx(
                 result.session_id, e
             )
         })?;
+
+        // DELETE stale turns/invocations before re-inserting
+        sqlx::query("DELETE FROM turns WHERE session_id = ?1")
+            .bind(&result.session_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("DELETE turns for {} error: {}", result.session_id, e))?;
+
+        sqlx::query("DELETE FROM invocations WHERE session_id = ?1")
+            .bind(&result.session_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("DELETE invocations for {} error: {}", result.session_id, e))?;
 
         if !result.classified_invocations.is_empty() {
             crate::queries::batch_insert_invocations_tx(
