@@ -6,6 +6,7 @@ import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
 import { SessionToolbar } from './SessionToolbar'
+import { ActivityCalendar } from './ActivityCalendar'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
@@ -103,6 +104,15 @@ export function ProjectView() {
     return [...set].sort()
   }, [page?.sessions])
 
+  // Extract unique models from sessions for the filter popover
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of page?.sessions ?? []) {
+      if (s.primaryModel) set.add(s.primaryModel)
+    }
+    return [...set].sort()
+  }, [page?.sessions])
+
   // Grouping safeguard
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
 
@@ -175,6 +185,11 @@ export function ProjectView() {
           />
         ) : page && page.sessions.length > 0 ? (
           <>
+            {/* Activity Calendar */}
+            <div className="mb-6">
+              <ActivityCalendar sessions={page.sessions} />
+            </div>
+
             {/* SessionToolbar with view mode toggle — always visible when sessions exist */}
             <SessionToolbar
               filters={filters}
@@ -182,6 +197,7 @@ export function ProjectView() {
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
               branches={availableBranches}
+              models={availableModels}
             />
 
             {/* Grouping safeguard warning */}

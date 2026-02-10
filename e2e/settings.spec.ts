@@ -8,8 +8,8 @@ test.describe('Settings Page', () => {
     // Wait for page to fully render
     await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
-    // Verify all four sections exist
-    await expect(page.locator('text=Data Status')).toBeVisible()
+    // Verify all sections exist
+    await expect(page.locator('text=Data & Storage')).toBeVisible()
     await expect(page.locator('text=Git Sync')).toBeVisible()
     await expect(page.locator('text=Export Data')).toBeVisible()
     await expect(page.locator('text=About')).toBeVisible()
@@ -58,16 +58,15 @@ test.describe('Settings Page', () => {
     await expect(page.locator('text=Focus search')).toBeVisible()
   })
 
-  test('data status shows index information', async ({ page }) => {
+  test('storage overview shows session and project counts', async ({ page }) => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
 
-    // Wait for status data to load
-    await expect(page.locator('text=Data Status')).toBeVisible({ timeout: 10000 })
+    // Wait for storage data to load
+    await expect(page.locator('text=Data & Storage')).toBeVisible({ timeout: 10000 })
 
-    // Verify index metadata is displayed
-    await expect(page.locator('text=Last indexed')).toBeVisible()
-    await expect(page.locator('text=Sessions')).toBeVisible()
+    // Verify counts are displayed in the storage overview
+    await expect(page.locator('text=Sessions')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('text=Projects')).toBeVisible()
   })
 })

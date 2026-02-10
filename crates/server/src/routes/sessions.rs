@@ -256,7 +256,7 @@ pub async fn list_sessions(
             .collect();
     }
 
-    // Filter by models (comma-separated)
+    // Filter by models (comma-separated, exact match)
     if let Some(models_str) = &query.models {
         let models: Vec<&str> = models_str.split(',').map(|s| s.trim()).collect();
         all_sessions = all_sessions
@@ -264,7 +264,7 @@ pub async fn list_sessions(
             .filter(|s| {
                 s.primary_model
                     .as_ref()
-                    .map(|m| models.contains(&m.as_str()))
+                    .map(|m| models.iter().any(|&filter| m == filter))
                     .unwrap_or(false)
             })
             .collect();
@@ -590,7 +590,7 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
             lines_added: 0,
             lines_removed: 0,

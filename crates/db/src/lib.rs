@@ -11,11 +11,14 @@ pub mod trends;
 pub mod snapshots;
 pub mod pricing;
 
+pub use queries::AIGenerationStats;
 pub use queries::BranchCount;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::StatsOverview;
+pub use queries::TokensByModel;
+pub use queries::TokensByProject;
 pub use queries::TokenStats;
 
 // Re-export trends types
@@ -107,8 +110,18 @@ impl Database {
     }
 
     /// Create an in-memory database (for testing).
+    ///
+    /// Uses `shared_cache(true)` so all pool connections share the same
+    /// in-memory database. Without this, each connection gets its own
+    /// separate database, breaking `tokio::try_join!` and concurrent queries.
     pub async fn new_in_memory() -> DbResult<Self> {
-        let pool = SqlitePool::connect("sqlite::memory:").await?;
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
+            .shared_cache(true)
+            .busy_timeout(std::time::Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(options)
+            .await?;
         let db = Self { pool, db_path: PathBuf::new() };
         db.run_migrations().await?;
         Ok(db)
@@ -145,7 +158,16 @@ impl Database {
         for (i, migration) in migrations::MIGRATIONS.iter().enumerate() {
             let version = i + 1; // 1-based
             if version > current_version {
-                match sqlx::query(migration).execute(&self.pool).await {
+                // Multi-statement migrations (containing BEGIN/COMMIT) use raw_sql()
+                // which supports executing multiple statements atomically.
+                // Single-statement migrations use query() as before.
+                let is_multi_statement = migration.contains("BEGIN;") || migration.contains("BEGIN\n");
+                let result = if is_multi_statement {
+                    sqlx::raw_sql(migration).execute(&self.pool).await.map(|_| ())
+                } else {
+                    sqlx::query(migration).execute(&self.pool).await.map(|_| ())
+                };
+                match result {
                     Ok(_) => {}
                     Err(e) if e.to_string().contains("duplicate column name") => {
                         // Column already exists from a previous run without tracking.
