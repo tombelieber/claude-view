@@ -226,7 +226,13 @@ async fn main() -> Result<()> {
                             }
                             // Run Pass 2 for any changed files (skips unchanged via size+mtime)
                             // Clone registry out of the lock (guard dropped at end of let-statement)
-                            let registry_clone = periodic_registry.read().unwrap().clone();
+                            let registry_clone = match periodic_registry.read() {
+                                Ok(guard) => guard.clone(),
+                                Err(poisoned) => {
+                                    tracing::warn!("Registry lock poisoned, using recovered value");
+                                    poisoned.into_inner().clone()
+                                }
+                            };
                             match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_, _| {}).await {
                                 Ok(indexed) => {
                                     if indexed > 0 {
