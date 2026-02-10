@@ -3081,4 +3081,311 @@ mod tests {
         assert_eq!(session.duration_seconds, 0);
         assert_eq!(session.commit_count, 0);
     }
+
+    // ========================================================================
+    // Dashboard Analytics: Time-range queries
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_dashboard_stats_with_range() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 3 sessions at different timestamps
+        let s1 = SessionInfo {
+            modified_at: 1000,
+            ..make_session("sess-1", "project-a", 1000)
+        };
+        let s2 = SessionInfo {
+            modified_at: 2000,
+            ..make_session("sess-2", "project-a", 2000)
+        };
+        let s3 = SessionInfo {
+            modified_at: 3000,
+            ..make_session("sess-3", "project-b", 3000)
+        };
+
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s3, "project-b", "Project B")
+            .await
+            .unwrap();
+
+        // Filter to only sess-2 (last_message_at = 2000)
+        let stats = db
+            .get_dashboard_stats_with_range(Some(1500), Some(2500))
+            .await
+            .unwrap();
+        assert_eq!(stats.total_sessions, 1, "Only 1 session within range");
+        assert_eq!(stats.total_projects, 1, "Only 1 project within range");
+
+        // Tool totals should reflect only the filtered session
+        assert_eq!(stats.tool_totals.edit, 5);
+        assert_eq!(stats.tool_totals.read, 10);
+        assert_eq!(stats.tool_totals.bash, 3);
+        assert_eq!(stats.tool_totals.write, 2);
+
+        // Full range should include all 3
+        let all = db
+            .get_dashboard_stats_with_range(None, None)
+            .await
+            .unwrap();
+        assert_eq!(all.total_sessions, 3);
+        assert_eq!(all.total_projects, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_time_metrics() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 2 sessions with known files_edited_count
+        db.insert_session_from_index(
+            "metrics-1",
+            "proj-m",
+            "Project M",
+            "/tmp/proj-m",
+            "/tmp/m1.jsonl",
+            "Preview 1",
+            None,
+            10,
+            1000,
+            None,
+            false,
+            2000,
+        )
+        .await
+        .unwrap();
+
+        db.insert_session_from_index(
+            "metrics-2",
+            "proj-m",
+            "Project M",
+            "/tmp/proj-m",
+            "/tmp/m2.jsonl",
+            "Preview 2",
+            None,
+            5,
+            2000,
+            None,
+            false,
+            1000,
+        )
+        .await
+        .unwrap();
+
+        // Update deep fields to set files_edited_count
+        db.update_session_deep_fields(
+            "metrics-1",
+            "Last msg 1",
+            3,
+            2, 4, 1, 0,
+            "[]", "[]",
+            5, 8, 15,
+            "[]", "[]",
+            0, 3, 0,
+            120, 1,
+            Some(900),
+            0, 0, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            2000,
+            1706200000,
+        )
+        .await
+        .unwrap();
+
+        db.update_session_deep_fields(
+            "metrics-2",
+            "Last msg 2",
+            2,
+            1, 2, 0, 1,
+            "[]", "[]",
+            3, 5, 10,
+            "[]", "[]",
+            0, 2, 0,
+            60, 0,
+            Some(1900),
+            0, 0, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            1000,
+            1706200000,
+        )
+        .await
+        .unwrap();
+
+        let (session_count, total_tokens, total_files_edited, commit_count) =
+            db.get_all_time_metrics().await.unwrap();
+
+        assert_eq!(session_count, 2, "Should have 2 sessions");
+        // Tokens come from turns table, which we didn't populate
+        assert_eq!(total_tokens, 0, "No turns data, so 0 tokens");
+        // files_edited_count: 3 + 2 = 5
+        assert_eq!(total_files_edited, 5, "Sum of files_edited_count");
+        // commit_count from session_commits table (not populated in this test)
+        assert_eq!(commit_count, 0, "No session_commits data");
+    }
+
+    #[tokio::test]
+    async fn test_get_ai_generation_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert 2 sessions with different primary_model values
+        db.insert_session_from_index(
+            "ai-gen-1",
+            "proj-ai",
+            "Project AI",
+            "/tmp/proj-ai",
+            "/tmp/ai1.jsonl",
+            "Preview 1",
+            None,
+            10,
+            1000,
+            None,
+            false,
+            2000,
+        )
+        .await
+        .unwrap();
+
+        db.insert_session_from_index(
+            "ai-gen-2",
+            "proj-ai2",
+            "Project AI 2",
+            "/tmp/proj-ai2",
+            "/tmp/ai2.jsonl",
+            "Preview 2",
+            None,
+            5,
+            2000,
+            None,
+            false,
+            1000,
+        )
+        .await
+        .unwrap();
+
+        // Update deep fields with token data and primary_model
+        db.update_session_deep_fields(
+            "ai-gen-1",
+            "Last msg",
+            3,
+            5, 10, 3, 2,
+            "[]", "[]",
+            5, 8, 15,
+            "[]", "[]",
+            0, 4, 0,
+            120, 1,
+            Some(500),
+            3000, 2000, 0, 0, // total_input, total_output, cache_read, cache_creation
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            2000,
+            1706200000,
+        )
+        .await
+        .unwrap();
+
+        db.update_session_deep_fields(
+            "ai-gen-2",
+            "Last msg 2",
+            2,
+            3, 5, 1, 1,
+            "[]", "[]",
+            3, 5, 10,
+            "[]", "[]",
+            0, 2, 0,
+            60, 0,
+            Some(1500),
+            1000, 500, 0, 0,
+            0,
+            None, None, None,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            None,
+            1,
+            1000,
+            1706200000,
+        )
+        .await
+        .unwrap();
+
+        // Set primary_model on both sessions (update_session_deep_fields doesn't set it,
+        // so we do it directly)
+        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
+            .bind("claude-opus-4-5-20251101")
+            .bind("ai-gen-1")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
+            .bind("claude-sonnet-4-20250514")
+            .bind("ai-gen-2")
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+        // Test all-time (no range filter)
+        let stats = db.get_ai_generation_stats(None, None).await.unwrap();
+
+        // files_created = sum of files_edited_count: 4 + 2 = 6
+        assert_eq!(stats.files_created, 6, "Sum of files_edited_count");
+        // Total tokens from sessions table
+        assert_eq!(stats.total_input_tokens, 4000, "3000 + 1000");
+        assert_eq!(stats.total_output_tokens, 2500, "2000 + 500");
+        // lines not tracked yet
+        assert_eq!(stats.lines_added, 0);
+        assert_eq!(stats.lines_removed, 0);
+
+        // 2 model entries
+        assert_eq!(stats.tokens_by_model.len(), 2, "Should have 2 model entries");
+        let opus = stats
+            .tokens_by_model
+            .iter()
+            .find(|m| m.model == "claude-opus-4-5-20251101")
+            .unwrap();
+        assert_eq!(opus.input_tokens, 3000);
+        assert_eq!(opus.output_tokens, 2000);
+
+        let sonnet = stats
+            .tokens_by_model
+            .iter()
+            .find(|m| m.model == "claude-sonnet-4-20250514")
+            .unwrap();
+        assert_eq!(sonnet.input_tokens, 1000);
+        assert_eq!(sonnet.output_tokens, 500);
+
+        // Project breakdown (2 projects)
+        assert_eq!(
+            stats.tokens_by_project.len(),
+            2,
+            "Should have 2 project entries"
+        );
+
+        // Test with time range: only ai-gen-1 has first_message_at = 500
+        let ranged = db
+            .get_ai_generation_stats(Some(400), Some(600))
+            .await
+            .unwrap();
+        assert_eq!(ranged.files_created, 4, "Only ai-gen-1 within range");
+        assert_eq!(ranged.total_input_tokens, 3000);
+        assert_eq!(ranged.total_output_tokens, 2000);
+        assert_eq!(ranged.tokens_by_model.len(), 1);
+    }
 }
