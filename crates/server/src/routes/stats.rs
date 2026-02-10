@@ -954,7 +954,12 @@ mod tests {
             1,       // parse_version
             2048,    // file_size
             now - 86400,  // file_mtime
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             None,    // primary_model
+            None,    // last_message_at
         ).await.unwrap();
 
         // Update the primary_model column using the db pool directly
@@ -1068,7 +1073,12 @@ mod tests {
             0, None, None, None,
             0, 0, 0, 0, 0, 0, 0, 0,
             None, 1, 2048, now - 86400,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             None, // primary_model
+            None, // last_message_at
         ).await.unwrap();
 
         let app = build_app(db);
