@@ -188,6 +188,186 @@ body {
   outline: none;
 }
 
+/* ── DateRangePicker: react-day-picker range mode ── */
+
+.date-range-picker .rdp-root {
+  --rdp-accent-color: #2563eb;
+  --rdp-accent-background-color: #dbeafe;
+  --rdp-range_start-color: #fff;
+  --rdp-range_start-background: #2563eb;
+  --rdp-range_end-color: #fff;
+  --rdp-range_end-background: #2563eb;
+  --rdp-range_middle-color: #1e40af;
+  --rdp-range_middle-background: #dbeafe;
+  font-size: 0.875rem;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-root {
+  --rdp-accent-color: #3b82f6;
+  --rdp-accent-background-color: #1e3a5f;
+  --rdp-range_start-color: #fff;
+  --rdp-range_start-background: #3b82f6;
+  --rdp-range_end-color: #fff;
+  --rdp-range_end-background: #3b82f6;
+  --rdp-range_middle-color: #93c5fd;
+  --rdp-range_middle-background: #1e3a5f;
+}
+
+/* Month caption: name + nav arrows */
+.date-range-picker .rdp-month_caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.date-range-picker .rdp-caption_label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+  letter-spacing: -0.01em;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-caption_label {
+  color: #f3f4f6;
+}
+
+/* Nav buttons */
+.date-range-picker .rdp-nav {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.date-range-picker .rdp-button_previous,
+.date-range-picker .rdp-button_next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.date-range-picker .rdp-button_previous:hover,
+.date-range-picker .rdp-button_next:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-button_previous,
+:where(.dark, .dark *) .date-range-picker .rdp-button_next {
+  color: #9ca3af;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-button_previous:hover,
+:where(.dark, .dark *) .date-range-picker .rdp-button_next:hover {
+  background: #374151;
+  color: #f3f4f6;
+}
+
+/* Weekday headers */
+.date-range-picker .rdp-weekday {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.25rem;
+  text-align: center;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-weekday {
+  color: #6b7280;
+}
+
+/* Day cells */
+.date-range-picker .rdp-day_button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  color: #374151;
+  cursor: pointer;
+  transition: all 100ms;
+}
+
+.date-range-picker .rdp-day_button:hover {
+  background: #f3f4f6;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-day_button {
+  color: #d1d5db;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-day_button:hover {
+  background: #374151;
+}
+
+/* Today indicator */
+.date-range-picker .rdp-today .rdp-day_button {
+  font-weight: 700;
+  color: #2563eb;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-today .rdp-day_button {
+  color: #60a5fa;
+}
+
+/* Outside / disabled days */
+.date-range-picker .rdp-disabled .rdp-day_button {
+  color: #d1d5db;
+  cursor: not-allowed;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-disabled .rdp-day_button {
+  color: #4b5563;
+}
+
+/* Range start + end: solid blue pill */
+.date-range-picker .rdp-range_start .rdp-day_button,
+.date-range-picker .rdp-range_end .rdp-day_button {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-range_start .rdp-day_button,
+:where(.dark, .dark *) .date-range-picker .rdp-range_end .rdp-day_button {
+  background: #3b82f6;
+  color: #fff;
+}
+
+/* Range middle: light blue band */
+.date-range-picker .rdp-range_middle .rdp-day_button {
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 0;
+}
+
+:where(.dark, .dark *) .date-range-picker .rdp-range_middle .rdp-day_button {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+/* Months side by side with gap */
+.date-range-picker .rdp-months {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Indeterminate progress bar: slides a bar back and forth */
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.animate-indeterminate {
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

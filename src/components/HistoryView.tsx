@@ -16,8 +16,9 @@ import { groupSessionsByDate } from '../lib/date-groups'
 import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
 import { Skeleton, SessionsEmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
-
-type TimeFilter = 'all' | 'today' | '7d' | '30d'
+import { useTimeRange } from '../hooks/use-time-range'
+import { TimeRangeSelector, DateRangePicker } from './ui'
+import { useIsMobile } from '../hooks/use-media-query'
 
 /** Human-readable labels for sort options */
 const SORT_LABELS: Record<SessionSort, string> = {
@@ -82,8 +83,10 @@ export function HistoryView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
 
+  const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
+  const isMobile = useIsMobile()
+
   const [searchText, setSearchText] = useState('')
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -108,6 +111,15 @@ export function HistoryView() {
     return [...set].sort()
   }, [allSessions])
 
+  // Extract unique models from sessions for the filter popover
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of allSessions) {
+      if (s.primaryModel) set.add(s.primaryModel)
+    }
+    return [...set].sort()
+  }, [allSessions])
+
   // Map session IDs to project display names
   const projectDisplayNames = useMemo(() => {
     if (!summaries) return new Map<string, string>()
@@ -124,14 +136,7 @@ export function HistoryView() {
 
   // Apply filters and sorting
   const filteredSessions = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
-    const cutoffs: Record<TimeFilter, number> = {
-      all: 0,
-      today: now - 86400,
-      '7d': now - 7 * 86400,
-      '30d': now - 30 * 86400,
-    }
-    const cutoff = cutoffs[timeFilter]
+    const cutoff = timeRange.fromTimestamp ?? 0
     const query = searchText.toLowerCase().trim()
 
     let filtered = allSessions.filter(s => {
@@ -146,6 +151,7 @@ export function HistoryView() {
 
       // Date filter (from sparkline click)
       if (selectedDate) {
+        if (Number(s.modifiedAt) <= 0) return false
         const d = new Date(Number(s.modifiedAt) * 1000)
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         if (key !== selectedDate) return false
@@ -226,9 +232,9 @@ export function HistoryView() {
     }
 
     return filtered
-  }, [allSessions, searchText, sidebarProject, sidebarBranch, timeFilter, selectedDate, filters])
+  }, [allSessions, searchText, sidebarProject, sidebarBranch, timeRange.fromTimestamp, selectedDate, filters])
 
-  const isFiltered = searchText || sidebarProject || sidebarBranch || timeFilter !== 'all' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
+  const isFiltered = searchText || sidebarProject || sidebarBranch || timeRange.preset !== '30d' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
 
   const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
 
@@ -269,17 +275,10 @@ export function HistoryView() {
 
   function clearAll() {
     setSearchText('')
-    setTimeFilter('all')
+    setPreset('all')
     setSelectedDate(null)
     setFilters(DEFAULT_FILTERS)
   }
-
-  const timeOptions: { value: TimeFilter; label: string }[] = [
-    { value: 'all', label: 'All time' },
-    { value: 'today', label: 'Today' },
-    { value: '7d', label: '7 days' },
-    { value: '30d', label: '30 days' },
-  ]
 
   if (isLoading) {
     return (
@@ -396,26 +395,30 @@ export function HistoryView() {
               onClearFilters={() => setFilters(DEFAULT_FILTERS)}
               groupByDisabled={tooManyToGroup}
               branches={availableBranches}
+              models={availableModels}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
 
             {/* Time filters */}
-            <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
-              {timeOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTimeFilter(opt.value)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                    timeFilter === opt.value
-                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <TimeRangeSelector
+              value={timeRange.preset}
+              onChange={setPreset}
+              options={[
+                { value: 'today', label: isMobile ? 'Today' : 'Today' },
+                { value: '7d', label: isMobile ? '7 days' : '7d' },
+                { value: '30d', label: isMobile ? '30 days' : '30d' },
+                { value: '90d', label: isMobile ? '90 days' : '90d' },
+                { value: 'all', label: isMobile ? 'All time' : 'All' },
+                { value: 'custom', label: 'Custom' },
+              ]}
+            />
+            {timeRange.preset === 'custom' && (
+              <DateRangePicker
+                value={timeRange.customRange}
+                onChange={setCustomRange}
+              />
+            )}
 
             {/* Active filter summary */}
             {isFiltered && (
