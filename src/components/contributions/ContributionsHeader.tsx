@@ -1,10 +1,13 @@
 import { GitBranch, X } from 'lucide-react'
-import { TimeRangeFilter } from './TimeRangeFilter'
-import type { TimeRange } from '../../hooks/use-contributions'
+import type { TimeRangePreset, CustomDateRange } from '../../hooks/use-time-range'
+import { TimeRangeSelector, DateRangePicker } from '../ui'
+import { useIsMobile } from '../../hooks/use-media-query'
 
 interface ContributionsHeaderProps {
-  range: TimeRange
-  onRangeChange: (range: TimeRange) => void
+  preset: TimeRangePreset
+  customRange: CustomDateRange | null
+  onPresetChange: (preset: TimeRangePreset) => void
+  onCustomRangeChange: (range: CustomDateRange | null) => void
   sessionCount: number
   projectFilter?: string | null
   onClearProjectFilter?: () => void
@@ -17,14 +20,18 @@ interface ContributionsHeaderProps {
  * and optional project filter indicator.
  */
 export function ContributionsHeader({
-  range,
-  onRangeChange,
+  preset,
+  customRange,
+  onPresetChange,
+  onCustomRangeChange,
   sessionCount,
   projectFilter,
   onClearProjectFilter,
   branchFilter,
   onClearBranchFilter,
 }: ContributionsHeaderProps) {
+  const isMobile = useIsMobile()
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -80,7 +87,26 @@ export function ContributionsHeader({
           </div>
         </div>
 
-        <TimeRangeFilter value={range} onChange={onRangeChange} />
+        <div className="flex items-center gap-2">
+          <TimeRangeSelector
+            value={preset}
+            onChange={onPresetChange}
+            options={[
+              { value: 'today' as const, label: isMobile ? 'Today' : 'Today' },
+              { value: '7d' as const, label: isMobile ? '7 days' : '7d' },
+              { value: '30d' as const, label: isMobile ? '30 days' : '30d' },
+              { value: '90d' as const, label: isMobile ? '90 days' : '90d' },
+              { value: 'all' as const, label: isMobile ? 'All time' : 'All' },
+              { value: 'custom' as const, label: 'Custom' },
+            ]}
+          />
+          {preset === 'custom' && (
+            <DateRangePicker
+              value={customRange}
+              onChange={onCustomRangeChange}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
