@@ -264,13 +264,15 @@ export function useTimeRange(): UseTimeRangeReturn {
     return `vs prev ${preset}`
   }, [preset, customRange])
 
-  // Build state object
-  const state: TimeRangeState = {
+  // Build state object — memoized on primitive values to avoid creating a new
+  // object reference every render, which would break downstream useEffect deps.
+  // See CLAUDE.md: "Never put raw parsed objects in useEffect deps"
+  const state = useMemo<TimeRangeState>(() => ({
     preset,
     customRange,
     fromTimestamp: timestamps.from,
     toTimestamp: timestamps.to,
-  }
+  }), [preset, customRange, timestamps.from, timestamps.to])
 
   return {
     state,
