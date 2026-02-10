@@ -13,6 +13,8 @@ interface SessionToolbarProps {
   groupByDisabled?: boolean;
   /** Available branch names derived from loaded sessions */
   branches?: string[];
+  /** Available model IDs from indexed session data (data-driven) */
+  models?: string[];
 }
 
 interface DropdownProps {
@@ -172,7 +174,7 @@ const GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string; description?: str
  * />
  * ```
  */
-export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled, branches = [] }: SessionToolbarProps) {
+export function SessionToolbar({ filters, onFiltersChange, onClearFilters, groupByDisabled, branches = [], models = [] }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters);
   const hasNonDefaults = activeFilterCount > 0 || filters.sort !== 'recent' || filters.groupBy !== 'none';
 
@@ -211,6 +213,7 @@ export function SessionToolbar({ filters, onFiltersChange, onClearFilters, group
           onClear={onClearFilters}
           activeCount={activeFilterCount}
           branches={branches}
+          models={models}
         />
 
         {/* Sort dropdown */}
