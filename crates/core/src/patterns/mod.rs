@@ -19,6 +19,50 @@ use crate::insights::scoring::Actionability;
 use crate::insights::generator::GeneratedInsight;
 use crate::types::SessionInfo;
 
+// ============================================================================
+// Global constants for pattern quality gates
+// ============================================================================
+
+/// Minimum sessions per bucket for any bucket-based comparison.
+pub const MIN_BUCKET_SIZE: usize = 10;
+
+/// Minimum surviving buckets required for a comparison to be meaningful.
+pub const MIN_BUCKETS: usize = 3;
+
+/// Maximum session duration (seconds) for pattern computation (4 hours).
+pub const MAX_SESSION_DURATION: u32 = 14400;
+
+/// Maximum displayed improvement percentage.
+pub const MAX_DISPLAY_PCT: f64 = 200.0;
+
+/// Minimum sessions per group for model comparisons.
+pub const MIN_MODEL_BUCKET: usize = 30;
+
+// ============================================================================
+// Global helpers
+// ============================================================================
+
+/// Format an improvement percentage: clamp to +/-MAX_DISPLAY_PCT, format as integer.
+pub fn format_improvement(pct: f64) -> String {
+    let clamped = pct.clamp(-MAX_DISPLAY_PCT, MAX_DISPLAY_PCT);
+    format!("{:.0}", clamped)
+}
+
+/// Extract a human-readable project name from a path-derived project ID.
+///
+/// e.g., "-Users-TBGor-dev--vicky-ai-claude-view" -> "vicky-ai-claude-view"
+pub fn format_project_name(project_id: &str) -> String {
+    if let Some(last) = project_id.rsplit("--").next() {
+        if last.is_empty() {
+            project_id.trim_start_matches('-').to_string()
+        } else {
+            last.to_string()
+        }
+    } else {
+        project_id.trim_start_matches('-').to_string()
+    }
+}
+
 /// The result of a single pattern calculation.
 #[derive(Debug, Clone)]
 pub struct PatternResult {
@@ -255,5 +299,51 @@ mod tests {
     fn test_calculate_all_patterns_empty() {
         let insights = calculate_all_patterns(&[], 30);
         assert!(insights.is_empty());
+    }
+
+    #[test]
+    fn test_format_improvement_caps_high() {
+        assert_eq!(format_improvement(1542.0), "200");
+    }
+
+    #[test]
+    fn test_format_improvement_caps_negative() {
+        assert_eq!(format_improvement(-500.0), "-200");
+    }
+
+    #[test]
+    fn test_format_improvement_normal() {
+        assert_eq!(format_improvement(42.0), "42");
+    }
+
+    #[test]
+    fn test_format_improvement_zero() {
+        assert_eq!(format_improvement(0.0), "0");
+    }
+
+    #[test]
+    fn test_format_project_name_full_path() {
+        assert_eq!(
+            format_project_name("-Users-TBGor-dev--vicky-ai-claude-view"),
+            "vicky-ai-claude-view"
+        );
+    }
+
+    #[test]
+    fn test_format_project_name_simple() {
+        assert_eq!(format_project_name("my-project"), "my-project");
+    }
+
+    #[test]
+    fn test_format_project_name_empty() {
+        assert_eq!(format_project_name(""), "");
+    }
+
+    #[test]
+    fn test_format_project_name_nested() {
+        assert_eq!(
+            format_project_name("-Users-foo-dev--org-name--repo"),
+            "repo"
+        );
     }
 }

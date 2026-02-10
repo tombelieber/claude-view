@@ -493,9 +493,14 @@ fn calculate_overview(sessions: &[SessionInfo], from_ts: i64, to_ts: i64) -> Ins
         .iter()
         .filter(|s| s.commit_count == 0 && s.files_edited_count == 0)
         .count() as u32;
-    let avg_session_minutes = if total_sessions > 0 {
-        sessions.iter().map(|s| s.duration_seconds as f64).sum::<f64>() / total_sessions as f64
-            / 60.0
+    // Cap duration at 4 hours and exclude 0-duration sessions for a realistic average
+    let valid_durations: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.duration_seconds > 0)
+        .map(|s| s.duration_seconds.min(14400) as f64)
+        .collect();
+    let avg_session_minutes = if !valid_durations.is_empty() {
+        valid_durations.iter().sum::<f64>() / valid_durations.len() as f64 / 60.0
     } else {
         0.0
     };

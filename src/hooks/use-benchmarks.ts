@@ -19,5 +19,6 @@ export function useBenchmarks({ range = 'all' }: UseBenchmarksOptions = {}) {
     queryKey: ['benchmarks', range],
     queryFn: () => fetchBenchmarks(range),
     staleTime: 60_000, // Cache for 1 minute (benchmarks change slowly)
+    refetchOnWindowFocus: false,
   })
 }

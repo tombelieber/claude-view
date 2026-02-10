@@ -28,11 +28,11 @@ pub fn calculate_session_patterns(sessions: &[SessionInfo], time_range_days: u32
     insights
 }
 
-/// S01: Optimal Duration - which duration bucket yields the best edits/minute.
+/// S01: Optimal Duration - which duration bucket yields the lowest re-edit rate.
 fn s01_optimal_duration(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
-        .filter(|s| s.duration_seconds > 0 && s.files_edited_count > 0)
+        .filter(|s| s.files_edited_count > 0 && s.duration_seconds > 0)
         .collect();
 
     if editing_sessions.len() < 50 {
@@ -47,46 +47,36 @@ fn s01_optimal_duration(sessions: &[SessionInfo], time_range_days: u32) -> Optio
             2700..=5399 => "45-90min",
             _ => ">90min",
         };
-        let velocity = s.files_edited_count as f64 / (s.duration_seconds as f64 / 60.0);
-        buckets.entry(bucket).or_default().push(velocity);
+        let reedit_rate = s.reedited_files_count as f64 / s.files_edited_count as f64;
+        buckets.entry(bucket).or_default().push(reedit_rate);
     }
 
     let computed_buckets: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed_buckets.len() < 2 {
+    if computed_buckets.len() < super::MIN_BUCKETS {
         return None;
     }
 
-    // For velocity, higher is better (more edits per minute)
-    let best = computed_buckets
-        .iter()
-        .max_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))?;
-    let worst = computed_buckets
-        .iter()
-        .min_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))?;
-
-    let improvement = if worst.value > 0.0 {
-        ((best.value - worst.value) / worst.value) * 100.0
-    } else {
-        0.0
-    };
+    let best = best_bucket(&computed_buckets)?;
+    let worst = worst_bucket(&computed_buckets)?;
+    let improvement = relative_improvement(best.value, worst.value) * 100.0;
 
     let sample_size: u32 = computed_buckets.iter().map(|b| b.count).sum();
     let mut vars = HashMap::new();
     vars.insert("optimal_duration".to_string(), best.label.clone());
     vars.insert("worst_duration".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed_buckets {
-        comparison.insert(format!("velocity_{}", b.label), b.value);
+        comparison.insert(format!("reedit_{}", b.label), b.value);
     }
 
     generate_insight(
@@ -128,14 +118,14 @@ fn s02_turn_count_sweet_spot(sessions: &[SessionInfo], time_range_days: u32) -> 
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 5)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -147,7 +137,7 @@ fn s02_turn_count_sweet_spot(sessions: &[SessionInfo], time_range_days: u32) -> 
     let mut vars = HashMap::new();
     vars.insert("optimal_turns".to_string(), best.label.clone());
     vars.insert("reedit_rate".to_string(), format!("{:.0}", best.value * 100.0));
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -191,7 +181,7 @@ fn s04_fatigue_signal(sessions: &[SessionInfo], time_range_days: u32) -> Option<
         .filter_map(|s| s.reedit_rate())
         .collect();
 
-    if early.len() < 10 || late.len() < 10 {
+    if early.len() < super::MIN_BUCKET_SIZE || late.len() < super::MIN_BUCKET_SIZE {
         return None;
     }
 
@@ -210,7 +200,7 @@ fn s04_fatigue_signal(sessions: &[SessionInfo], time_range_days: u32) -> Option<
     let sample_size = (early.len() + late.len()) as u32;
     let mut vars = HashMap::new();
     vars.insert("threshold".to_string(), threshold.to_string());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     comparison.insert("early_reedit_rate".to_string(), early_avg);
@@ -254,14 +244,14 @@ fn s08_file_count_correlation(sessions: &[SessionInfo], time_range_days: u32) ->
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 5)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -272,7 +262,7 @@ fn s08_file_count_correlation(sessions: &[SessionInfo], time_range_days: u32) ->
 
     let mut vars = HashMap::new();
     vars.insert("threshold".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -310,9 +300,14 @@ mod tests {
                     2 => 3600,   // 60 min
                     _ => 7200,   // 120 min
                 };
-                // 30-min sessions are most productive
-                let files_edited = if duration == 1800 { 10 } else { 3 };
-                let reedited = if duration == 1800 { 1 } else { 2 };
+                // 30-min sessions have best reedit rate (1/10 = 0.1)
+                // Others have worse reedit rate but vary in file count for S08 buckets
+                let (files_edited, reedited) = match i % 4 {
+                    0 => (2, 1),   // 2 files -> bucket "1-3", reedit 0.50
+                    1 => (10, 1),  // 10 files -> bucket "8-10", reedit 0.10
+                    2 => (5, 3),   // 5 files -> bucket "4-7", reedit 0.60
+                    _ => (12, 8),  // 12 files -> bucket "11+", reedit 0.67
+                };
                 let turns = match i % 4 {
                     0 => 3,
                     1 => 7,

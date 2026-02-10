@@ -87,7 +87,7 @@ function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number
     case '90d':
       return { from: now - 90 * 86400, to: now }
     case 'all':
-      return { from: 0, to: now }
+      return { from: 1, to: now }
   }
 }
 
@@ -111,11 +111,11 @@ function mapApiToUi(api: InsightsResponse): InsightsData {
           impactScore: api.topInsight.impactScore,
           category: api.topInsight.category,
           metric: {
-            value: api.topInsight.evidence.comparisonValues['value'] ?? 0,
-            comparison: api.topInsight.evidence.comparisonValues['comparison'] ?? 0,
+            value: api.topInsight.evidence?.comparisonValues?.['value'] ?? 0,
+            comparison: api.topInsight.evidence?.comparisonValues?.['comparison'] ?? 0,
             unit: 're-edit rate',
             improvement:
-              api.topInsight.evidence.comparisonValues['improvement_pct'] ?? 0,
+              api.topInsight.evidence?.comparisonValues?.['improvement_pct'] ?? 0,
           },
           sampleSize: api.topInsight.evidence.sampleSize,
         }
