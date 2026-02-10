@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code } from 'lucide-react'
+import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code, FileX } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
-import { useSession } from '../hooks/use-session'
+import { useSession, isNotFoundError } from '../hooks/use-session'
 import { useSessionMessages } from '../hooks/use-session-messages'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
@@ -69,10 +69,14 @@ export function ConversationView() {
     isFetchingPreviousPage,
   } = useSessionMessages(projectDir || null, sessionId || null)
 
+  // Detect when DB has the session but the JSONL file is gone from disk
+  const isFileGone = !!sessionDetail
+    && (isNotFoundError(messagesError) || isNotFoundError(sessionError))
+
   // Only gate initial render on paginated messages — the full session fetch
   // loads in the background for export use. This ensures faster time-to-first-content.
-  const isLoading = isMessagesLoading || !sessionDetail
-  const error = messagesError
+  const isLoading = isFileGone ? false : (isMessagesLoading || !sessionDetail)
+  const error = isFileGone ? null : messagesError
   const exportsReady = !!session
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
@@ -185,7 +189,7 @@ export function ConversationView() {
     )
   }
 
-  if (!session && !pagesData) {
+  if (!session && !pagesData && !isFileGone) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
@@ -194,6 +198,81 @@ export function ConversationView() {
           description="This session may have been deleted or moved."
           action={{ label: 'Go back', onClick: handleBack }}
         />
+      </div>
+    )
+  }
+
+  if (isFileGone && sessionDetail) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleBack}
+              aria-label="Go back"
+              className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm">Back to sessions</span>
+            </button>
+            <span className="text-gray-300">|</span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
+          </div>
+        </div>
+
+        {/* Two-column: Message + Sidebar */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: File-gone notice */}
+          <div className="flex-1 min-w-0 flex items-center justify-center">
+            <div className="text-center max-w-md px-6">
+              <FileX className="w-12 h-12 text-amber-400 mx-auto mb-4" />
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Session conversation data is no longer available
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                The JSONL file for this session has been removed from disk.
+                Session metrics are still available in the sidebar.
+              </p>
+              <button
+                onClick={() => navigate('/sessions')}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              >
+                Back to sessions
+              </button>
+            </div>
+          </div>
+
+          {/* Right: Metrics sidebar — still renders from DB data */}
+          <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
+            {sessionDetail.userPromptCount > 0 && (
+              <SessionMetricsBar
+                prompts={sessionDetail.userPromptCount}
+                tokens={
+                  sessionDetail.totalInputTokens != null && sessionDetail.totalOutputTokens != null
+                    ? BigInt(sessionDetail.totalInputTokens) + BigInt(sessionDetail.totalOutputTokens)
+                    : null
+                }
+                filesRead={sessionDetail.filesReadCount}
+                filesEdited={sessionDetail.filesEditedCount}
+                reeditRate={
+                  sessionDetail.filesEditedCount > 0
+                    ? sessionDetail.reeditedFilesCount / sessionDetail.filesEditedCount
+                    : null
+                }
+                commits={sessionDetail.commitCount}
+                variant="vertical"
+              />
+            )}
+            <FilesTouchedPanel
+              files={buildFilesTouched(
+                sessionDetail.filesRead ?? [],
+                sessionDetail.filesEdited ?? []
+              )}
+            />
+            <CommitsPanel commits={sessionDetail.commits ?? []} />
+          </aside>
+        </div>
       </div>
     )
   }

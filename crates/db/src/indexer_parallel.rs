@@ -76,7 +76,7 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         ai_lines_added = ?45,
         ai_lines_removed = ?46,
         work_type = ?47,
-        git_branch = COALESCE(git_branch, ?48),
+        git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
         primary_model = ?49,
         last_message_at = COALESCE(?50, last_message_at)
     WHERE id = ?1
@@ -2225,6 +2225,47 @@ pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 ///
 /// If `registry_holder` is provided, the built registry is stored in it so
 /// API routes can access it after indexing completes.
+
+/// Prune sessions from the database whose JSONL files no longer exist on disk.
+///
+/// Queries all session file_paths from the DB, checks each one for existence
+/// on the filesystem, then deletes sessions whose files are gone. This handles
+/// the case where Claude Code deletes a session file but the DB still has a
+/// record for it.
+///
+/// Uses a batch transaction for the delete (via `remove_stale_sessions`).
+/// Returns the number of pruned sessions.
+pub async fn prune_stale_sessions(db: &Database) -> Result<u64, String> {
+    let all_paths = db
+        .get_all_session_file_paths()
+        .await
+        .map_err(|e| format!("Failed to query session file paths: {}", e))?;
+
+    if all_paths.is_empty() {
+        return Ok(0);
+    }
+
+    // Check which files still exist on disk (blocking I/O, but just stat calls)
+    let valid_paths: Vec<String> = all_paths
+        .into_iter()
+        .filter(|path| Path::new(path).exists())
+        .collect();
+
+    let pruned = db
+        .remove_stale_sessions(&valid_paths)
+        .await
+        .map_err(|e| format!("Failed to prune stale sessions: {}", e))?;
+
+    if pruned > 0 {
+        tracing::info!(
+            "Pruned {} stale sessions (JSONL files deleted from disk)",
+            pruned
+        );
+    }
+
+    Ok(pruned)
+}
+
 pub async fn run_background_index<F>(
     claude_dir: &Path,
     db: &Database,
@@ -2273,6 +2314,15 @@ where
         Ok(n) if n > 0 => tracing::info!("Backfilled primary_model for {} sessions", n),
         Ok(_) => {}
         Err(e) => tracing::warn!("Failed to backfill primary_models: {}", e),
+    }
+
+    // Prune sessions whose JSONL files have been deleted from disk.
+    // This runs after indexing so we don't accidentally prune sessions that
+    // were just discovered by pass_1. Non-fatal: log and continue on error.
+    match prune_stale_sessions(db).await {
+        Ok(n) if n > 0 => tracing::info!("Pruned {} stale sessions from DB", n),
+        Ok(_) => {}
+        Err(e) => tracing::warn!("Failed to prune stale sessions: {}", e),
     }
 
     // Store registry in shared holder for API routes to use
@@ -3524,5 +3574,121 @@ mod tests {
         assert_eq!(commit_skills.len(), 1);
         assert_eq!(commit_skills[0].skill_name, "commit");
         assert_eq!(commit_skills[0].timestamp_unix, 1706400100);
+    }
+
+    /// Helper: create a test claude dir with two sessions in two projects.
+    /// Returns (TempDir, claude_dir_path, path_to_sess_002_jsonl).
+    fn setup_two_session_claude_dir() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf)
+    {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+
+        // Project A with sess-001
+        let project_a_dir = claude_dir.join("projects").join("project-a");
+        std::fs::create_dir_all(&project_a_dir).unwrap();
+
+        let jsonl_a = project_a_dir.join("sess-001.jsonl");
+        std::fs::write(
+            &jsonl_a,
+            br#"{"type":"user","message":{"content":"hello from session 1"}}
+{"type":"assistant","message":{"content":"hi back"}}
+"#,
+        )
+        .unwrap();
+
+        let index_a = format!(
+            r#"[{{"sessionId":"sess-001","fullPath":"{}","firstPrompt":"hello from session 1","messageCount":2,"modified":"2026-01-25T10:00:00.000Z"}}]"#,
+            jsonl_a.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_a_dir.join("sessions-index.json"), index_a).unwrap();
+
+        // Project B with sess-002
+        let project_b_dir = claude_dir.join("projects").join("project-b");
+        std::fs::create_dir_all(&project_b_dir).unwrap();
+
+        let jsonl_b = project_b_dir.join("sess-002.jsonl");
+        std::fs::write(
+            &jsonl_b,
+            br#"{"type":"user","message":{"content":"hello from session 2"}}
+{"type":"assistant","message":{"content":"hi again"}}
+"#,
+        )
+        .unwrap();
+
+        let index_b = format!(
+            r#"[{{"sessionId":"sess-002","fullPath":"{}","firstPrompt":"hello from session 2","messageCount":2,"modified":"2026-01-25T11:00:00.000Z"}}]"#,
+            jsonl_b.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_b_dir.join("sessions-index.json"), index_b).unwrap();
+
+        (tmp, claude_dir, jsonl_b)
+    }
+
+    #[tokio::test]
+    async fn test_prune_stale_sessions_removes_deleted_files() {
+        let (_tmp, claude_dir, jsonl_b_path) = setup_two_session_claude_dir();
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Pass 1: populate DB with both sessions
+        let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        assert_eq!(projects, 2);
+        assert_eq!(sessions, 2);
+
+        // Verify both sessions are in the DB
+        let all_paths = db.get_all_session_file_paths().await.unwrap();
+        assert_eq!(all_paths.len(), 2, "Should have 2 session file paths");
+
+        // Delete sess-002's JSONL file from disk
+        std::fs::remove_file(&jsonl_b_path).unwrap();
+        assert!(!jsonl_b_path.exists(), "File should be deleted");
+
+        // Prune stale sessions
+        let pruned = prune_stale_sessions(&db).await.unwrap();
+        assert_eq!(pruned, 1, "Should have pruned 1 stale session");
+
+        // Verify only sess-001 remains
+        let remaining_paths = db.get_all_session_file_paths().await.unwrap();
+        assert_eq!(remaining_paths.len(), 1, "Should have 1 session left");
+
+        let db_projects = db.list_projects().await.unwrap();
+        let all_session_ids: Vec<&str> = db_projects
+            .iter()
+            .flat_map(|p| p.sessions.iter().map(|s| s.id.as_str()))
+            .collect();
+        assert!(
+            all_session_ids.contains(&"sess-001"),
+            "sess-001 should still exist"
+        );
+        assert!(
+            !all_session_ids.contains(&"sess-002"),
+            "sess-002 should be pruned"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_prune_stale_sessions_no_op_when_all_exist() {
+        let (_tmp, claude_dir, _jsonl_b_path) = setup_two_session_claude_dir();
+        let db = Database::new_in_memory().await.unwrap();
+
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+
+        // Prune when all files still exist -- should remove nothing
+        let pruned = prune_stale_sessions(&db).await.unwrap();
+        assert_eq!(
+            pruned, 0,
+            "Should not prune any sessions when all files exist"
+        );
+
+        let all_paths = db.get_all_session_file_paths().await.unwrap();
+        assert_eq!(all_paths.len(), 2, "Both sessions should still be present");
+    }
+
+    #[tokio::test]
+    async fn test_prune_stale_sessions_empty_db() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Prune on an empty DB -- should be a no-op
+        let pruned = prune_stale_sessions(&db).await.unwrap();
+        assert_eq!(pruned, 0, "Should not prune anything from empty DB");
     }
 }
