@@ -47,7 +47,6 @@ const mockSession: SessionInfo = {
   bashProgressCount: 0,
   hookProgressCount: 0,
   mcpProgressCount: 0,
-  summaryText: null,
   linesAdded: 150,
   linesRemoved: 45,
   locSource: 1,
