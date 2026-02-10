@@ -45,7 +45,7 @@ fn main() {
         bash_progress_count: 0,
         hook_progress_count: 0,
         mcp_progress_count: 0,
-        summary_text: None,
+
         parse_version: 0,
         lines_added: 0,
         lines_removed: 0,
