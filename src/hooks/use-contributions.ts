@@ -22,6 +22,17 @@ function presetToApiRange(preset: TimeRangePreset): string {
   }
 }
 
+/** Convert Unix seconds to local YYYY-MM-DD string.
+ *  IMPORTANT: Do NOT use toISOString() — it returns UTC which shifts the date
+ *  for users east of UTC (e.g. UTC+8 midnight local = previous day in UTC). */
+function toLocalDateStr(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export interface ContributionsTimeRange {
   preset: TimeRangePreset
   from?: number | null  // unix seconds (converted to YYYY-MM-DD before sending)
@@ -39,8 +50,8 @@ async function fetchContributions(
   const apiRange = presetToApiRange(time.preset)
   let url = `/api/contributions?range=${encodeURIComponent(apiRange)}`
   if (time.preset === 'custom' && time.from != null && time.to != null) {
-    const fromDate = new Date(time.from * 1000).toISOString().split('T')[0]
-    const toDate = new Date(time.to * 1000).toISOString().split('T')[0]
+    const fromDate = toLocalDateStr(time.from)
+    const toDate = toLocalDateStr(time.to)
     url += `&from=${fromDate}&to=${toDate}`
   }
   if (projectId) {
@@ -115,8 +126,8 @@ async function fetchBranchSessions(
   const apiRange = presetToApiRange(time.preset)
   let url = `/api/contributions/branches/${encodeURIComponent(branch)}/sessions?range=${encodeURIComponent(apiRange)}`
   if (time.preset === 'custom' && time.from != null && time.to != null) {
-    const fromDate = new Date(time.from * 1000).toISOString().split('T')[0]
-    const toDate = new Date(time.to * 1000).toISOString().split('T')[0]
+    const fromDate = toLocalDateStr(time.from)
+    const toDate = toLocalDateStr(time.to)
     url += `&from=${fromDate}&to=${toDate}`
   }
   if (projectId) {

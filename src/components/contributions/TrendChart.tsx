@@ -96,9 +96,13 @@ export function TrendChart({ data, insight }: TrendChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #e5e7eb)" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                tick={{ fontSize: 10, fill: 'var(--chart-text, #6b7280)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
+                interval="preserveStartEnd"
+                angle={data.length > 14 ? -35 : 0}
+                textAnchor={data.length > 14 ? 'end' : 'middle'}
+                height={data.length > 14 ? 50 : 30}
               />
               <YAxis
                 domain={[0, Math.ceil(maxValue * 1.1)]}
@@ -191,17 +195,13 @@ export function TrendChart({ data, insight }: TrendChartProps) {
 }
 
 /**
- * Format date for X axis (Mon, Tue, etc. or Jan 1, etc.)
+ * Format date for X axis — always includes weekday (e.g., "Mon Jan 13")
  */
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
-  const now = new Date()
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (diffDays < 7) {
-    return date.toLocaleDateString('en-US', { weekday: 'short' })
-  }
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short' })
+  const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${weekday} ${monthDay}`
 }
 
 /**

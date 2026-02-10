@@ -96,15 +96,15 @@ async fn run_git_sync_logged(db: &Database, label: &str) {
 }
 
 /// Generate contribution snapshots for historical days.
-/// Initial run backfills 365 days; periodic runs only need 2 days (today + yesterday).
+/// Initial run refreshes 365 days; periodic runs refresh 2 days (today + yesterday).
 async fn run_snapshot_generation(db: &Database, label: &str) {
     let days_back = if label == "initial" { 365 } else { 2 };
     match db.generate_missing_snapshots(days_back).await {
         Ok(count) => {
             if count > 0 {
-                tracing::info!("{} snapshot generation: {} snapshots created", label, count);
+                tracing::info!("{} snapshot refresh: {} snapshots updated", label, count);
             } else {
-                tracing::debug!("{} snapshot generation: all snapshots up to date", label);
+                tracing::debug!("{} snapshot refresh: no active dates in range", label);
             }
         }
         Err(e) => {
