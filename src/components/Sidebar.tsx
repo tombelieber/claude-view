@@ -4,6 +4,7 @@ import { ChevronRight, Folder, FolderOpen, Clock, Home, GitBranch, AlertCircle, 
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
+import { NO_BRANCH } from '../lib/constants'
 import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNode } from '../utils/build-project-tree'
 import { useRecentSessions } from '../hooks/use-recent-sessions'
 import { buildSessionUrl } from '../lib/url-utils'
@@ -531,12 +532,14 @@ function BranchList({ projectName }: BranchListProps) {
 
   const handleBranchClick = useCallback((branch: string | null) => {
     const newParams = new URLSearchParams(searchParams)
-    if (branch && !activeBranches.has(branch)) {
+    const branchKey = branch ?? NO_BRANCH // Encode null → ~ (git-invalid sentinel)
+
+    if (!activeBranches.has(branchKey)) {
       // Select branch — also ensure parent project is set
-      newParams.set('branch', branch)
+      newParams.set('branch', branchKey)
       newParams.set('project', projectName)
     } else {
-      // Deselect branch, keep project
+      // Deselect branch (toggle off)
       newParams.delete('branch')
     }
     setSearchParams(newParams)
@@ -589,13 +592,14 @@ function BranchList({ projectName }: BranchListProps) {
       {data.branches.map((branchItem) => {
         const displayName = branchItem.branch || '(no branch)'
         const isNoBranch = !branchItem.branch
-        const isActive = !!branchItem.branch && activeBranches.has(branchItem.branch)
+        const effectiveBranch = branchItem.branch ?? NO_BRANCH
+        const isActive = activeBranches.has(effectiveBranch)
 
         return (
           <button
             key={branchItem.branch || '__no_branch__'}
             type="button"
-            onClick={() => handleBranchClick(isActive ? null : branchItem.branch)}
+            onClick={() => handleBranchClick(branchItem.branch)}
             title={branchItem.branch || 'Sessions without a git branch'}
             className={cn(
               'w-full flex items-center gap-1.5 px-2 py-1 h-6 rounded',
