@@ -110,8 +110,18 @@ impl Database {
     }
 
     /// Create an in-memory database (for testing).
+    ///
+    /// Uses `shared_cache(true)` so all pool connections share the same
+    /// in-memory database. Without this, each connection gets its own
+    /// separate database, breaking `tokio::try_join!` and concurrent queries.
     pub async fn new_in_memory() -> DbResult<Self> {
-        let pool = SqlitePool::connect("sqlite::memory:").await?;
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
+            .shared_cache(true)
+            .busy_timeout(std::time::Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(options)
+            .await?;
         let db = Self { pool, db_path: PathBuf::new() };
         db.run_migrations().await?;
         Ok(db)
