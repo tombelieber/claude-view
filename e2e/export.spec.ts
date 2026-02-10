@@ -5,14 +5,14 @@ test.describe('Export Functionality', () => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
 
-    // Wait for settings to load
-    await expect(page.locator('text=Settings')).toBeVisible({ timeout: 10000 })
+    // Wait for settings page content to load (not just the nav link)
+    await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
     // Verify Export Data section exists
     await expect(page.locator('text=Export Data')).toBeVisible()
 
     // Verify JSON is selected by default
-    const jsonRadio = page.locator('input[value="json"]')
+    const jsonRadio = page.getByRole('radio', { name: 'JSON' })
     await expect(jsonRadio).toBeChecked()
 
     // Set up download listener
@@ -35,12 +35,12 @@ test.describe('Export Functionality', () => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
 
-    // Wait for settings to load
-    await expect(page.locator('text=Settings')).toBeVisible({ timeout: 10000 })
+    // Wait for settings page content to load (not just the nav link)
+    await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
-    // Select CSV format
-    const csvRadio = page.locator('input[value="csv"]')
-    await csvRadio.check()
+    // Select CSV format by clicking the label wrapper
+    await page.locator('text=CSV').click()
+    const csvRadio = page.getByRole('radio', { name: 'CSV' })
     await expect(csvRadio).toBeChecked()
 
     // Set up download listener
@@ -63,8 +63,8 @@ test.describe('Export Functionality', () => {
     await page.goto('/settings')
     await page.waitForLoadState('domcontentloaded')
 
-    // Wait for settings to load
-    await expect(page.locator('text=Settings')).toBeVisible({ timeout: 10000 })
+    // Wait for settings page content to load (not just the nav link)
+    await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
     // Intercept export API to delay response
     await page.route('/api/export*', async (route) => {

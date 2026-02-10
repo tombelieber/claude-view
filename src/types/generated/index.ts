@@ -24,6 +24,7 @@ export type { ProjectStat } from './ProjectStat'
 export type { SessionDurationStat } from './SessionDurationStat'
 
 // Extended dashboard (Phase 3)
+export type { CurrentPeriodMetrics } from './CurrentPeriodMetrics'
 export type { CurrentWeekMetrics } from './CurrentWeekMetrics'
 export type { DashboardTrends } from './DashboardTrends'
 export type { ExtendedDashboardStats } from './ExtendedDashboardStats'
@@ -41,6 +42,15 @@ export type { ExportResponse } from './ExportResponse'
 
 // Sync types (Phase 3)
 export type { SyncAcceptedResponse } from './SyncAcceptedResponse'
+export type { SyncStatus } from './SyncStatus'
+
+// Storage types (Phase 3)
+export type { StorageStats } from './StorageStats'
+
+// AI Generation types (Phase 3)
+export type { AIGenerationStats } from './AIGenerationStats'
+export type { TokensByModel } from './TokensByModel'
+export type { TokensByProject } from './TokensByProject'
 
 // Session detail types (Phase 3)
 export type { CommitWithTier } from './CommitWithTier'
@@ -119,3 +129,32 @@ export type { PatternScore } from './PatternScore'
 export type { ErrorResponse } from './ErrorResponse'
 export type { ProjectSummary } from './ProjectSummary'
 export type { SessionsPage } from './SessionsPage'
+export type { BranchCount } from './BranchCount'
+export type { BranchesResponse } from './BranchesResponse'
+
+// Theme 3: Contributions types
+export type { AggregatedContributions } from './AggregatedContributions'
+export type { BranchBreakdown } from './BranchBreakdown'
+export type { BranchSession } from './BranchSession'
+export type { BranchSessionsResponse } from './BranchSessionsResponse'
+export type { ContributionSnapshot } from './ContributionSnapshot'
+export type { ContributionWarning } from './ContributionWarning'
+export type { ContributionsResponse } from './ContributionsResponse'
+export type { DailyTrendPoint } from './DailyTrendPoint'
+export type { EffectivenessMetrics } from './EffectivenessMetrics'
+export type { EfficiencyMetrics } from './EfficiencyMetrics'
+export type { FileImpact } from './FileImpact'
+export type { FluencyMetrics } from './FluencyMetrics'
+export type { Insight } from './Insight'
+export type { InsightKind } from './InsightKind'
+export type { LearningCurve } from './LearningCurve'
+export type { LearningCurvePeriod } from './LearningCurvePeriod'
+export type { LinkedCommit } from './LinkedCommit'
+export type { ModelBreakdown } from './ModelBreakdown'
+export type { ModelStats } from './ModelStats'
+export type { OutputMetrics } from './OutputMetrics'
+export type { OverviewMetrics } from './OverviewMetrics'
+export type { SessionContribution } from './SessionContribution'
+export type { SessionContributionResponse } from './SessionContributionResponse'
+export type { SkillStats } from './SkillStats'
+export type { UncommittedWork } from './UncommittedWork'

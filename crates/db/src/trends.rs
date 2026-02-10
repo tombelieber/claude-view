@@ -164,6 +164,21 @@ pub struct IndexMetadata {
 // ============================================================================
 
 impl Database {
+    /// Get trend metrics for a custom time range.
+    ///
+    /// The comparison period is automatically calculated as the equivalent
+    /// duration immediately preceding the requested period.
+    ///
+    /// For example, if `from` to `to` is 7 days, the comparison period
+    /// is the 7 days before `from`.
+    pub async fn get_trends_with_range(&self, from: i64, to: i64, project: Option<&str>, branch: Option<&str>) -> DbResult<WeekTrends> {
+        let duration = to - from;
+        let comp_end = from - 1;
+        let comp_start = comp_end - duration;
+
+        self.get_trends_for_periods(from, to, comp_start, comp_end, project, branch).await
+    }
+
     /// Get week-over-week trend metrics.
     ///
     /// Computes trends for:
@@ -177,113 +192,108 @@ impl Database {
         let (curr_start, curr_end) = current_week_bounds();
         let (prev_start, prev_end) = previous_week_bounds();
 
-        // Session count
-        let (curr_sessions,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(curr_start)
-        .bind(curr_end)
-        .fetch_one(self.pool())
-        .await?;
+        self.get_trends_for_periods(curr_start, curr_end, prev_start, prev_end, None, None).await
+    }
 
-        let (prev_sessions,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(prev_start)
-        .bind(prev_end)
-        .fetch_one(self.pool())
-        .await?;
+    /// Internal: Get trend metrics comparing two arbitrary periods.
+    ///
+    /// Consolidated from 12 sequential queries to 3 via conditional aggregation.
+    /// Query A: sessions table metrics (sessions, prompts, files_edited, reedited) × 2 periods
+    /// Query B: tokens from turns table × 2 periods
+    /// Query C: commits from session_commits × 2 periods
+    async fn get_trends_for_periods(
+        &self,
+        curr_start: i64,
+        curr_end: i64,
+        prev_start: i64,
+        prev_end: i64,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<WeekTrends> {
 
-        // Total tokens (from turns table, joined with sessions for period filter)
-        let (curr_tokens,): (i64,) = sqlx::query_as(
+        // Query A — session-table metrics for both periods in one scan (replaces 8 queries)
+        let (
+            curr_sessions, curr_prompts, curr_files_edited, curr_reedited,
+            prev_sessions, prev_prompts, prev_files_edited, prev_reedited,
+        ): (i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
+            SELECT
+              COALESCE(SUM(CASE WHEN last_message_at >= ?1 AND last_message_at <= ?2 THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?1 AND last_message_at <= ?2 THEN user_prompt_count ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?1 AND last_message_at <= ?2 THEN files_edited_count ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?1 AND last_message_at <= ?2 THEN reedited_files_count ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN user_prompt_count ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN files_edited_count ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN reedited_files_count ELSE 0 END), 0)
+            FROM sessions
+            WHERE is_sidechain = 0
+              AND last_message_at >= ?3 AND last_message_at <= ?2
+              AND (?5 IS NULL OR project_id = ?5)
+              AND (?6 IS NULL OR git_branch = ?6)
+            "#,
+        )
+        .bind(curr_start)  // ?1
+        .bind(curr_end)    // ?2
+        .bind(prev_start)  // ?3
+        .bind(prev_end)    // ?4
+        .bind(project)     // ?5
+        .bind(branch)      // ?6
+        .fetch_one(self.pool())
+        .await?;
+
+        // Query B — tokens from turns table for both periods (replaces 2 queries)
+        let (curr_tokens, prev_tokens): (i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+              COALESCE(SUM(CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2
+                THEN COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0) ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4
+                THEN COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0) ELSE 0 END), 0)
             FROM turns t
             INNER JOIN sessions s ON t.session_id = s.id
-            WHERE s.is_sidechain = 0 AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
+            WHERE s.is_sidechain = 0
+              AND s.last_message_at >= ?3 AND s.last_message_at <= ?2
+              AND (?5 IS NULL OR s.project_id = ?5)
+              AND (?6 IS NULL OR s.git_branch = ?6)
             "#,
         )
         .bind(curr_start)
         .bind(curr_end)
+        .bind(prev_start)
+        .bind(prev_end)
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
-        let (prev_tokens,): (i64,) = sqlx::query_as(
+        // Query C — commits for both periods (replaces 2 queries)
+        let (curr_commits, prev_commits): (i64, i64) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)), 0)
-            FROM turns t
-            INNER JOIN sessions s ON t.session_id = s.id
-            WHERE s.is_sidechain = 0 AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
+            SELECT
+              COALESCE(SUM(CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2 THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4 THEN 1 ELSE 0 END), 0)
+            FROM session_commits sc
+            INNER JOIN sessions s ON sc.session_id = s.id
+            WHERE s.is_sidechain = 0
+              AND s.last_message_at >= ?3 AND s.last_message_at <= ?2
+              AND (?5 IS NULL OR s.project_id = ?5)
+              AND (?6 IS NULL OR s.git_branch = ?6)
             "#,
         )
-        .bind(prev_start)
-        .bind(prev_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        // Weighted avg tokens per prompt: SUM(tokens) / SUM(user_prompt_count)
-        let (curr_prompts,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(user_prompt_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
         .bind(curr_start)
         .bind(curr_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        let (prev_prompts,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(user_prompt_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
         .bind(prev_start)
         .bind(prev_end)
+        .bind(project)
+        .bind(branch)
         .fetch_one(self.pool())
         .await?;
 
-        let curr_avg_tokens = if curr_prompts > 0 {
-            curr_tokens / curr_prompts
-        } else {
-            0
-        };
-        let prev_avg_tokens = if prev_prompts > 0 {
-            prev_tokens / prev_prompts
-        } else {
-            0
-        };
+        // Derived metrics
+        let curr_avg_tokens = if curr_prompts > 0 { curr_tokens / curr_prompts } else { 0 };
+        let prev_avg_tokens = if prev_prompts > 0 { prev_tokens / prev_prompts } else { 0 };
 
-        // Total files edited
-        let (curr_files_edited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(curr_start)
-        .bind(curr_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        let (prev_files_edited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(prev_start)
-        .bind(prev_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        // Weighted avg re-edit rate: SUM(reedited_files_count) / SUM(files_edited_count) * 100
-        let (curr_reedited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(reedited_files_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(curr_start)
-        .bind(curr_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        let (prev_reedited,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(reedited_files_count), 0) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2"
-        )
-        .bind(prev_start)
-        .bind(prev_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        // Calculate re-edit rate as percentage (0-100)
         let curr_reedit_rate = if curr_files_edited > 0 {
             ((curr_reedited as f64 / curr_files_edited as f64) * 100.0).round() as i64
         } else {
@@ -294,33 +304,6 @@ impl Database {
         } else {
             0
         };
-
-        // Commit link count (from session_commits joined with sessions for period filter)
-        let (curr_commits,): (i64,) = sqlx::query_as(
-            r#"
-            SELECT COUNT(*)
-            FROM session_commits sc
-            INNER JOIN sessions s ON sc.session_id = s.id
-            WHERE s.is_sidechain = 0 AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
-            "#,
-        )
-        .bind(curr_start)
-        .bind(curr_end)
-        .fetch_one(self.pool())
-        .await?;
-
-        let (prev_commits,): (i64,) = sqlx::query_as(
-            r#"
-            SELECT COUNT(*)
-            FROM session_commits sc
-            INNER JOIN sessions s ON sc.session_id = s.id
-            WHERE s.is_sidechain = 0 AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
-            "#,
-        )
-        .bind(prev_start)
-        .bind(prev_end)
-        .fetch_one(self.pool())
-        .await?;
 
         Ok(WeekTrends {
             session_count: TrendMetric::new(curr_sessions, prev_sessions),
@@ -694,6 +677,12 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            0, 0, 0,    // lines_added, lines_removed, loc_source
+            0, 0,        // ai_lines_added, ai_lines_removed
+            None,        // work_type
+            None,        // git_branch
+            None,        // primary_model
+            None,        // last_message_at
         )
         .await
         .unwrap();
@@ -872,5 +861,118 @@ mod tests {
 
         // deltaPercent should be null
         assert!(json.contains("\"deltaPercent\":null"));
+    }
+
+    // ========================================================================
+    // Trends with range and project/branch filter tests
+    // ========================================================================
+
+    fn make_session(id: &str, project: &str, modified_at: i64) -> vibe_recall_core::SessionInfo {
+        vibe_recall_core::SessionInfo {
+            id: id.to_string(),
+            project: project.to_string(),
+            project_path: format!("/home/user/{}", project),
+            file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
+            modified_at,
+            size_bytes: 2048,
+            preview: format!("Preview for {}", id),
+            last_message: format!("Last message for {}", id),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: vibe_recall_core::ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            message_count: 20,
+            turn_count: 8,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 0,
+            api_call_count: 0,
+            tool_call_count: 0,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 0,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+
+            parse_version: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_trends_with_range_and_project_filter() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let now = Utc::now().timestamp();
+        let from = now - 7 * 86400;
+        let to = now;
+
+        // proj-x session within range
+        let s1 = vibe_recall_core::SessionInfo {
+            git_branch: Some("main".to_string()),
+            user_prompt_count: 5,
+            files_edited_count: 3,
+            reedited_files_count: 1,
+            ..make_session("sess-trend-a", "proj-x", now - 100)
+        };
+        db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
+
+        // proj-y session within range
+        let s2 = vibe_recall_core::SessionInfo {
+            git_branch: Some("develop".to_string()),
+            user_prompt_count: 10,
+            files_edited_count: 6,
+            reedited_files_count: 2,
+            ..make_session("sess-trend-b", "proj-y", now - 200)
+        };
+        db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
+
+        // No filter — trends include both sessions
+        let trends = db.get_trends_with_range(from, to, None, None).await.unwrap();
+        assert_eq!(trends.session_count.current, 2);
+        assert_eq!(trends.total_files_edited.current, 9); // 3 + 6
+
+        // Project filter — only proj-x
+        let trends = db.get_trends_with_range(from, to, Some("proj-x"), None).await.unwrap();
+        assert_eq!(trends.session_count.current, 1);
+        assert_eq!(trends.total_files_edited.current, 3);
+
+        // Project + branch filter
+        let trends = db.get_trends_with_range(from, to, Some("proj-x"), Some("main")).await.unwrap();
+        assert_eq!(trends.session_count.current, 1);
+
+        // Project + wrong branch = 0
+        let trends = db.get_trends_with_range(from, to, Some("proj-x"), Some("develop")).await.unwrap();
+        assert_eq!(trends.session_count.current, 0);
+        assert_eq!(trends.total_files_edited.current, 0);
     }
 }

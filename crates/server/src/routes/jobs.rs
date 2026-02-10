@@ -69,6 +69,8 @@ mod tests {
             registry: Arc::new(std::sync::RwLock::new(None)),
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(crate::classify_state::ClassifyState::new()),
+            git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
+            pricing: std::collections::HashMap::new(),
         });
 
         let app = Router::new()

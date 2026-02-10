@@ -9,6 +9,33 @@ license.workspace = true
 name = "vibe-recall"
 path = "src/main.rs"
 
+# Feature Flags for Safe Rollback
+#
+# All features are enabled by default. To disable a feature at build time:
+#   cargo build --no-default-features --features "time-range,heatmap-tooltip"
+#
+# Or disable specific features:
+#   cargo build --no-default-features --features "time-range,sync-redesign,ai-generation,storage-overview"
+#
+# This enables safe rollback if a feature causes issues post-release.
+[features]
+default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
+
+# Dashboard time range selector (7d/30d/90d/all-time)
+time-range = []
+
+# Enhanced heatmap with detailed tooltips
+heatmap-tooltip = []
+
+# Redesigned sync UI with progress indicators
+sync-redesign = []
+
+# AI generation stats endpoint
+ai-generation = []
+
+# Storage overview endpoint
+storage-overview = []
+
 [dependencies]
 vibe-recall-core = { workspace = true }
 vibe-recall-db = { workspace = true }
@@ -25,12 +52,14 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 urlencoding = { workspace = true }
 indicatif = { workspace = true }
+chrono = { workspace = true }
 dirs = { workspace = true }
 tokio-stream = { workspace = true }
 async-stream = { workspace = true }
-chrono = { workspace = true }
 ts-rs = { workspace = true }
 sqlx = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

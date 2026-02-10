@@ -264,8 +264,13 @@ pub struct SessionInfo {
     pub hook_progress_count: u32,
     #[serde(default)]
     pub mcp_progress_count: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub summary_text: Option<String>,
+    // Phase C: LOC estimation
+    #[serde(default)]
+    pub lines_added: u32,
+    #[serde(default)]
+    pub lines_removed: u32,
+    #[serde(default)]
+    pub loc_source: u8,  // 0 = not computed, 1 = tool-call estimate, 2 = git diff
     #[serde(default)]
     pub parse_version: u32,
     // Theme 4: Classification
@@ -1035,8 +1040,12 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
+            // Phase C: LOC estimation
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             // Theme 4: Classification
             category_l1: None,
             category_l2: None,
@@ -1154,8 +1163,12 @@ mod tests {
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
+            // Phase C: LOC estimation
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             // Theme 4: Classification
             category_l1: None,
             category_l2: None,
