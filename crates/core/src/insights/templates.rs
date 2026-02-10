@@ -135,7 +135,7 @@ pub static TEMPLATES: &[InsightTemplate] = &[
     InsightTemplate {
         pattern_id: "M01",
         title: "Model Task Fit",
-        body_template: "{best_model} has {improvement}% lower re-edit rate than {worst_model}.",
+        body_template: "{best_model} has {improvement}% lower re-edit rate than {worst_model}. Note: models may be used for different task complexities.",
         recommendation_template: Some("Consider using {best_model} for similar tasks."),
     },
     InsightTemplate {
@@ -170,8 +170,8 @@ pub static TEMPLATES: &[InsightTemplate] = &[
     },
     InsightTemplate {
         pattern_id: "O02",
-        title: "Session Outcomes",
-        body_template: "{abandoned_pct}% of sessions produce no commits ({exploration_pct}% are quick lookups).",
+        title: "Session Mix",
+        body_template: "{deep_work_pct}% of sessions are deep work, {quick_task_pct}% are quick tasks, {exploration_pct}% exploration, and {minimal_pct}% brief interactions.",
         recommendation_template: None,
     },
     // ============================
@@ -183,19 +183,14 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         body_template: "On average, {avg_reedits} re-edits per session when re-editing occurs.",
         recommendation_template: Some("If you hit 3+ re-edits, try rephrasing your prompt entirely."),
     },
-    InsightTemplate {
-        pattern_id: "B03",
-        title: "Abandonment Triggers",
-        body_template: "Sessions with {threshold}+ re-edits have {abandon_rate}% abandonment rate.",
-        recommendation_template: Some("After {threshold} re-edits, consider starting a fresh session."),
-    },
+    // B03 removed: commit_count==0 is not a reliable abandonment signal
     // ============================
     // Comparative Patterns (CP01-CP03)
     // ============================
     InsightTemplate {
         pattern_id: "CP01",
         title: "You vs Baseline",
-        body_template: "You're {improvement}% more efficient than your 30-day average.",
+        body_template: "Your re-edit rate has {direction} by {improvement}% compared to your 30-day baseline.",
         recommendation_template: None,
     },
 ];

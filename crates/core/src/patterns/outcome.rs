@@ -14,7 +14,7 @@ pub fn calculate_outcome_patterns(sessions: &[SessionInfo], time_range_days: u32
     if let Some(i) = o01_commit_rate(sessions, time_range_days) {
         insights.push(i);
     }
-    if let Some(i) = o02_abandoned_sessions(sessions, time_range_days) {
+    if let Some(i) = o02_session_outcomes(sessions, time_range_days) {
         insights.push(i);
     }
 
@@ -51,39 +51,47 @@ fn o01_commit_rate(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
     )
 }
 
-/// O02: Abandoned Sessions - sessions with no commits categorized by type.
-fn o02_abandoned_sessions(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+/// O02: Session Outcomes - categorize sessions by activity type.
+fn o02_session_outcomes(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
     if sessions.len() < 100 {
         return None;
     }
 
-    let mut abandoned = 0u32;
-    let mut quick_lookup = 0u32;
-    let mut productive = 0u32;
+    let mut deep_work = 0u32;
+    let mut quick_task = 0u32;
+    let mut exploration = 0u32;
+    let mut minimal = 0u32;
 
     for s in sessions {
-        if s.commit_count == 0 && s.duration_seconds > 300 {
-            abandoned += 1;
-        } else if s.commit_count == 0 && s.duration_seconds <= 300 {
-            quick_lookup += 1;
+        if s.files_edited_count > 0 && s.duration_seconds > 900 {
+            deep_work += 1;
+        } else if s.files_edited_count > 0 && s.duration_seconds <= 900 {
+            quick_task += 1;
+        } else if s.files_read_count > 0 || s.duration_seconds > 300 {
+            exploration += 1;
         } else {
-            productive += 1;
+            minimal += 1;
         }
     }
 
     let total = sessions.len() as f64;
-    let abandoned_pct = (abandoned as f64 / total) * 100.0;
-    let exploration_pct = (quick_lookup as f64 / total) * 100.0;
+    let deep_work_pct = (deep_work as f64 / total) * 100.0;
+    let quick_task_pct = (quick_task as f64 / total) * 100.0;
+    let exploration_pct = (exploration as f64 / total) * 100.0;
+    let minimal_pct = (minimal as f64 / total) * 100.0;
 
     let sample_size = sessions.len() as u32;
     let mut vars = HashMap::new();
-    vars.insert("abandoned_pct".to_string(), format!("{:.0}", abandoned_pct));
+    vars.insert("deep_work_pct".to_string(), format!("{:.0}", deep_work_pct));
+    vars.insert("quick_task_pct".to_string(), format!("{:.0}", quick_task_pct));
     vars.insert("exploration_pct".to_string(), format!("{:.0}", exploration_pct));
+    vars.insert("minimal_pct".to_string(), format!("{:.0}", minimal_pct));
 
     let mut comparison = HashMap::new();
-    comparison.insert("abandoned".to_string(), abandoned as f64);
-    comparison.insert("quick_lookup".to_string(), quick_lookup as f64);
-    comparison.insert("productive".to_string(), productive as f64);
+    comparison.insert("deep_work".to_string(), deep_work as f64);
+    comparison.insert("quick_task".to_string(), quick_task as f64);
+    comparison.insert("exploration".to_string(), exploration as f64);
+    comparison.insert("minimal".to_string(), minimal as f64);
 
     generate_insight(
         "O02",
@@ -142,7 +150,7 @@ mod tests {
     #[test]
     fn test_o02_with_data() {
         let sessions = make_outcome_sessions(200);
-        let insight = o02_abandoned_sessions(&sessions, 30);
+        let insight = o02_session_outcomes(&sessions, 30);
         assert!(insight.is_some());
         let insight = insight.unwrap();
         assert_eq!(insight.pattern_id, "O02");

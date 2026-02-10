@@ -41,7 +41,7 @@ fn c03_project_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Opt
 
     let computed: Vec<Bucket> = by_project
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(name, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(name, vals.len() as u32, avg)
@@ -66,7 +66,7 @@ fn c03_project_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Opt
 
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
     let mut vars = HashMap::new();
-    vars.insert("project_name".to_string(), worst.label.clone());
+    vars.insert("project_name".to_string(), super::format_project_name(&worst.label));
     vars.insert("multiplier".to_string(), format!("{:.1}", multiplier));
 
     let mut comparison = HashMap::new();
@@ -115,24 +115,24 @@ fn c04_new_vs_existing(sessions: &[SessionInfo], time_range_days: u32) -> Option
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
     let best = best_bucket(&computed)?;
     let worst = worst_bucket(&computed)?;
-    let improvement = relative_improvement(best.value, worst.value) * 100.0;
+    let improvement = relative_improvement(best.value, worst.value);
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -146,7 +146,7 @@ fn c04_new_vs_existing(sessions: &[SessionInfo], time_range_days: u32) -> Option
         sample_size,
         50,
         time_range_days,
-        improvement / 100.0,
+        improvement,
         Actionability::Informational,
         comparison,
     )

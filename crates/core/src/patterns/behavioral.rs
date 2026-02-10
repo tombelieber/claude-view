@@ -1,4 +1,4 @@
-//! Behavioral patterns (B01-B07): Retry patterns, abandonment triggers, correction patterns.
+//! Behavioral patterns (B01-B07): Retry patterns, correction patterns.
 
 use std::collections::HashMap;
 
@@ -15,9 +15,9 @@ pub fn calculate_behavioral_patterns(sessions: &[SessionInfo], time_range_days: 
     if let Some(i) = b01_retry_patterns(sessions, time_range_days) {
         insights.push(i);
     }
-    if let Some(i) = b03_abandonment_triggers(sessions, time_range_days) {
-        insights.push(i);
-    }
+
+    // B03 (Abandonment Triggers) removed: used commit_count==0 as "abandonment"
+    // signal, but ~90% of sessions have 0 commits, making the metric meaningless.
 
     insights
 }
@@ -70,74 +70,6 @@ fn b01_retry_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Option<
     )
 }
 
-/// B03: Abandonment Triggers - what re-edit count precedes abandonment.
-fn b03_abandonment_triggers(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
-    let editing_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.files_edited_count > 0)
-        .collect();
-
-    if editing_sessions.len() < 50 {
-        return None;
-    }
-
-    let mut buckets: HashMap<&str, (u32, u32)> = HashMap::new(); // (total, abandoned)
-    for s in &editing_sessions {
-        let bucket = match s.reedited_files_count {
-            0 => "0",
-            1..=2 => "1-2",
-            3..=5 => "3-5",
-            _ => "6+",
-        };
-        let entry = buckets.entry(bucket).or_default();
-        entry.0 += 1;
-        if s.commit_count == 0 {
-            entry.1 += 1;
-        }
-    }
-
-    let computed: Vec<(String, u32, f64)> = buckets
-        .into_iter()
-        .filter(|(_, (total, _))| *total >= 5)
-        .map(|(label, (total, abandoned))| {
-            let rate = abandoned as f64 / total as f64;
-            (label.to_string(), total, rate)
-        })
-        .collect();
-
-    if computed.len() < 2 {
-        return None;
-    }
-
-    // Find the bucket with the highest abandonment rate
-    let worst = computed
-        .iter()
-        .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))?;
-
-    let sample_size: u32 = computed.iter().map(|(_, count, _)| count).sum();
-    let mut vars = HashMap::new();
-    vars.insert("threshold".to_string(), worst.0.clone());
-    vars.insert("abandon_rate".to_string(), format!("{:.0}", worst.2 * 100.0));
-
-    let mut comparison = HashMap::new();
-    for (label, count, rate) in &computed {
-        comparison.insert(format!("abandon_rate_{}", label), *rate);
-        comparison.insert(format!("count_{}", label), *count as f64);
-    }
-
-    generate_insight(
-        "B03",
-        "Behavioral Patterns",
-        &vars,
-        sample_size,
-        50,
-        time_range_days,
-        worst.2.min(1.0),
-        Actionability::Moderate,
-        comparison,
-    )
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -177,15 +109,6 @@ mod tests {
         assert!(insight.is_some());
         let insight = insight.unwrap();
         assert_eq!(insight.pattern_id, "B01");
-    }
-
-    #[test]
-    fn test_b03_with_data() {
-        let sessions = make_behavioral_sessions(100);
-        let insight = b03_abandonment_triggers(&sessions, 30);
-        assert!(insight.is_some());
-        let insight = insight.unwrap();
-        assert_eq!(insight.pattern_id, "B03");
     }
 
     #[test]

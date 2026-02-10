@@ -58,14 +58,14 @@ fn w03_planning_to_execution(sessions: &[SessionInfo], time_range_days: u32) -> 
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -75,7 +75,7 @@ fn w03_planning_to_execution(sessions: &[SessionInfo], time_range_days: u32) -> 
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -175,17 +175,17 @@ fn w05_commit_frequency(sessions: &[SessionInfo], time_range_days: u32) -> Optio
         }
     }
 
-    // Need at least two groups with data
+    // Need at least MIN_BUCKETS groups with data
     let groups: Vec<(&str, &[f64])> = [
         ("frequent", frequent.as_slice()),
         ("single", single.as_slice()),
         ("none", none.as_slice()),
     ]
     .into_iter()
-    .filter(|(_, vals)| vals.len() >= 10)
+    .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
     .collect();
 
-    if groups.len() < 2 {
+    if groups.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -204,7 +204,7 @@ fn w05_commit_frequency(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 
     let mut vars = HashMap::new();
     vars.insert("commit_style".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -248,7 +248,7 @@ fn w06_branch_discipline(sessions: &[SessionInfo], time_range_days: u32) -> Opti
         }
     }
 
-    if main_rates.len() < 10 || feature_rates.len() < 10 {
+    if main_rates.len() < super::MIN_BUCKET_SIZE || feature_rates.len() < super::MIN_BUCKET_SIZE {
         return None;
     }
 
@@ -290,14 +290,8 @@ fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Opti
 
     let mut buckets: HashMap<&str, Vec<f64>> = HashMap::new();
     for s in &editing_sessions {
-        let ratio = if s.files_edited_count > 0 {
-            s.files_read_count as f64 / s.files_edited_count as f64
-        } else {
-            0.0
-        };
-        let bucket = if s.files_read_count == 0 {
-            "zero"
-        } else if ratio < 1.0 {
+        let ratio = s.files_read_count as f64 / s.files_edited_count as f64;
+        let bucket = if ratio < 1.0 {
             "low"
         } else if ratio < 3.0 {
             "moderate"
@@ -310,14 +304,14 @@ fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Opti
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 5)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -328,7 +322,7 @@ fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Opti
 
     let mut vars = HashMap::new();
     vars.insert("read_level".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {

@@ -67,9 +67,18 @@ fn cp01_you_vs_baseline(sessions: &[SessionInfo], time_range_days: u32) -> Optio
         0.0
     };
 
+    let direction = if improvement > 5.0 {
+        "improved"
+    } else if improvement < -5.0 {
+        "increased"
+    } else {
+        "stayed stable at"
+    };
+
     let sample_size = editing_sessions.len() as u32;
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement.abs()));
+    vars.insert("direction".to_string(), direction.to_string());
 
     let mut comparison = HashMap::new();
     comparison.insert("recent_reedit".to_string(), recent_avg);

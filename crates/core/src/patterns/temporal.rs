@@ -70,26 +70,26 @@ fn t01_time_of_day(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
     let best = best_bucket(&computed)?;
     let worst = worst_bucket(&computed)?;
-    let improvement = relative_improvement(best.value, worst.value) * 100.0;
+    let improvement = relative_improvement(best.value, worst.value);
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
     let mut vars = HashMap::new();
     vars.insert("best_time".to_string(), best.label.clone());
     vars.insert("worst_time".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -103,7 +103,7 @@ fn t01_time_of_day(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
         sample_size,
         100,
         time_range_days,
-        improvement / 100.0,
+        improvement,
         Actionability::Awareness,
         comparison,
     )
@@ -130,14 +130,14 @@ fn t02_day_of_week(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 5)
+        .filter(|(_, vals)| vals.len() >= super::MIN_BUCKET_SIZE)
         .map(|(day, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(day_name(day), vals.len() as u32, avg)
         })
         .collect();
 
-    if computed.len() < 2 {
+    if computed.len() < super::MIN_BUCKETS {
         return None;
     }
 
@@ -145,16 +145,17 @@ fn t02_day_of_week(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
     let worst = worst_bucket(&computed)?;
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
+    let improvement = relative_improvement(best.value, worst.value);
+
     let mut vars = HashMap::new();
     vars.insert("best_day".to_string(), best.label.clone());
     vars.insert("worst_day".to_string(), worst.label.clone());
+    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
 
     let mut comparison = HashMap::new();
     for b in &computed {
         comparison.insert(format!("reedit_{}", b.label), b.value);
     }
-
-    let improvement = relative_improvement(best.value, worst.value);
 
     generate_insight(
         "T02",
@@ -204,14 +205,14 @@ fn t07_monthly_trend(sessions: &[SessionInfo], time_range_days: u32) -> Option<G
     let previous = &months[months.len() - 2];
 
     let improvement = if previous.1 > 0.0 {
-        ((previous.1 - latest.1) / previous.1) * 100.0
+        (previous.1 - latest.1) / previous.1
     } else {
         0.0
     };
 
-    let trend_direction = if improvement > 5.0 {
+    let trend_direction = if improvement > 0.05 {
         "improved"
-    } else if improvement < -5.0 {
+    } else if improvement < -0.05 {
         "declined"
     } else {
         "remained stable"
@@ -220,7 +221,7 @@ fn t07_monthly_trend(sessions: &[SessionInfo], time_range_days: u32) -> Option<G
     let sample_size = editing_sessions.len() as u32;
     let mut vars = HashMap::new();
     vars.insert("trend_direction".to_string(), trend_direction.to_string());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement.abs()));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement.abs() * 100.0));
 
     let mut comparison = HashMap::new();
     comparison.insert("latest_reedit".to_string(), latest.1);
@@ -233,7 +234,7 @@ fn t07_monthly_trend(sessions: &[SessionInfo], time_range_days: u32) -> Option<G
         sample_size,
         30,
         time_range_days,
-        improvement.abs() / 100.0,
+        improvement.abs(),
         Actionability::Informational,
         comparison,
     )
