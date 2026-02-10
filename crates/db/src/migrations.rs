@@ -281,6 +281,47 @@ CREATE TABLE IF NOT EXISTS contribution_snapshots (
     // 16d: Index for model-based grouping and filtering
     // Supports "token usage by model" queries in AI Generation Breakdown.
     r#"CREATE INDEX IF NOT EXISTS idx_sessions_primary_model ON sessions(primary_model);"#,
+    // Migration 17: Add CASCADE FKs to turns and invocations tables
+    // SQLite can't ALTER TABLE to add constraints, so we recreate the tables.
+    // 17a: Recreate turns with CASCADE FK on session_id
+    r#"
+CREATE TABLE turns_new (
+    session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    uuid                  TEXT NOT NULL,
+    seq                   INTEGER NOT NULL,
+    model_id              TEXT REFERENCES models(id),
+    parent_uuid           TEXT,
+    content_type          TEXT,
+    input_tokens          INTEGER,
+    output_tokens         INTEGER,
+    cache_read_tokens     INTEGER,
+    cache_creation_tokens INTEGER,
+    service_tier          TEXT,
+    timestamp             INTEGER,
+    PRIMARY KEY (session_id, uuid)
+);
+"#,
+    r#"INSERT INTO turns_new SELECT * FROM turns;"#,
+    r#"DROP TABLE turns;"#,
+    r#"ALTER TABLE turns_new RENAME TO turns;"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, seq);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_turns_model ON turns(model_id);"#,
+    // 17b: Recreate invocations with CASCADE FK on session_id
+    r#"
+CREATE TABLE invocations_new (
+    source_file  TEXT NOT NULL,
+    byte_offset  INTEGER NOT NULL,
+    invocable_id TEXT NOT NULL REFERENCES invocables(id),
+    session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project      TEXT NOT NULL,
+    timestamp    INTEGER NOT NULL,
+    PRIMARY KEY (source_file, byte_offset)
+);
+"#,
+    r#"INSERT INTO invocations_new SELECT * FROM invocations;"#,
+    r#"DROP TABLE invocations;"#,
+    r#"ALTER TABLE invocations_new RENAME TO invocations;"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_invocations_invocable ON invocations(invocable_id);"#,
 ];
 
 // ============================================================================
