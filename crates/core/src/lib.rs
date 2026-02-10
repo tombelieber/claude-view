@@ -15,6 +15,7 @@ pub mod classification;
 pub mod patterns;
 pub mod insights;
 pub mod facets;
+pub mod fluency_score;
 
 pub use error::*;
 pub use types::*;

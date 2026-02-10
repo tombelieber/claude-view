@@ -11,6 +11,7 @@ pub mod jobs;
 pub mod metrics;
 pub mod models;
 pub mod projects;
+pub mod score;
 pub mod sessions;
 pub mod stats;
 pub mod status;
@@ -57,6 +58,7 @@ use crate::state::AppState;
 /// - GET  /api/insights - Computed behavioral insights and patterns
 /// - GET /api/contributions - Contribution metrics and insights
 /// - GET /api/contributions/sessions/:id - Session contribution detail
+/// - GET /api/score - AI Fluency Score (composite 0-100)
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -75,6 +77,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", classify::router())
         .nest("/api", insights::router())
         .nest("/api", contributions::router())
+        .nest("/api", score::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)

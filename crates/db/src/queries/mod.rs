@@ -10,6 +10,7 @@ mod sessions;
 mod system;
 mod ai_generation;
 pub mod facets;
+mod fluency;
 mod types;
 
 pub use types::*;
