@@ -7,10 +7,23 @@ export type { ToolCall, Message } from '../types/generated'
 // Alias ParsedSession to SessionData for backward compatibility
 export type SessionData = ParsedSession
 
+/** Error subclass that carries the HTTP status code. */
+export class HttpError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
+
+/** Type-safe check for a 404 HttpError. */
+export function isNotFoundError(err: unknown): boolean {
+  return err instanceof HttpError && err.status === 404
+}
+
 async function fetchSession(projectDir: string, sessionId: string): Promise<SessionData> {
   const response = await fetch(`/api/session/${encodeURIComponent(projectDir)}/${encodeURIComponent(sessionId)}`)
   if (!response.ok) {
-    throw new Error('Failed to fetch session')
+    throw new HttpError('Failed to fetch session', response.status)
   }
   return response.json()
 }
@@ -25,5 +38,6 @@ export function useSession(projectDir: string | null, sessionId: string | null) 
       return fetchSession(projectDir, sessionId)
     },
     enabled: !!projectDir && !!sessionId,
+    retry: (_, error) => !isNotFoundError(error),
   })
 }
