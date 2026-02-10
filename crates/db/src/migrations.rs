@@ -500,6 +500,53 @@ CREATE TABLE IF NOT EXISTS index_runs (
     r#"CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_classification_jobs_started ON classification_jobs(started_at DESC);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_index_runs_started ON index_runs(started_at DESC);"#,
+    // Migration 20a: session_facets table for /insights facet cache
+    // NOTE: No FK to sessions — facets may reference sessions not yet indexed.
+    // Join at query time instead.
+    r#"
+CREATE TABLE IF NOT EXISTS session_facets (
+    session_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'insights_cache',
+    underlying_goal TEXT,
+    goal_categories TEXT NOT NULL DEFAULT '{}',
+    outcome TEXT,
+    satisfaction TEXT,
+    user_satisfaction_counts TEXT NOT NULL DEFAULT '{}',
+    claude_helpfulness TEXT,
+    session_type TEXT,
+    friction_counts TEXT NOT NULL DEFAULT '{}',
+    friction_detail TEXT,
+    primary_success TEXT,
+    brief_summary TEXT,
+    ingested_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    CONSTRAINT valid_outcome CHECK (outcome IN ('not_achieved', 'partially_achieved', 'mostly_achieved', 'fully_achieved', 'unclear_from_transcript') OR outcome IS NULL),
+    CONSTRAINT valid_helpfulness CHECK (claude_helpfulness IN ('unhelpful', 'slightly_helpful', 'moderately_helpful', 'very_helpful', 'essential') OR claude_helpfulness IS NULL),
+    CONSTRAINT valid_session_type CHECK (session_type IN ('single_task', 'multi_task', 'iterative_refinement', 'exploration', 'quick_question') OR session_type IS NULL),
+    CONSTRAINT valid_source CHECK (source IN ('insights_cache', 'our_extraction', 'manual'))
+);
+"#,
+    // Migration 20b: indexes for session_facets
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_outcome ON session_facets(outcome);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_satisfaction ON session_facets(satisfaction);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_helpfulness ON session_facets(claude_helpfulness);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_ingested ON session_facets(ingested_at);"#,
+    // Migration 20c: fluency_scores table for weekly score history
+    r#"
+CREATE TABLE IF NOT EXISTS fluency_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    achievement_rate REAL NOT NULL,
+    friction_rate REAL NOT NULL,
+    cost_efficiency REAL NOT NULL,
+    satisfaction_trend REAL NOT NULL,
+    consistency REAL NOT NULL,
+    sessions_analyzed INTEGER NOT NULL,
+    computed_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    CONSTRAINT valid_score CHECK (score BETWEEN 0 AND 100)
+);
+"#,
+    r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_fluency_scores_week ON fluency_scores(week_start);"#,
 ];
 
 // ============================================================================
