@@ -750,7 +750,12 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            0, 0, 0,    // lines_added, lines_removed, loc_source
+            0, 0,        // ai_lines_added, ai_lines_removed
+            None,        // work_type
+            None,        // git_branch
             None,        // primary_model
+            None,        // last_message_at
         )
         .await
         .unwrap();

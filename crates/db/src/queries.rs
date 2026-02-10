@@ -606,7 +606,16 @@ impl Database {
         parse_version: i32,
         file_size: i64,
         file_mtime: i64,
+        // LOC + work classification (must match _tx path)
+        lines_added: i32,
+        lines_removed: i32,
+        loc_source: i32,
+        ai_lines_added: i32,
+        ai_lines_removed: i32,
+        work_type: Option<&str>,
+        git_branch: Option<&str>,
         primary_model: Option<&str>,
+        last_message_at: Option<i64>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -653,7 +662,15 @@ impl Database {
                 parse_version = ?39,
                 file_size_at_index = ?40,
                 file_mtime_at_index = ?41,
-                primary_model = ?42
+                lines_added = ?42,
+                lines_removed = ?43,
+                loc_source = ?44,
+                ai_lines_added = ?45,
+                ai_lines_removed = ?46,
+                work_type = ?47,
+                git_branch = COALESCE(git_branch, ?48),
+                primary_model = ?49,
+                last_message_at = COALESCE(?50, last_message_at)
             WHERE id = ?1
             "#,
         )
@@ -698,7 +715,15 @@ impl Database {
         .bind(parse_version)
         .bind(file_size)
         .bind(file_mtime)
+        .bind(lines_added)
+        .bind(lines_removed)
+        .bind(loc_source)
+        .bind(ai_lines_added)
+        .bind(ai_lines_removed)
+        .bind(work_type)
+        .bind(git_branch)
         .bind(primary_model)
+        .bind(last_message_at)
         .execute(self.pool())
         .await?;
 
@@ -1962,6 +1987,7 @@ pub async fn update_session_deep_fields_tx(
     work_type: Option<&str>,
     git_branch: Option<&str>,
     primary_model: Option<&str>,
+    last_message_at: Option<i64>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -2015,7 +2041,8 @@ pub async fn update_session_deep_fields_tx(
             ai_lines_removed = ?46,
             work_type = ?47,
             git_branch = COALESCE(git_branch, ?48),
-            primary_model = ?49
+            primary_model = ?49,
+            last_message_at = COALESCE(?50, last_message_at)
         WHERE id = ?1
         "#,
     )
@@ -2068,6 +2095,7 @@ pub async fn update_session_deep_fields_tx(
     .bind(work_type)
     .bind(git_branch)
     .bind(primary_model)
+    .bind(last_message_at)
     .execute(&mut **tx)
     .await?;
 
@@ -2731,6 +2759,11 @@ mod tests {
             .await
             .unwrap();
 
+        // Must insert sessions first (FK constraint on invocations.session_id)
+        for sid in &["sess-1", "sess-2"] {
+            db.insert_session_from_index(sid, "proj-a", "proj-a", "/tmp", &format!("/tmp/{}.jsonl", sid), "", None, 0, 1000, None, false, 0).await.unwrap();
+        }
+
         let invocations = vec![
             ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
             ("file1.jsonl".to_string(), 200, "tool::Edit".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1001),
@@ -2748,6 +2781,9 @@ mod tests {
         db.upsert_invocable("tool::Read", None, "Read", "tool", "")
             .await
             .unwrap();
+
+        // Must insert session first (FK constraint on invocations.session_id)
+        db.insert_session_from_index("sess-1", "proj-a", "proj-a", "/tmp", "/tmp/f.jsonl", "", None, 0, 1000, None, false, 0).await.unwrap();
 
         let invocations = vec![
             ("file1.jsonl".to_string(), 100, "tool::Read".to_string(), "sess-1".to_string(), "proj-a".to_string(), 1000),
@@ -2774,6 +2810,11 @@ mod tests {
         db.upsert_invocable("tool::Bash", None, "Bash", "tool", "Run commands")
             .await
             .unwrap();
+
+        // Must insert sessions first (FK constraint on invocations.session_id)
+        for sid in &["s1", "s2"] {
+            db.insert_session_from_index(sid, "p", "p", "/tmp", &format!("/tmp/{}.jsonl", sid), "", None, 0, 1000, None, false, 0).await.unwrap();
+        }
 
         // Add invocations: Read x3, Edit x1, Bash x0
         let invocations = vec![
@@ -3062,7 +3103,15 @@ mod tests {
             1,     // parse_version
             5000,  // file_size
             1706200000, // file_mtime
+            0,     // lines_added
+            0,     // lines_removed
+            0,     // loc_source
+            0,     // ai_lines_added
+            0,     // ai_lines_removed
+            None,  // work_type
+            None,  // git_branch
             None,  // primary_model
+            None,  // last_message_at
         )
         .await
         .unwrap();
@@ -3136,7 +3185,15 @@ mod tests {
             1,           // parse_version
             1000,        // file_size
             1706200000,  // file_mtime
+            0,           // lines_added
+            0,           // lines_removed
+            0,           // loc_source
+            0,           // ai_lines_added
+            0,           // ai_lines_removed
+            None,        // work_type
+            None,        // git_branch
             None,        // primary_model
+            None,        // last_message_at
         )
         .await
         .unwrap();
@@ -3309,7 +3366,12 @@ mod tests {
             1,
             2000,
             1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             None, // primary_model
+            None, // last_message_at
         )
         .await
         .unwrap();
@@ -3334,7 +3396,12 @@ mod tests {
             1,
             1000,
             1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             None, // primary_model
+            None, // last_message_at
         )
         .await
         .unwrap();
@@ -3411,7 +3478,12 @@ mod tests {
             1,
             2000,
             1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             Some("claude-opus-4-5-20251101"),
+            None, // last_message_at
         )
         .await
         .unwrap();
@@ -3436,7 +3508,12 @@ mod tests {
             1,
             1000,
             1706200000,
+            0, 0, 0, // lines_added, lines_removed, loc_source
+            0, 0,    // ai_lines_added, ai_lines_removed
+            None,    // work_type
+            None,    // git_branch
             Some("claude-sonnet-4-20250514"),
+            None, // last_message_at
         )
         .await
         .unwrap();
