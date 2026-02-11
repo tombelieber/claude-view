@@ -14,9 +14,9 @@ use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use vibe_recall_db::indexer_parallel::run_background_index;
+use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
 use vibe_recall_db::Database;
-use vibe_recall_server::{create_app_full, IndexingState, IndexingStatus};
+use vibe_recall_server::{create_app_full, init_metrics, record_sync, IndexingState, IndexingStatus};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -48,26 +48,67 @@ fn get_static_dir() -> Option<PathBuf> {
 
 /// Run git sync with structured logging. Used by both initial and periodic sync.
 async fn run_git_sync_logged(db: &Database, label: &str) {
-    tracing::info!("Starting {} git sync...", label);
-    match vibe_recall_db::git_correlation::run_git_sync(db).await {
+    let start = Instant::now();
+    tracing::info!(sync_type = label, "Starting git sync");
+
+    match vibe_recall_db::git_correlation::run_git_sync(db, |_| {}).await {
         Ok(r) => {
+            let duration = start.elapsed();
             if r.repos_scanned > 0 || r.links_created > 0 {
                 tracing::info!(
-                    "{} git sync: {} repos, {} commits, {} links",
-                    label, r.repos_scanned, r.commits_found, r.links_created,
+                    sync_type = label,
+                    repos_scanned = r.repos_scanned,
+                    commits_found = r.commits_found,
+                    links_created = r.links_created,
+                    duration_secs = duration.as_secs_f64(),
+                    "Git sync complete"
                 );
             } else {
-                tracing::debug!("{} git sync: no changes", label);
+                tracing::debug!(
+                    sync_type = label,
+                    duration_secs = duration.as_secs_f64(),
+                    "Git sync: no changes"
+                );
             }
             if !r.errors.is_empty() {
                 tracing::warn!(
-                    "{} git sync had {} errors: {:?}",
-                    label, r.errors.len(), r.errors,
+                    sync_type = label,
+                    error_count = r.errors.len(),
+                    errors = ?r.errors,
+                    "Git sync had errors"
                 );
+            }
+            // Record sync metrics
+            record_sync("git", duration, Some(r.commits_found as u64));
+        }
+        Err(e) => {
+            let duration = start.elapsed();
+            tracing::warn!(
+                sync_type = label,
+                error = %e,
+                duration_secs = duration.as_secs_f64(),
+                "Git sync failed (non-fatal)"
+            );
+            // Still record metrics for failed syncs
+            record_sync("git", duration, None);
+        }
+    }
+}
+
+/// Generate contribution snapshots for historical days.
+/// Initial run backfills 365 days; periodic runs only need 2 days (today + yesterday).
+async fn run_snapshot_generation(db: &Database, label: &str) {
+    let days_back = if label == "initial" { 365 } else { 2 };
+    match db.generate_missing_snapshots(days_back).await {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!("{} snapshot generation: {} snapshots created", label, count);
+            } else {
+                tracing::debug!("{} snapshot generation: all snapshots up to date", label);
             }
         }
         Err(e) => {
-            tracing::warn!("{} git sync failed (non-fatal): {}", label, e);
+            tracing::warn!("{} snapshot generation failed (non-fatal): {}", label, e);
         }
     }
 }
@@ -82,6 +123,9 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let startup_start = Instant::now();
+
+    // Initialize Prometheus metrics
+    init_metrics();
 
     // Print banner
     eprintln!("\n\u{1f50d} vibe-recall v{}\n", env!("CARGO_PKG_VERSION"));
@@ -127,8 +171,10 @@ async fn main() -> Result<()> {
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
+    let periodic_registry = registry_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
+        let index_start = Instant::now();
 
         let state_for_pass1 = idx_state.clone();
         let state_for_progress = idx_state.clone();
@@ -158,18 +204,62 @@ async fn main() -> Result<()> {
 
         match result {
             Ok(_) => {
+                // Persist index metadata so Settings > Data Status shows real values.
+                // Query actual DB counts (not atomic counters which only track
+                // newly-indexed sessions in this run — on restart most are skipped).
+                let duration_ms = index_start.elapsed().as_millis() as i64;
+                let sessions = idx_db.get_session_count().await.unwrap_or(0);
+                let projects = idx_db.get_project_count().await.unwrap_or(0);
+                if let Err(e) = idx_db.update_index_metadata_on_success(duration_ms, sessions, projects).await {
+                    tracing::warn!(error = %e, "Failed to persist index metadata");
+                }
                 // Auto git-sync: correlate commits with sessions after indexing completes.
                 run_git_sync_logged(&idx_db, "initial").await;
 
-                // Periodic git-sync: re-scan to pick up new commits.
+                // Build contribution snapshots for all historical days.
+                run_snapshot_generation(&idx_db, "initial").await;
+
+                // Periodic sync loop: re-index new/changed sessions, git-sync, snapshots.
                 // Interval is user-configurable via Settings UI (stored in DB).
-                // At 10x scale (~100 repos, ~5000 sessions), each run takes ~4-6s.
                 // Re-read interval from DB each cycle so changes take effect without restart.
+                let mut prev_session_count = idx_db.get_session_count().await.unwrap_or(0);
                 loop {
                     let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(60);
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
+
+                    // Incremental re-index: pick up new/changed sessions (<10ms for Pass 1)
+                    match pass_1_read_indexes(&claude_dir, &idx_db).await {
+                        Ok((_projects, sessions)) => {
+                            let new_sessions = sessions as i64 - prev_session_count as i64;
+                            if new_sessions > 0 {
+                                tracing::info!(new_sessions, "Incremental index: discovered new sessions");
+                            }
+                            // Run Pass 2 for any changed files (skips unchanged via size+mtime)
+                            // Clone registry out of the lock (guard dropped at end of let-statement)
+                            let registry_clone = match periodic_registry.read() {
+                                Ok(guard) => guard.clone(),
+                                Err(poisoned) => {
+                                    tracing::warn!("Registry lock poisoned, using recovered value");
+                                    poisoned.into_inner().clone()
+                                }
+                            };
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_, _| {}).await {
+                                Ok(indexed) => {
+                                    if indexed > 0 {
+                                        tracing::info!(indexed, "Incremental deep index complete");
+                                        record_sync("incremental-index", Instant::now().elapsed(), Some(indexed as u64));
+                                    }
+                                }
+                                Err(e) => tracing::warn!(error = %e, "Incremental deep index failed (non-fatal)"),
+                            }
+                            prev_session_count = sessions as i64;
+                        }
+                        Err(e) => tracing::warn!(error = %e, "Incremental Pass 1 failed (non-fatal)"),
+                    }
+
                     run_git_sync_logged(&idx_db, "periodic").await;
+                    run_snapshot_generation(&idx_db, "periodic").await;
                 }
             }
             Err(e) => {

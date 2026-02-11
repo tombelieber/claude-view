@@ -39,6 +39,23 @@ pub struct GitCommit {
     pub timestamp: i64,
     /// Branch name (if available).
     pub branch: Option<String>,
+    /// Number of files changed in this commit.
+    pub files_changed: Option<u32>,
+    /// Number of lines inserted in this commit.
+    pub insertions: Option<u32>,
+    /// Number of lines deleted in this commit.
+    pub deletions: Option<u32>,
+}
+
+/// Diff stats for a commit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiffStats {
+    /// Number of files changed.
+    pub files_changed: u32,
+    /// Number of lines inserted.
+    pub insertions: u32,
+    /// Number of lines deleted.
+    pub deletions: u32,
 }
 
 /// Result of scanning a repository for commits.
@@ -271,7 +288,160 @@ fn parse_git_log_line(line: &str, repo_path: &Path) -> Option<GitCommit> {
         },
         timestamp,
         branch: None, // Set later
+        files_changed: None, // Set later via get_commit_diff_stats
+        insertions: None,
+        deletions: None,
     })
+}
+
+/// Get diff stats for a single commit using `git show --stat`.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hash` - The commit hash to get stats for
+///
+/// # Returns
+/// `DiffStats` with files_changed, insertions, and deletions, or default if unavailable.
+pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffStats {
+    // Use git show --stat --format="" to get only the stat line
+    // Output format: "N files changed, N insertions(+), N deletions(-)"
+    let output = tokio::time::timeout(
+        Duration::from_secs(GIT_TIMEOUT_SECS),
+        Command::new("git")
+            .args(["show", "--stat", "--format=", commit_hash])
+            .current_dir(repo_path)
+            .output(),
+    )
+    .await;
+
+    let output = match output {
+        Ok(Ok(o)) if o.status.success() => o,
+        Ok(Ok(o)) => {
+            tracing::debug!("git show returned non-zero for {commit_hash}: {:?}", o.status);
+            return DiffStats::default();
+        }
+        Ok(Err(e)) => {
+            tracing::warn!("git show spawn failed for {commit_hash}: {e}");
+            return DiffStats::default();
+        }
+        Err(_) => {
+            tracing::warn!("git show timed out for commit {commit_hash}");
+            return DiffStats::default();
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_diff_stats_from_output(&stdout)
+}
+
+/// Get diff stats for multiple commits in a batch.
+///
+/// Spawns one `git show --stat` per commit, parallelized within batches
+/// using [`tokio::task::JoinSet`] to limit concurrent subprocesses.
+///
+/// # Arguments
+/// * `repo_path` - Path to the git repository
+/// * `commit_hashes` - Slice of commit hashes to get stats for
+///
+/// # Returns
+/// Vec of (hash, DiffStats) tuples. Commits that fail to parse will have default stats.
+pub async fn get_batch_diff_stats(
+    repo_path: &Path,
+    commit_hashes: &[String],
+) -> Vec<(String, DiffStats)> {
+    let mut results = Vec::with_capacity(commit_hashes.len());
+
+    // Process commits in batches to bound concurrent subprocess count
+    const BATCH_SIZE: usize = 50;
+
+    for batch in commit_hashes.chunks(BATCH_SIZE) {
+        let mut set = tokio::task::JoinSet::new();
+
+        for (idx, hash) in batch.iter().enumerate() {
+            let repo = repo_path.to_path_buf();
+            let h = hash.clone();
+            set.spawn(async move {
+                let stats = get_commit_diff_stats(&repo, &h).await;
+                (idx, h, stats)
+            });
+        }
+
+        // Collect results preserving original order
+        let mut batch_results: Vec<(usize, String, DiffStats)> =
+            Vec::with_capacity(batch.len());
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(tuple) => batch_results.push(tuple),
+                Err(e) => {
+                    tracing::warn!("JoinSet task panicked in get_batch_diff_stats: {e}");
+                }
+            }
+        }
+        batch_results.sort_by_key(|(idx, _, _)| *idx);
+
+        for (_, hash, stats) in batch_results {
+            results.push((hash, stats));
+        }
+    }
+
+    results
+}
+
+/// Parse diff stats from git show --stat output.
+///
+/// Expected format in the last line:
+/// " N files changed, N insertions(+), N deletions(-)"
+/// or partial variants like:
+/// " N files changed, N insertions(+)"
+/// " N files changed, N deletions(-)"
+/// " N file changed"
+fn parse_diff_stats_from_output(output: &str) -> DiffStats {
+    // Find the summary line (last non-empty line containing "changed")
+    let summary_line = output
+        .lines()
+        .rev()
+        .find(|line| line.contains("changed"));
+
+    let line = match summary_line {
+        Some(l) => l.trim(),
+        None => return DiffStats::default(),
+    };
+
+    let mut stats = DiffStats::default();
+
+    // Parse "N file(s) changed"
+    if let Some(pos) = line.find("file") {
+        let prefix = &line[..pos].trim();
+        if let Some(num_str) = prefix.split_whitespace().last() {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.files_changed = n;
+            }
+        }
+    }
+
+    // Parse "N insertion(s)(+)"
+    if let Some(pos) = line.find("insertion") {
+        // Find the number before "insertion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.insertions = n;
+            }
+        }
+    }
+
+    // Parse "N deletion(s)(-)"
+    if let Some(pos) = line.find("deletion") {
+        // Find the number before "deletion"
+        let prefix = &line[..pos];
+        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+            if let Ok(n) = num_str.parse::<u32>() {
+                stats.deletions = n;
+            }
+        }
+    }
+
+    stats
 }
 
 /// Check if a directory is a git repository.
@@ -420,6 +590,88 @@ pub fn tier2_match(
 // Database CRUD Operations
 // ============================================================================
 
+impl DiffStats {
+    /// Parse numstat output and aggregate stats.
+    ///
+    /// Expected format (one line per file):
+    /// ```text
+    /// 10\t5\tfile.rs
+    /// 3\t0\tREADME.md
+    /// ```
+    ///
+    /// Binary files show as `-\t-\tfile.bin` and are ignored.
+    pub fn from_numstat(output: &str) -> Self {
+        let mut stats = Self::default();
+
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+
+            // Parse additions and deletions
+            let added = parts[0].parse::<u32>().ok();
+            let removed = parts[1].parse::<u32>().ok();
+
+            if let (Some(a), Some(r)) = (added, removed) {
+                stats.files_changed += 1;
+                stats.insertions += a;
+                stats.deletions += r;
+            }
+            // Binary files (- - filename) are skipped
+        }
+
+        stats
+    }
+
+    /// Aggregate multiple DiffStats together.
+    pub fn aggregate(stats: &[DiffStats]) -> Self {
+        stats.iter().fold(Self::default(), |mut acc, s| {
+            acc.files_changed += s.files_changed;
+            acc.insertions += s.insertions;
+            acc.deletions += s.deletions;
+            acc
+        })
+    }
+}
+
+/// Extract diff stats for a single commit using `git show --numstat`.
+///
+/// Uses `git show` instead of `git diff` to handle initial commits
+/// (which have no parent).
+///
+/// Returns None if:
+/// - Git command fails
+/// - Repo path doesn't exist
+/// - Commit hash is invalid
+pub async fn extract_commit_diff_stats(
+    repo_path: &Path,
+    commit_hash: &str,
+) -> Option<DiffStats> {
+    let output = tokio::time::timeout(
+        Duration::from_secs(5),
+        Command::new("git")
+            .args([
+                "show",
+                "--numstat",
+                "--format=", // Don't show commit message
+                commit_hash,
+            ])
+            .current_dir(repo_path)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Some(DiffStats::from_numstat(&stdout))
+}
+
 impl Database {
     /// Batch upsert commits into the database.
     ///
@@ -436,14 +688,17 @@ impl Database {
         for commit in commits {
             let result = sqlx::query(
                 r#"
-                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                INSERT INTO commits (hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 ON CONFLICT(hash) DO UPDATE SET
                     repo_path = excluded.repo_path,
                     message = excluded.message,
                     author = excluded.author,
                     timestamp = excluded.timestamp,
-                    branch = excluded.branch
+                    branch = excluded.branch,
+                    files_changed = COALESCE(excluded.files_changed, commits.files_changed),
+                    insertions = COALESCE(excluded.insertions, commits.insertions),
+                    deletions = COALESCE(excluded.deletions, commits.deletions)
                 "#,
             )
             .bind(&commit.hash)
@@ -452,6 +707,9 @@ impl Database {
             .bind(&commit.author)
             .bind(commit.timestamp)
             .bind(&commit.branch)
+            .bind(commit.files_changed.map(|v| v as i64))
+            .bind(commit.insertions.map(|v| v as i64))
+            .bind(commit.deletions.map(|v| v as i64))
             .execute(&mut *tx)
             .await?;
 
@@ -460,6 +718,49 @@ impl Database {
 
         tx.commit().await?;
         Ok(affected)
+    }
+
+    /// Update diff stats for a commit.
+    ///
+    /// Used to populate diff stats for commits that were initially created without them.
+    pub async fn update_commit_diff_stats(
+        &self,
+        commit_hash: &str,
+        stats: DiffStats,
+    ) -> DbResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE commits SET
+                files_changed = ?2,
+                insertions = ?3,
+                deletions = ?4
+            WHERE hash = ?1
+            "#,
+        )
+        .bind(commit_hash)
+        .bind(stats.files_changed as i64)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get commits missing diff stats (for backfill).
+    pub async fn get_commits_without_diff_stats(&self, limit: usize) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT hash FROM commits
+            WHERE files_changed IS NULL OR insertions IS NULL OR deletions IS NULL
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(|(h,)| h).collect())
     }
 
     /// Insert session-commit links with tier and evidence.
@@ -527,10 +828,11 @@ impl Database {
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, i32, String)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
                 r#"
             SELECT c.hash, c.repo_path, c.message, c.author, c.timestamp, c.branch,
+                   c.files_changed, c.insertions, c.deletions,
                    sc.tier, sc.evidence
             FROM commits c
             INNER JOIN session_commits sc ON c.hash = sc.commit_hash
@@ -545,7 +847,7 @@ impl Database {
         let results = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch, tier, evidence)| {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions, tier, evidence)| {
                     let commit = GitCommit {
                         hash,
                         repo_path,
@@ -553,6 +855,9 @@ impl Database {
                         author,
                         timestamp,
                         branch,
+                        files_changed: files_changed.map(|v| v as u32),
+                        insertions: insertions.map(|v| v as u32),
+                        deletions: deletions.map(|v| v as u32),
                     };
                     (commit, tier, evidence)
                 },
@@ -572,10 +877,10 @@ impl Database {
         end_ts: i64,
     ) -> DbResult<Vec<GitCommit>> {
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>)> =
+        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
             sqlx::query_as(
                 r#"
-            SELECT hash, repo_path, message, author, timestamp, branch
+            SELECT hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions
             FROM commits
             WHERE repo_path = ?1 AND timestamp >= ?2 AND timestamp <= ?3
             ORDER BY timestamp DESC
@@ -590,13 +895,16 @@ impl Database {
         let commits = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch)| GitCommit {
+                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)| GitCommit {
                     hash,
                     repo_path,
                     message,
                     author,
                     timestamp,
                     branch,
+                    files_changed: files_changed.map(|v| v as u32),
+                    insertions: insertions.map(|v| v as u32),
+                    deletions: deletions.map(|v| v as u32),
                 },
             )
             .collect();
@@ -627,6 +935,36 @@ impl Database {
             .bind(commit_count)
             .execute(self.pool())
             .await?;
+
+        Ok(())
+    }
+
+    /// Update session LOC stats from git diff (Phase F: Git Diff Stats Overlay).
+    ///
+    /// Sets lines_added, lines_removed, and loc_source = 2 (git verified).
+    /// Only updates if new stats are provided (not 0+0).
+    pub async fn update_session_loc_from_git(
+        &self,
+        session_id: &str,
+        stats: &DiffStats,
+    ) -> DbResult<()> {
+        // Only update if we have actual stats
+        if stats.insertions == 0 && stats.deletions == 0 {
+            return Ok(());
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE sessions
+            SET lines_added = ?2, lines_removed = ?3, loc_source = 2
+            WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
+        .execute(self.pool())
+        .await?;
 
         Ok(())
     }
@@ -700,6 +1038,7 @@ pub struct SessionCorrelationInfo {
 /// 2. Apply Tier 1 matching (commit skills)
 /// 3. Apply Tier 2 matching (session time range)
 /// 4. Insert matches, preferring Tier 1 over Tier 2
+/// 5. Extract git diff stats for newly linked commits (Phase F)
 ///
 /// Returns the number of matches inserted.
 pub async fn correlate_session(
@@ -747,6 +1086,26 @@ pub async fn correlate_session(
     // Insert all matches
     let inserted = db.batch_insert_session_commits(&all_matches).await? as usize;
 
+    // Phase F: Extract git diff stats for newly linked commits
+    if inserted > 0 {
+        let repo_path = std::path::Path::new(&session.project_path);
+        let mut all_stats = Vec::new();
+
+        for commit_match in &all_matches {
+            if let Some(stats) =
+                extract_commit_diff_stats(repo_path, &commit_match.commit_hash).await
+            {
+                all_stats.push(stats);
+            }
+        }
+
+        if !all_stats.is_empty() {
+            let aggregated = DiffStats::aggregate(&all_stats);
+            db.update_session_loc_from_git(&session.session_id, &aggregated)
+                .await?;
+        }
+    }
+
     // Update session commit count
     let commit_count = db.count_commits_for_session(&session.session_id).await?;
     db.update_session_commit_count(&session.session_id, commit_count as i32)
@@ -772,13 +1131,41 @@ pub struct GitSyncResult {
     pub errors: Vec<String>,
 }
 
+/// Progress updates emitted by `run_git_sync` via callback.
+///
+/// Used by the server crate to feed SSE progress events to the frontend.
+#[derive(Debug, Clone)]
+pub enum GitSyncProgress {
+    /// Emitted after grouping sessions by repo, before scanning starts.
+    ScanningStarted { total_repos: usize },
+    /// Emitted after each repo is scanned and commits are found.
+    RepoScanned {
+        repos_done: usize,
+        total_repos: usize,
+        commits_in_repo: u32,
+    },
+    /// Emitted before the session correlation loop begins.
+    CorrelatingStarted {
+        total_correlatable_sessions: usize,
+    },
+    /// Emitted after each session is correlated (success or failure).
+    SessionCorrelated {
+        sessions_done: usize,
+        total_correlatable_sessions: usize,
+        links_in_session: u32,
+    },
+}
+
 /// Run the full git sync pipeline: scan repos, correlate sessions, update metadata.
 ///
 /// Auto-sync produces Tier 2 only (no skill data available at this stage).
 /// Tier 1 links from pass_2 deep indexing are never overwritten.
 /// Per-repo error isolation ensures one bad repo doesn't abort the sync.
 /// Idempotent: safe to run multiple times.
-pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
+pub async fn run_git_sync<F>(db: &Database, on_progress: F) -> DbResult<GitSyncResult>
+where
+    F: Fn(GitSyncProgress) + Send + 'static,
+{
     let mut result = GitSyncResult::default();
 
     // Step 1: Fetch all eligible sessions
@@ -801,10 +1188,13 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             .push(session);
     }
 
+    let total_repos = sessions_by_repo.len();
     tracing::info!(
         "Git sync: {} unique project paths to scan",
-        sessions_by_repo.len()
+        total_repos
     );
+
+    on_progress(GitSyncProgress::ScanningStarted { total_repos });
 
     // Step 3: Scan each unique repo and upsert commits
     let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
@@ -828,8 +1218,15 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             continue;
         }
 
+        let commits_in_repo = scan.commits.len() as u32;
         result.repos_scanned += 1;
-        result.commits_found += scan.commits.len() as u32;
+        result.commits_found += commits_in_repo;
+
+        on_progress(GitSyncProgress::RepoScanned {
+            repos_done: result.repos_scanned as usize,
+            total_repos,
+            commits_in_repo,
+        });
 
         db.batch_upsert_commits(&scan.commits).await?;
 
@@ -843,6 +1240,17 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
     );
 
     // Step 4: Correlate each session with its repo's commits
+    // Count sessions that actually have commits to correlate against
+    let correlatable_count = sessions
+        .iter()
+        .filter(|s| commits_by_repo.contains_key(&s.project_path))
+        .count();
+    on_progress(GitSyncProgress::CorrelatingStarted {
+        total_correlatable_sessions: correlatable_count,
+    });
+
+    let mut sessions_done: usize = 0;
+
     for session in &sessions {
         let commits = match commits_by_repo.get(&session.project_path) {
             Some(c) => c,
@@ -854,12 +1262,19 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             project_path: session.project_path.clone(),
             first_timestamp: session.first_message_at,
             last_timestamp: session.last_message_at,
-            commit_skills: Vec::new(), // No skill data in auto-sync → Tier 2 only
+            commit_skills: Vec::new(), // No skill data in auto-sync -> Tier 2 only
         };
 
         match correlate_session(db, &info, commits).await {
             Ok(links) => {
-                result.links_created += links as u32;
+                let links_in_session = links as u32;
+                result.links_created += links_in_session;
+                sessions_done += 1;
+                on_progress(GitSyncProgress::SessionCorrelated {
+                    sessions_done,
+                    total_correlatable_sessions: correlatable_count,
+                    links_in_session,
+                });
             }
             Err(e) => {
                 tracing::warn!(
@@ -868,6 +1283,12 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
                     e
                 );
                 result.errors.push(format!("session {}: {}", session.session_id, e));
+                sessions_done += 1;
+                on_progress(GitSyncProgress::SessionCorrelated {
+                    sessions_done,
+                    total_correlatable_sessions: correlatable_count,
+                    links_in_session: 0,
+                });
             }
         }
     }
@@ -1020,6 +1441,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100, // Exact match
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1047,6 +1471,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 - 60, // 60s before (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1068,6 +1495,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 300, // 300s after (edge of window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1089,6 +1519,9 @@ mod tests {
             author: None,
             timestamp: 1706400100 + 301, // 301s after (outside window)
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1109,6 +1542,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
@@ -1136,6 +1572,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400120, // Matches first skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1144,6 +1583,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400520, // Matches second skill
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1164,6 +1606,9 @@ mod tests {
             author: None,
             timestamp: 1706400200, // Within session range
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1185,6 +1630,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100, // At session start
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1193,6 +1641,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400300, // At session end
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1210,6 +1661,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400099, // 1 second before session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1218,6 +1672,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400301, // 1 second after session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1234,6 +1691,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
@@ -1256,6 +1716,9 @@ mod tests {
                 author: Some("Author 1".to_string()),
                 timestamp: 1706400100,
                 branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1264,6 +1727,9 @@ mod tests {
                 author: Some("Author 2".to_string()),
                 timestamp: 1706400200,
                 branch: Some("feature".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
 
@@ -1289,6 +1755,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1301,6 +1770,9 @@ mod tests {
             author: Some("Author".to_string()),
             timestamp: 1706400100,
             branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
 
         db.batch_upsert_commits(&updated).await.unwrap();
@@ -1344,6 +1816,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1402,6 +1877,9 @@ mod tests {
             author: None,
             timestamp: 1706400100,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1475,6 +1953,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400100,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1483,6 +1964,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1575,6 +2059,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400150, // Within Tier 1 window [1706400040, 1706400400]
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
@@ -1583,6 +2070,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400500, // Outside Tier 1 window (>1706400400), inside session
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
             GitCommit {
                 hash: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
@@ -1591,6 +2081,9 @@ mod tests {
                 author: None,
                 timestamp: 1706400200,
                 branch: None,
+                files_changed: None,
+                insertions: None,
+                deletions: None,
             },
         ];
         db.batch_upsert_commits(&commits).await.unwrap();
@@ -1669,6 +2162,9 @@ mod tests {
             author: None,
             timestamp: 1706400200,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1720,6 +2216,9 @@ mod tests {
             author: None,
             timestamp: 1706400150,
             branch: None,
+            files_changed: None,
+            insertions: None,
+            deletions: None,
         }];
         db.batch_upsert_commits(&commits).await.unwrap();
 
@@ -1869,7 +2368,7 @@ mod tests {
     #[tokio::test]
     async fn test_run_git_sync_empty_db() {
         let db = Database::new_in_memory().await.unwrap();
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.commits_found, 0);
@@ -1898,7 +2397,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.commits_found, 0);
@@ -1968,7 +2467,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 1);
         assert_eq!(result.commits_found, 1);
@@ -2055,7 +2554,7 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         // Only 1 repo scanned despite 2 sessions
         assert_eq!(result.repos_scanned, 1);
@@ -2075,11 +2574,704 @@ mod tests {
         .await
         .unwrap();
 
-        let result = run_git_sync(&db).await.unwrap();
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result.repos_scanned, 0);
         assert_eq!(result.links_created, 0);
         assert!(result.errors.is_empty()); // not_a_repo is silent skip
+    }
+
+    // ========================================================================
+    // Phase F: Git Diff Stats tests
+    // ========================================================================
+
+    #[test]
+    fn test_diff_stats_from_numstat_empty() {
+        let stats = DiffStats::from_numstat("");
+        assert_eq!(stats.insertions, 0);
+        assert_eq!(stats.deletions, 0);
+    }
+
+    #[test]
+    fn test_diff_stats_from_numstat_single_file() {
+        let output = "10\t5\tfile.rs";
+        let stats = DiffStats::from_numstat(output);
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 5);
+    }
+
+    #[test]
+    fn test_diff_stats_from_numstat_multiple_files() {
+        let output = "10\t5\tfile.rs\n3\t0\tREADME.md\n0\t7\ttest.rs";
+        let stats = DiffStats::from_numstat(output);
+        assert_eq!(stats.insertions, 13); // 10 + 3 + 0
+        assert_eq!(stats.deletions, 12); // 5 + 0 + 7
+    }
+
+    #[test]
+    fn test_diff_stats_from_numstat_binary_files() {
+        // Binary files show as "- - filename"
+        let output = "10\t5\tfile.rs\n-\t-\timage.png\n3\t0\tREADME.md";
+        let stats = DiffStats::from_numstat(output);
+        assert_eq!(stats.insertions, 13); // Binary file ignored
+        assert_eq!(stats.deletions, 5);
+    }
+
+    #[test]
+    fn test_diff_stats_from_numstat_malformed_lines() {
+        let output = "10\t5\tfile.rs\nmalformed line\n3\t0\tREADME.md";
+        let stats = DiffStats::from_numstat(output);
+        assert_eq!(stats.insertions, 13); // Malformed line ignored
+        assert_eq!(stats.deletions, 5);
+    }
+
+    #[test]
+    fn test_diff_stats_aggregate() {
+        let stats1 = DiffStats {
+            files_changed: 1,
+            insertions: 10,
+            deletions: 5,
+        };
+        let stats2 = DiffStats {
+            files_changed: 1,
+            insertions: 3,
+            deletions: 7,
+        };
+        let stats3 = DiffStats {
+            files_changed: 1,
+            insertions: 0,
+            deletions: 2,
+        };
+
+        let aggregated = DiffStats::aggregate(&[stats1, stats2, stats3]);
+        assert_eq!(aggregated.insertions, 13);
+        assert_eq!(aggregated.deletions, 14);
+    }
+
+    #[test]
+    fn test_diff_stats_aggregate_empty() {
+        let aggregated = DiffStats::aggregate(&[]);
+        assert_eq!(aggregated.insertions, 0);
+        assert_eq!(aggregated.deletions, 0);
+    }
+
+    #[tokio::test]
+    async fn test_extract_commit_diff_stats_invalid_repo() {
+        let result = extract_commit_diff_stats(
+            Path::new("/nonexistent/path"),
+            "abc123def456789012345678901234567890abcd",
+        )
+        .await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_extract_commit_diff_stats_real_commit() {
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        // Create a file with 10 lines
+        std::fs::write(repo_path.join("file.txt"), "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        // Get the commit hash
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git rev-parse");
+        let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Extract stats
+        let stats = extract_commit_diff_stats(repo_path, &commit_hash)
+            .await
+            .expect("should extract stats");
+
+        // Initial commit adds 10 lines, removes 0
+        assert_eq!(stats.insertions, 10);
+        assert_eq!(stats.deletions, 0);
+    }
+
+    #[tokio::test]
+    async fn test_update_session_loc_from_git() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a session
+        db.insert_session_from_index(
+            "sess-1",
+            "project-1",
+            "Project 1",
+            "/repo/path",
+            "/path/to/sess-1.jsonl",
+            "Test session",
+            None,
+            10,
+            1706400100,
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        // Update LOC from git
+        let stats = DiffStats {
+            files_changed: 2,
+            insertions: 42,
+            deletions: 13,
+        };
+        db.update_session_loc_from_git("sess-1", &stats)
+            .await
+            .unwrap();
+
+        // Verify the update
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 42, "lines_added should be updated");
+        assert_eq!(row.1, 13, "lines_removed should be updated");
+        assert_eq!(row.2, 2, "loc_source should be 2 (git verified)");
+    }
+
+    #[tokio::test]
+    async fn test_update_session_loc_from_git_zero_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a session
+        db.insert_session_from_index(
+            "sess-1",
+            "project-1",
+            "Project 1",
+            "/repo/path",
+            "/path/to/sess-1.jsonl",
+            "Test session",
+            None,
+            10,
+            1706400100,
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        // Try to update with zero stats (should be no-op)
+        let stats = DiffStats {
+            files_changed: 0,
+            insertions: 0,
+            deletions: 0,
+        };
+        db.update_session_loc_from_git("sess-1", &stats)
+            .await
+            .unwrap();
+
+        // Verify nothing changed
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0, "lines_added should remain 0");
+        assert_eq!(row.1, 0, "lines_removed should remain 0");
+        assert_eq!(row.2, 0, "loc_source should remain 0 (not computed)");
+    }
+
+    #[tokio::test]
+    async fn test_correlate_session_extracts_git_diff_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        // Create and commit a file
+        std::fs::write(repo_path.join("file.txt"), "line1\nline2\nline3\n").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "test commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git rev-parse");
+        let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let output = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%at"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git log timestamp");
+        let commit_ts: i64 = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap();
+
+        // Insert session
+        let dir_str = repo_path.to_str().unwrap();
+        db.insert_session_from_index(
+            "sess-1",
+            "project-1",
+            "Project 1",
+            dir_str,
+            "/path/to/sess-1.jsonl",
+            "Test session",
+            None,
+            10,
+            commit_ts + 600, // Session ends after commit
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        // Create commit and correlate
+        let commits = vec![GitCommit {
+            hash: commit_hash.clone(),
+            repo_path: dir_str.to_string(),
+            message: "test commit".to_string(),
+            author: Some("Test".to_string()),
+            timestamp: commit_ts,
+            branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
+        }];
+
+        db.batch_upsert_commits(&commits).await.unwrap();
+
+        let session_info = SessionCorrelationInfo {
+            session_id: "sess-1".to_string(),
+            project_path: dir_str.to_string(),
+            first_timestamp: Some(commit_ts - 600),
+            last_timestamp: Some(commit_ts + 600),
+            commit_skills: Vec::new(), // Tier 2 match
+        };
+
+        let inserted = correlate_session(&db, &session_info, &commits)
+            .await
+            .unwrap();
+
+        assert_eq!(inserted, 1, "Should insert one match");
+
+        // Verify LOC stats were extracted
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 3, "Should have 3 lines added");
+        assert_eq!(row.1, 0, "Should have 0 lines removed");
+        assert_eq!(row.2, 2, "loc_source should be 2 (git verified)");
+    }
+
+    #[tokio::test]
+    async fn test_correlate_session_aggregates_multiple_commits() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        // First commit: add 5 lines
+        std::fs::write(repo_path.join("file1.txt"), "1\n2\n3\n4\n5\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "first"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git rev-parse");
+        let hash1 = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Second commit: add 3 more lines
+        std::fs::write(repo_path.join("file2.txt"), "a\nb\nc\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "second"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git rev-parse");
+        let hash2 = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let now = chrono::Utc::now().timestamp();
+        let dir_str = repo_path.to_str().unwrap();
+
+        // Insert session
+        db.insert_session_from_index(
+            "sess-1",
+            "project-1",
+            "Project 1",
+            dir_str,
+            "/path/to/sess-1.jsonl",
+            "Test session",
+            None,
+            10,
+            now + 600,
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        // Create commits
+        let commits = vec![
+            GitCommit {
+                hash: hash1.clone(),
+                repo_path: dir_str.to_string(),
+                message: "first".to_string(),
+                author: Some("Test".to_string()),
+                timestamp: now,
+                branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
+            },
+            GitCommit {
+                hash: hash2.clone(),
+                repo_path: dir_str.to_string(),
+                message: "second".to_string(),
+                author: Some("Test".to_string()),
+                timestamp: now + 100,
+                branch: Some("main".to_string()),
+                files_changed: None,
+                insertions: None,
+                deletions: None,
+            },
+        ];
+
+        db.batch_upsert_commits(&commits).await.unwrap();
+
+        let session_info = SessionCorrelationInfo {
+            session_id: "sess-1".to_string(),
+            project_path: dir_str.to_string(),
+            first_timestamp: Some(now - 600),
+            last_timestamp: Some(now + 600),
+            commit_skills: Vec::new(),
+        };
+
+        let inserted = correlate_session(&db, &session_info, &commits)
+            .await
+            .unwrap();
+
+        assert_eq!(inserted, 2, "Should insert two matches");
+
+        // Verify LOC stats were aggregated
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 8, "Should have 8 lines added (5 + 3)");
+        assert_eq!(row.1, 0, "Should have 0 lines removed");
+        assert_eq!(row.2, 2, "loc_source should be 2 (git verified)");
+    }
+
+    #[tokio::test]
+    async fn test_correlate_session_idempotent_loc_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        // Initialize git repo with one commit
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::fs::write(repo_path.join("file.txt"), "line1\nline2\nline3\n").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "test commit"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git rev-parse");
+        let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let now = chrono::Utc::now().timestamp();
+        let dir_str = repo_path.to_str().unwrap();
+
+        // Insert session
+        db.insert_session_from_index(
+            "sess-1",
+            "project-1",
+            "Project 1",
+            dir_str,
+            "/path/to/sess-1.jsonl",
+            "Test session",
+            None,
+            10,
+            now + 600,
+            None,
+            false,
+            5000,
+        )
+        .await
+        .unwrap();
+
+        let commits = vec![GitCommit {
+            hash: commit_hash.clone(),
+            repo_path: dir_str.to_string(),
+            message: "test commit".to_string(),
+            author: Some("Test".to_string()),
+            timestamp: now,
+            branch: Some("main".to_string()),
+            files_changed: None,
+            insertions: None,
+            deletions: None,
+        }];
+
+        db.batch_upsert_commits(&commits).await.unwrap();
+
+        let session_info = SessionCorrelationInfo {
+            session_id: "sess-1".to_string(),
+            project_path: dir_str.to_string(),
+            first_timestamp: Some(now - 600),
+            last_timestamp: Some(now + 600),
+            commit_skills: Vec::new(),
+        };
+
+        // First correlation: should extract LOC stats
+        let inserted1 = correlate_session(&db, &session_info, &commits)
+            .await
+            .unwrap();
+        assert_eq!(inserted1, 1, "Should insert one match on first run");
+
+        let row1: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row1.0, 3, "Should have 3 lines added after first run");
+        assert_eq!(row1.1, 0, "Should have 0 lines removed after first run");
+        assert_eq!(row1.2, 2, "loc_source should be 2 after first run");
+
+        // Second correlation: should be idempotent (no new links, LOC unchanged)
+        let inserted2 = correlate_session(&db, &session_info, &commits)
+            .await
+            .unwrap();
+        assert_eq!(inserted2, 0, "Should insert zero matches on second run (idempotent)");
+
+        let row2: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        // LOC stats should remain unchanged
+        assert_eq!(row2.0, 3, "lines_added should remain unchanged");
+        assert_eq!(row2.1, 0, "lines_removed should remain unchanged");
+        assert_eq!(row2.2, 2, "loc_source should remain unchanged");
+    }
+
+    #[tokio::test]
+    async fn test_phase_f_git_sync_extracts_loc_stats() {
+        // Phase F integration test: verify git sync extracts and updates LOC stats
+        let db = Database::new_in_memory().await.unwrap();
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path();
+
+        // Setup git repo with commits
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git init");
+
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git config");
+
+        // Commit adding 10 lines
+        std::fs::write(repo_path.join("file.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("git add");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "add 10 lines"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git commit");
+
+        let now = chrono::Utc::now().timestamp();
+        let dir_str = repo_path.to_str().unwrap();
+
+        // Insert session covering the commit time
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
+             VALUES ('sess-1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')"
+        )
+        .bind(dir_str)
+        .bind(now - 600)
+        .bind(now + 600)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Run git sync (Phase F: should extract LOC stats)
+        let result = run_git_sync(&db, |_| {}).await.unwrap();
+
+        assert_eq!(result.repos_scanned, 1);
+        assert_eq!(result.commits_found, 1);
+        assert_eq!(result.links_created, 1);
+
+        // Verify LOC stats were extracted and set to git-verified (loc_source = 2)
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'"
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 10, "Should extract 10 lines added from git diff");
+        assert_eq!(row.1, 0, "Should extract 0 lines removed from git diff");
+        assert_eq!(row.2, 2, "loc_source should be 2 (git verified)");
     }
 
     #[tokio::test]
@@ -2136,8 +3328,8 @@ mod tests {
         .unwrap();
 
         // Run sync TWICE
-        let result1 = run_git_sync(&db).await.unwrap();
-        let result2 = run_git_sync(&db).await.unwrap();
+        let result1 = run_git_sync(&db, |_| {}).await.unwrap();
+        let result2 = run_git_sync(&db, |_| {}).await.unwrap();
 
         assert_eq!(result1.links_created, 1);
         // Second run: link already exists at same tier, so 0 new links

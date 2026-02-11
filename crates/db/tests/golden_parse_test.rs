@@ -360,3 +360,31 @@ fn golden_phase3_derived_metrics() {
     let rte = read_to_edit_ratio(result.deep.files_read_count, result.deep.files_edited_count);
     assert_eq!(rte, Some(1.0));
 }
+
+// ============================================================================
+// gitBranch extraction tests
+// ============================================================================
+
+#[test]
+fn golden_git_branch_extracted() {
+    let data = br#"{"type":"user","message":{"content":"hello"},"gitBranch":"feature/foo","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]},"gitBranch":"feature/foo","timestamp":"2026-01-01T00:00:01Z"}"#;
+    let result = parse_bytes(data);
+    assert_eq!(result.git_branch.as_deref(), Some("feature/foo"));
+}
+
+#[test]
+fn golden_git_branch_none_when_absent() {
+    let data = br#"{"type":"user","message":{"content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}"#;
+    let result = parse_bytes(data);
+    assert_eq!(result.git_branch, None);
+}
+
+#[test]
+fn golden_git_branch_first_line_wins() {
+    // gitBranch from first line should be captured even if later lines differ
+    let data = br#"{"type":"user","message":{"content":"hello"},"gitBranch":"main","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"user","message":{"content":"bye"},"gitBranch":"develop","timestamp":"2026-01-01T00:00:01Z"}"#;
+    let result = parse_bytes(data);
+    assert_eq!(result.git_branch.as_deref(), Some("main"));
+}

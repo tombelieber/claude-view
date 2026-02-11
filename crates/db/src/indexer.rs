@@ -295,8 +295,12 @@ where
             bash_progress_count: 0,
             hook_progress_count: 0,
             mcp_progress_count: 0,
-            summary_text: None,
+
             parse_version: 0,
+            // Phase C: LOC estimation
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
             // Theme 4: Classification
             category_l1: None,
             category_l2: None,

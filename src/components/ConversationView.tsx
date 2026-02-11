@@ -16,7 +16,6 @@ import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export
 import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
-import { sessionIdFromSlug } from '../lib/url-slugs'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
@@ -45,19 +44,22 @@ function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[
 }
 
 export function ConversationView() {
-  const { projectId, slug } = useParams()
+  const { sessionId } = useParams()
   const navigate = useNavigate()
   const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
 
-  const projectDir = projectId ? decodeURIComponent(projectId) : ''
+  // Fetch session detail first (uses /api/sessions/:id, no projectDir needed)
+  // to get the project directory for the legacy session/messages endpoints
+  const { data: sessionDetail } = useSessionDetail(sessionId || null)
+  const projectDir = sessionDetail?.project ?? ''
   const project = summaries.find(p => p.name === projectDir)
   const projectName = project?.displayName || projectDir
-  const sessionId = slug ? sessionIdFromSlug(slug) : ''
 
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
 
   const handleBack = () => navigate(-1)
-  const { data: session, isLoading: isSessionLoading, error: sessionError } = useSession(projectDir, sessionId)
+  // useSession and useSessionMessages require projectDir from sessionDetail
+  const { data: session, isLoading: isSessionLoading, error: sessionError } = useSession(projectDir || null, sessionId || null)
   const {
     data: pagesData,
     isLoading: isMessagesLoading,
@@ -65,17 +67,16 @@ export function ConversationView() {
     fetchPreviousPage,
     hasPreviousPage,
     isFetchingPreviousPage,
-  } = useSessionMessages(projectDir, sessionId)
+  } = useSessionMessages(projectDir || null, sessionId || null)
 
   // Only gate initial render on paginated messages — the full session fetch
   // loads in the background for export use. This ensures faster time-to-first-content.
-  const isLoading = isMessagesLoading
+  const isLoading = isMessagesLoading || !sessionDetail
   const error = messagesError
   const exportsReady = !!session
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
-  const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
   const handleExportHtml = useCallback(() => {
     if (!session) return
