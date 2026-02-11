@@ -442,6 +442,59 @@ pub async fn get_session_detail(
     }))
 }
 
+/// GET /api/sessions/:id/parsed — Get full parsed session by ID.
+///
+/// Resolves the JSONL file path from the DB's `file_path` column.
+/// No `project_dir` parameter needed — the server owns path resolution.
+pub async fn get_session_parsed(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> ApiResult<Json<ParsedSession>> {
+    let file_path = state
+        .db
+        .get_session_file_path(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    let path = std::path::PathBuf::from(&file_path);
+    // NOTE: There is a small TOCTOU window between exists() and parse_session().
+    // If the file is deleted in that window, parse_session returns ParseError (different
+    // error message). This is acceptable — filesystem ops are inherently racy, and
+    // the exists() check provides a cleaner "Session not found" for the common case.
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id));
+    }
+
+    let session = vibe_recall_core::parse_session(&path).await?;
+    Ok(Json(session))
+}
+
+/// GET /api/sessions/:id/messages — Get paginated messages by session ID.
+///
+/// Resolves the JSONL file path from the DB's `file_path` column.
+/// No `project_dir` parameter needed — the server owns path resolution.
+pub async fn get_session_messages_by_id(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Query(query): Query<SessionMessagesQuery>,
+) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+    let file_path = state
+        .db
+        .get_session_file_path(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id));
+    }
+
+    let limit = query.limit.unwrap_or(100);
+    let offset = query.offset.unwrap_or(0);
+    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    Ok(Json(result))
+}
+
 /// GET /api/session/:project_dir/:session_id - Get a parsed session by ID.
 ///
 /// Returns the full parsed session with all messages and metadata.
@@ -510,6 +563,8 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
         .route("/sessions/{id}", get(get_session_detail))
+        .route("/sessions/{id}/parsed", get(get_session_parsed))
+        .route("/sessions/{id}/messages", get(get_session_messages_by_id))
         .route("/session/{project_dir}/{session_id}", get(get_session))
         .route("/session/{project_dir}/{session_id}/messages", get(get_session_messages))
         .route("/branches", get(list_branches))
@@ -1386,6 +1441,107 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ApiError::SessionNotFound(_)));
+    }
+
+    // ========================================================================
+    // GET /api/sessions/:id/parsed tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_session_parsed_not_in_db() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/nonexistent/parsed").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["error"], "Session not found");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_parsed_file_gone() {
+        let db = test_db().await;
+        let mut session = make_session("parsed-test", "proj", 1700000000);
+        session.file_path = "/nonexistent/path.jsonl".to_string();
+        db.insert_session(&session, "proj", "Project").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/parsed-test/parsed").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["error"], "Session not found");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_parsed_success() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("success-test.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
+        ).unwrap();
+
+        let mut session = make_session("parsed-ok", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/parsed-ok/parsed").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let messages = json["messages"].as_array().expect("Response should contain messages array");
+        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
+    }
+
+    // ========================================================================
+    // GET /api/sessions/:id/messages tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_session_messages_by_id_not_in_db() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/nonexistent/messages?limit=10&offset=0").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["error"], "Session not found");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_by_id_file_gone() {
+        let db = test_db().await;
+        let mut session = make_session("msg-test", "proj", 1700000000);
+        session.file_path = "/nonexistent/path.jsonl".to_string();
+        db.insert_session(&session, "proj", "Project").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/msg-test/messages?limit=10&offset=0").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["error"], "Session not found");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_by_id_success() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("msg-success.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
+        ).unwrap();
+
+        let mut session = make_session("msg-ok", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/msg-ok/messages?limit=10&offset=0").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let messages = json["messages"].as_array().expect("Response should contain messages array");
+        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
+        assert!(json["total"].as_u64().unwrap() > 0, "Total should reflect the fixture message count");
     }
 
     /// Case 6: Naive path takes priority over DB fallback.
