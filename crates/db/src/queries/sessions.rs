@@ -599,6 +599,20 @@ impl Database {
         Ok(result.rows_affected())
     }
 
+    /// Look up a session's JSONL file path by session ID.
+    ///
+    /// Returns `None` if the session doesn't exist in the DB.
+    /// The returned path is always absolute (set during indexing).
+    pub async fn get_session_file_path(&self, session_id: &str) -> DbResult<Option<String>> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT file_path FROM sessions WHERE id = ?1",
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|(p,)| p))
+    }
+
     /// Get all session file_paths from the database.
     ///
     /// Returns every non-empty `file_path` in the sessions table.
