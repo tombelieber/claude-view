@@ -1129,13 +1129,41 @@ pub struct GitSyncResult {
     pub errors: Vec<String>,
 }
 
+/// Progress updates emitted by `run_git_sync` via callback.
+///
+/// Used by the server crate to feed SSE progress events to the frontend.
+#[derive(Debug, Clone)]
+pub enum GitSyncProgress {
+    /// Emitted after grouping sessions by repo, before scanning starts.
+    ScanningStarted { total_repos: usize },
+    /// Emitted after each repo is scanned and commits are found.
+    RepoScanned {
+        repos_done: usize,
+        total_repos: usize,
+        commits_in_repo: u32,
+    },
+    /// Emitted before the session correlation loop begins.
+    CorrelatingStarted {
+        total_correlatable_sessions: usize,
+    },
+    /// Emitted after each session is correlated (success or failure).
+    SessionCorrelated {
+        sessions_done: usize,
+        total_correlatable_sessions: usize,
+        links_in_session: u32,
+    },
+}
+
 /// Run the full git sync pipeline: scan repos, correlate sessions, update metadata.
 ///
 /// Auto-sync produces Tier 2 only (no skill data available at this stage).
 /// Tier 1 links from pass_2 deep indexing are never overwritten.
 /// Per-repo error isolation ensures one bad repo doesn't abort the sync.
 /// Idempotent: safe to run multiple times.
-pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
+pub async fn run_git_sync<F>(db: &Database, on_progress: F) -> DbResult<GitSyncResult>
+where
+    F: Fn(GitSyncProgress) + Send + 'static,
+{
     let mut result = GitSyncResult::default();
 
     // Step 1: Fetch all eligible sessions
@@ -1158,10 +1186,13 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             .push(session);
     }
 
+    let total_repos = sessions_by_repo.len();
     tracing::info!(
         "Git sync: {} unique project paths to scan",
-        sessions_by_repo.len()
+        total_repos
     );
+
+    on_progress(GitSyncProgress::ScanningStarted { total_repos });
 
     // Step 3: Scan each unique repo and upsert commits
     let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
@@ -1185,8 +1216,15 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             continue;
         }
 
+        let commits_in_repo = scan.commits.len() as u32;
         result.repos_scanned += 1;
-        result.commits_found += scan.commits.len() as u32;
+        result.commits_found += commits_in_repo;
+
+        on_progress(GitSyncProgress::RepoScanned {
+            repos_done: result.repos_scanned as usize,
+            total_repos,
+            commits_in_repo,
+        });
 
         db.batch_upsert_commits(&scan.commits).await?;
 
@@ -1200,6 +1238,17 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
     );
 
     // Step 4: Correlate each session with its repo's commits
+    // Count sessions that actually have commits to correlate against
+    let correlatable_count = sessions
+        .iter()
+        .filter(|s| commits_by_repo.contains_key(&s.project_path))
+        .count();
+    on_progress(GitSyncProgress::CorrelatingStarted {
+        total_correlatable_sessions: correlatable_count,
+    });
+
+    let mut sessions_done: usize = 0;
+
     for session in &sessions {
         let commits = match commits_by_repo.get(&session.project_path) {
             Some(c) => c,
@@ -1211,12 +1260,19 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
             project_path: session.project_path.clone(),
             first_timestamp: session.first_message_at,
             last_timestamp: session.last_message_at,
-            commit_skills: Vec::new(), // No skill data in auto-sync → Tier 2 only
+            commit_skills: Vec::new(), // No skill data in auto-sync -> Tier 2 only
         };
 
         match correlate_session(db, &info, commits).await {
             Ok(links) => {
-                result.links_created += links as u32;
+                let links_in_session = links as u32;
+                result.links_created += links_in_session;
+                sessions_done += 1;
+                on_progress(GitSyncProgress::SessionCorrelated {
+                    sessions_done,
+                    total_correlatable_sessions: correlatable_count,
+                    links_in_session,
+                });
             }
             Err(e) => {
                 tracing::warn!(
@@ -1225,6 +1281,12 @@ pub async fn run_git_sync(db: &Database) -> DbResult<GitSyncResult> {
                     e
                 );
                 result.errors.push(format!("session {}: {}", session.session_id, e));
+                sessions_done += 1;
+                on_progress(GitSyncProgress::SessionCorrelated {
+                    sessions_done,
+                    total_correlatable_sessions: correlatable_count,
+                    links_in_session: 0,
+                });
             }
         }
     }
