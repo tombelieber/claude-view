@@ -13,6 +13,7 @@ import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
+import { getSessionTitle } from '../utils/get-session-title'
 
 export type SortColumn = 'time' | 'branch' | 'prompts' | 'files' | 'commits' | 'duration'
 export type SortDirection = 'asc' | 'desc'
@@ -118,7 +119,7 @@ const columns: ColumnDef<SessionInfo, any>[] = [
       return (
         <Link to={sessionUrl(s)} className="block">
           <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate block">
-            {s.preview || 'Untitled session'}
+            {getSessionTitle(s.preview, s.summary)}
           </span>
         </Link>
       )
