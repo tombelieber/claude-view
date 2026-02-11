@@ -391,6 +391,26 @@ async fn test_update_session_deep_fields_phase3() {
 }
 
 #[tokio::test]
+async fn test_get_session_file_path() {
+    let db = Database::new_in_memory().await.unwrap();
+
+    // Not in DB → None
+    let result = db.get_session_file_path("nonexistent").await.unwrap();
+    assert!(result.is_none());
+
+    // Insert session with known file_path
+    let session = make_session("fp-test", "proj", 1700000000);
+    // make_session sets file_path to "/home/user/.claude/projects/proj/fp-test.jsonl"
+    db.insert_session(&session, "proj", "Project").await.unwrap();
+
+    let result = db.get_session_file_path("fp-test").await.unwrap();
+    assert_eq!(
+        result.as_deref(),
+        Some("/home/user/.claude/projects/proj/fp-test.jsonl")
+    );
+}
+
+#[tokio::test]
 async fn test_list_sessions_for_project_includes_phase3_fields() {
     let db = Database::new_in_memory().await.unwrap();
 
