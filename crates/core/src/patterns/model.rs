@@ -60,7 +60,7 @@ fn m01_model_task_fit(sessions: &[SessionInfo], time_range_days: u32) -> Option<
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 10)
+        .filter(|(_, vals)| vals.len() >= super::MIN_MODEL_BUCKET)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
@@ -79,7 +79,7 @@ fn m01_model_task_fit(sessions: &[SessionInfo], time_range_days: u32) -> Option<
     let mut vars = HashMap::new();
     vars.insert("best_model".to_string(), best.label.clone());
     vars.insert("worst_model".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -129,7 +129,7 @@ fn m05_model_by_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Op
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 5)
+        .filter(|(_, vals)| vals.len() >= 15)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
@@ -147,7 +147,7 @@ fn m05_model_by_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Op
 
     let mut vars = HashMap::new();
     vars.insert("best_model".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), format!("{:.0}", improvement));
+    vars.insert("improvement".to_string(), super::format_improvement(improvement));
 
     let mut comparison = HashMap::new();
     for b in &computed {

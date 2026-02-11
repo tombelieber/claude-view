@@ -460,7 +460,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let inputs: Vec<ClassificationInput> = sessions
         .iter()
         .map(|(id, preview, skills_json)| {
-            let skills: Vec<String> = serde_json::from_str(skills_json).unwrap_or_default();
+            let skills: Vec<String> = serde_json::from_str(skills_json).unwrap_or_else(|e| {
+                tracing::warn!(session_id = %id, error = %e, "Malformed skills JSON, using empty array");
+                vec![]
+            });
             ClassificationInput {
                 session_id: id.clone(),
                 preview: preview.clone(),

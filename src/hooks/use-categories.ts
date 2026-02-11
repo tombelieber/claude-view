@@ -17,7 +17,7 @@ function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number
     case '90d':
       return { from: now - 90 * 86400, to: now }
     case 'all':
-      return { from: 0, to: now }
+      return { from: 1, to: now }
   }
 }
 

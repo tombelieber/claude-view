@@ -81,7 +81,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
   const handleCellClick = useCallback(
     (day: number, hour: number) => {
       const dayName = DAYS[day].toLowerCase()
-      navigate(`/history?day=${dayName}&hour=${hour}`)
+      navigate(`/sessions?day=${dayName}&hour=${hour}`)
     },
     [navigate]
   )
