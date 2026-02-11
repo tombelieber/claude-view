@@ -1,6 +1,6 @@
 ---
 status: approved
-date: 2026-02-10
+date: 2026-02-12
 feature: mission-control
 ---
 
@@ -12,7 +12,7 @@ feature: mission-control
 
 | Phase | Name | Status | Description |
 |-------|------|--------|-------------|
-| A | Read-Only Monitoring | `pending` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
+| A | Read-Only Monitoring | `done` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
 | B | Views & Layout | `pending` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
 | C | Monitor Mode | `pending` | Live terminal grid, WebSocket + xterm.js, responsive pane grid |
 | D | Sub-Agent Visualization | `pending` | Swim lanes, sub-agent extraction, compact pills, timeline view |
@@ -44,7 +44,7 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 | File | Phase | Status |
 |------|-------|--------|
 | [`design.md`](design.md) | All | `approved` |
-| [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `pending` |
+| [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `done` |
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `pending` |
 | [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `pending` |
 | [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `pending` |
