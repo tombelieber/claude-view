@@ -49,6 +49,9 @@ metrics-exporter-prometheus = "0.16"
 # Terminal UI
 indicatif = "0.17"
 
+# Browser
+open = "5"
+
 # Utilities
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
