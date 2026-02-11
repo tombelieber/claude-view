@@ -240,7 +240,7 @@ impl Database {
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
-                preview = excluded.preview,
+                preview = CASE WHEN excluded.preview IS NOT NULL AND excluded.preview <> '' THEN excluded.preview ELSE sessions.preview END,
                 turn_count = excluded.turn_count,
                 last_message_at = CASE WHEN excluded.last_message_at > 0 THEN excluded.last_message_at ELSE sessions.last_message_at END,
                 file_path = excluded.file_path,
@@ -256,7 +256,7 @@ impl Database {
                 tool_counts_bash = excluded.tool_counts_bash,
                 tool_counts_write = excluded.tool_counts_write,
                 message_count = excluded.message_count,
-                summary = excluded.summary,
+                summary = CASE WHEN excluded.summary IS NOT NULL AND excluded.summary <> '' THEN excluded.summary ELSE sessions.summary END,
                 git_branch = COALESCE(NULLIF(TRIM(excluded.git_branch), ''), sessions.git_branch),
                 is_sidechain = excluded.is_sidechain,
                 user_prompt_count = excluded.user_prompt_count,
@@ -530,8 +530,8 @@ impl Database {
                 project_display_name = excluded.project_display_name,
                 project_path = excluded.project_path,
                 file_path = excluded.file_path,
-                preview = excluded.preview,
-                summary = excluded.summary,
+                preview = CASE WHEN excluded.preview IS NOT NULL AND excluded.preview <> '' THEN excluded.preview ELSE sessions.preview END,
+                summary = CASE WHEN excluded.summary IS NOT NULL AND excluded.summary <> '' THEN excluded.summary ELSE sessions.summary END,
                 message_count = excluded.message_count,
                 last_message_at = CASE WHEN excluded.last_message_at > 0 THEN excluded.last_message_at ELSE sessions.last_message_at END,
                 git_branch = COALESCE(NULLIF(TRIM(excluded.git_branch), ''), sessions.git_branch),
@@ -618,6 +618,7 @@ impl Database {
         git_branch: Option<&str>,
         primary_model: Option<&str>,
         last_message_at: Option<i64>,
+        first_user_prompt: Option<&str>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -672,7 +673,8 @@ impl Database {
                 work_type = ?47,
                 git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
                 primary_model = ?49,
-                last_message_at = COALESCE(?50, last_message_at)
+                last_message_at = COALESCE(?50, last_message_at),
+                preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
             WHERE id = ?1
             "#,
         )
@@ -726,6 +728,7 @@ impl Database {
         .bind(git_branch)
         .bind(primary_model)
         .bind(last_message_at)
+        .bind(first_user_prompt)
         .execute(self.pool())
         .await?;
 
@@ -1994,6 +1997,7 @@ pub async fn update_session_deep_fields_tx(
     git_branch: Option<&str>,
     primary_model: Option<&str>,
     last_message_at: Option<i64>,
+    first_user_prompt: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -2048,7 +2052,8 @@ pub async fn update_session_deep_fields_tx(
             work_type = ?47,
             git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
             primary_model = ?49,
-            last_message_at = COALESCE(?50, last_message_at)
+            last_message_at = COALESCE(?50, last_message_at),
+            preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
         WHERE id = ?1
         "#,
     )
@@ -2102,6 +2107,7 @@ pub async fn update_session_deep_fields_tx(
     .bind(git_branch)
     .bind(primary_model)
     .bind(last_message_at)
+    .bind(first_user_prompt)
     .execute(&mut **tx)
     .await?;
 
@@ -3115,6 +3121,7 @@ mod tests {
             None,  // git_branch
             None,  // primary_model
             None,  // last_message_at
+            None,  // first_user_prompt
         )
         .await
         .unwrap();
@@ -3197,6 +3204,7 @@ mod tests {
             None,        // git_branch
             None,        // primary_model
             None,        // last_message_at
+            None,        // first_user_prompt
         )
         .await
         .unwrap();
@@ -3375,6 +3383,7 @@ mod tests {
             None,    // git_branch
             None, // primary_model
             None, // last_message_at
+            None, // first_user_prompt
         )
         .await
         .unwrap();
@@ -3405,6 +3414,7 @@ mod tests {
             None,    // git_branch
             None, // primary_model
             None, // last_message_at
+            None, // first_user_prompt
         )
         .await
         .unwrap();
@@ -3487,6 +3497,7 @@ mod tests {
             None,    // git_branch
             Some("claude-opus-4-5-20251101"),
             None, // last_message_at
+            None, // first_user_prompt
         )
         .await
         .unwrap();
@@ -3517,6 +3528,7 @@ mod tests {
             None,    // git_branch
             Some("claude-sonnet-4-20250514"),
             None, // last_message_at
+            None, // first_user_prompt
         )
         .await
         .unwrap();

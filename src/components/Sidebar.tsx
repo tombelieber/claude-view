@@ -8,6 +8,7 @@ import { NO_BRANCH } from '../lib/constants'
 import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNode } from '../utils/build-project-tree'
 import { useRecentSessions } from '../hooks/use-recent-sessions'
 import { buildSessionUrl } from '../lib/url-utils'
+import { getSessionTitle } from '../utils/get-session-title'
 
 interface SidebarProps {
   projects: ProjectSummary[]
@@ -681,7 +682,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
             title={session.preview}
           >
             <Clock className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-            <span className="truncate flex-1">{session.preview || '(untitled)'}</span>
+            <span className="truncate flex-1">{getSessionTitle(session.preview, session.summary)}</span>
             <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
               {formatRelativeTimeShort(session.modifiedAt)}
             </span>
