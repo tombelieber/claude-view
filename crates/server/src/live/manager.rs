@@ -1,0 +1,691 @@
+//! Central orchestrator for live session monitoring.
+//!
+//! The `LiveSessionManager` ties together the file watcher, process detector,
+//! JSONL tail parser, and cleanup task to maintain an in-memory map of all
+//! active Claude Code sessions.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tokio::sync::{broadcast, mpsc, RwLock};
+use tracing::{error, info, warn};
+
+use vibe_recall_core::cost::{
+    self, calculate_live_cost, derive_cache_status, TokenUsage,
+};
+use vibe_recall_core::live_parser::{LiveLine, LineType, TailFinders, parse_tail};
+use vibe_recall_db::ModelPricing;
+
+use super::process::{ClaudeProcess, detect_claude_processes, has_running_process};
+use super::state::{
+    LiveSession, SessionEvent, SessionStatus, derive_activity, derive_status,
+};
+use super::watcher::{FileEvent, initial_scan, start_watcher};
+
+/// Type alias for the shared session map used by both the manager and route handlers.
+pub type LiveSessionMap = Arc<RwLock<HashMap<String, LiveSession>>>;
+
+/// Accumulated per-session state that persists across tail polls.
+struct SessionAccumulator {
+    /// Byte offset for the next `parse_tail` call.
+    offset: u64,
+    /// Accumulated token counts (for cost calculation).
+    tokens: TokenUsage,
+    /// Last assistant turn's total input tokens (= current context window fill).
+    /// This is input_tokens + cache_read_tokens + cache_creation_tokens from
+    /// the most recent assistant message.
+    context_window_tokens: u64,
+    /// Last parsed model ID.
+    model: Option<String>,
+    /// Number of user turns seen.
+    user_turn_count: u32,
+    /// The first non-meta user message (used as session title).
+    first_user_message: String,
+    /// The last user message content (truncated).
+    last_user_message: String,
+    /// Git branch name extracted from user messages.
+    git_branch: Option<String>,
+    /// The timestamp of the first line (session start).
+    started_at: Option<i64>,
+    /// The last LiveLine parsed (for status derivation).
+    last_line: Option<LiveLine>,
+    /// Unix timestamp when this session was marked Complete (for cleanup).
+    completed_at: Option<u64>,
+}
+
+impl SessionAccumulator {
+    fn new() -> Self {
+        Self {
+            offset: 0,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            model: None,
+            user_turn_count: 0,
+            first_user_message: String::new(),
+            last_user_message: String::new(),
+            git_branch: None,
+            started_at: None,
+            last_line: None,
+            completed_at: None,
+        }
+    }
+}
+
+/// Central manager that orchestrates file watching, process detection,
+/// JSONL parsing, and session state management.
+pub struct LiveSessionManager {
+    /// In-memory map of session_id -> LiveSession, shared with route handlers.
+    sessions: LiveSessionMap,
+    /// Broadcast sender for SSE events.
+    tx: broadcast::Sender<SessionEvent>,
+    /// Pre-compiled SIMD substring finders for the JSONL tail parser.
+    finders: Arc<TailFinders>,
+    /// Per-session accumulator state (offsets, token totals, etc.).
+    accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
+    /// Detected Claude processes, keyed by working directory.
+    processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,
+    /// Per-model pricing table for cost calculation (core-level types).
+    pricing: Arc<HashMap<String, cost::ModelPricing>>,
+}
+
+impl LiveSessionManager {
+    /// Start the live session manager and all background tasks.
+    ///
+    /// Returns the manager, a shared session map for route handlers, and the
+    /// broadcast sender for SSE event streaming.
+    pub fn start(
+        pricing: HashMap<String, ModelPricing>,
+    ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
+        let (tx, _rx) = broadcast::channel(256);
+        let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+
+        // Convert vibe_recall_db::ModelPricing -> vibe_recall_core::cost::ModelPricing
+        let core_pricing: HashMap<String, cost::ModelPricing> = pricing
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    cost::ModelPricing {
+                        input_cost_per_token: v.input_cost_per_token,
+                        output_cost_per_token: v.output_cost_per_token,
+                        cache_creation_cost_per_token: v.cache_creation_cost_per_token,
+                        cache_read_cost_per_token: v.cache_read_cost_per_token,
+                    },
+                )
+            })
+            .collect();
+
+        let manager = Arc::new(Self {
+            sessions: sessions.clone(),
+            tx: tx.clone(),
+            finders: Arc::new(TailFinders::new()),
+            accumulators: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new())),
+            pricing: Arc::new(core_pricing),
+        });
+
+        // Spawn background tasks
+        manager.spawn_file_watcher();
+        manager.spawn_process_detector();
+        manager.spawn_cleanup_task();
+
+        info!("LiveSessionManager started with 3 background tasks");
+
+        (manager, sessions, tx)
+    }
+
+    /// Subscribe to session events for SSE streaming.
+    pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
+        self.tx.subscribe()
+    }
+
+    /// Spawn the file watcher background task.
+    ///
+    /// 1. Performs an initial scan of `~/.claude/projects/` for recent JSONL files.
+    /// 2. Starts a notify watcher for ongoing file changes.
+    /// 3. Processes each Modified/Removed event by parsing new JSONL lines.
+    fn spawn_file_watcher(self: &Arc<Self>) {
+        let manager = self.clone();
+
+        tokio::spawn(async move {
+            // Initial scan
+            let projects_dir = match dirs::home_dir() {
+                Some(home) => home.join(".claude").join("projects"),
+                None => {
+                    warn!("Could not determine home directory; skipping initial scan");
+                    return;
+                }
+            };
+
+            let initial_paths = {
+                let dir = projects_dir.clone();
+                tokio::task::spawn_blocking(move || initial_scan(&dir))
+                    .await
+                    .unwrap_or_default()
+            };
+
+            info!("Initial scan found {} recent JSONL files", initial_paths.len());
+
+            // Process each discovered file
+            for path in &initial_paths {
+                manager.process_jsonl_update(path).await;
+                // Mark initial discoveries
+                let session_id = extract_session_id(path);
+                let sessions = manager.sessions.read().await;
+                if let Some(session) = sessions.get(&session_id) {
+                    let _ = manager.tx.send(SessionEvent::SessionDiscovered {
+                        session: session.clone(),
+                    });
+                }
+            }
+
+            // Start the file system watcher
+            let (file_tx, mut file_rx) = mpsc::channel::<FileEvent>(512);
+            let _watcher = match start_watcher(file_tx) {
+                Ok(w) => w,
+                Err(e) => {
+                    error!("Failed to start file watcher: {}", e);
+                    return;
+                }
+            };
+
+            // Process file events forever
+            while let Some(event) = file_rx.recv().await {
+                match event {
+                    FileEvent::Modified(path) => {
+                        let session_id = extract_session_id(&path);
+                        let is_new = {
+                            let sessions = manager.sessions.read().await;
+                            !sessions.contains_key(&session_id)
+                        };
+
+                        manager.process_jsonl_update(&path).await;
+
+                        let sessions = manager.sessions.read().await;
+                        if let Some(session) = sessions.get(&session_id) {
+                            let event = if is_new {
+                                SessionEvent::SessionDiscovered {
+                                    session: session.clone(),
+                                }
+                            } else {
+                                SessionEvent::SessionUpdated {
+                                    session: session.clone(),
+                                }
+                            };
+                            let _ = manager.tx.send(event);
+                        }
+                    }
+                    FileEvent::Removed(path) => {
+                        let session_id = extract_session_id(&path);
+                        let mut sessions = manager.sessions.write().await;
+                        if sessions.remove(&session_id).is_some() {
+                            let mut accumulators = manager.accumulators.write().await;
+                            accumulators.remove(&session_id);
+                            let _ = manager.tx.send(SessionEvent::SessionCompleted {
+                                session_id,
+                            });
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// Spawn the process detector background task.
+    ///
+    /// Every 5 seconds, scans the process table for running Claude instances
+    /// and updates the shared process map. Re-derives status for affected sessions.
+    fn spawn_process_detector(self: &Arc<Self>) {
+        let manager = self.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+
+                let new_processes = tokio::task::spawn_blocking(detect_claude_processes)
+                    .await
+                    .unwrap_or_default();
+
+                {
+                    let mut processes = manager.processes.write().await;
+                    *processes = new_processes;
+                }
+
+                // Re-derive status for all sessions with the updated process info
+                let processes = manager.processes.read().await;
+                let mut sessions = manager.sessions.write().await;
+                let accumulators = manager.accumulators.read().await;
+
+                for (session_id, session) in sessions.iter_mut() {
+                    if let Some(acc) = accumulators.get(session_id) {
+                        let seconds_since = seconds_since_modified_from_timestamp(
+                            session.last_activity_at,
+                        );
+                        let (running, pid) =
+                            has_running_process(&processes, &session.project_path);
+                        let new_status =
+                            derive_status(acc.last_line.as_ref(), seconds_since, running);
+
+                        if session.status != new_status || session.pid != pid {
+                            session.status = new_status;
+                            session.pid = pid;
+                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                session: session.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// Spawn the cleanup background task.
+    ///
+    /// Every 30 seconds, removes sessions that have been `Complete` for more
+    /// than 10 minutes and broadcasts `SessionCompleted` events.
+    fn spawn_cleanup_task(self: &Arc<Self>) {
+        let manager = self.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
+                let mut to_remove = Vec::new();
+
+                {
+                    let sessions = manager.sessions.read().await;
+                    let accumulators = manager.accumulators.read().await;
+
+                    for (session_id, session) in sessions.iter() {
+                        if session.status == SessionStatus::Complete {
+                            if let Some(acc) = accumulators.get(session_id) {
+                                if let Some(completed_at) = acc.completed_at {
+                                    if now.saturating_sub(completed_at) > 600 {
+                                        to_remove.push(session_id.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !to_remove.is_empty() {
+                    let mut sessions = manager.sessions.write().await;
+                    let mut accumulators = manager.accumulators.write().await;
+                    for session_id in &to_remove {
+                        sessions.remove(session_id);
+                        accumulators.remove(session_id);
+                        let _ = manager.tx.send(SessionEvent::SessionCompleted {
+                            session_id: session_id.clone(),
+                        });
+                    }
+                    info!("Cleaned up {} completed sessions", to_remove.len());
+                }
+            }
+        });
+    }
+
+    /// Core JSONL processing logic for a single session file.
+    ///
+    /// 1. Extracts session ID and project info from the file path.
+    /// 2. Calls `parse_tail` from the stored offset to read only new lines.
+    /// 3. Accumulates token counts and user turn counts.
+    /// 4. Derives session status, activity, and cost.
+    /// 5. Updates the shared session map.
+    async fn process_jsonl_update(&self, path: &Path) {
+        let session_id = extract_session_id(path);
+        let (project, project_display_name, project_path) = extract_project_info(path);
+
+        // Get the current offset for this session
+        let current_offset = {
+            let accumulators = self.accumulators.read().await;
+            accumulators
+                .get(&session_id)
+                .map(|a| a.offset)
+                .unwrap_or(0)
+        };
+
+        // Parse new lines from the JSONL file (blocking I/O)
+        let finders = self.finders.clone();
+        let path_owned = path.to_path_buf();
+        let parse_result = tokio::task::spawn_blocking(move || {
+            parse_tail(&path_owned, current_offset, &finders)
+        })
+        .await;
+
+        let (new_lines, new_offset) = match parse_result {
+            Ok(Ok((lines, offset))) => (lines, offset),
+            Ok(Err(e)) => {
+                // I/O error — file may have been deleted between event and read
+                tracing::debug!("Failed to parse tail for {}: {}", session_id, e);
+                return;
+            }
+            Err(e) => {
+                error!("spawn_blocking panicked for {}: {}", session_id, e);
+                return;
+            }
+        };
+
+        // If no new lines, nothing to update
+        if new_lines.is_empty() && current_offset > 0 {
+            return;
+        }
+
+        // Get file metadata for last_activity_at
+        let last_activity_at = std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or_else(|| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64
+            });
+
+        let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
+
+        // Update accumulator with new lines
+        let mut accumulators = self.accumulators.write().await;
+        let acc = accumulators
+            .entry(session_id.clone())
+            .or_insert_with(SessionAccumulator::new);
+
+        acc.offset = new_offset;
+
+        for line in &new_lines {
+            // Accumulate tokens (cumulative, for cost calculation)
+            if let Some(input) = line.input_tokens {
+                acc.tokens.input_tokens += input;
+                acc.tokens.total_tokens += input;
+            }
+            if let Some(output) = line.output_tokens {
+                acc.tokens.output_tokens += output;
+                acc.tokens.total_tokens += output;
+            }
+            if let Some(cache_read) = line.cache_read_tokens {
+                acc.tokens.cache_read_tokens += cache_read;
+                acc.tokens.total_tokens += cache_read;
+            }
+            if let Some(cache_creation) = line.cache_creation_tokens {
+                acc.tokens.cache_creation_tokens += cache_creation;
+                acc.tokens.total_tokens += cache_creation;
+            }
+
+            // Track the current context window fill from the latest assistant turn.
+            // Context size = input_tokens + cache_read + cache_creation for that turn.
+            if line.line_type == LineType::Assistant {
+                let turn_input = line.input_tokens.unwrap_or(0)
+                    + line.cache_read_tokens.unwrap_or(0)
+                    + line.cache_creation_tokens.unwrap_or(0);
+                if turn_input > 0 {
+                    acc.context_window_tokens = turn_input;
+                }
+            }
+
+            // Track model
+            if let Some(ref model) = line.model {
+                acc.model = Some(model.clone());
+            }
+
+            // Track git branch from user messages
+            if let Some(ref branch) = line.git_branch {
+                acc.git_branch = Some(branch.clone());
+            }
+
+            // Track user messages (skip meta messages for content)
+            if line.line_type == LineType::User {
+                acc.user_turn_count += 1;
+                if !line.is_meta && !line.content_preview.is_empty() {
+                    // First real user message becomes the session title
+                    if acc.first_user_message.is_empty() {
+                        acc.first_user_message = line.content_preview.clone();
+                    }
+                    acc.last_user_message = line.content_preview.clone();
+                }
+            }
+
+            // Track session start time from first timestamp
+            if acc.started_at.is_none() {
+                if let Some(ref ts) = line.timestamp {
+                    acc.started_at = parse_timestamp_to_unix(ts);
+                }
+            }
+        }
+
+        // Keep the last line for status derivation
+        if let Some(last) = new_lines.last() {
+            acc.last_line = Some(last.clone());
+        }
+
+        // Derive status
+        let processes = self.processes.read().await;
+        let (running, pid) = has_running_process(&processes, &project_path);
+        let status = derive_status(acc.last_line.as_ref(), seconds_since, running);
+
+        // Track when session became Complete for cleanup
+        if status == SessionStatus::Complete && acc.completed_at.is_none() {
+            acc.completed_at = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            );
+        } else if status != SessionStatus::Complete {
+            acc.completed_at = None;
+        }
+
+        // Derive activity
+        let tool_names = acc
+            .last_line
+            .as_ref()
+            .map(|l| l.tool_names.as_slice())
+            .unwrap_or(&[]);
+        let is_streaming = status == SessionStatus::Streaming;
+        let current_activity = derive_activity(tool_names, is_streaming);
+
+        // Calculate cost
+        let cost = calculate_live_cost(
+            &acc.tokens,
+            acc.model.as_deref(),
+            &self.pricing,
+        );
+
+        // Derive cache status from time since last activity
+        let cache_status = if seconds_since < 300 {
+            derive_cache_status(Some(seconds_since))
+        } else {
+            derive_cache_status(Some(seconds_since))
+        };
+
+        let file_path_str = path
+            .to_str()
+            .unwrap_or("")
+            .to_string();
+
+        let live_session = LiveSession {
+            id: session_id.clone(),
+            project: project.clone(),
+            project_display_name,
+            project_path,
+            file_path: file_path_str,
+            status,
+            git_branch: acc.git_branch.clone(),
+            pid,
+            title: acc.first_user_message.clone(),
+            last_user_message: acc.last_user_message.clone(),
+            current_activity,
+            turn_count: acc.user_turn_count,
+            started_at: acc.started_at,
+            last_activity_at,
+            model: acc.model.clone(),
+            tokens: acc.tokens.clone(),
+            context_window_tokens: acc.context_window_tokens,
+            cost,
+            cache_status,
+        };
+
+        // Drop the accumulators lock before acquiring sessions lock
+        drop(processes);
+        drop(accumulators);
+
+        // Update the shared session map
+        let mut sessions = self.sessions.write().await;
+        sessions.insert(session_id, live_session);
+    }
+}
+
+// =============================================================================
+// Path extraction helpers
+// =============================================================================
+
+/// Extract the session ID from a JSONL file path.
+///
+/// Path format: `~/.claude/projects/{encoded-project-dir}/{session-uuid}.jsonl`
+/// Session ID = filename without the `.jsonl` extension.
+fn extract_session_id(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// Extract project info from a JSONL file path.
+///
+/// Returns `(encoded_project_name, display_name, decoded_project_path)`.
+///
+/// The encoded project directory name uses URL-encoding where path separators
+/// are percent-encoded. The display name is the last component of the decoded
+/// path.
+fn extract_project_info(path: &Path) -> (String, String, String) {
+    let project_encoded = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Decode the URL-encoded project directory name to get the real path
+    let project_path = urlencoding::decode(&project_encoded)
+        .unwrap_or_else(|_| project_encoded.clone().into())
+        .to_string();
+
+    // The display name is the last path component of the decoded path
+    let project_display_name = project_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&project_path)
+        .to_string();
+
+    (project_encoded, project_display_name, project_path)
+}
+
+/// Calculate seconds since a Unix timestamp.
+fn seconds_since_modified_from_timestamp(last_activity_at: i64) -> u64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    (now - last_activity_at).max(0) as u64
+}
+
+/// Parse an ISO 8601 timestamp string to a Unix epoch second.
+fn parse_timestamp_to_unix(ts: &str) -> Option<i64> {
+    // Try parsing with chrono for robustness
+    chrono::DateTime::parse_from_rfc3339(ts)
+        .ok()
+        .map(|dt| dt.timestamp())
+        .or_else(|| {
+            // Fallback: try parsing just the date portion
+            chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
+                .ok()
+                .map(|ndt| ndt.and_utc().timestamp())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_session_id() {
+        let path = PathBuf::from("/home/user/.claude/projects/test-project/abc-123.jsonl");
+        assert_eq!(extract_session_id(&path), "abc-123");
+    }
+
+    #[test]
+    fn test_extract_session_id_no_extension() {
+        let path = PathBuf::from("/some/path/session");
+        assert_eq!(extract_session_id(&path), "session");
+    }
+
+    #[test]
+    fn test_extract_project_info_simple() {
+        let path = PathBuf::from(
+            "/home/user/.claude/projects/my-project/session.jsonl",
+        );
+        let (encoded, display, decoded) = extract_project_info(&path);
+        assert_eq!(encoded, "my-project");
+        assert_eq!(display, "my-project");
+        assert_eq!(decoded, "my-project");
+    }
+
+    #[test]
+    fn test_extract_project_info_url_encoded() {
+        let path = PathBuf::from(
+            "/home/user/.claude/projects/%2FUsers%2Ftest%2Fmy-project/session.jsonl",
+        );
+        let (encoded, display, decoded) = extract_project_info(&path);
+        assert_eq!(encoded, "%2FUsers%2Ftest%2Fmy-project");
+        assert_eq!(display, "my-project");
+        assert_eq!(decoded, "/Users/test/my-project");
+    }
+
+    #[test]
+    fn test_parse_timestamp_to_unix() {
+        let ts = "2026-01-15T10:30:00Z";
+        let result = parse_timestamp_to_unix(ts);
+        assert!(result.is_some());
+        assert!(result.unwrap() > 0);
+    }
+
+    #[test]
+    fn test_parse_timestamp_to_unix_with_offset() {
+        let ts = "2026-01-15T10:30:00+00:00";
+        let result = parse_timestamp_to_unix(ts);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_timestamp_to_unix_invalid() {
+        let result = parse_timestamp_to_unix("not-a-timestamp");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_seconds_since_modified() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Timestamp from 60 seconds ago
+        let seconds = seconds_since_modified_from_timestamp(now - 60);
+        assert!(seconds >= 59 && seconds <= 61);
+
+        // Future timestamp should return 0
+        let seconds = seconds_since_modified_from_timestamp(now + 1000);
+        assert_eq!(seconds, 0);
+    }
+}
