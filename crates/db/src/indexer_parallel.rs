@@ -21,11 +21,11 @@ use crate::Database;
 /// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
 /// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
 /// Version 3: Deep indexing now updates last_message_at from parsed timestamps.
-pub const CURRENT_PARSE_VERSION: i32 = 3;
+pub const CURRENT_PARSE_VERSION: i32 = 5;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (50 params).
+// Must match the sqlx `_tx` function in queries.rs exactly (51 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -78,7 +78,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         work_type = ?47,
         git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
         primary_model = ?49,
-        last_message_at = COALESCE(?50, last_message_at)
+        last_message_at = COALESCE(?50, last_message_at),
+        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
     WHERE id = ?1
 "#;
 
@@ -192,6 +193,10 @@ pub struct ExtendedMetadata {
     pub ai_lines_added: u32,
     /// Lines removed by AI (from Edit tool_use)
     pub ai_lines_removed: u32,
+
+    /// First user prompt text (truncated to 500 chars).
+    /// Used to populate `preview` for filesystem-discovered sessions that lack index metadata.
+    pub first_user_prompt: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +560,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut user_count = 0u32;
     let mut assistant_count = 0u32;
     let mut last_user_content: Option<String> = None;
+    let mut first_user_content: Option<String> = None;
     let mut tool_call_count = 0u32;
     let mut files_read_all: Vec<String> = Vec::new();
     let mut files_edited_all: Vec<String> = Vec::new();
@@ -663,6 +669,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             diag.lines_user += 1;
             user_count += 1;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
+                if first_user_content.is_none() && !is_system_user_content(&content) {
+                    first_user_content = Some(content.clone());
+                }
                 last_user_content = Some(content);
             }
             extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
@@ -771,6 +780,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 diag.lines_user += 1;
                 user_count += 1;
                 if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
+                    if first_user_content.is_none() && !is_system_user_content(&content) {
+                        first_user_content = Some(content.clone());
+                    }
                     last_user_content = Some(content);
                 }
                 extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
@@ -872,6 +884,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // Finalize metrics
     result.deep.turn_count = (user_count as usize).min(assistant_count as usize);
     result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
+    result.deep.first_user_prompt = first_user_content.map(|c| truncate(&c, 500));
     result.deep.user_prompt_count = user_count;
     result.deep.api_call_count = assistant_count;
     result.deep.tool_call_count = tool_call_count;
@@ -1408,6 +1421,20 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
     }
 }
 
+/// Returns true if the extracted user message content looks like a system/hook message
+/// rather than a real user prompt. These include local-command caveats, slash-command
+/// wrappers, tool_result blocks, and empty/whitespace-only content.
+fn is_system_user_content(content: &str) -> bool {
+    let trimmed = content.trim();
+    trimmed.is_empty()
+        || trimmed.starts_with("<local-command-caveat>")
+        || trimmed.starts_with("<command-name>")
+        || trimmed.starts_with("<command-message>")
+        || trimmed.starts_with("<local-command-stdout>")
+        || trimmed.starts_with("<system-reminder>")
+        || trimmed.starts_with("{\"type\":\"tool_result\"")
+}
+
 /// Extract skill names from a user message line (looking for "skill":"..." patterns).
 fn extract_skills_from_line(
     line: &[u8],
@@ -1887,7 +1914,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (50 params: ?1=id, ?2-?50=fields)
+                    // UPDATE session deep fields (51 params: ?1=id, ?2-?51=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1939,6 +1966,7 @@ where
                         result.parse_result.git_branch.as_deref(),  // ?48
                         primary_model,                    // ?49 (Option<String>)
                         meta.last_timestamp,              // ?50 (Option<i64>)
+                        meta.first_user_prompt,           // ?51 (Option<String>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // DELETE stale turns/invocations before re-inserting
@@ -2141,6 +2169,7 @@ async fn write_results_sqlx(
             result.parse_result.git_branch.as_deref(),
             primary_model.as_deref(),
             meta.last_timestamp,
+            meta.first_user_prompt.as_deref(),
         )
         .await
         .map_err(|e| {
@@ -3690,5 +3719,92 @@ mod tests {
         // Prune on an empty DB -- should be a no-op
         let pruned = prune_stale_sessions(&db).await.unwrap();
         assert_eq!(pruned, 0, "Should not prune anything from empty DB");
+    }
+
+    // ============================================================================
+    // first_user_prompt extraction tests
+    // ============================================================================
+
+    #[test]
+    fn test_first_user_prompt_extracted() {
+        // 3 user messages — first_user_prompt should capture the FIRST one
+        let data = br#"{"type":"user","message":{"content":"What is Rust?"}}
+{"type":"assistant","message":{"content":"Rust is a systems programming language."}}
+{"type":"user","message":{"content":"How do I use iterators?"}}
+{"type":"assistant","message":{"content":"Iterators in Rust..."}}
+{"type":"user","message":{"content":"Thanks for the help!"}}
+{"type":"assistant","message":{"content":"You're welcome!"}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(
+            result.deep.first_user_prompt,
+            Some("What is Rust?".to_string()),
+            "Should capture the first user message text"
+        );
+        // Verify last_message is still the LAST user content
+        assert_eq!(result.deep.last_message, "Thanks for the help!");
+    }
+
+    #[test]
+    fn test_first_user_prompt_none_when_no_users() {
+        // Only assistant messages — no user messages at all
+        let data = br#"{"type":"assistant","message":{"content":"Hello, I'm an assistant."}}
+{"type":"assistant","message":{"content":"Here is more info."}}
+"#;
+        let result = parse_bytes(data);
+        assert!(
+            result.deep.first_user_prompt.is_none(),
+            "Should be None when there are no user messages"
+        );
+    }
+
+    #[test]
+    fn test_first_user_prompt_skips_system_hook_messages() {
+        // First user messages are system hooks — should be skipped
+        let data = br#"{"type":"user","message":{"content":"<local-command-caveat>Caveat: The messages below were generated by the user while running local commands.</local-command-caveat>"}}
+{"type":"user","message":{"content":"<command-name>/clear</command-name>"}}
+{"type":"user","message":{"content":"<local-command-stdout></local-command-stdout>"}}
+{"type":"user","message":{"content":"do a release for me"}}
+{"type":"assistant","message":{"content":"Sure, I'll help with the release."}}
+"#;
+        let result = parse_bytes(data);
+        assert_eq!(
+            result.deep.first_user_prompt,
+            Some("do a release for me".to_string()),
+            "Should skip system/hook messages and capture the first real user prompt"
+        );
+    }
+
+    #[test]
+    fn test_first_user_prompt_none_when_only_system_messages() {
+        // All user messages are system hooks — first_user_prompt should be None
+        let data = br#"{"type":"user","message":{"content":"<local-command-caveat>Caveat text</local-command-caveat>"}}
+{"type":"user","message":{"content":"<command-name>/help</command-name>"}}
+{"type":"assistant","message":{"content":"Here is help."}}
+"#;
+        let result = parse_bytes(data);
+        assert!(
+            result.deep.first_user_prompt.is_none(),
+            "Should be None when all user messages are system/hook messages"
+        );
+    }
+
+    #[test]
+    fn test_first_user_prompt_truncated_at_500_chars() {
+        // A user message with content longer than 500 characters
+        let long_msg = "x".repeat(600);
+        let line = format!(
+            r#"{{"type":"user","message":{{"content":"{}"}}}}"#,
+            long_msg
+        );
+        let data = line.as_bytes();
+        let result = parse_bytes(data);
+        let prompt = result.deep.first_user_prompt.expect("Should have first_user_prompt");
+        // truncate() adds "..." when truncating, so max is 500 chars + "..."
+        assert!(
+            prompt.chars().count() <= 503,
+            "first_user_prompt should be truncated to ~500 chars, got {} chars",
+            prompt.chars().count()
+        );
     }
 }
