@@ -8,6 +8,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { SystemPage } from './components/SystemPage'
 import { InsightsPage } from './components/InsightsPage'
 import { ContributionsPage } from './pages/ContributionsPage'
+import { MissionControlPage } from './pages/MissionControlPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
       { path: 'search', element: <SearchResults /> },
       // Flat contributions route (new canonical URL, uses ?project= query param)
       { path: 'contributions', element: <ContributionsPage /> },
+      { path: 'mission-control', element: <MissionControlPage /> },
       // Redirects for old URLs
       { path: 'history', element: <Navigate to="/sessions" replace /> },
       // Redirect old singular /session/:id to /sessions/:id
