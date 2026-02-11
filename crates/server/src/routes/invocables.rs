@@ -217,6 +217,15 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await

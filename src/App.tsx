@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { DashboardSkeleton, ErrorState, EmptyState } from './components/LoadingStates'
+import { PatternAlert } from './components/PatternAlert'
 
 export default function App() {
   const { data: summaries, isLoading, error, refetch } = useProjectSummaries()
@@ -88,6 +89,8 @@ export default function App() {
         onClose={closeCommandPalette}
         projects={summaries}
       />
+
+      <PatternAlert />
     </div>
   )
 }

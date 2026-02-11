@@ -10,6 +10,7 @@ import { DashboardSkeleton, ErrorState, EmptyState } from './LoadingStates'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { AIGenerationStats } from './AIGenerationStats'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
+import { CoachCard } from './CoachCard'
 import { TimeRangeSelector, DateRangePicker } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
 
@@ -174,6 +175,9 @@ export function StatsDashboard() {
       {stats.trends && (
         <DashboardMetricsGrid trends={stats.trends} comparisonLabel={comparisonLabel} />
       )}
+
+      {/* Theme 4: Weekly Coach Insight */}
+      <CoachCard />
 
       {/* Theme 3: AI Contribution Summary Card */}
       <ContributionSummaryCard
