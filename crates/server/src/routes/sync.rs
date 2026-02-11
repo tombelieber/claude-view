@@ -323,19 +323,24 @@ pub async fn trigger_deep_index(
                 indexing.set_status(crate::indexing_state::IndexingStatus::DeepIndexing);
 
                 // Step 2: Run deep indexing pass with progress wired to IndexingState
+                let indexing_start = indexing.clone();
                 let indexing_cb = indexing.clone();
                 let result = vibe_recall_db::indexer_parallel::pass_2_deep_index(
                     &db,
                     None, // No registry needed for rebuild
-                    move |indexed, total| {
+                    move |total_bytes| {
+                        indexing_start.set_bytes_total(total_bytes);
+                    },
+                    move |indexed, total, file_bytes| {
                         indexing_cb.set_total(total);
                         indexing_cb.set_indexed(indexed);
+                        indexing_cb.add_bytes_processed(file_bytes);
                     },
                 )
                 .await;
 
                 match result {
-                    Ok(indexed_count) => {
+                    Ok((indexed_count, _)) => {
                         let duration = start.elapsed();
                         tracing::info!(
                             sessions_indexed = indexed_count,

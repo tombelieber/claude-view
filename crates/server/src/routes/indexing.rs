@@ -24,6 +24,8 @@ pub struct IndexingStatusResponse {
     pub phase: String,
     pub indexed: usize,
     pub total: usize,
+    pub bytes_processed: u64,
+    pub bytes_total: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
 }
@@ -61,6 +63,8 @@ pub async fn indexing_status(
         phase: phase.to_string(),
         indexed: indexing.indexed(),
         total: indexing.total(),
+        bytes_processed: indexing.bytes_processed(),
+        bytes_total: indexing.bytes_total(),
         error_message: if status == IndexingStatus::Error {
             indexing.error()
         } else {
@@ -101,6 +105,8 @@ pub async fn indexing_progress(
             let total = indexing.total();
             let projects = indexing.projects_found();
             let sessions = indexing.sessions_found();
+            let bytes_processed = indexing.bytes_processed();
+            let bytes_total = indexing.bytes_total();
 
             match status {
                 IndexingStatus::Idle => {
@@ -129,6 +135,8 @@ pub async fn indexing_progress(
                         "status": "done",
                         "indexed": indexed,
                         "total": total,
+                        "bytes_processed": bytes_processed,
+                        "bytes_total": bytes_total,
                     });
                     yield Ok(Event::default().event("done").data(data.to_string()));
                     break; // Stream complete
@@ -150,6 +158,8 @@ pub async fn indexing_progress(
                             "status": "deep-indexing",
                             "indexed": indexed,
                             "total": total,
+                            "bytes_processed": bytes_processed,
+                            "bytes_total": bytes_total,
                         });
                         yield Ok(Event::default().event("deep-progress").data(data.to_string()));
                         last_indexed = indexed;
