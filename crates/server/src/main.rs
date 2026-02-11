@@ -16,7 +16,7 @@ use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
 use vibe_recall_db::Database;
-use vibe_recall_server::{create_app_full, init_metrics, record_sync, IndexingState, IndexingStatus};
+use vibe_recall_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -132,6 +132,17 @@ async fn main() -> Result<()> {
 
     // Step 1: Open database
     let db = Database::open_default().await?;
+
+    // Recover any classification jobs left in "running" state from previous crash
+    match db.recover_stale_classification_jobs().await {
+        Ok(count) if count > 0 => {
+            tracing::info!("Recovered {} stale classification jobs", count);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("Failed to recover stale classification jobs: {}", e);
+        }
+    }
 
     // Step 2: Create shared indexing state and registry holder
     let indexing = Arc::new(IndexingState::new());
@@ -325,7 +336,69 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Step 8: Serve forever
+    // Step 8: Spawn facet ingest background tasks (startup + periodic)
+    //
+    // Uses a dedicated FacetIngestState for background tasks. The AppState has
+    // its own FacetIngestState for user-triggered ingest via the API/SSE endpoint.
+    // Background ingest is fire-and-forget with tracing output only.
+    {
+        let db = db.clone();
+        let ingest_state = Arc::new(FacetIngestState::new());
+
+        // Initial ingest (delayed 5s to let indexing finish first)
+        let db_init = db.clone();
+        let state_init = ingest_state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            if state_init.is_running() {
+                return;
+            }
+            match vibe_recall_server::facet_ingest::run_facet_ingest(&db_init, &state_init, None)
+                .await
+            {
+                Ok(n) => {
+                    if n > 0 {
+                        tracing::info!(
+                            "Facet ingest: imported {n} new facets from /insights cache"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!("Facet ingest skipped: {e}"),
+            }
+        });
+
+        // Periodic re-ingest (every 6 hours)
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(6 * 3600));
+            interval.tick().await; // skip immediate tick (startup already handled above)
+            loop {
+                interval.tick().await;
+                if ingest_state.is_running() {
+                    tracing::debug!("Periodic facet ingest skipped: already running");
+                    continue;
+                }
+                tracing::info!("Periodic facet re-ingest starting");
+                match vibe_recall_server::facet_ingest::run_facet_ingest(
+                    &db,
+                    &ingest_state,
+                    None,
+                )
+                .await
+                {
+                    Ok(n) => {
+                        if n > 0 {
+                            tracing::info!(
+                                "Periodic facet ingest: imported {n} new facets"
+                            );
+                        }
+                    }
+                    Err(e) => tracing::warn!("Periodic facet ingest failed: {e}"),
+                }
+            }
+        });
+    }
+
+    // Step 9: Serve forever
     axum::serve(listener, app).await?;
 
     Ok(())
