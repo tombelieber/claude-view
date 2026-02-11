@@ -35,6 +35,10 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 - **E** depends on C (custom layout applies to Monitor mode panes)
 - **F** depends on A only (Agent SDK sidecar just needs the session list to know what to resume)
 
+**External dependents:**
+- **Mobile PWA** (M1: Status Monitor) depends on **Phase A** — needs JSONL file watching + session state machine for remote status
+- **Mobile PWA** (M3: Interactive Control) depends on **Phase F** — needs Agent SDK sidecar for remote session resume/control
+
 ## Plan File Index
 
 | File | Phase | Status |
