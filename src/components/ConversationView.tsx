@@ -68,8 +68,8 @@ export function ConversationView() {
     const qs = preserved.toString()
     return qs ? `/sessions?${qs}` : '/sessions'
   }, [searchParams])
-  // useSession and useSessionMessages require projectDir from sessionDetail
-  const { data: session, error: sessionError } = useSession(projectDir || null, sessionId || null)
+  // useSession and useSessionMessages now use /api/sessions/:id/* (no projectDir needed)
+  const { data: session, error: sessionError } = useSession(sessionId || null)
   const {
     data: pagesData,
     isLoading: isMessagesLoading,
@@ -77,7 +77,7 @@ export function ConversationView() {
     fetchPreviousPage,
     hasPreviousPage,
     isFetchingPreviousPage,
-  } = useSessionMessages(projectDir || null, sessionId || null)
+  } = useSessionMessages(sessionId || null)
 
   // Detect when DB has the session but the JSONL file is gone from disk
   const isFileGone = !!sessionDetail
