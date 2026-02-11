@@ -1,0 +1,22 @@
+// crates/db/src/queries/mod.rs
+// Session CRUD operations for the vibe-recall SQLite database.
+
+pub(crate) mod row_types;
+mod classification;
+mod dashboard;
+mod invocables;
+mod models;
+mod sessions;
+mod system;
+mod ai_generation;
+pub mod facets;
+mod fluency;
+mod types;
+
+pub use types::*;
+
+// Re-export _tx functions for indexer_parallel.rs (crate::queries::*_tx paths)
+pub use row_types::{
+    batch_insert_invocations_tx, batch_insert_turns_tx, batch_upsert_models_tx,
+    update_session_deep_fields_tx,
+};

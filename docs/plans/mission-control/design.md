@@ -1554,13 +1554,36 @@ Every API request sends the **full conversation history** as input. There is no 
 
 | Tool | Architecture | Why it is not enough |
 |------|-------------|---------------------|
-| **OpenClaw** | Calls Anthropic API directly via Pi runtime | Does NOT use Claude Code CLI. Different tool ecosystem. No session monitoring. |
-| **NanoClaw** | Uses Agent SDK to spawn sessions in containers | Container-based, not local-machine monitoring. No cost tracking. |
+| **OpenClaw** (180k+ stars) | Personal AI agent built ON TOP of Claude Code CLI subscription. Uses `claude-max-api-proxy` to route OpenAI-format requests through CLI auth. WebSocket Gateway control plane. Session isolation via agents. | General-purpose life agent (WhatsApp, Telegram, Slack), NOT a session monitoring dashboard. No live JSONL watching. No cost/context visualization. |
+| **OpenClaw Dashboard** | Scrapes Claude CLI `/usage` via tmux, reads `~/.openclaw/agents/` session dirs, 5s polling. Glassmorphic dark UI. Rate limit monitoring. | Monitors OpenClaw agent sessions, not raw Claude Code CLI sessions. tmux scraping is fragile. No JSONL incremental parsing. No context gauge. |
+| **Claude Code `/insights`** | Built-in command. Uses Haiku (4k output tokens/session) for facet extraction. 6-stage pipeline. Caches at `~/.claude/usage-data/facets/`. Static HTML report. | Snapshot only, no time-series trends. No live monitoring. No cost-quality correlation. No cross-project comparison. Not integrated into any dashboard. |
+| **Agent Sessions** | Local-first session aggregator. Reads dirs from 7 CLI tools (Claude Code, Codex, Gemini, etc.). Apple Notes-style search. macOS-only. | Read-only browsing. No cost tracking, no context visualization, no live status monitoring, no interactive control. |
+| **NanoClaw** | Uses Agent SDK to spawn sessions in Apple containers via stdin/stdout | Container-based, not local-machine monitoring. No cost tracking. |
 | **claude-code-ui** | XState-based web UI wrapping single session | Single-session only. No multi-session dashboard. |
 | **claude-code-monitor** | React hooks for session events | Hooks library, not a dashboard. No cost or context tracking. |
 | **clog** | Web viewer for conversation logs | Read-only historical viewer. No live sessions. |
 
 Mission Control combines monitoring + cost tracking + context health + multi-view visualization + optional interactive control — none of the existing tools provide this combination.
+
+### Claude Code CLI Integration Approaches (Research)
+
+Three known approaches for programmatic interaction with a user's Claude Code subscription:
+
+| Approach | How it works | Complexity | Reliability | Use case |
+|----------|-------------|-----------|-------------|----------|
+| **CLI Direct** | `claude -p --model haiku --output-format json "prompt"` | Low | High | Classification, analysis, custom insights |
+| **claude-max-api-proxy** (OpenClaw) | Local proxy at `localhost:3456` accepts OpenAI format, translates to CLI commands, routes through subscription | Medium | Medium (3rd party) | OpenAI-compatible tool integration |
+| **Agent SDK** (npm) | `@anthropic-ai/agent-sdk` spawns new Claude Code process, IPC via stdin/stdout | High | High (official) | Session resume, interactive control (Phase F) |
+
+**For our Insights/Analysis features:**
+- **Default:** Read `/insights` facet cache (`~/.claude/usage-data/facets/*.json`) — zero API calls, free
+- **Fallback:** CLI Direct (`claude -p --model haiku`) for custom analysis — uses existing subscription
+- **Deferred:** claude-max-api-proxy as opt-in for users who want OpenAI-compatible endpoint access
+
+**For Mission Control Phase F (Interactive Control):**
+- Agent SDK via Node.js sidecar (already planned)
+
+**Key constraint:** Claude Pro/Max subscriptions do NOT include API keys. Authentication goes through `claude setup-token` which generates OAuth tokens for the CLI. All approaches above use the CLI as the auth layer.
 
 ---
 

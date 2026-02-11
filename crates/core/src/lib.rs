@@ -10,6 +10,13 @@ pub mod metrics;
 pub mod contribution;
 pub mod work_type;
 pub mod branch_filter;
+pub mod llm;
+pub mod cli;
+pub mod classification;
+pub mod patterns;
+pub mod insights;
+pub mod facets;
+pub mod fluency_score;
 
 pub use error::*;
 pub use types::*;
@@ -22,3 +29,4 @@ pub use metrics::*;
 pub use contribution::*;
 pub use work_type::*;
 pub use branch_filter::*;
+pub use cli::ClaudeCliStatus;

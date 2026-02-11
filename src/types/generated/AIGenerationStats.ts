@@ -4,36 +4,5 @@ import type { TokensByProject } from "./TokensByProject";
 
 /**
  * AI Generation statistics (for GET /api/stats/ai-generation).
- *
- * Note: lines_added and lines_removed are currently not tracked in the database.
- * They will return 0 until a future migration adds these columns to the sessions table.
  */
-export type AIGenerationStats = { 
-/**
- * Total lines of code added (currently not tracked, returns 0)
- */
-linesAdded: number, 
-/**
- * Total lines of code removed (currently not tracked, returns 0)
- */
-linesRemoved: number, 
-/**
- * Total files created/edited by AI (based on files_edited_count)
- */
-filesCreated: number, 
-/**
- * Total input tokens consumed
- */
-totalInputTokens: number, 
-/**
- * Total output tokens generated
- */
-totalOutputTokens: number, 
-/**
- * Token usage breakdown by model
- */
-tokensByModel: Array<TokensByModel>, 
-/**
- * Token usage breakdown by project (top 5, rest aggregated as "Others")
- */
-tokensByProject: Array<TokensByProject>, };
+export type AIGenerationStats = { linesAdded: number, linesRemoved: number, filesCreated: number, totalInputTokens: number, totalOutputTokens: number, tokensByModel: Array<TokensByModel>, tokensByProject: Array<TokensByProject>, };
