@@ -1,10 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import type { SessionDetail } from '../types/generated'
 
+class HttpError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function fetchSessionDetail(sessionId: string): Promise<SessionDetail> {
   const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)
   if (!response.ok) {
-    throw new Error('Failed to fetch session detail')
+    throw new HttpError('Failed to fetch session detail', response.status)
   }
   return response.json()
 }
@@ -25,5 +33,9 @@ export function useSessionDetail(sessionId: string | null) {
       return fetchSessionDetail(sessionId)
     },
     enabled: !!sessionId,
+    retry: (failureCount, error) => {
+      if (error instanceof HttpError && error.status === 404) return false
+      return failureCount < 3
+    },
   })
 }
