@@ -48,6 +48,7 @@ function cleanPreviewText(text: string): string {
  * Returns format like "2:30 PM" for use in time ranges.
  */
 function formatTimeOnly(timestamp: number): string {
+  if (timestamp <= 0) return '--'
   const date = new Date(timestamp * 1000)
   return date.toLocaleTimeString('en-US', {
     hour: 'numeric',
@@ -63,6 +64,7 @@ function formatTimeOnly(timestamp: number): string {
  * - Older: "Jan 26"
  */
 function formatDatePrefix(timestamp: number): string {
+  if (timestamp <= 0) return '--'
   const date = new Date(timestamp * 1000)
   const now = new Date()
 
@@ -117,6 +119,7 @@ function formatDuration(durationSeconds: number): string {
  * Legacy format for backward compatibility with existing components.
  */
 function formatRelativeTime(timestamp: number): string {
+  if (timestamp <= 0) return '--'
   // timestamp is Unix seconds, convert to milliseconds for JavaScript Date
   const date = new Date(timestamp * 1000)
   const now = new Date()
