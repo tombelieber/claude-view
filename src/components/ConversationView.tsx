@@ -69,7 +69,7 @@ export function ConversationView() {
     return qs ? `/sessions?${qs}` : '/sessions'
   }, [searchParams])
   // useSession and useSessionMessages require projectDir from sessionDetail
-  const { data: session, isLoading: isSessionLoading, error: sessionError } = useSession(projectDir || null, sessionId || null)
+  const { data: session, error: sessionError } = useSession(projectDir || null, sessionId || null)
   const {
     data: pagesData,
     isLoading: isMessagesLoading,
