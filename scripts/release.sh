@@ -14,8 +14,22 @@ VERSION=$(node -p "require('./package.json').version")
 
 cd ..
 
+# Bump Cargo.toml workspace version to match
+sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+
+# Bump root package.json version to match
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+pkg.version = '${VERSION}';
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
+
+# Regenerate Cargo.lock with new version
+cargo generate-lockfile --quiet
+
 # Commit and tag
-git add npx-cli/package.json
+git add npx-cli/package.json Cargo.toml package.json Cargo.lock
 git commit -m "release: v${VERSION}"
 git tag "v${VERSION}"
 
