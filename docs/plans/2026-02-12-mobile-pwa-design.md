@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 date: 2026-02-12
 purpose: GTM pivot — Remote Session Monitoring via PWA as primary product wedge
 ---
@@ -44,6 +44,12 @@ Everything else -- fluency score, analytics, pattern discovery -- is nice-to-hav
 | Local daemon | macOS `launchd` UserAgent, always-on, outbound WSS only, Keychain for keys | No root, no inbound ports, auto-restart on crash |
 | Relay connection | Always connected, heartbeat 30s, auto-reconnect with exponential backoff (1s to 30s max) | Simpler than auto-connect/disconnect. One idle WS is ~50KB memory, trivial |
 | Target user | Senior engineers on Claude Code Max ($200/mo) | Natural upsell to API tier when $200/mo ceiling isn't enough for 24/7 agents |
+| PWA tech stack | Same React SPA, mobile-first responsive views | Shares 90% of stack with existing app (React, Vite, Tailwind, Radix, Lucide, React Router). Add BottomNav + mobile layout (pattern from fluffy). No separate framework. |
+| Daemon UX | Silent launchd registration on first `npx claude-view` run + toast notification | "Every prompt = friction." No install step, no permission dialog. Server just never stops. Settings toggle for the 1% who care. |
+| QR pairing UX | QR code always visible on dashboard (WhatsApp Web model). Scan = paired. No confirmation prompt. | Zero decisions for user. One-time token expires after scan or 5 min. New QR on each page load. Paired devices list for revocation. |
+| Repo structure | 2 repos: `claude-view` (all code, open source) + `claude-view-gtm` (marketing, private) | Engine UI is a tab in the same dashboard, not a separate app. Engine backend is `crates/engine/` in same repo. |
+| Open source strategy | Everything open source. Cloud is the paid product. | GitLab/Supabase/Vercel model. Moat is infrastructure (API credits, orchestration), not code. Open source = viral distribution. |
+| Monetization | Free: self-host everything. Paid: hosted relay + engine cloud (API tier for 24/7 agents) | Users who can self-host were never going to pay. Paying users want "scan QR and it works." |
 
 ---
 
@@ -286,6 +292,18 @@ Rust's async WS handling means a single VM handles thousands of idle connections
 ```
 
 **Location:** `~/Library/LaunchAgents/com.claude-score.daemon.plist` (UserAgent, no root required).
+
+### Installation UX (invisible daemon)
+
+There is no "install daemon" step. The user never learns the word "daemon."
+
+1. First `npx claude-view` → starts server, silently writes plist, runs `launchctl load`, opens browser
+2. Toast notification: "claude-view is running at localhost:47892"
+3. Every subsequent `npx claude-view` → server already running, just opens browser
+4. Settings page has "Run in background" toggle (default: ON)
+5. `claude-view stop` CLI command for power users
+
+The server IS the daemon. Same binary, always running. No mode switch, no separate process.
 
 ### Daemon responsibilities
 
