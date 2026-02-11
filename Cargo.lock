@@ -2959,7 +2959,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vibe-recall-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "dirs",
@@ -2977,7 +2977,7 @@ dependencies = [
 
 [[package]]
 name = "vibe-recall-db"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -3001,7 +3001,7 @@ dependencies = [
 
 [[package]]
 name = "vibe-recall-search"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "tantivy",
  "tempfile",
@@ -3014,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "vibe-recall-server"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "assert-json-diff",
