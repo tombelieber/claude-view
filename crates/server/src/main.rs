@@ -113,6 +113,19 @@ async fn run_snapshot_generation(db: &Database, label: &str) {
     }
 }
 
+/// Format a byte count as a human-readable string (e.g. "23.4 GB", "512 MB").
+fn format_bytes(bytes: u64) -> String {
+    const GB: u64 = 1_000_000_000;
+    const MB: u64 = 1_000_000;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.0} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing (quiet — startup UX uses eprintln)
@@ -177,6 +190,7 @@ async fn main() -> Result<()> {
         let index_start = Instant::now();
 
         let state_for_pass1 = idx_state.clone();
+        let state_for_pass2_start = idx_state.clone();
         let state_for_progress = idx_state.clone();
         let state_for_done = idx_state.clone();
 
@@ -190,10 +204,15 @@ async fn main() -> Result<()> {
                 state_for_pass1.set_sessions_found(sessions);
                 state_for_pass1.set_status(IndexingStatus::DeepIndexing);
             },
+            // on_pass2_start: set total bytes before deep indexing begins
+            move |total_bytes| {
+                state_for_pass2_start.set_bytes_total(total_bytes);
+            },
             // on_file_done: each deep-indexed file reports progress
-            move |indexed, total| {
+            move |indexed, total, file_bytes| {
                 state_for_progress.set_total(total);
                 state_for_progress.set_indexed(indexed);
+                state_for_progress.add_bytes_processed(file_bytes);
             },
             // on_complete: all done
             move |_total_indexed| {
@@ -244,8 +263,8 @@ async fn main() -> Result<()> {
                                     poisoned.into_inner().clone()
                                 }
                             };
-                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_, _| {}).await {
-                                Ok(indexed) => {
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_| {}, |_, _, _| {}).await {
+                                Ok((indexed, _)) => {
                                     if indexed > 0 {
                                         tracing::info!(indexed, "Incremental deep index complete");
                                         record_sync("incremental-index", Instant::now().elapsed(), Some(indexed as u64));
@@ -290,7 +309,35 @@ async fn main() -> Result<()> {
             projects,
             sessions,
         );
-        eprintln!("  \u{2192} http://localhost:{}\n", port);
+        // In dev mode, open the Vite dev server; otherwise open the server directly.
+        // VITE_PORT env var or RUST_LOG presence signals dev mode.
+        let browse_url = std::env::var("VITE_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .map(|vite_port| format!("http://localhost:{}", vite_port))
+            .unwrap_or_else(|| format!("http://localhost:{}", port));
+        eprintln!("  \u{2192} {}\n", browse_url);
+
+        // Auto-open browser on first startup only (not cargo-watch restarts).
+        // We detect restarts via a lock file that persists across restarts.
+        let lock_path = std::env::temp_dir().join(format!("vibe-recall-{}.lock", port));
+        let should_open = if lock_path.exists() {
+            // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
+            lock_path.metadata()
+                .and_then(|m| m.modified())
+                .map(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(5))
+                .unwrap_or(true)
+        } else {
+            true
+        };
+        // Touch the lock file
+        let _ = std::fs::write(&lock_path, b"");
+
+        if should_open {
+            if let Err(e) = open::that(&browse_url) {
+                tracing::debug!("Could not open browser: {e}");
+            }
+        }
 
         // Show deep indexing spinner if Pass 2 is running
         if tui_state.status() == IndexingStatus::DeepIndexing {
@@ -310,8 +357,27 @@ async fn main() -> Result<()> {
                 }
                 let indexed = tui_state.indexed();
                 let total = tui_state.total();
+                let bp = tui_state.bytes_processed();
+                let bt = tui_state.bytes_total();
                 if total > 0 {
-                    pb.set_message(format!("{}/{} sessions...", indexed, total));
+                    let elapsed_secs = deep_start.elapsed().as_secs_f64();
+                    let throughput = if elapsed_secs > 0.1 {
+                        format!("  ({}/s)", format_bytes((bp as f64 / elapsed_secs) as u64))
+                    } else {
+                        String::new()
+                    };
+                    if bt > 0 {
+                        pb.set_message(format!(
+                            "{} / {}{}  {}/{} sessions...",
+                            format_bytes(bp),
+                            format_bytes(bt),
+                            throughput,
+                            indexed,
+                            total,
+                        ));
+                    } else {
+                        pb.set_message(format!("{}/{} sessions...", indexed, total));
+                    }
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
@@ -321,9 +387,11 @@ async fn main() -> Result<()> {
             if tui_state.status() == IndexingStatus::Done {
                 let deep_elapsed = deep_start.elapsed();
                 let total = tui_state.sessions_found();
+                let bp = tui_state.bytes_processed();
                 eprintln!(
-                    "  \u{2713} Deep index complete \u{2014} {} sessions ({})\n",
+                    "  \u{2713} Deep index complete \u{2014} {} sessions, {} processed ({})\n",
                     total,
+                    format_bytes(bp),
                     vibe_recall_core::format_duration(deep_elapsed),
                 );
             } else if let Some(err) = tui_state.error() {
