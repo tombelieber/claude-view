@@ -7,6 +7,7 @@ import type { SessionsPage } from '../types/generated'
 export interface RecentSession {
   id: string
   preview: string
+  summary?: string | null
   modifiedAt: number
   gitBranch?: string
   project?: string
@@ -34,6 +35,7 @@ async function fetchRecentSessions(
   return data.sessions.slice(0, 5).map((s) => ({
     id: s.id,
     preview: s.preview,
+    summary: s.summary ?? null,
     modifiedAt: Number(s.modifiedAt),
     gitBranch: s.gitBranch ?? undefined,
     project: s.project ?? undefined,
