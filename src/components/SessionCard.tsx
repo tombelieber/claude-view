@@ -3,6 +3,7 @@ import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 import { WorkTypeBadge } from './WorkTypeBadge'
+import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -20,28 +21,6 @@ interface SessionCardProps {
   projectDisplayName?: string | null
 }
 
-/** Strip XML tags, system prompt noise, and quotes from preview text */
-function cleanPreviewText(text: string): string {
-  // Remove XML-like tags
-  let cleaned = text.replace(/<[^>]+>/g, '')
-  // Remove leading/trailing quotes
-  cleaned = cleaned.replace(/^["']|["']$/g, '')
-  // Remove slash-command prefixes like "/superpowers:brainstorm"
-  cleaned = cleaned.replace(/\/[\w-]+:[\w-]+\s*/g, '')
-  // Remove "superpowers:" prefixed words
-  cleaned = cleaned.replace(/superpowers:\S+\s*/g, '')
-  // Collapse whitespace
-  cleaned = cleaned.replace(/\s+/g, ' ').trim()
-  // If it starts with common system prompt patterns, show a clean label
-  if (cleaned.startsWith('You are a ') || cleaned.startsWith('You are Claude')) {
-    return 'System prompt session'
-  }
-  // If it looks like ls output or file listing
-  if (cleaned.match(/^"?\s*total \d+/)) {
-    return cleaned.slice(0, 100) + (cleaned.length > 100 ? '...' : '')
-  }
-  return cleaned || 'Untitled session'
-}
 
 /**
  * Format time for session card display.
@@ -161,8 +140,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const editCount = (toolCounts?.edit ?? 0) + (toolCounts?.write ?? 0) // Combined edit + write
   const totalTools = editCount + (toolCounts?.bash ?? 0) + (toolCounts?.read ?? 0)
 
-  // Clean up preview text: strip XML tags and system prompt noise
-  const cleanPreview = cleanPreviewText(session?.preview || '')
+  // Clean up preview text: cascade through preview -> summary -> 'Untitled session'
+  const cleanPreview = getSessionTitle(session?.preview, session?.summary)
   const cleanLast = session?.lastMessage ? cleanPreviewText(session.lastMessage) : ''
 
   const projectLabel = projectDisplayName || undefined
