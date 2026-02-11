@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code, FileX } from 'lucide-react'
-import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
+import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
 import { useSessionMessages } from '../hooks/use-session-messages'
@@ -50,14 +50,24 @@ export function ConversationView() {
 
   // Fetch session detail first (uses /api/sessions/:id, no projectDir needed)
   // to get the project directory for the legacy session/messages endpoints
-  const { data: sessionDetail } = useSessionDetail(sessionId || null)
+  const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
   const projectDir = sessionDetail?.project ?? ''
   const project = summaries.find(p => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
+  const [searchParams] = useSearchParams()
 
-  const handleBack = () => navigate(-1)
+  // Build a deterministic "back to sessions" URL, preserving project/branch filters
+  const backUrl = useMemo(() => {
+    const preserved = new URLSearchParams()
+    const project = searchParams.get('project')
+    const branch = searchParams.get('branch')
+    if (project) preserved.set('project', project)
+    if (branch) preserved.set('branch', branch)
+    const qs = preserved.toString()
+    return qs ? `/sessions?${qs}` : '/sessions'
+  }, [searchParams])
   // useSession and useSessionMessages require projectDir from sessionDetail
   const { data: session, isLoading: isSessionLoading, error: sessionError } = useSession(projectDir || null, sessionId || null)
   const {
@@ -75,8 +85,8 @@ export function ConversationView() {
 
   // Only gate initial render on paginated messages — the full session fetch
   // loads in the background for export use. This ensures faster time-to-first-content.
-  const isLoading = isFileGone ? false : (isMessagesLoading || !sessionDetail)
-  const error = isFileGone ? null : messagesError
+  const isLoading = isFileGone ? false : (isMessagesLoading || (!sessionDetail && !detailError))
+  const error = isFileGone ? null : (detailError || messagesError)
   const exportsReady = !!session
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
@@ -183,7 +193,7 @@ export function ConversationView() {
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <ErrorState
           message={error.message}
-          onBack={handleBack}
+          onBack={() => navigate(backUrl)}
         />
       </div>
     )
@@ -196,7 +206,7 @@ export function ConversationView() {
           icon={<MessageSquare className="w-6 h-6 text-gray-400" />}
           title="No conversation data found"
           description="This session may have been deleted or moved."
-          action={{ label: 'Go back', onClick: handleBack }}
+          action={{ label: 'Back to sessions', onClick: () => navigate(backUrl) }}
         />
       </div>
     )
@@ -208,15 +218,14 @@ export function ConversationView() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleBack}
-              aria-label="Go back"
-              className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+            <Link
+              to={backUrl}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Back to sessions</span>
-            </button>
-            <span className="text-gray-300">|</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Sessions
+            </Link>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
             <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
           </div>
         </div>
@@ -234,12 +243,12 @@ export function ConversationView() {
                 The JSONL file for this session has been removed from disk.
                 Session metrics are still available in the sidebar.
               </p>
-              <button
-                onClick={() => navigate('/sessions')}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              <Link
+                to={backUrl}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
               >
                 Back to sessions
-              </button>
+              </Link>
             </div>
           </div>
 
@@ -282,15 +291,14 @@ export function ConversationView() {
       {/* Conversation Header */}
       <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            aria-label="Go back"
-            className="flex items-center gap-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+          <Link
+            to={backUrl}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">Back to sessions</span>
-          </button>
-          <span className="text-gray-300">|</span>
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Sessions
+          </Link>
+          <span className="text-gray-300 dark:text-gray-600">|</span>
           <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
         </div>
 
