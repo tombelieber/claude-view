@@ -458,16 +458,7 @@ pub async fn get_session(
     let session = vibe_recall_core::parse_session(&path).await?;
     Ok(Json(session))
 }
-    Path((project_dir, session_id)): Path<(String, String)>,
-) -> ApiResult<Json<ParsedSession>> {
-    let project_dir_decoded = urlencoding::decode(&project_dir)
-        .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
-        .into_owned();
 
-    let session_path = resolve_session_path(&state.db, &project_dir_decoded, &session_id).await?;
-    let session = vibe_recall_core::parse_session(&session_path).await?;
-    Ok(Json(session))
-}
 /// DEPRECATED: Use `GET /api/sessions/:id/messages` instead.
 /// Kept for backward compatibility. Will be removed in v0.6.
 ///
@@ -492,19 +483,6 @@ pub async fn get_session_messages(
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
     let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
-    Ok(Json(result))
-}
-    Path((project_dir, session_id)): Path<(String, String)>,
-    Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
-    let project_dir_decoded = urlencoding::decode(&project_dir)
-        .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
-        .into_owned();
-
-    let session_path = resolve_session_path(&state.db, &project_dir_decoded, &session_id).await?;
-    let limit = query.limit.unwrap_or(100);
-    let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&session_path, limit, offset).await?;
     Ok(Json(result))
 }
 
