@@ -61,6 +61,9 @@ ts-rs = { workspace = true }
 sqlx = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+notify = { workspace = true }
+sysinfo = { workspace = true }
+memchr = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

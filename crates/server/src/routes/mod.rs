@@ -9,6 +9,7 @@ pub mod indexing;
 pub mod insights;
 pub mod invocables;
 pub mod jobs;
+pub mod live;
 pub mod metrics;
 pub mod models;
 pub mod projects;
@@ -65,6 +66,12 @@ use crate::state::AppState;
 /// - GET  /api/facets/stats          - Aggregate facet statistics
 /// - GET  /api/facets/badges         - Quality badges for sessions
 /// - GET  /api/facets/pattern-alert  - Negative satisfaction pattern alert
+/// - GET  /api/live/stream              - SSE stream of live session events
+/// - GET  /api/live/sessions            - List all live sessions
+/// - GET  /api/live/sessions/:id        - Get single live session
+/// - GET  /api/live/sessions/:id/messages - Get recent messages for a live session
+/// - GET  /api/live/summary             - Aggregate live session statistics
+/// - GET  /api/live/pricing             - Model pricing table
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -85,6 +92,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", contributions::router())
         .nest("/api", score::router())
         .nest("/api", facets::router())
+        .nest("/api", live::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
