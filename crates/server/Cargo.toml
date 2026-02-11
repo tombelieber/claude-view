@@ -57,6 +57,7 @@ dirs = { workspace = true }
 tokio-stream = { workspace = true }
 async-stream = { workspace = true }
 ts-rs = { workspace = true }
+sqlx = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 

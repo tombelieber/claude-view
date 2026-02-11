@@ -1155,9 +1155,10 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
                     COALESCE(SUM(commit_count), 0) as commits_count,
                     COALESCE(SUM(files_edited_count), 0) as files_edited,
-                    MAX(last_message_at) as last_activity
+                    MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity
                 FROM sessions
                 WHERE project_id = ?1
+                  AND last_message_at > 0
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
@@ -1201,11 +1202,12 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
                     COALESCE(SUM(commit_count), 0) as commits_count,
                     COALESCE(SUM(files_edited_count), 0) as files_edited,
-                    MAX(last_message_at) as last_activity,
+                    MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity,
                     project_id,
                     COALESCE(project_display_name, project_id) as project_name
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                WHERE last_message_at > 0
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 GROUP BY project_id, git_branch

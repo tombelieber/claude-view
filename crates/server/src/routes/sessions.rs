@@ -245,99 +245,69 @@ pub async fn list_sessions(
     // Filter by branches (comma-separated)
     if let Some(branches_str) = &query.branches {
         let branches: Vec<&str> = branches_str.split(',').map(|s| s.trim()).collect();
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| {
-                s.git_branch
-                    .as_ref()
-                    .map(|b| branches.contains(&b.as_str()))
-                    .unwrap_or(false)
-            })
-            .collect();
+        all_sessions.retain(|s| {
+            s.git_branch
+                .as_ref()
+                .map(|b| branches.contains(&b.as_str()))
+                .unwrap_or(false)
+        });
     }
 
     // Filter by models (comma-separated, exact match)
     if let Some(models_str) = &query.models {
         let models: Vec<&str> = models_str.split(',').map(|s| s.trim()).collect();
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| {
-                s.primary_model
-                    .as_ref()
-                    .map(|m| models.iter().any(|&filter| m == filter))
-                    .unwrap_or(false)
-            })
-            .collect();
+        all_sessions.retain(|s| {
+            s.primary_model
+                .as_ref()
+                .map(|m| models.iter().any(|&filter| m == filter))
+                .unwrap_or(false)
+        });
     }
 
     // Filter by has_commits
     if let Some(has_commits) = query.has_commits {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| (s.commit_count > 0) == has_commits)
-            .collect();
+        all_sessions.retain(|s| (s.commit_count > 0) == has_commits);
     }
 
     // Filter by has_skills
     if let Some(has_skills) = query.has_skills {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| (!s.skills_used.is_empty()) == has_skills)
-            .collect();
+        all_sessions.retain(|s| s.skills_used.is_empty() != has_skills);
     }
 
     // Filter by min_duration
     if let Some(min_duration) = query.min_duration {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| s.duration_seconds >= min_duration as u32)
-            .collect();
+        all_sessions.retain(|s| s.duration_seconds >= min_duration as u32);
     }
 
     // Filter by min_files
     if let Some(min_files) = query.min_files {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| s.files_edited_count >= min_files as u32)
-            .collect();
+        all_sessions.retain(|s| s.files_edited_count >= min_files as u32);
     }
 
     // Filter by min_tokens
     if let Some(min_tokens) = query.min_tokens {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| {
-                let total = s.total_input_tokens.unwrap_or(0) + s.total_output_tokens.unwrap_or(0);
-                total >= min_tokens as u64
-            })
-            .collect();
+        all_sessions.retain(|s| {
+            let total = s.total_input_tokens.unwrap_or(0) + s.total_output_tokens.unwrap_or(0);
+            total >= min_tokens as u64
+        });
     }
 
     // Filter by high_reedit
     if let Some(high_reedit) = query.high_reedit {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| {
-                let has_high_reedit = s.reedit_rate().map(|r| r > 0.2).unwrap_or(false);
-                has_high_reedit == high_reedit
-            })
-            .collect();
+        all_sessions.retain(|s| {
+            let has_high_reedit = s.reedit_rate().map(|r| r > 0.2).unwrap_or(false);
+            has_high_reedit == high_reedit
+        });
     }
 
     // Filter by time_after
     if let Some(time_after) = query.time_after {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| s.modified_at >= time_after)
-            .collect();
+        all_sessions.retain(|s| s.modified_at >= time_after);
     }
 
     // Filter by time_before
     if let Some(time_before) = query.time_before {
-        all_sessions = all_sessions
-            .into_iter()
-            .filter(|s| s.modified_at <= time_before)
-            .collect();
+        all_sessions.retain(|s| s.modified_at <= time_before);
     }
 
     // Apply sort
@@ -595,6 +565,15 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         }
     }
 
