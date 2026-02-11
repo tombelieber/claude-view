@@ -1,8 +1,11 @@
 // crates/server/src/state.rs
 //! Application state for the Axum server.
 
+use crate::classify_state::ClassifyState;
+use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
+use crate::jobs::JobRunner;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -31,6 +34,12 @@ pub struct AppState {
     /// Invocable registry (skills, commands, MCP tools, built-in tools).
     /// `None` until background indexing completes registry build.
     pub registry: RegistryHolder,
+    /// Background job runner for long-running async tasks (classification, etc.)
+    pub jobs: Arc<JobRunner>,
+    /// Classification progress state (lock-free atomics for SSE streaming).
+    pub classify: Arc<ClassifyState>,
+    /// Facet ingest progress state (lock-free atomics for SSE streaming).
+    pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
     pub pricing: HashMap<String, ModelPricing>,
 }
@@ -46,6 +55,9 @@ impl AppState {
             indexing: Arc::new(IndexingState::new()),
             git_sync: Arc::new(GitSyncState::new()),
             registry: Arc::new(RwLock::new(None)),
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
@@ -59,6 +71,9 @@ impl AppState {
             indexing,
             git_sync: Arc::new(GitSyncState::new()),
             registry: Arc::new(RwLock::new(None)),
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
@@ -75,6 +90,9 @@ impl AppState {
             indexing,
             git_sync: Arc::new(GitSyncState::new()),
             registry,
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
         })
     }
