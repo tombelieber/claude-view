@@ -13,7 +13,7 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
 import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
-import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
+import { generateMarkdown, generateResumeContext, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
@@ -126,6 +126,16 @@ export function ConversationView() {
     )
   }, [sessionId])
 
+  const handleContinueChat = useCallback(async () => {
+    if (!session || !sessionDetail) return
+    const context = generateResumeContext(session.messages, sessionDetail)
+    const ok = await copyToClipboard(context)
+    showToast(
+      ok ? 'Context copied — paste into a new Claude session' : 'Failed to copy — check browser permissions',
+      3000
+    )
+  }, [session, sessionDetail])
+
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -140,13 +150,13 @@ export function ConversationView() {
         handleExportPdf()
       } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
-        handleResume()
+        handleContinueChat()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleExportHtml, handleExportPdf, handleResume])
+  }, [handleExportHtml, handleExportPdf, handleContinueChat])
 
   const allMessages = useMemo(
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
