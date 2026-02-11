@@ -948,6 +948,7 @@ mod tests {
             None,    // git_branch
             None,    // primary_model
             None,    // last_message_at
+            None,    // first_user_prompt
         ).await.unwrap();
 
         // Update the primary_model column using the db pool directly
@@ -1067,6 +1068,7 @@ mod tests {
             None,    // git_branch
             None, // primary_model
             None, // last_message_at
+            None, // first_user_prompt
         ).await.unwrap();
 
         let app = build_app(db);
