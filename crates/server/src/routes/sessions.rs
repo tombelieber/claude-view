@@ -21,12 +21,28 @@ use crate::state::AppState;
 /// First tries the naive path: `projects_dir / project_dir / session_id.jsonl`.
 /// If that doesn't exist (e.g. worktree sessions whose `project_id` was merged
 /// into the parent project), falls back to the `file_path` stored in the DB.
+///
+/// This handles three scenarios:
+/// 1. Normal session — file at `{projects_dir}/{project_dir}/{uuid}.jsonl`
+/// 2. Worktree session — file at worktree path, found via DB `file_path` column
+/// 3. Deleted session — file doesn't exist anywhere → 404
 async fn resolve_session_path(
     db: &vibe_recall_db::Database,
     project_dir: &str,
     session_id: &str,
 ) -> Result<std::path::PathBuf, ApiError> {
     let projects_dir = vibe_recall_core::claude_projects_dir()?;
+    resolve_session_path_with_base(db, &projects_dir, project_dir, session_id).await
+}
+
+/// Inner implementation that accepts `projects_dir` for testability.
+async fn resolve_session_path_with_base(
+    db: &vibe_recall_db::Database,
+    projects_dir: &std::path::Path,
+    project_dir: &str,
+    session_id: &str,
+) -> Result<std::path::PathBuf, ApiError> {
+    // 1. Try the naive path: projects_dir / project_dir / session_id.jsonl
     let naive_path = projects_dir
         .join(project_dir)
         .join(session_id)
@@ -36,7 +52,7 @@ async fn resolve_session_path(
         return Ok(naive_path);
     }
 
-    // Worktree fallback: the DB stores the real file_path
+    // 2. Worktree fallback: the DB stores the real file_path
     let db_path: Option<(String,)> = sqlx::query_as(
         "SELECT file_path FROM sessions WHERE id = ?1 LIMIT 1",
     )
@@ -52,6 +68,7 @@ async fn resolve_session_path(
         }
     }
 
+    // 3. File doesn't exist anywhere
     Err(ApiError::SessionNotFound(format!(
         "{}/{}",
         project_dir, session_id
@@ -1226,5 +1243,185 @@ mod tests {
         let branches: Vec<String> = serde_json::from_str(&body).unwrap();
         assert_eq!(branches.len(), 2); // Only "feature/auth" and "main"
         assert_eq!(branches, vec!["feature/auth", "main"]); // Alphabetically sorted
+    }
+
+    // ========================================================================
+    // resolve_session_path_with_base tests
+    // ========================================================================
+
+    /// Helper: insert a minimal session row into the DB for resolve_session_path tests.
+    async fn insert_session_with_file_path(db: &Database, id: &str, project_id: &str, file_path: &str) {
+        let mut session = make_session(id, project_id, 1700000000);
+        session.file_path = file_path.to_string();
+        db.insert_session(&session, project_id, "Test Project")
+            .await
+            .unwrap();
+    }
+
+    /// Case 1: Normal session — file exists at the naive path (projects_dir/project_dir/uuid.jsonl).
+    #[tokio::test]
+    async fn test_resolve_path_naive_path_exists() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        // Create the file at the naive path
+        let project_dir = "main-project";
+        let session_id = "aaaa-bbbb";
+        let naive_dir = projects_dir.join(project_dir);
+        std::fs::create_dir_all(&naive_dir).unwrap();
+        let naive_file = naive_dir.join(format!("{}.jsonl", session_id));
+        std::fs::write(&naive_file, "{}").unwrap();
+
+        let result = resolve_session_path_with_base(&db, projects_dir, project_dir, session_id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), naive_file);
+    }
+
+    /// Case 2: Worktree session (active) — naive path doesn't exist, DB file_path does.
+    /// This is the main worktree bug: project_id = parent, file lives under worktree dir.
+    #[tokio::test]
+    async fn test_resolve_path_worktree_fallback() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        let session_id = "1f31-abcd";
+        let parent_project = "main-project";
+        let worktree_dir = projects_dir.join("main-project--worktrees-feature-branch");
+        std::fs::create_dir_all(&worktree_dir).unwrap();
+        let worktree_file = worktree_dir.join(format!("{}.jsonl", session_id));
+        std::fs::write(&worktree_file, "{}").unwrap();
+
+        // DB has file_path pointing to worktree location, project_id = parent
+        insert_session_with_file_path(
+            &db,
+            session_id,
+            parent_project,
+            worktree_file.to_str().unwrap(),
+        )
+        .await;
+
+        // Naive path (parent project dir) doesn't exist — should fall back to DB
+        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
+        assert!(result.is_ok(), "Should find worktree file via DB fallback");
+        assert_eq!(result.unwrap(), worktree_file);
+    }
+
+    /// Case 3: Worktree deleted, but JSONL files in ~/.claude/projects/ persist.
+    /// The git worktree is gone, but Claude's session dir remains.
+    #[tokio::test]
+    async fn test_resolve_path_worktree_deleted_jsonl_persists() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        let session_id = "dead-beef";
+        let parent_project = "main-project";
+
+        // The worktree session dir in ~/.claude/projects/ still exists
+        let worktree_session_dir = projects_dir.join("main-project--worktrees-old-branch");
+        std::fs::create_dir_all(&worktree_session_dir).unwrap();
+        let worktree_file = worktree_session_dir.join(format!("{}.jsonl", session_id));
+        std::fs::write(&worktree_file, "{}").unwrap();
+
+        // No naive path (parent project dir doesn't even exist)
+        // DB file_path points to the persisted worktree session file
+        insert_session_with_file_path(
+            &db,
+            session_id,
+            parent_project,
+            worktree_file.to_str().unwrap(),
+        )
+        .await;
+
+        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
+        assert!(result.is_ok(), "Should find persisted JSONL even after worktree deletion");
+        assert_eq!(result.unwrap(), worktree_file);
+    }
+
+    /// Case 4: Session JSONL truly deleted — neither naive path nor DB file_path exist.
+    /// Should return 404.
+    #[tokio::test]
+    async fn test_resolve_path_file_deleted_everywhere() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        let session_id = "gone-sess";
+        let parent_project = "main-project";
+
+        // DB has stale file_path pointing to a file that no longer exists
+        insert_session_with_file_path(
+            &db,
+            session_id,
+            parent_project,
+            "/nonexistent/path/gone-sess.jsonl",
+        )
+        .await;
+
+        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
+        assert!(result.is_err(), "Should return 404 when file is gone everywhere");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ApiError::SessionNotFound(_)),
+            "Error should be SessionNotFound, got: {:?}",
+            err
+        );
+    }
+
+    /// Case 5: Session not in DB at all — naive path doesn't exist, DB returns None.
+    #[tokio::test]
+    async fn test_resolve_path_not_in_db() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        let result = resolve_session_path_with_base(
+            &db,
+            projects_dir,
+            "some-project",
+            "nonexistent-uuid",
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ApiError::SessionNotFound(_)));
+    }
+
+    /// Case 6: Naive path takes priority over DB fallback.
+    /// If the file exists at both locations, prefer the naive path.
+    #[tokio::test]
+    async fn test_resolve_path_naive_takes_priority() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let projects_dir = tmp.path();
+
+        let session_id = "dual-file";
+        let project_dir = "main-project";
+
+        // Create file at naive path
+        let naive_dir = projects_dir.join(project_dir);
+        std::fs::create_dir_all(&naive_dir).unwrap();
+        let naive_file = naive_dir.join(format!("{}.jsonl", session_id));
+        std::fs::write(&naive_file, "{\"naive\":true}").unwrap();
+
+        // Also create file at worktree path and register in DB
+        let worktree_dir = projects_dir.join("main-project--worktrees-branch");
+        std::fs::create_dir_all(&worktree_dir).unwrap();
+        let worktree_file = worktree_dir.join(format!("{}.jsonl", session_id));
+        std::fs::write(&worktree_file, "{\"worktree\":true}").unwrap();
+
+        insert_session_with_file_path(
+            &db,
+            session_id,
+            project_dir,
+            worktree_file.to_str().unwrap(),
+        )
+        .await;
+
+        let result = resolve_session_path_with_base(&db, projects_dir, project_dir, session_id).await;
+        assert!(result.is_ok());
+        // Naive path should win (avoids DB query when unnecessary)
+        assert_eq!(result.unwrap(), naive_file);
     }
 }
