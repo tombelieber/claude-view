@@ -199,6 +199,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
+    const segmentedControl = page.locator('[role="radiogroup"][aria-label="Time range selector"]')
     const btnToday = segmentedControl.locator('button[role="radio"]', { hasText: 'Today' })
     await expect(btnToday).toHaveAttribute('aria-checked', 'true')
 
@@ -206,8 +207,6 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await page.goto('/?range=7d')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
-
-    const segmentedControl = page.locator('[role="radiogroup"][aria-label="Time range selector"]')
     const btn7d = segmentedControl.locator('button[role="radio"]', { hasText: '7d' }).first()
     await expect(btn7d).toHaveAttribute('aria-checked', 'true')
 
