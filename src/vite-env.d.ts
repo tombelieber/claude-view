@@ -14,18 +14,6 @@ interface ImportMetaEnv {
   readonly VITE_FEATURE_TIME_RANGE?: string
 
   /**
-   * Enhanced heatmap with detailed tooltips
-   * Set to 'false' to disable this feature.
-   */
-  readonly VITE_FEATURE_HEATMAP_TOOLTIP?: string
-
-  /**
-   * Redesigned sync UI with progress indicators
-   * Set to 'false' to disable this feature.
-   */
-  readonly VITE_FEATURE_SYNC_REDESIGN?: string
-
-  /**
    * AI generation stats display
    * Set to 'false' to disable this feature.
    */
