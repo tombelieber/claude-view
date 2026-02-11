@@ -4,7 +4,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/tombelieber/claude-view"
@@ -48,6 +48,9 @@ metrics-exporter-prometheus = "0.16"
 
 # Terminal UI
 indicatif = "0.17"
+
+# Browser
+open = "5"
 
 # Utilities
 dirs = "5"
