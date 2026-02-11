@@ -5,6 +5,7 @@ import type {
   SessionContributionResponse,
 } from '../types/generated'
 import type { TimeRangePreset } from './use-time-range'
+import { HttpError, isNotFoundError } from './use-session'
 
 /**
  * Map frontend presets to the contributions API's expected range strings.
@@ -71,13 +72,6 @@ async function fetchContributions(
 /**
  * Fetch session contribution details.
  */
-class HttpError extends Error {
-  status: number
-  constructor(message: string, status: number) {
-    super(message)
-    this.status = status
-  }
-}
 
 async function fetchSessionContribution(sessionId: string): Promise<SessionContributionResponse> {
   const response = await fetch(`/api/contributions/sessions/${encodeURIComponent(sessionId)}`)
@@ -121,7 +115,7 @@ export function useSessionContribution(sessionId: string | null) {
     enabled: !!sessionId,
     staleTime: 5 * 60 * 1000, // 5 min
     retry: (failureCount, error) => {
-      if (error instanceof HttpError && error.status === 404) return false
+      if (isNotFoundError(error)) return false
       return failureCount < 3
     },
   })
