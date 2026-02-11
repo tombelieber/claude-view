@@ -16,6 +16,48 @@ use vibe_recall_db::git_correlation::GitCommit;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
+/// Resolve the JSONL file path for a session.
+///
+/// First tries the naive path: `projects_dir / project_dir / session_id.jsonl`.
+/// If that doesn't exist (e.g. worktree sessions whose `project_id` was merged
+/// into the parent project), falls back to the `file_path` stored in the DB.
+async fn resolve_session_path(
+    db: &vibe_recall_db::Database,
+    project_dir: &str,
+    session_id: &str,
+) -> Result<std::path::PathBuf, ApiError> {
+    let projects_dir = vibe_recall_core::claude_projects_dir()?;
+    let naive_path = projects_dir
+        .join(project_dir)
+        .join(session_id)
+        .with_extension("jsonl");
+
+    if naive_path.exists() {
+        return Ok(naive_path);
+    }
+
+    // Worktree fallback: the DB stores the real file_path
+    let db_path: Option<(String,)> = sqlx::query_as(
+        "SELECT file_path FROM sessions WHERE id = ?1 LIMIT 1",
+    )
+    .bind(session_id)
+    .fetch_optional(db.pool())
+    .await
+    .map_err(|e| ApiError::Internal(format!("DB lookup failed: {}", e)))?;
+
+    if let Some((file_path,)) = db_path {
+        let p = std::path::PathBuf::from(&file_path);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    Err(ApiError::SessionNotFound(format!(
+        "{}/{}",
+        project_dir, session_id
+    )))
+}
+
 // ============================================================================
 // Filter and Sort Enums
 // ============================================================================
@@ -389,30 +431,14 @@ pub async fn get_session_detail(
 /// The project_dir is the URL-encoded project directory name (can contain slashes).
 /// The session_id is the UUID of the session.
 pub async fn get_session(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path((project_dir, session_id)): Path<(String, String)>,
 ) -> ApiResult<Json<ParsedSession>> {
-    // Decode the project directory (URL-encoded, may contain slashes)
     let project_dir_decoded = urlencoding::decode(&project_dir)
         .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
         .into_owned();
 
-    // Get the Claude projects directory and construct the session path
-    let projects_dir = vibe_recall_core::claude_projects_dir()?;
-    let session_path = projects_dir
-        .join(&project_dir_decoded)
-        .join(&session_id)
-        .with_extension("jsonl");
-
-    // Check if the session file exists
-    if !session_path.exists() {
-        return Err(ApiError::SessionNotFound(format!(
-            "{}/{}",
-            project_dir_decoded, session_id
-        )));
-    }
-
-    // Parse and return the session
+    let session_path = resolve_session_path(&state.db, &project_dir_decoded, &session_id).await?;
     let session = vibe_recall_core::parse_session(&session_path).await?;
     Ok(Json(session))
 }
@@ -423,7 +449,7 @@ pub async fn get_session(
 /// The existing GET /api/session/:project_dir/:session_id endpoint
 /// remains unchanged for backward compatibility.
 pub async fn get_session_messages(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path((project_dir, session_id)): Path<(String, String)>,
     Query(query): Query<SessionMessagesQuery>,
 ) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
@@ -431,19 +457,7 @@ pub async fn get_session_messages(
         .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
         .into_owned();
 
-    let projects_dir = vibe_recall_core::claude_projects_dir()?;
-    let session_path = projects_dir
-        .join(&project_dir_decoded)
-        .join(&session_id)
-        .with_extension("jsonl");
-
-    if !session_path.exists() {
-        return Err(ApiError::SessionNotFound(format!(
-            "{}/{}",
-            project_dir_decoded, session_id
-        )));
-    }
-
+    let session_path = resolve_session_path(&state.db, &project_dir_decoded, &session_id).await?;
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
     let result = vibe_recall_core::parse_session_paginated(&session_path, limit, offset).await?;
