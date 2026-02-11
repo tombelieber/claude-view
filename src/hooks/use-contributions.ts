@@ -71,11 +71,19 @@ async function fetchContributions(
 /**
  * Fetch session contribution details.
  */
+class HttpError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function fetchSessionContribution(sessionId: string): Promise<SessionContributionResponse> {
   const response = await fetch(`/api/contributions/sessions/${encodeURIComponent(sessionId)}`)
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`Failed to fetch session contribution: ${errorText}`)
+    throw new HttpError(`Failed to fetch session contribution: ${errorText}`, response.status)
   }
   return response.json()
 }
@@ -112,6 +120,10 @@ export function useSessionContribution(sessionId: string | null) {
     queryFn: () => fetchSessionContribution(sessionId!),
     enabled: !!sessionId,
     staleTime: 5 * 60 * 1000, // 5 min
+    retry: (failureCount, error) => {
+      if (error instanceof HttpError && error.status === 404) return false
+      return failureCount < 3
+    },
   })
 }
 
