@@ -1612,14 +1612,20 @@ pub async fn pass_1_read_indexes(
 /// If `registry` is `Some`, raw tool_use invocations are classified during the
 /// parse phase and included in the result struct for batch insertion.
 ///
-/// Calls `on_file_done(indexed_so_far, total)` after each file's parse completes.
+/// Calls `on_file_done(indexed_so_far, total, file_bytes)` after each file's parse completes.
+/// Calls `on_start(total_bytes)` once before processing begins with the total size
+/// of all JSONL files to be parsed.
+///
+/// Returns `(indexed_count, total_bytes)` on success, where `total_bytes` is the
+/// sum of all JSONL file sizes that were eligible for deep indexing.
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
+    on_start: impl FnOnce(u64),
     on_file_done: F,
-) -> Result<usize, String>
+) -> Result<(usize, u64), String>
 where
-    F: Fn(usize, usize) + Send + Sync + 'static,
+    F: Fn(usize, usize, u64) + Send + Sync + 'static,
 {
     let all_sessions = db
         .get_sessions_needing_deep_index()
@@ -1672,8 +1678,17 @@ where
     let skipped = all_sessions_count - sessions.len();
 
     if sessions.is_empty() {
-        return Ok(0);
+        return Ok((0, 0));
     }
+
+    // Pre-compute total bytes of all JSONL files to process.
+    let total_bytes: u64 = sessions
+        .iter()
+        .filter_map(|(_, path)| std::fs::metadata(path).ok())
+        .map(|m| m.len())
+        .sum();
+
+    on_start(total_bytes);
 
     // Clone registry into an Arc so we can share across spawned tasks.
     let registry: Option<Arc<Registry>> = registry.map(|r| Arc::new(r.clone()));
@@ -1795,7 +1810,7 @@ where
 
             // Fire progress callback during parse phase so TUI spinner works
             let indexed = counter.fetch_add(1, Ordering::Relaxed) + 1;
-            on_done(indexed, total);
+            on_done(indexed, total, file_size.max(0) as u64);
 
             Ok::<Option<DeepIndexResult>, String>(Some(DeepIndexResult {
                 session_id: id,
@@ -2060,7 +2075,7 @@ where
         );
     }
 
-    Ok(indexed)
+    Ok((indexed, total_bytes))
 }
 
 /// Fallback write path using sqlx async transactions.
@@ -2296,11 +2311,12 @@ pub async fn run_background_index<F>(
     db: &Database,
     registry_holder: Option<RegistryHolder>,
     on_pass1_done: impl FnOnce(usize, usize),
+    on_pass2_start: impl FnOnce(u64),
     on_file_done: F,
     on_complete: impl FnOnce(usize),
 ) -> Result<(), String>
 where
-    F: Fn(usize, usize) + Send + Sync + 'static,
+    F: Fn(usize, usize, u64) + Send + Sync + 'static,
 {
     // Pass 1 and Registry build are independent — run in parallel.
     let claude_dir_owned = claude_dir.to_path_buf();
@@ -2332,7 +2348,7 @@ where
     }
 
     // Pass 2: use the registry for invocation classification
-    let indexed = pass_2_deep_index(db, Some(&registry), on_file_done).await?;
+    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), on_pass2_start, on_file_done).await?;
 
     // Backfill primary_model for sessions indexed before this field was populated
     match db.backfill_primary_models().await {
@@ -3080,7 +3096,7 @@ mod tests {
         // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let indexed = pass_2_deep_index(&db, None, move |done, _total| {
+        let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, move |done, _total, _bytes| {
             progress_clone.store(done, Ordering::Relaxed);
         })
         .await
@@ -3110,11 +3126,11 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let first_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let second_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -3127,7 +3143,7 @@ mod tests {
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
         // Run Pass 2 — should deep-index the 1 session
-        let first_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
 
         // Verify file_size_at_index and file_mtime_at_index are populated
@@ -3152,7 +3168,7 @@ mod tests {
         );
 
         // Run Pass 2 again — should skip because file hasn't changed
-        let second_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip unchanged session");
 
         // Now append data to the JSONL file (simulates user continuing conversation)
@@ -3182,7 +3198,7 @@ mod tests {
         drop(file);
 
         // Run Pass 2 again — should re-index because file size changed
-        let third_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (third_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(third_run, 1, "Should re-index session after file was modified");
 
         // Verify the updated metrics reflect the new content
@@ -3195,7 +3211,7 @@ mod tests {
         );
 
         // Run Pass 2 one more time — should skip again (file hasn't changed)
-        let fourth_run = pass_2_deep_index(&db, None, |_, _| {}).await.unwrap();
+        let (fourth_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
@@ -3217,7 +3233,8 @@ mod tests {
             move |projects, sessions| {
                 *p1.lock().unwrap() = (projects, sessions);
             },
-            |_done, _total| {},
+            |_total_bytes| {},
+            |_done, _total, _bytes| {},
             move |total| {
                 cr.store(total, Ordering::Relaxed);
             },
