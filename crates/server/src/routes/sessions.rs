@@ -256,10 +256,7 @@ pub async fn list_sessions(
             .collect();
     }
 
-    // Filter by models (comma-separated, supports exact + prefix match)
-    // Exact: models=claude-opus-4-6 matches "claude-opus-4-6"
-    // Prefix: models=claude-opus-4 matches "claude-opus-4-6" (legacy URL compat)
-    // The dash check prevents "claude-opus-4" from matching "claude-opus-40-*".
+    // Filter by models (comma-separated, exact match)
     if let Some(models_str) = &query.models {
         let models: Vec<&str> = models_str.split(',').map(|s| s.trim()).collect();
         all_sessions = all_sessions
@@ -267,13 +264,7 @@ pub async fn list_sessions(
             .filter(|s| {
                 s.primary_model
                     .as_ref()
-                    .map(|m| {
-                        models.iter().any(|&filter| {
-                            m == filter
-                                || (m.starts_with(filter)
-                                    && m.as_bytes().get(filter.len()) == Some(&b'-'))
-                        })
-                    })
+                    .map(|m| models.iter().any(|&filter| m == filter))
                     .unwrap_or(false)
             })
             .collect();
