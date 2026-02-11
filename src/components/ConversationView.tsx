@@ -267,7 +267,8 @@ export function ConversationView() {
           <button
             onClick={handleResume}
             aria-label="Copy resume command to clipboard"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/30 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            title={`Session file missing from disk.\nProject: ${sessionDetail?.projectPath ?? 'unknown'}\nResume may fail if the directory no longer exists.`}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-amber-50 dark:hover:bg-amber-900/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-1"
           >
             <Terminal className="w-4 h-4" />
             <span>Resume</span>
@@ -424,10 +425,14 @@ export function ConversationView() {
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
                   onClick={() => { handleResume(); setExportMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
+                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
-                  <Terminal className="w-4 h-4" />
-                  Resume Command
+                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span className="flex flex-col items-start">
+                    <span>Resume Command</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
+                  </span>
                 </button>
                 <button
                   onClick={() => { handleExportHtml(); setExportMenuOpen(false) }}
