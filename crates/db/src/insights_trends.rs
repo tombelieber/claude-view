@@ -92,16 +92,16 @@ impl Database {
 
         let value_expr = match metric {
             "reedit_rate" => {
-                "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0)"
+                "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0.0)"
             }
             "sessions" => "CAST(COUNT(*) AS REAL)",
             "lines" => "CAST(SUM(files_edited_count * 50) AS REAL)",
             "cost_per_line" => {
-                "COALESCE(CAST(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)) AS REAL) / NULLIF(SUM(files_edited_count * 50), 0) * 0.00001, 0)"
+                "COALESCE(CAST(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)) AS REAL) / NULLIF(SUM(files_edited_count * 50), 0) * 0.00001, 0.0)"
             }
-            "prompts" => "COALESCE(CAST(SUM(user_prompt_count) AS REAL) / NULLIF(COUNT(*), 0), 0)",
+            "prompts" => "COALESCE(CAST(SUM(user_prompt_count) AS REAL) / NULLIF(COUNT(*), 0), 0.0)",
             _ => {
-                "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0)"
+                "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0.0)"
             }
         };
 
