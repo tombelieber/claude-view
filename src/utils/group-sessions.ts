@@ -111,18 +111,24 @@ function getGroupKey(session: SessionInfo, groupBy: GroupBy): string {
       return session.primaryModel || '(unknown model)';
 
     case 'day': {
-      const date = new Date(Number(session.modifiedAt) * 1000);
+      const ts = Number(session.modifiedAt);
+      if (ts <= 0) return '(unknown date)';
+      const date = new Date(ts * 1000);
       return date.toISOString().split('T')[0]; // YYYY-MM-DD
     }
 
     case 'week': {
-      const date = new Date(Number(session.modifiedAt) * 1000);
+      const ts = Number(session.modifiedAt);
+      if (ts <= 0) return '(unknown date)';
+      const date = new Date(ts * 1000);
       const startOfWeek = getStartOfWeek(date);
       return startOfWeek.toISOString().split('T')[0]; // YYYY-MM-DD of week start
     }
 
     case 'month': {
-      const date = new Date(Number(session.modifiedAt) * 1000);
+      const ts = Number(session.modifiedAt);
+      if (ts <= 0) return '(unknown date)';
+      const date = new Date(ts * 1000);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
     }
 
