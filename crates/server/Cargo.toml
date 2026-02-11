@@ -54,6 +54,7 @@ urlencoding = { workspace = true }
 indicatif = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+open = { workspace = true }
 tokio-stream = { workspace = true }
 async-stream = { workspace = true }
 ts-rs = { workspace = true }

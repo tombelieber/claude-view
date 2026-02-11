@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n rust,vite -c red,cyan \"bun run dev:server\" \"bun run dev:client:wait\"",
-    "dev:server": "RUST_LOG=debug cargo watch -w crates -x 'run -p vibe-recall-server'",
+    "dev:server": "RUST_LOG=debug VITE_PORT=5173 cargo watch -w crates -x 'run -p vibe-recall-server'",
     "dev:client": "vite --port 5173",
     "dev:client:wait": "bunx wait-on http://localhost:47892/api/health && bun run dev:client",
     "build": "vite build",
