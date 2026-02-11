@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { RefreshCw, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, Loader2, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts'
@@ -9,6 +9,7 @@ import {
   formatTimestamp,
   formatDurationMs,
 } from '../hooks/use-storage-stats'
+import { useClearCache } from '../hooks/use-system'
 import { useIndexingProgress } from '../hooks/use-indexing-progress'
 import { StatCard } from './ui'
 import { cn } from '../lib/utils'
@@ -80,6 +81,7 @@ export function StorageOverview() {
   const { data: stats, isLoading, error } = useStorageStats()
   const queryClient = useQueryClient()
 
+  const clearCache = useClearCache()
   const [isRebuilding, setIsRebuilding] = useState(false)
   const [rebuildStatus, setRebuildStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [sseEnabled, setSseEnabled] = useState(false)
@@ -137,6 +139,20 @@ export function StorageOverview() {
     stats?.lastIndexDurationMs && Number(stats.lastIndexDurationMs) > 0
       ? (Number(stats.jsonlBytes) / (Number(stats.lastIndexDurationMs) / 1000) / (1024 * 1024)).toFixed(1)
       : null
+
+  const handleClearCache = async () => {
+    try {
+      const result = await clearCache.mutateAsync()
+      toast.success('Cache cleared', {
+        description: `Freed ${formatBytes(result.clearedBytes)}`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
+    } catch (e) {
+      toast.error('Failed to clear cache', {
+        description: e instanceof Error ? e.message : 'Unknown error',
+      })
+    }
+  }
 
   const handleRebuildIndex = async () => {
     setIsRebuilding(true)
@@ -342,6 +358,27 @@ export function StorageOverview() {
                 <RefreshCw className="w-4 h-4" />
               )}
               Rebuild Index
+            </button>
+            <button
+              type="button"
+              onClick={handleClearCache}
+              disabled={clearCache.isPending}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-2 min-h-[44px] min-w-[44px]',
+                'text-sm font-medium rounded-md cursor-pointer',
+                'transition-colors duration-150',
+                'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
+                'hover:bg-gray-200 dark:hover:bg-gray-700',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+              )}
+            >
+              {clearCache.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Clear Cache
             </button>
           </div>
 
