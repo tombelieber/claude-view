@@ -448,6 +448,108 @@ COMMIT;
     // Migration 19: Normalize empty/whitespace-only git_branch values to NULL.
     // Fixes duplicate "(no branch)" entries caused by NULL vs '' in GROUP BY.
     r#"UPDATE sessions SET git_branch = NULL WHERE git_branch = '' OR TRIM(git_branch) = '';"#,
+    // Migration 20: Theme 4 Foundation
+    // 20a: Classification hierarchy columns on sessions
+    r#"ALTER TABLE sessions ADD COLUMN category_l1 TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN category_l2 TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN category_l3 TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN category_confidence REAL;"#,
+    r#"ALTER TABLE sessions ADD COLUMN category_source TEXT;"#,
+    r#"ALTER TABLE sessions ADD COLUMN classified_at TEXT;"#,
+    // 20b: Behavioral metrics columns on sessions
+    r#"ALTER TABLE sessions ADD COLUMN prompt_word_count INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN correction_count INTEGER DEFAULT 0;"#,
+    r#"ALTER TABLE sessions ADD COLUMN same_file_edit_count INTEGER DEFAULT 0;"#,
+    // 20c: classification_jobs table
+    r#"
+CREATE TABLE IF NOT EXISTS classification_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    total_sessions INTEGER NOT NULL,
+    classified_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT DEFAULT 'running',
+    error_message TEXT,
+    cost_estimate_cents INTEGER,
+    actual_cost_cents INTEGER,
+    tokens_used INTEGER,
+    CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
+);
+"#,
+    // 20d: index_runs table
+    r#"
+CREATE TABLE IF NOT EXISTS index_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    type TEXT NOT NULL,
+    sessions_before INTEGER,
+    sessions_after INTEGER,
+    duration_ms INTEGER,
+    throughput_mb_per_sec REAL,
+    status TEXT DEFAULT 'running',
+    error_message TEXT,
+    CONSTRAINT valid_type CHECK (type IN ('full', 'incremental', 'deep')),
+    CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'failed'))
+);
+"#,
+    // 20e: Indexes for classification and index_runs
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_category_l1 ON sessions(category_l1) WHERE category_l1 IS NOT NULL;"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_classified ON sessions(classified_at) WHERE classified_at IS NOT NULL;"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_classification_jobs_started ON classification_jobs(started_at DESC);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_index_runs_started ON index_runs(started_at DESC);"#,
+    // Migration 21a: session_facets table for /insights facet cache
+    // NOTE: No FK to sessions — facets may reference sessions not yet indexed.
+    // Join at query time instead.
+    r#"
+CREATE TABLE IF NOT EXISTS session_facets (
+    session_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'insights_cache',
+    underlying_goal TEXT,
+    goal_categories TEXT NOT NULL DEFAULT '{}',
+    outcome TEXT,
+    satisfaction TEXT,
+    user_satisfaction_counts TEXT NOT NULL DEFAULT '{}',
+    claude_helpfulness TEXT,
+    session_type TEXT,
+    friction_counts TEXT NOT NULL DEFAULT '{}',
+    friction_detail TEXT,
+    primary_success TEXT,
+    brief_summary TEXT,
+    ingested_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    CONSTRAINT valid_outcome CHECK (outcome IN ('not_achieved', 'partially_achieved', 'mostly_achieved', 'fully_achieved', 'unclear_from_transcript') OR outcome IS NULL),
+    CONSTRAINT valid_helpfulness CHECK (claude_helpfulness IN ('unhelpful', 'slightly_helpful', 'moderately_helpful', 'very_helpful', 'essential') OR claude_helpfulness IS NULL),
+    CONSTRAINT valid_session_type CHECK (session_type IN ('single_task', 'multi_task', 'iterative_refinement', 'exploration', 'quick_question') OR session_type IS NULL),
+    CONSTRAINT valid_source CHECK (source IN ('insights_cache', 'our_extraction', 'manual'))
+);
+"#,
+    // Migration 21b: indexes for session_facets
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_outcome ON session_facets(outcome);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_satisfaction ON session_facets(satisfaction);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_helpfulness ON session_facets(claude_helpfulness);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_facets_ingested ON session_facets(ingested_at);"#,
+    // Migration 21c: fluency_scores table for weekly score history
+    r#"
+CREATE TABLE IF NOT EXISTS fluency_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    achievement_rate REAL NOT NULL,
+    friction_rate REAL NOT NULL,
+    cost_efficiency REAL NOT NULL,
+    satisfaction_trend REAL NOT NULL,
+    consistency REAL NOT NULL,
+    sessions_analyzed INTEGER NOT NULL,
+    computed_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    CONSTRAINT valid_score CHECK (score BETWEEN 0 AND 100)
+);
+"#,
+    r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_fluency_scores_week ON fluency_scores(week_start);"#,
 ];
 
 // ============================================================================
@@ -652,6 +754,158 @@ mod tests {
             "idx_turns_session must still exist (used by session listing)");
         assert!(index_names.contains(&"idx_turns_model"),
             "idx_turns_model must still exist (used by models API)");
+    }
+
+    // ========================================================================
+    // Migration 13 tests (Theme 4: Classification + Index Runs)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration13_classification_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"category_l1"), "Missing category_l1 column");
+        assert!(column_names.contains(&"category_l2"), "Missing category_l2 column");
+        assert!(column_names.contains(&"category_l3"), "Missing category_l3 column");
+        assert!(column_names.contains(&"category_confidence"), "Missing category_confidence column");
+        assert!(column_names.contains(&"category_source"), "Missing category_source column");
+        assert!(column_names.contains(&"classified_at"), "Missing classified_at column");
+        assert!(column_names.contains(&"prompt_word_count"), "Missing prompt_word_count column");
+        assert!(column_names.contains(&"correction_count"), "Missing correction_count column");
+        assert!(column_names.contains(&"same_file_edit_count"), "Missing same_file_edit_count column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_classification_jobs_table_exists() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('classification_jobs')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"started_at"), "Missing started_at column");
+        assert!(column_names.contains(&"completed_at"), "Missing completed_at column");
+        assert!(column_names.contains(&"total_sessions"), "Missing total_sessions column");
+        assert!(column_names.contains(&"classified_count"), "Missing classified_count column");
+        assert!(column_names.contains(&"skipped_count"), "Missing skipped_count column");
+        assert!(column_names.contains(&"failed_count"), "Missing failed_count column");
+        assert!(column_names.contains(&"provider"), "Missing provider column");
+        assert!(column_names.contains(&"model"), "Missing model column");
+        assert!(column_names.contains(&"status"), "Missing status column");
+        assert!(column_names.contains(&"error_message"), "Missing error_message column");
+        assert!(column_names.contains(&"cost_estimate_cents"), "Missing cost_estimate_cents column");
+        assert!(column_names.contains(&"actual_cost_cents"), "Missing actual_cost_cents column");
+        assert!(column_names.contains(&"tokens_used"), "Missing tokens_used column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_index_runs_table_exists() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('index_runs')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"started_at"), "Missing started_at column");
+        assert!(column_names.contains(&"completed_at"), "Missing completed_at column");
+        assert!(column_names.contains(&"type"), "Missing type column");
+        assert!(column_names.contains(&"sessions_before"), "Missing sessions_before column");
+        assert!(column_names.contains(&"sessions_after"), "Missing sessions_after column");
+        assert!(column_names.contains(&"duration_ms"), "Missing duration_ms column");
+        assert!(column_names.contains(&"throughput_mb_per_sec"), "Missing throughput_mb_per_sec column");
+        assert!(column_names.contains(&"status"), "Missing status column");
+        assert!(column_names.contains(&"error_message"), "Missing error_message column");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_classification_jobs_check_constraints() {
+        let pool = setup_db().await;
+
+        // Valid status should work
+        let result = sqlx::query(
+            "INSERT INTO classification_jobs (started_at, total_sessions, provider, model, status) VALUES ('2026-02-05T12:00:00Z', 100, 'claude-cli', 'haiku', 'running')"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "Valid status 'running' should be accepted");
+
+        // Invalid status should fail
+        let result = sqlx::query(
+            "INSERT INTO classification_jobs (started_at, total_sessions, provider, model, status) VALUES ('2026-02-05T12:00:00Z', 100, 'claude-cli', 'haiku', 'invalid')"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Invalid status should be rejected by CHECK constraint");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_index_runs_check_constraints() {
+        let pool = setup_db().await;
+
+        // Valid type and status should work
+        let result = sqlx::query(
+            "INSERT INTO index_runs (started_at, type, status) VALUES ('2026-02-05T12:00:00Z', 'full', 'running')"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "Valid type 'full' and status 'running' should be accepted");
+
+        // Invalid type should fail
+        let result = sqlx::query(
+            "INSERT INTO index_runs (started_at, type, status) VALUES ('2026-02-05T12:00:00Z', 'invalid', 'running')"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Invalid type should be rejected by CHECK constraint");
+
+        // Invalid status should fail
+        let result = sqlx::query(
+            "INSERT INTO index_runs (started_at, type, status) VALUES ('2026-02-05T12:00:00Z', 'full', 'invalid')"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Invalid status should be rejected by CHECK constraint");
+    }
+
+    #[tokio::test]
+    async fn test_migration13_indexes_created() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(index_names.contains(&"idx_sessions_category_l1"), "Missing idx_sessions_category_l1 index");
+        assert!(index_names.contains(&"idx_sessions_classified"), "Missing idx_sessions_classified index");
+        assert!(index_names.contains(&"idx_classification_jobs_status"), "Missing idx_classification_jobs_status index");
+        assert!(index_names.contains(&"idx_classification_jobs_started"), "Missing idx_classification_jobs_started index");
+        assert!(index_names.contains(&"idx_index_runs_started"), "Missing idx_index_runs_started index");
     }
 
     #[tokio::test]

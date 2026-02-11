@@ -250,16 +250,12 @@ struct UsageBlock {
 }
 
 /// Custom visitor result — avoids #[serde(untagged)] buffering overhead.
+#[derive(Default)]
 enum ContentResult {
     Blocks(Vec<FlatContentBlock>),
     NotArray,
+    #[default]
     Missing,
-}
-
-impl Default for ContentResult {
-    fn default() -> Self {
-        ContentResult::Missing
-    }
 }
 
 /// Custom deserializer for message content that avoids `#[serde(untagged)]` buffering.
