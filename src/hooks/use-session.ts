@@ -20,24 +20,22 @@ export function isNotFoundError(err: unknown): boolean {
   return err instanceof HttpError && err.status === 404
 }
 
-async function fetchSession(projectDir: string, sessionId: string): Promise<SessionData> {
-  const response = await fetch(`/api/session/${encodeURIComponent(projectDir)}/${encodeURIComponent(sessionId)}`)
+async function fetchSession(sessionId: string): Promise<SessionData> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/parsed`)
   if (!response.ok) {
     throw new HttpError('Failed to fetch session', response.status)
   }
   return response.json()
 }
 
-export function useSession(projectDir: string | null, sessionId: string | null) {
+export function useSession(sessionId: string | null) {
   return useQuery({
-    queryKey: ['session', projectDir, sessionId],
+    queryKey: ['session', sessionId],
     queryFn: () => {
-      if (!projectDir || !sessionId) {
-        throw new Error('projectDir and sessionId are required')
-      }
-      return fetchSession(projectDir, sessionId)
+      if (!sessionId) throw new Error('sessionId is required')
+      return fetchSession(sessionId)
     },
-    enabled: !!projectDir && !!sessionId,
+    enabled: !!sessionId,
     retry: (_, error) => !isNotFoundError(error),
   })
 }

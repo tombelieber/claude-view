@@ -16,65 +16,6 @@ use vibe_recall_db::git_correlation::GitCommit;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
-/// Resolve the JSONL file path for a session.
-///
-/// First tries the naive path: `projects_dir / project_dir / session_id.jsonl`.
-/// If that doesn't exist (e.g. worktree sessions whose `project_id` was merged
-/// into the parent project), falls back to the `file_path` stored in the DB.
-///
-/// This handles three scenarios:
-/// 1. Normal session — file at `{projects_dir}/{project_dir}/{uuid}.jsonl`
-/// 2. Worktree session — file at worktree path, found via DB `file_path` column
-/// 3. Deleted session — file doesn't exist anywhere → 404
-async fn resolve_session_path(
-    db: &vibe_recall_db::Database,
-    project_dir: &str,
-    session_id: &str,
-) -> Result<std::path::PathBuf, ApiError> {
-    let projects_dir = vibe_recall_core::claude_projects_dir()?;
-    resolve_session_path_with_base(db, &projects_dir, project_dir, session_id).await
-}
-
-/// Inner implementation that accepts `projects_dir` for testability.
-async fn resolve_session_path_with_base(
-    db: &vibe_recall_db::Database,
-    projects_dir: &std::path::Path,
-    project_dir: &str,
-    session_id: &str,
-) -> Result<std::path::PathBuf, ApiError> {
-    // 1. Try the naive path: projects_dir / project_dir / session_id.jsonl
-    let naive_path = projects_dir
-        .join(project_dir)
-        .join(session_id)
-        .with_extension("jsonl");
-
-    if naive_path.exists() {
-        return Ok(naive_path);
-    }
-
-    // 2. Worktree fallback: the DB stores the real file_path
-    let db_path: Option<(String,)> = sqlx::query_as(
-        "SELECT file_path FROM sessions WHERE id = ?1 LIMIT 1",
-    )
-    .bind(session_id)
-    .fetch_optional(db.pool())
-    .await
-    .map_err(|e| ApiError::Internal(format!("DB lookup failed: {}", e)))?;
-
-    if let Some((file_path,)) = db_path {
-        let p = std::path::PathBuf::from(&file_path);
-        if p.exists() {
-            return Ok(p);
-        }
-    }
-
-    // 3. File doesn't exist anywhere
-    Err(ApiError::SessionNotFound(format!(
-        "{}/{}",
-        project_dir, session_id
-    )))
-}
-
 // ============================================================================
 // Filter and Sort Enums
 // ============================================================================
@@ -494,14 +435,29 @@ pub async fn get_session_messages_by_id(
     let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
-
-/// GET /api/session/:project_dir/:session_id - Get a parsed session by ID.
+/// DEPRECATED: Use `GET /api/sessions/:id/parsed` instead.
+/// Kept for backward compatibility. Will be removed in v0.6.
 ///
-/// Returns the full parsed session with all messages and metadata.
-/// The project_dir is the URL-encoded project directory name (can contain slashes).
-/// The session_id is the UUID of the session.
+/// The `project_dir` parameter is now ignored — path resolution is DB-based.
+#[deprecated(note = "Use get_session_parsed instead")]
 pub async fn get_session(
     State(state): State<Arc<AppState>>,
+    Path((_project_dir, session_id)): Path<(String, String)>,
+) -> ApiResult<Json<ParsedSession>> {
+    let file_path = state
+        .db
+        .get_session_file_path(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id));
+    }
+
+    let session = vibe_recall_core::parse_session(&path).await?;
+    Ok(Json(session))
+}
     Path((project_dir, session_id)): Path<(String, String)>,
 ) -> ApiResult<Json<ParsedSession>> {
     let project_dir_decoded = urlencoding::decode(&project_dir)
@@ -512,14 +468,32 @@ pub async fn get_session(
     let session = vibe_recall_core::parse_session(&session_path).await?;
     Ok(Json(session))
 }
-
-/// GET /api/session/:project_dir/:session_id/messages?limit=100&offset=0
+/// DEPRECATED: Use `GET /api/sessions/:id/messages` instead.
+/// Kept for backward compatibility. Will be removed in v0.6.
 ///
-/// Returns a paginated slice of session messages with total count.
-/// The existing GET /api/session/:project_dir/:session_id endpoint
-/// remains unchanged for backward compatibility.
+/// The `project_dir` parameter is now ignored — path resolution is DB-based.
+#[deprecated(note = "Use get_session_messages_by_id instead")]
 pub async fn get_session_messages(
     State(state): State<Arc<AppState>>,
+    Path((_project_dir, session_id)): Path<(String, String)>,
+    Query(query): Query<SessionMessagesQuery>,
+) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+    let file_path = state
+        .db
+        .get_session_file_path(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id));
+    }
+
+    let limit = query.limit.unwrap_or(100);
+    let offset = query.offset.unwrap_or(0);
+    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    Ok(Json(result))
+}
     Path((project_dir, session_id)): Path<(String, String)>,
     Query(query): Query<SessionMessagesQuery>,
 ) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
@@ -559,6 +533,7 @@ pub async fn list_branches(
 }
 
 /// Create the sessions routes router.
+#[allow(deprecated)] // Legacy /session/ routes kept for backward compat until v0.6
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
@@ -1301,149 +1276,6 @@ mod tests {
     }
 
     // ========================================================================
-    // resolve_session_path_with_base tests
-    // ========================================================================
-
-    /// Helper: insert a minimal session row into the DB for resolve_session_path tests.
-    async fn insert_session_with_file_path(db: &Database, id: &str, project_id: &str, file_path: &str) {
-        let mut session = make_session(id, project_id, 1700000000);
-        session.file_path = file_path.to_string();
-        db.insert_session(&session, project_id, "Test Project")
-            .await
-            .unwrap();
-    }
-
-    /// Case 1: Normal session — file exists at the naive path (projects_dir/project_dir/uuid.jsonl).
-    #[tokio::test]
-    async fn test_resolve_path_naive_path_exists() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
-
-        // Create the file at the naive path
-        let project_dir = "main-project";
-        let session_id = "aaaa-bbbb";
-        let naive_dir = projects_dir.join(project_dir);
-        std::fs::create_dir_all(&naive_dir).unwrap();
-        let naive_file = naive_dir.join(format!("{}.jsonl", session_id));
-        std::fs::write(&naive_file, "{}").unwrap();
-
-        let result = resolve_session_path_with_base(&db, projects_dir, project_dir, session_id).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), naive_file);
-    }
-
-    /// Case 2: Worktree session (active) — naive path doesn't exist, DB file_path does.
-    /// This is the main worktree bug: project_id = parent, file lives under worktree dir.
-    #[tokio::test]
-    async fn test_resolve_path_worktree_fallback() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
-
-        let session_id = "1f31-abcd";
-        let parent_project = "main-project";
-        let worktree_dir = projects_dir.join("main-project--worktrees-feature-branch");
-        std::fs::create_dir_all(&worktree_dir).unwrap();
-        let worktree_file = worktree_dir.join(format!("{}.jsonl", session_id));
-        std::fs::write(&worktree_file, "{}").unwrap();
-
-        // DB has file_path pointing to worktree location, project_id = parent
-        insert_session_with_file_path(
-            &db,
-            session_id,
-            parent_project,
-            worktree_file.to_str().unwrap(),
-        )
-        .await;
-
-        // Naive path (parent project dir) doesn't exist — should fall back to DB
-        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
-        assert!(result.is_ok(), "Should find worktree file via DB fallback");
-        assert_eq!(result.unwrap(), worktree_file);
-    }
-
-    /// Case 3: Worktree deleted, but JSONL files in ~/.claude/projects/ persist.
-    /// The git worktree is gone, but Claude's session dir remains.
-    #[tokio::test]
-    async fn test_resolve_path_worktree_deleted_jsonl_persists() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
-
-        let session_id = "dead-beef";
-        let parent_project = "main-project";
-
-        // The worktree session dir in ~/.claude/projects/ still exists
-        let worktree_session_dir = projects_dir.join("main-project--worktrees-old-branch");
-        std::fs::create_dir_all(&worktree_session_dir).unwrap();
-        let worktree_file = worktree_session_dir.join(format!("{}.jsonl", session_id));
-        std::fs::write(&worktree_file, "{}").unwrap();
-
-        // No naive path (parent project dir doesn't even exist)
-        // DB file_path points to the persisted worktree session file
-        insert_session_with_file_path(
-            &db,
-            session_id,
-            parent_project,
-            worktree_file.to_str().unwrap(),
-        )
-        .await;
-
-        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
-        assert!(result.is_ok(), "Should find persisted JSONL even after worktree deletion");
-        assert_eq!(result.unwrap(), worktree_file);
-    }
-
-    /// Case 4: Session JSONL truly deleted — neither naive path nor DB file_path exist.
-    /// Should return 404.
-    #[tokio::test]
-    async fn test_resolve_path_file_deleted_everywhere() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
-
-        let session_id = "gone-sess";
-        let parent_project = "main-project";
-
-        // DB has stale file_path pointing to a file that no longer exists
-        insert_session_with_file_path(
-            &db,
-            session_id,
-            parent_project,
-            "/nonexistent/path/gone-sess.jsonl",
-        )
-        .await;
-
-        let result = resolve_session_path_with_base(&db, projects_dir, parent_project, session_id).await;
-        assert!(result.is_err(), "Should return 404 when file is gone everywhere");
-        let err = result.unwrap_err();
-        assert!(
-            matches!(err, ApiError::SessionNotFound(_)),
-            "Error should be SessionNotFound, got: {:?}",
-            err
-        );
-    }
-
-    /// Case 5: Session not in DB at all — naive path doesn't exist, DB returns None.
-    #[tokio::test]
-    async fn test_resolve_path_not_in_db() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
-
-        let result = resolve_session_path_with_base(
-            &db,
-            projects_dir,
-            "some-project",
-            "nonexistent-uuid",
-        )
-        .await;
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ApiError::SessionNotFound(_)));
-    }
-
-    // ========================================================================
     // GET /api/sessions/:id/parsed tests
     // ========================================================================
 
@@ -1544,40 +1376,30 @@ mod tests {
         assert!(json["total"].as_u64().unwrap() > 0, "Total should reflect the fixture message count");
     }
 
-    /// Case 6: Naive path takes priority over DB fallback.
-    /// If the file exists at both locations, prefer the naive path.
+    // ========================================================================
+    // Legacy endpoint backward-compat regression test
+    // ========================================================================
+
     #[tokio::test]
-    async fn test_resolve_path_naive_takes_priority() {
+    async fn test_legacy_get_session_still_works() {
         let db = test_db().await;
         let tmp = tempfile::tempdir().unwrap();
-        let projects_dir = tmp.path();
+        let session_file = tmp.path().join("legacy-test.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
+        ).unwrap();
 
-        let session_id = "dual-file";
-        let project_dir = "main-project";
+        let mut session = make_session("legacy-ok", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project").await.unwrap();
 
-        // Create file at naive path
-        let naive_dir = projects_dir.join(project_dir);
-        std::fs::create_dir_all(&naive_dir).unwrap();
-        let naive_file = naive_dir.join(format!("{}.jsonl", session_id));
-        std::fs::write(&naive_file, "{\"naive\":true}").unwrap();
-
-        // Also create file at worktree path and register in DB
-        let worktree_dir = projects_dir.join("main-project--worktrees-branch");
-        std::fs::create_dir_all(&worktree_dir).unwrap();
-        let worktree_file = worktree_dir.join(format!("{}.jsonl", session_id));
-        std::fs::write(&worktree_file, "{\"worktree\":true}").unwrap();
-
-        insert_session_with_file_path(
-            &db,
-            session_id,
-            project_dir,
-            worktree_file.to_str().unwrap(),
-        )
-        .await;
-
-        let result = resolve_session_path_with_base(&db, projects_dir, project_dir, session_id).await;
-        assert!(result.is_ok());
-        // Naive path should win (avoids DB query when unnecessary)
-        assert_eq!(result.unwrap(), naive_file);
+        let app = build_app(db);
+        // Legacy endpoint: project_dir is now ignored, path comes from DB
+        let (status, body) = do_get(app, "/api/session/proj/legacy-ok").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let messages = json["messages"].as_array().expect("should contain messages");
+        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
     }
 }
