@@ -4,17 +4,20 @@ import { FolderOpen } from 'lucide-react'
 import { useProjectSummaries } from './hooks/use-projects'
 import { useAppStore } from './store/app-store'
 import { useTheme } from './hooks/use-theme'
+import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { DashboardSkeleton, ErrorState, EmptyState } from './components/LoadingStates'
+import { ColdStartOverlay } from './components/ColdStartOverlay'
 import { PatternAlert } from './components/PatternAlert'
 
 export default function App() {
   const { data: summaries, isLoading, error, refetch } = useProjectSummaries()
   const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette } = useAppStore()
   useTheme() // Apply dark class to <html>
+  const indexingProgress = useIndexingProgress()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -73,6 +76,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
       <a href="#main" className="skip-to-content">Skip to content</a>
       <Header />
+      <ColdStartOverlay progress={indexingProgress} />
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar projects={summaries} />
