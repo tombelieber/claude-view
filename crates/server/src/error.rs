@@ -68,14 +68,14 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_response) = match &self {
             ApiError::SessionNotFound(id) => {
-                tracing::error!(session_id = %id, "Session not found");
+                tracing::warn!(session_id = %id, "Session not found");
                 (
                     StatusCode::NOT_FOUND,
                     ErrorResponse::with_details("Session not found", format!("Session ID: {}", id)),
                 )
             }
             ApiError::ProjectNotFound(id) => {
-                tracing::error!(project_id = %id, "Project not found");
+                tracing::warn!(project_id = %id, "Project not found");
                 (
                     StatusCode::NOT_FOUND,
                     ErrorResponse::with_details("Project not found", format!("Project ID: {}", id)),
