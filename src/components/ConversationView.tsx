@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
@@ -56,6 +56,8 @@ export function ConversationView() {
   const projectName = project?.displayName || projectDir
 
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
@@ -157,6 +159,18 @@ export function ConversationView() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf, handleContinueChat])
+
+  // Close export menu on outside click
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [exportMenuOpen])
 
   const allMessages = useMemo(
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
@@ -370,62 +384,82 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Primary CTA: Continue This Chat */}
           <button
-            onClick={handleResume}
-            aria-label="Copy resume command to clipboard"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/30 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
-          >
-            <Terminal className="w-4 h-4" />
-            <span>Resume</span>
-          </button>
-          <button
-            onClick={handleExportHtml}
-            disabled={!exportsReady}
-            aria-label="Export as HTML"
+            onClick={handleContinueChat}
+            disabled={!exportsReady || !sessionDetail}
+            aria-label="Copy conversation context to clipboard for continuing in a new session"
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
+              "flex items-center gap-2 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+              exportsReady && sessionDetail
+                ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
+                : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
             )}
           >
-            <span>HTML</span>
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleExportPdf}
-            disabled={!exportsReady}
-            aria-label="Export as PDF"
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <span>PDF</span>
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleExportMarkdown}
-            disabled={!exportsReady}
-            aria-label="Export as Markdown"
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <span>MD</span>
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleCopyMarkdown}
-            disabled={!exportsReady}
-            aria-label="Copy conversation as Markdown"
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady ? "hover:bg-gray-50 dark:hover:bg-gray-700" : "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <span>Copy</span>
             <Copy className="w-4 h-4" />
+            <span>Continue This Chat</span>
           </button>
+
+          {/* Export overflow menu */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              disabled={!exportsReady}
+              aria-label="Export options"
+              aria-expanded={exportMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+                exportsReady
+                  ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <Download className="w-4 h-4" />
+              <span>Export</span>
+              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", exportMenuOpen && "rotate-180")} aria-hidden="true" />
+            </button>
+
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                <button
+                  onClick={() => { handleResume(); setExportMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Terminal className="w-4 h-4" />
+                  Resume Command
+                </button>
+                <button
+                  onClick={() => { handleExportHtml(); setExportMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  HTML
+                </button>
+                <button
+                  onClick={() => { handleExportPdf(); setExportMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF
+                </button>
+                <button
+                  onClick={() => { handleExportMarkdown(); setExportMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  Markdown
+                </button>
+                <button
+                  onClick={() => { handleCopyMarkdown(); setExportMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Full Transcript
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
