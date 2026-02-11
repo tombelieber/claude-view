@@ -4,15 +4,19 @@
 //! This crate provides the Axum-based HTTP server for the vibe-recall application.
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
+pub mod classify_state;
 pub mod error;
+pub mod facet_ingest;
 pub mod git_sync_state;
 pub mod indexing_state;
+pub mod jobs;
 pub mod insights;
 pub mod metrics;
 pub mod routes;
 pub mod state;
 
 pub use error::*;
+pub use facet_ingest::{FacetIngestState, IngestStatus};
 pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
@@ -96,6 +100,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         indexing: Arc::new(IndexingState::new()),
         git_sync,
         registry: Arc::new(std::sync::RwLock::new(None)),
+        jobs: Arc::new(jobs::JobRunner::new()),
+        classify: Arc::new(classify_state::ClassifyState::new()),
+        facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
         pricing: vibe_recall_db::default_pricing(),
     });
     api_routes(state)

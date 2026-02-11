@@ -98,7 +98,8 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | Phase 6: Search (Tantivy) | Deferred | — | Both |
 | Phase 7: Multi-Tool Providers | Draft | Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
-| **Theme 4: Chat Insights** | Pending | 0/8 phases, 0/39 tasks — see `theme4/PROGRESS.md` | Personal |
+| **Theme 4: Chat Insights** | **DONE** | 8/8 phases, 39/39 tasks — classification, patterns, insights page shipped | Personal |
+| **Ambient Coach (Insights v2)** | Pending | 0/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces | Personal |
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
 | **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
 
@@ -400,6 +401,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-07-rename-to-claude-score.md` | approved | **Rename** — full rename plan: vibe-recall/claude-view → claude-score (60+ files, 4 tiers) |
 | `2026-02-10-multi-tool-provider-design.md` | draft | **Phase 7** — Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline support |
 | `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
+| `2026-02-10-ambient-coach-insights.md` | pending | **Ambient Coach** — facet cache ingest from `/insights`, fluency score (0-100), session quality badges, dashboard coach card, pattern alerts, 6h auto-ingest cron |
 | `mission-control/` | approved | **Mission Control** — live session monitoring, cost tracking, resume, sub-agent viz (6 phases, 8 files, see `mission-control/PROGRESS.md`) |
 
 ### Reference Plans (in `/docs/plans/archived/`)

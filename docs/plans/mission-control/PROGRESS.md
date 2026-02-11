@@ -69,10 +69,61 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 Key findings from brainstorming research (2026-02-10):
 
 - **Claude Agent SDK** cannot attach to existing sessions - only spawns new subprocesses
-- **OpenClaw** calls Anthropic API directly via Pi runtime, does NOT use Claude Code CLI
-- **NanoClaw** uses Agent SDK to spawn sessions in containers via stdin/stdout
 - **PTY attachment** not feasible on macOS (TIOCSTI blocked, reptyr unsupported)
 - **Prompt caching** makes resume cost-effective: 90% discount on cached tokens, 5-min TTL
 - **Anthropic API is stateless** - every request sends full conversation history
 - **Auto-compaction** triggers at ~75-95% context window usage
 - **Existing tools**: claude-code-ui (XState), claude-code-monitor (hooks), clog (web viewer) - none combine monitoring + control + cost tracking
+
+### OpenClaw Ecosystem Research (2026-02-10, corrected)
+
+**Previous assumption was wrong.** OpenClaw IS built on top of Claude Code CLI subscription:
+
+| Component | What it does | Relevance to us |
+|-----------|-------------|-----------------|
+| **OpenClaw core** (180k+ stars) | Personal AI agent on any messaging platform. WebSocket Gateway, Pi agent RPC, skill system via ClawHub. Built on Node.js ≥22. | Architecture reference for multi-agent orchestration. NOT relevant for session monitoring (different use case). |
+| **claude-max-api-proxy** | Routes OpenAI-format requests (`localhost:3456/v1/chat/completions`) through Claude Code CLI using existing subscription auth. No separate API key needed. | Potential fallback for users who want OpenAI-compatible LLM access without an API key. Deferred — CLI Direct is simpler. |
+| **OpenClaw Dashboard** | Scrapes CLI `/usage` via persistent tmux session. Reads `~/.openclaw/agents/` session dirs. 5s polling. Rate limit monitoring with "time to limit" predictions. Glassmorphic dark UI. | UI patterns to study: rate limit visualization, burn rate predictions, glassmorphic cards. But their session monitoring approach (tmux scraping) is inferior to our JSONL file watching. |
+| **openclaw-claude-code-skill** | MCP integration for sub-agent orchestration. State persistence via IndexedDB/localStorage. Timestamp-based merge conflict resolution. | MCP patterns for future Phase F sub-agent coordination. |
+
+**Key insight:** OpenClaw's `claude-max-api-proxy` provides a path for using the user's Claude subscription without an API key. However, `claude -p --model haiku "prompt"` (CLI Direct) achieves the same result with zero extra infrastructure. We use CLI Direct as our default, document claude-max-api-proxy as a deferred alternative.
+
+### Claude Code `/insights` Research (2026-02-10)
+
+Claude Code shipped a built-in `/insights` command (week of 2026-02-03). It uses Haiku to analyze sessions and generate an HTML report. This directly overlaps with Theme 4's planned classification system.
+
+**`/insights` 6-stage pipeline:**
+1. Filter sessions (skip <2 messages, <1min, sub-sessions)
+2. Chunk long transcripts (>30k chars → 25k segments → summarize)
+3. Facet extraction per session (Haiku, 4,096 max output tokens)
+4. Aggregate analysis across sessions (Haiku, 8,192 max output tokens)
+5. Executive summary
+6. Render interactive HTML report at `~/.claude/usage-data/report.html`
+
+**Facets extracted per session (cached at `~/.claude/usage-data/facets/<session-id>.json`):**
+- 13 goal categories: `debug_investigate`, `implement_feature`, `fix_bug`, `write_script_tool`, `refactor_code`, `configure_system`, `create_pr_commit`, `analyze_data`, `understand_codebase`, `write_tests`, `write_docs`, `deploy_infra`, `warmup_minimal`
+- 5 outcome levels: `not_achieved` → `fully_achieved`
+- 6 satisfaction levels: `frustrated` → `happy`
+- 12 friction types: `misunderstood_request`, `wrong_approach`, `buggy_code`, `user_rejected_action`, etc.
+- 5 helpfulness levels: `unhelpful` → `essential`
+- 5 session types: `single_task`, `multi_task`, `iterative_refinement`, `exploration`, `quick_question`
+- 7 success categories: `fast_accurate_search`, `correct_code_edits`, `good_explanations`, etc.
+
+**What `/insights` does NOT do (our opportunity):**
+- No time-series trending — snapshot only, no history
+- No cost-quality correlation — knows cost and quality separately, never connects them
+- No cross-project comparison — flat list, no project grouping
+- No inline integration — separate HTML file, not in any dashboard
+- No proactive coaching — post-hoc report, not just-in-time nudges
+- No gamification — no scores, streaks, or achievements
+
+**Impact on Theme 4:** Our insights feature should NOT re-implement `/insights` facet extraction. Instead, we parasitize the cache (`~/.claude/usage-data/facets/*.json`), store in SQLite for trending, and build the time-series/coaching/ambient layer that `/insights` fundamentally cannot provide. See revised Theme 4 design.
+
+### Other Reference Projects (2026-02-10)
+
+| Project | Stars | What it does | Relevance |
+|---------|-------|-------------|-----------|
+| **Agent Sessions** | — | Local-first session aggregator for 7 CLI tools (Claude Code, Codex, Gemini, etc.). macOS-only. Read-only browsing, Apple Notes-style search. | UI reference for multi-tool session browsing. |
+| **NanoClaw** | ~500 lines TS | Agent SDK + Apple containers for secure WhatsApp AI. | Container isolation pattern for Phase F. |
+| **TinyClaw** | Small | Tiny wrapper for Claude Code on Discord/WhatsApp. File-based queue. | Not relevant for monitoring. |
+| **NanoBot** (HKUDS) | ~4k lines | Ultra-lightweight personal AI assistant. Multi-platform messaging. | Not relevant for monitoring. |
