@@ -181,7 +181,8 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               <div className="flex items-center justify-between">
                 <span>Last run</span>
                 <span className="tabular-nums">
-                  {status.lastRun.completedAt
+                  {status.lastRun.completedAt &&
+                  !status.lastRun.completedAt.startsWith('1970')
                     ? new Date(status.lastRun.completedAt).toLocaleDateString(undefined, {
                         month: 'short',
                         day: 'numeric',

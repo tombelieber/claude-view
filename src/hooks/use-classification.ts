@@ -93,11 +93,15 @@ export function useClassification(): UseClassificationResult {
     return () => clearInterval(interval)
   }, [status?.status, fetchStatus])
 
-  // Connect to SSE stream
+  // Connect to SSE stream (bypass Vite proxy in dev — see CLAUDE.md)
   const connectStream = useCallback(() => {
     if (eventSourceRef.current) return
 
-    const es = new EventSource('/api/classify/stream')
+    const url =
+      typeof window !== 'undefined' && window.location.port === '5173'
+        ? 'http://localhost:47892/api/classify/stream'
+        : '/api/classify/stream'
+    const es = new EventSource(url)
     eventSourceRef.current = es
     setIsStreaming(true)
 

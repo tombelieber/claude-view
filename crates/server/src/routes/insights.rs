@@ -306,7 +306,7 @@ impl LightSession {
             project: self.project_id.clone(),
             project_path: self.project_path,
             file_path: self.file_path,
-            modified_at: self.last_message_at.unwrap_or(0),
+            modified_at: self.last_message_at.filter(|&ts| ts > 0).unwrap_or(0),
             size_bytes: self.size_bytes as u64,
             preview: String::new(),
             last_message: String::new(),
@@ -1261,7 +1261,7 @@ pub async fn get_benchmarks(
 
     // Find the earliest session in the data window
     let earliest_row: (Option<i64>,) = sqlx::query_as(
-        "SELECT MIN(last_message_at) FROM sessions WHERE last_message_at >= ?1",
+        "SELECT MIN(last_message_at) FROM sessions WHERE last_message_at > 0 AND last_message_at >= ?1",
     )
     .bind(data_start)
     .fetch_one(pool)
@@ -1405,7 +1405,10 @@ pub async fn get_benchmarks(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to fetch skill info: {}", e)))?;
 
-        let adopted_at = adoption_info.0.unwrap_or(0);
+        let adopted_at = match adoption_info.0.filter(|&ts| ts > 0) {
+            Some(ts) => ts,
+            None => continue, // skip skills with no valid adoption timestamp
+        };
         let session_count = adoption_info.1 as u32;
 
         if session_count < 3 {
