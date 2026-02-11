@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code, FileX } from 'lucide-react'
+import { ArrowLeft, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
@@ -117,6 +117,15 @@ export function ConversationView() {
     showToast(ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions', ok ? 2000 : 3000)
   }, [session, projectName, sessionId])
 
+  const handleResume = useCallback(async () => {
+    const cmd = `claude --resume ${sessionId}`
+    const ok = await copyToClipboard(cmd)
+    showToast(
+      ok ? 'Resume command copied — paste in terminal' : 'Failed to copy — check browser permissions',
+      3000
+    )
+  }, [sessionId])
+
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -129,12 +138,15 @@ export function ConversationView() {
       } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault()
         handleExportPdf()
+      } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        handleResume()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleExportHtml, handleExportPdf])
+  }, [handleExportHtml, handleExportPdf, handleResume])
 
   const allMessages = useMemo(
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
@@ -228,6 +240,14 @@ export function ConversationView() {
             <span className="text-gray-300 dark:text-gray-600">|</span>
             <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
           </div>
+          <button
+            onClick={handleResume}
+            aria-label="Copy resume command to clipboard"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/30 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          >
+            <Terminal className="w-4 h-4" />
+            <span>Resume</span>
+          </button>
         </div>
 
         {/* Two-column: Message + Sidebar */}
@@ -340,6 +360,14 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleResume}
+            aria-label="Copy resume command to clipboard"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/30 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          >
+            <Terminal className="w-4 h-4" />
+            <span>Resume</span>
+          </button>
           <button
             onClick={handleExportHtml}
             disabled={!exportsReady}

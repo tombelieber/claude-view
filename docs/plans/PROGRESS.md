@@ -102,6 +102,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Ambient Coach (Insights v2)** | Pending | 0/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces | Personal |
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
 | **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
+| **Mobile PWA** | Draft | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Depends on Mission Control A (M1) and F (M3) | Personal |
 
 **Current focus:** GTM Launch (README repositioning, AI Fluency Score, demo GIF, Show HN prep)
 
@@ -378,6 +379,22 @@ Plan file: TBD (will be created when Phase 5 begins)
 
 ---
 
+## Mobile PWA — Draft
+
+Remote session monitoring and control from mobile devices via Progressive Web App + E2E encrypted relay.
+
+**Phases:**
+
+| Phase | Name | Status | Description | Depends On |
+|-------|------|--------|-------------|------------|
+| M1 | Status Monitor | `draft` | Push notifications, session status cards, basic cost tracking on mobile | Mission Control Phase A |
+| M2 | Read-Only Dashboard | `draft` | Full dashboard experience adapted for mobile, responsive charts/metrics | M1 |
+| M3 | Interactive Control | `draft` | Resume/pause sessions, send prompts from mobile via Agent SDK relay | Mission Control Phase F |
+
+Plan file: `2026-02-12-mobile-pwa-design.md` (to be created)
+
+---
+
 ## Plan File Index
 
 Clean 3-tier structure: active work only in main folder.
@@ -403,6 +420,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-04-brainstorm-checkpoint.md` | draft | **Brainstorm checkpoint** — resume point for future brainstorming |
 | `2026-02-10-ambient-coach-insights.md` | pending | **Ambient Coach** — facet cache ingest from `/insights`, fluency score (0-100), session quality badges, dashboard coach card, pattern alerts, 6h auto-ingest cron |
 | `mission-control/` | approved | **Mission Control** — live session monitoring, cost tracking, resume, sub-agent viz (6 phases, 8 files, see `mission-control/PROGRESS.md`) |
+| `2026-02-12-mobile-pwa-design.md` | draft | **Mobile PWA** — remote session monitoring via E2E encrypted relay + PWA (3 phases: M1 Status Monitor, M2 Read-Only Dashboard, M3 Interactive Control). Depends on Mission Control Phase A (M1) and Phase F (M3) |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
