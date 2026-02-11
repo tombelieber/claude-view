@@ -6,9 +6,12 @@ use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
+use crate::live::manager::LiveSessionMap;
+use crate::live::state::SessionEvent;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use tokio::sync::broadcast;
 use vibe_recall_core::Registry;
 use vibe_recall_db::{Database, ModelPricing};
 
@@ -42,6 +45,10 @@ pub struct AppState {
     pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
     pub pricing: HashMap<String, ModelPricing>,
+    /// Live session state for Mission Control (in-memory, not persisted).
+    pub live_sessions: LiveSessionMap,
+    /// Broadcast sender for live session SSE events.
+    pub live_tx: broadcast::Sender<SessionEvent>,
 }
 
 impl AppState {
@@ -59,6 +66,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
+            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            live_tx: broadcast::channel(256).0,
         })
     }
 
@@ -75,6 +84,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
+            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            live_tx: broadcast::channel(256).0,
         })
     }
 
@@ -94,6 +105,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: vibe_recall_db::default_pricing(),
+            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            live_tx: broadcast::channel(256).0,
         })
     }
 
