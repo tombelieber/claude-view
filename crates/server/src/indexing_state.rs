@@ -3,7 +3,7 @@
 //! [`IndexingState`] uses atomics so the indexing background task can update
 //! progress counters while the HTTP handler reads them without contention.
 
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::RwLock;
 
 /// Which phase the indexer is currently in.
@@ -48,6 +48,8 @@ pub struct IndexingState {
     indexed: AtomicUsize,
     projects_found: AtomicUsize,
     sessions_found: AtomicUsize,
+    bytes_processed: AtomicU64,
+    bytes_total: AtomicU64,
     error: RwLock<Option<String>>,
 }
 
@@ -61,6 +63,8 @@ impl IndexingState {
             indexed: AtomicUsize::new(0),
             projects_found: AtomicUsize::new(0),
             sessions_found: AtomicUsize::new(0),
+            bytes_processed: AtomicU64::new(0),
+            bytes_total: AtomicU64::new(0),
             error: RwLock::new(None),
         }
     }
@@ -126,6 +130,28 @@ impl IndexingState {
         self.sessions_found.store(val, Ordering::Relaxed);
     }
 
+    // -- Bandwidth ------------------------------------------------------------
+
+    /// Cumulative bytes of JSONL parsed so far.
+    pub fn bytes_processed(&self) -> u64 {
+        self.bytes_processed.load(Ordering::Relaxed)
+    }
+
+    /// Add to the cumulative bytes-processed counter.
+    pub fn add_bytes_processed(&self, bytes: u64) {
+        self.bytes_processed.fetch_add(bytes, Ordering::Relaxed);
+    }
+
+    /// Total bytes of all JSONL files to parse.
+    pub fn bytes_total(&self) -> u64 {
+        self.bytes_total.load(Ordering::Relaxed)
+    }
+
+    /// Set the total bytes of all JSONL files to parse.
+    pub fn set_bytes_total(&self, bytes: u64) {
+        self.bytes_total.store(bytes, Ordering::Relaxed);
+    }
+
     // -- Error ----------------------------------------------------------------
 
     /// Record an error message (also sets status to [`IndexingStatus::Error`]).
@@ -150,6 +176,8 @@ impl IndexingState {
         self.total.store(0, Ordering::Relaxed);
         self.projects_found.store(0, Ordering::Relaxed);
         self.sessions_found.store(0, Ordering::Relaxed);
+        self.bytes_processed.store(0, Ordering::Relaxed);
+        self.bytes_total.store(0, Ordering::Relaxed);
         if let Ok(mut guard) = self.error.write() {
             *guard = None;
         }
@@ -277,5 +305,19 @@ mod tests {
     fn default_impl() {
         let state = IndexingState::default();
         assert_eq!(state.status(), IndexingStatus::Idle);
+    }
+
+    #[test]
+    fn test_bandwidth_tracking() {
+        let state = IndexingState::new();
+        assert_eq!(state.bytes_processed(), 0);
+        assert_eq!(state.bytes_total(), 0);
+
+        state.set_bytes_total(52_100_000_000);
+        state.add_bytes_processed(1_000_000_000);
+        state.add_bytes_processed(500_000_000);
+
+        assert_eq!(state.bytes_total(), 52_100_000_000);
+        assert_eq!(state.bytes_processed(), 1_500_000_000);
     }
 }
