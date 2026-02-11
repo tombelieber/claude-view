@@ -158,7 +158,16 @@ impl Database {
         for (i, migration) in migrations::MIGRATIONS.iter().enumerate() {
             let version = i + 1; // 1-based
             if version > current_version {
-                match sqlx::query(migration).execute(&self.pool).await {
+                // Multi-statement migrations (containing BEGIN/COMMIT) use raw_sql()
+                // which supports executing multiple statements atomically.
+                // Single-statement migrations use query() as before.
+                let is_multi_statement = migration.contains("BEGIN;") || migration.contains("BEGIN\n");
+                let result = if is_multi_statement {
+                    sqlx::raw_sql(migration).execute(&self.pool).await.map(|_| ())
+                } else {
+                    sqlx::query(migration).execute(&self.pool).await.map(|_| ())
+                };
+                match result {
                     Ok(_) => {}
                     Err(e) if e.to_string().contains("duplicate column name") => {
                         // Column already exists from a previous run without tracking.
