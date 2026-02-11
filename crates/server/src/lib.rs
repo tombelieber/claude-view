@@ -10,6 +10,7 @@ pub mod facet_ingest;
 pub mod git_sync_state;
 pub mod indexing_state;
 pub mod jobs;
+pub mod live;
 pub mod insights;
 pub mod metrics;
 pub mod routes;
@@ -20,6 +21,8 @@ pub use facet_ingest::{FacetIngestState, IngestStatus};
 pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
+pub use live::manager::LiveSessionMap;
+pub use live::state::SessionEvent;
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
@@ -104,6 +107,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
         pricing: vibe_recall_db::default_pricing(),
+        live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        live_tx: tokio::sync::broadcast::channel(256).0,
     });
     api_routes(state)
 }
@@ -112,14 +117,31 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
 /// registry holder, and optional static file serving.
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
-/// delegate to this one.
+/// delegate to this one. Starts the `LiveSessionManager` for Mission Control.
 pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
     static_dir: Option<PathBuf>,
 ) -> Router {
-    let state = AppState::new_with_indexing_and_registry(db, indexing, registry);
+    // Start live session monitoring (file watcher, process detector, cleanup)
+    let pricing = vibe_recall_db::default_pricing();
+    let (_manager, live_sessions, live_tx) =
+        live::manager::LiveSessionManager::start(pricing.clone());
+
+    let state = Arc::new(state::AppState {
+        start_time: std::time::Instant::now(),
+        db,
+        indexing,
+        git_sync: Arc::new(GitSyncState::new()),
+        registry,
+        jobs: Arc::new(jobs::JobRunner::new()),
+        classify: Arc::new(classify_state::ClassifyState::new()),
+        facet_ingest: Arc::new(FacetIngestState::new()),
+        pricing,
+        live_sessions,
+        live_tx,
+    });
 
     let mut app = Router::new()
         .merge(api_routes(state))
