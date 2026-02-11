@@ -1,17 +1,23 @@
 //! API route handlers for the vibe-recall server.
 
+pub mod classify;
 pub mod contributions;
 pub mod export;
+pub mod facets;
 pub mod health;
 pub mod indexing;
+pub mod insights;
 pub mod invocables;
+pub mod jobs;
 pub mod metrics;
 pub mod models;
 pub mod projects;
+pub mod score;
 pub mod sessions;
 pub mod stats;
 pub mod status;
 pub mod sync;
+pub mod system;
 pub mod trends;
 
 use std::sync::Arc;
@@ -41,8 +47,24 @@ use crate::state::AppState;
 /// - GET  /api/sync/git/progress - SSE stream of git sync progress
 /// - POST /api/sync/deep - Trigger full deep index rebuild
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
+/// - GET /api/system - Comprehensive system status
+/// - POST /api/system/reindex - Trigger full re-index
+/// - POST /api/system/clear-cache - Clear search index and cache
+/// - POST /api/system/git-resync - Trigger full git re-sync
+/// - POST /api/system/reset - Factory reset all data
+/// - POST /api/classify - Trigger classification job
+/// - GET  /api/classify/status - Get classification status
+/// - GET  /api/classify/stream - SSE stream of classification progress
+/// - POST /api/classify/cancel - Cancel running classification
+/// - GET  /api/insights - Computed behavioral insights and patterns
 /// - GET /api/contributions - Contribution metrics and insights
 /// - GET /api/contributions/sessions/:id - Session contribution detail
+/// - GET /api/score - AI Fluency Score (composite 0-100)
+/// - GET  /api/facets/ingest/stream  - SSE stream of facet ingest progress
+/// - POST /api/facets/ingest/trigger - Trigger facet ingest
+/// - GET  /api/facets/stats          - Aggregate facet statistics
+/// - GET  /api/facets/badges         - Quality badges for sessions
+/// - GET  /api/facets/pattern-alert  - Negative satisfaction pattern alert
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -57,7 +79,12 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", status::router())
         .nest("/api", export::router())
         .nest("/api", sync::router())
+        .nest("/api", system::router())
+        .nest("/api", classify::router())
+        .nest("/api", insights::router())
         .nest("/api", contributions::router())
+        .nest("/api", score::router())
+        .nest("/api", facets::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)

@@ -827,6 +827,7 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
                 r#"
@@ -875,6 +876,7 @@ impl Database {
         start_ts: i64,
         end_ts: i64,
     ) -> DbResult<Vec<GitCommit>> {
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
             sqlx::query_as(
                 r#"

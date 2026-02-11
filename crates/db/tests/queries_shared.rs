@@ -1,0 +1,74 @@
+use vibe_recall_core::{SessionInfo, ToolCounts};
+
+/// Helper to create a test SessionInfo with sensible defaults.
+pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
+    SessionInfo {
+        id: id.to_string(),
+        project: project.to_string(),
+        project_path: format!("/home/user/{}", project),
+        file_path: format!(
+            "/home/user/.claude/projects/{}/{}.jsonl",
+            project, id
+        ),
+        modified_at,
+        size_bytes: 2048,
+        preview: format!("Preview for {}", id),
+        last_message: format!("Last message for {}", id),
+        files_touched: vec!["src/main.rs".to_string(), "Cargo.toml".to_string()],
+        skills_used: vec!["/commit".to_string()],
+        tool_counts: ToolCounts {
+            edit: 5,
+            read: 10,
+            bash: 3,
+            write: 2,
+        },
+        message_count: 20,
+        turn_count: 8,
+        summary: None,
+        git_branch: None,
+        is_sidechain: false,
+        deep_indexed: false,
+        total_input_tokens: None,
+        total_output_tokens: None,
+        total_cache_read_tokens: None,
+        total_cache_creation_tokens: None,
+        turn_count_api: None,
+        primary_model: None,
+        // Phase 3: Atomic unit metrics
+        user_prompt_count: 0,
+        api_call_count: 0,
+        tool_call_count: 0,
+        files_read: vec![],
+        files_edited: vec![],
+        files_read_count: 0,
+        files_edited_count: 0,
+        reedited_files_count: 0,
+        duration_seconds: 0,
+        commit_count: 0,
+        thinking_block_count: 0,
+        turn_duration_avg_ms: None,
+        turn_duration_max_ms: None,
+        api_error_count: 0,
+        compaction_count: 0,
+        agent_spawn_count: 0,
+        bash_progress_count: 0,
+        hook_progress_count: 0,
+        mcp_progress_count: 0,
+
+        parse_version: 0,
+        // Phase C: LOC estimation
+        lines_added: 0,
+        lines_removed: 0,
+        loc_source: 0,
+        // Theme 4: Classification
+        category_l1: None,
+        category_l2: None,
+        category_l3: None,
+        category_confidence: None,
+        category_source: None,
+        classified_at: None,
+        prompt_word_count: None,
+        correction_count: 0,
+        same_file_edit_count: 0,
+    }
+}

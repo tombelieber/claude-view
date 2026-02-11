@@ -58,6 +58,73 @@ export type { DerivedMetrics } from './DerivedMetrics'
 export type { SessionDetail } from './SessionDetail'
 export type { SessionsListResponse } from './SessionsListResponse'
 
+// Insights types (Phase 4/5)
+export type { GeneratedInsight } from './GeneratedInsight'
+export type { InsightEvidence } from './InsightEvidence'
+export type { InsightsResponse } from './InsightsResponse'
+export type { InsightsOverview } from './InsightsOverview'
+export type { InsightsMeta } from './InsightsMeta'
+export type { PatternGroups } from './PatternGroups'
+export type { WorkBreakdown } from './WorkBreakdown'
+export type { EfficiencyStats } from './EfficiencyStats'
+export type { BestTimeStats } from './BestTimeStats'
+export type { ClassificationCoverage } from './ClassificationCoverage'
+
+// Categories types (Phase 6)
+export type { CategorySummary } from './CategorySummary'
+export type { CategoryBreakdown } from './CategoryBreakdown'
+export type { CategoryNode } from './CategoryNode'
+export type { OverallAverages } from './OverallAverages'
+export type { CategoriesResponse } from './CategoriesResponse'
+
+// Trends types (Phase 7)
+export type { MetricDataPoint } from './MetricDataPoint'
+export type { CategoryDataPoint } from './CategoryDataPoint'
+export type { HeatmapCell } from './HeatmapCell'
+export type { InsightsTrendsResponse } from './InsightsTrendsResponse'
+
+// Benchmarks types (Phase 8)
+export type { PeriodMetrics } from './PeriodMetrics'
+export type { ImprovementMetrics } from './ImprovementMetrics'
+export type { ProgressComparison } from './ProgressComparison'
+export type { CategoryVerdict } from './CategoryVerdict'
+export type { CategoryPerformance } from './CategoryPerformance'
+export type { LearningCurvePoint } from './LearningCurvePoint'
+export type { SkillAdoption } from './SkillAdoption'
+export type { ReportSummary } from './ReportSummary'
+export type { BenchmarksResponse } from './BenchmarksResponse'
+
+// Classification types (Theme 4)
+export type { ClassifyResponse } from './ClassifyResponse'
+export type { ClassifyStatusResponse } from './ClassifyStatusResponse'
+export type { ClassifyProgressInfo } from './ClassifyProgressInfo'
+export type { ClassifyLastRun } from './ClassifyLastRun'
+export type { ClassifyErrorInfo } from './ClassifyErrorInfo'
+export type { CancelResponse } from './CancelResponse'
+export type { ClassificationInfo } from './ClassificationInfo'
+export type { ClassificationJob } from './ClassificationJob'
+export type { ClassificationJobStatus } from './ClassificationJobStatus'
+export type { CategoryL1 } from './CategoryL1'
+export type { CategoryL2 } from './CategoryL2'
+export type { CategoryL3 } from './CategoryL3'
+
+// System types (Theme 4)
+export type { SystemResponse } from './SystemResponse'
+export type { StorageInfo } from './StorageInfo'
+export type { PerformanceInfo } from './PerformanceInfo'
+export type { HealthInfo } from './HealthInfo'
+export type { HealthStats } from './HealthStats'
+export type { HealthStatus } from './HealthStatus'
+export type { IndexRunInfo } from './IndexRunInfo'
+export type { IndexRun } from './IndexRun'
+export type { IndexRunType } from './IndexRunType'
+export type { IndexRunStatus } from './IndexRunStatus'
+export type { ActionResponse } from './ActionResponse'
+export type { ClearCacheResponse } from './ClearCacheResponse'
+export type { ClaudeCliStatus } from './ClaudeCliStatus'
+export type { StorageStats } from './StorageStats'
+export type { PatternScore } from './PatternScore'
+
 // API response types
 export type { ErrorResponse } from './ErrorResponse'
 export type { ProjectSummary } from './ProjectSummary'

@@ -3,6 +3,7 @@ import { Home, Search, HelpCircle, Settings, ChevronRight, Sun, Moon, Monitor } 
 import { useAppStore } from '../store/app-store'
 import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
+import { ScoreBadge } from './ScoreBadge'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
@@ -75,6 +76,7 @@ export function Header() {
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Claude View</h1>
           <HealthIndicator />
         </Link>
+        <ScoreBadge />
 
         {breadcrumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className="flex items-center">

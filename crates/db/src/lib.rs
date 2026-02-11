@@ -10,6 +10,7 @@ pub mod git_correlation;
 pub mod trends;
 pub mod snapshots;
 pub mod pricing;
+pub mod insights_trends;
 
 pub use queries::AIGenerationStats;
 pub use queries::BranchCount;
@@ -20,6 +21,11 @@ pub use queries::StatsOverview;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
 pub use queries::TokenStats;
+pub use queries::StorageStats;
+pub use queries::HealthStats;
+pub use queries::HealthStatus;
+pub use queries::ClassificationStatus;
+pub use queries::facets::{FacetRow, FacetAggregateStats};
 
 // Re-export trends types
 pub use trends::current_week_bounds;
