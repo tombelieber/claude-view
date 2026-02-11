@@ -595,6 +595,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -680,6 +689,15 @@ mod tests {
             lines_added: 0,
             lines_removed: 0,
             loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -786,6 +804,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -897,6 +924,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
 
@@ -1045,6 +1081,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session, "project-range", "Project Range").await.unwrap();
 
@@ -1149,6 +1194,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 
@@ -1245,6 +1299,15 @@ mod tests {
             loc_source: 0,
 
             parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 

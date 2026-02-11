@@ -5,6 +5,8 @@ import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
+import { SystemPage } from './components/SystemPage'
+import { InsightsPage } from './components/InsightsPage'
 import { ContributionsPage } from './pages/ContributionsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
@@ -49,6 +51,8 @@ export const router = createBrowserRouter([
       { index: true, element: <StatsDashboard /> },
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
+      { path: 'insights', element: <InsightsPage /> },
+      { path: 'system', element: <SystemPage /> },
       { path: 'settings', element: <SettingsPage /> },
       {
         path: 'project/:projectId',
