@@ -106,7 +106,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 
 **Current focus:** GTM Launch (build in public, first posts) + Mission Control Phase C (Monitor Mode)
 
-**Recently completed:** Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Session Endpoint Unification (v0.4.3), Settings page merge (System → Settings unified view)
+**Recently completed:** HTML Export upgrade (metadata header, dark mode, thinking blocks, icons — PR #11), Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Settings page merge (System → Settings unified view)
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
