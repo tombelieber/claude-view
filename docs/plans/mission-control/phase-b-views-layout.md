@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-10
 phase: B
 depends_on: A

@@ -13,7 +13,7 @@ feature: mission-control
 | Phase | Name | Status | Description |
 |-------|------|--------|-------------|
 | A | Read-Only Monitoring | `done` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
-| B | Views & Layout | `pending` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
+| B | Views & Layout | `done` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
 | C | Monitor Mode | `pending` | Live terminal grid, WebSocket + xterm.js, responsive pane grid |
 | D | Sub-Agent Visualization | `pending` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
@@ -45,7 +45,7 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 |------|-------|--------|
 | [`design.md`](design.md) | All | `approved` |
 | [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `done` |
-| [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `pending` |
+| [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
 | [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `pending` |
 | [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `pending` |
 | [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
