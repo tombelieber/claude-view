@@ -18,7 +18,7 @@ export function MobileTabBar({ activeTab, onTabChange }: MobileTabBarProps) {
   const resolvedTab = activeTab === 'monitor' ? 'grid' : activeTab
 
   return (
-    <nav className="flex sm:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 pb-[env(safe-area-inset-bottom)]">
+    <nav className="flex sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 pb-[env(safe-area-inset-bottom)]">
       {tabs.map(({ label, icon: Icon, mode }) => (
         <button
           key={mode}
@@ -26,7 +26,7 @@ export function MobileTabBar({ activeTab, onTabChange }: MobileTabBarProps) {
           onClick={() => onTabChange(mode)}
           className={cn(
             'flex-1 flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-2',
-            resolvedTab === mode ? 'text-indigo-400' : 'text-slate-500'
+            resolvedTab === mode ? 'text-indigo-400' : 'text-gray-400 dark:text-gray-500'
           )}
         >
           <Icon className="w-5 h-5" />
