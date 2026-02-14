@@ -3,6 +3,7 @@ import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 import { WorkTypeBadge } from './WorkTypeBadge'
+import { CategoryBadge } from './CategoryBadge'
 import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
 
 /**
@@ -326,10 +327,12 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
       {/* Footer: Work type badge + Commits badge + LOC + Skills */}
       <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2">
-          {/* Work type badge (Theme 3) */}
-          {workType && (
+          {/* Category badge (AI classification) takes priority over rule-based WorkType */}
+          {session.categoryL2 ? (
+            <CategoryBadge l1={session.categoryL1} l2={session.categoryL2} l3={session.categoryL3} />
+          ) : workType ? (
             <WorkTypeBadge workType={workType} />
-          )}
+          ) : null}
 
           {/* Commit badge */}
           {commitCount > 0 && (

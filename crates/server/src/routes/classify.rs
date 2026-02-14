@@ -6,7 +6,7 @@
 //! - GET  /classify/stream — SSE stream of classification progress
 //! - POST /classify/cancel — Cancel running classification
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::IntoResponse;
@@ -132,6 +132,20 @@ pub struct ClassifyLastRun {
 pub struct ClassifyErrorInfo {
     pub message: String,
     pub retryable: bool,
+}
+
+/// Response for POST /api/classify/single/:session_id.
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct ClassifySingleResponse {
+    pub session_id: String,
+    pub category_l1: String,
+    pub category_l2: String,
+    pub category_l3: String,
+    pub confidence: f64,
+    /// true if result was already cached (previously classified)
+    pub was_cached: bool,
 }
 
 /// SSE progress event data.
@@ -416,6 +430,80 @@ async fn cancel_classification(
     }))
 }
 
+/// POST /api/classify/single/:session_id — Classify a single session synchronously.
+///
+/// Bypasses ClassifyState entirely — no job record, no SSE.
+/// Returns the classification result directly.
+/// Uses dedicated O(1) DB queries — NOT the bulk session list.
+async fn classify_single_session(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    // 1. Check if already classified (O(1) query)
+    if let Some((l1, l2, l3, conf)) = state.db.get_session_classification(&session_id).await? {
+        return Ok((
+            StatusCode::OK,
+            Json(ClassifySingleResponse {
+                session_id,
+                category_l1: l1,
+                category_l2: l2,
+                category_l3: l3,
+                confidence: conf,
+                was_cached: true,
+            }),
+        ));
+    }
+
+    // 2. Fetch session data for classification (O(1) query)
+    let (_, preview, skills_json) = state
+        .db
+        .get_session_for_classification(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    // 3. Parse skills
+    let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+
+    // 4. Classify via Claude CLI
+    let provider =
+        vibe_recall_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+    let request = ClassificationRequest {
+        session_id: session_id.clone(),
+        first_prompt: preview,
+        files_touched: vec![],
+        skills_used: skills,
+    };
+
+    let resp = provider.classify(request).await.map_err(|e| {
+        ApiError::Internal(format!("Classification failed: {e}"))
+    })?;
+
+    // 5. Persist to DB
+    state
+        .db
+        .update_session_classification(
+            &session_id,
+            &resp.category_l1,
+            &resp.category_l2,
+            &resp.category_l3,
+            resp.confidence,
+            "claude-cli",
+        )
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(ClassifySingleResponse {
+            session_id,
+            category_l1: resp.category_l1,
+            category_l2: resp.category_l2,
+            category_l3: resp.category_l3,
+            confidence: resp.confidence,
+            was_cached: false,
+        }),
+    ))
+}
+
 // ============================================================================
 // Background Classification Task
 // ============================================================================
@@ -617,6 +705,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/classify", post(start_classification))
+        .route("/classify/single/{session_id}", post(classify_single_session))
         .route("/classify/status", get(get_classification_status))
         .route("/classify/stream", get(stream_classification))
         .route("/classify/cancel", post(cancel_classification))
@@ -786,5 +875,50 @@ mod tests {
 
         // Should return 400 because no job is running
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_classify_single_response_serialize() {
+        let resp = ClassifySingleResponse {
+            session_id: "sess-123".to_string(),
+            category_l1: "code_work".to_string(),
+            category_l2: "feature".to_string(),
+            category_l3: "new-component".to_string(),
+            confidence: 0.92,
+            was_cached: false,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"sessionId\":\"sess-123\""));
+        assert!(json.contains("\"categoryL1\":\"code_work\""));
+        assert!(json.contains("\"wasCached\":false"));
+    }
+
+    #[tokio::test]
+    async fn test_classify_single_session_not_found() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+        use vibe_recall_db::Database;
+
+        let db = Database::new_in_memory().await.unwrap();
+        let state = AppState::new(db);
+
+        let app = Router::new()
+            .nest("/api", router())
+            .with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/classify/single/nonexistent-session")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should return 404 because session doesn't exist
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

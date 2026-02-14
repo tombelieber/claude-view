@@ -103,8 +103,11 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
 | **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
 | **Mobile PWA** | **Approved** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Same React SPA (mobile-first), silent daemon, QR pairing (WhatsApp model). Open source, cloud relay is paid tier. Depends on Mission Control A (M1) and F (M3) | Personal |
+| **Epic A: Smart Rules Engine** | **Draft** | Pattern insights → 1-click apply → `.claude/rules/` files → Claude auto-follows coaching. 6 tasks: backend API, PatternCard button, budget indicator, rules panel, tests, wiring | Personal |
+| **Epic B: Prompt Coach** | **Draft (Deferred)** | 4 phases: `/coach` skill (30min), Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts BEFORE they hit Claude | Personal |
+| **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
 
-**Current focus:** GTM Launch (build in public, first posts) + Mission Control Phase C (Monitor Mode)
+**Current focus:** GTM Launch (build in public, first posts) + Epic A: Smart Rules Engine + Mission Control Phase C (Monitor Mode)
 
 **Recently completed:** HTML Export upgrade (metadata header, dark mode, thinking blocks, icons — PR #11), Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Ambient Coach / Insights v2 (13 tasks — facet ingest, fluency score, ScoreBadge, QualityBadge, CoachCard, PatternAlert, QualityTab, 794 frontend tests), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Settings page merge (System → Settings unified view)
 
@@ -423,6 +426,9 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-12-session-endpoint-unification.md` | done | **Session Endpoint Unification** — DB-based path resolution, removed projectDir dependency, legacy endpoints migrated. Shipped in v0.4.3 |
 | `2026-02-12-continue-chat-feature.md` | done | **Continue This Chat** — primary CTA copies condensed LLM-ready context to clipboard, export toolbar collapsed to overflow menu. 3 commits, 8/8 Playwright tests |
 | `2026-02-12-mobile-pwa-design.md` | approved | **Mobile PWA** — remote session monitoring via E2E encrypted relay + PWA (3 phases: M1 Status Monitor, M2 Read-Only Dashboard, M3 Interactive Control). Decisions finalized: same React SPA (mobile-first), silent daemon (no install step), QR pairing (WhatsApp model), open source everything, cloud relay = paid tier. Depends on Mission Control Phase A (M1) and Phase F (M3) |
+| `2026-02-15-epic-a-smart-rules-engine.md` | draft | **Epic A: Smart Rules Engine** — 1-click apply coaching rules to `~/.claude/rules/`. 6 tasks: REST API, PatternCard button, budget system (8 max), rules panel, tests. Uses official `.claude/rules/` mechanism, not CLAUDE.md modification |
+| `2026-02-15-epic-b-prompt-coach.md` | draft | **Epic B: Prompt Coach (Deferred)** — 4 phases: `/coach` skill, Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts before execution |
+| `2026-02-15-epic-c-trusted-marketplace.md` | draft | **Epic C: Trusted Marketplace (Deferred)** — 4 phases: curated list, dynamic GitHub data, 1-click install with safety preview, community submissions. Trust badge system (verified/community/unvetted/flagged) |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
