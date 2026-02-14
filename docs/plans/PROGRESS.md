@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-12
+> **Last updated:** 2026-02-14
 
 ---
 
@@ -104,9 +104,9 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
 | **Mobile PWA** | **Approved** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Same React SPA (mobile-first), silent daemon, QR pairing (WhatsApp model). Open source, cloud relay is paid tier. Depends on Mission Control A (M1) and F (M3) | Personal |
 
-**Current focus:** GTM Launch (build in public, first posts) + Mission Control Phase A (critical path for Mobile PWA)
+**Current focus:** GTM Launch (build in public, first posts) + Mission Control Phase C (Monitor Mode)
 
-**Recently completed:** Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Session Endpoint Unification (v0.4.3), Theme 2 Dashboard Analytics (5 features, 15 commits, 922 tests), GTM README rewrite, Session Discovery & Navigation (6 phases, 438 tests)
+**Recently completed:** Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Session Endpoint Unification (v0.4.3), Settings page merge (System → Settings unified view)
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
