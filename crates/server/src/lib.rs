@@ -109,6 +109,10 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         pricing: vibe_recall_db::default_pricing(),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
+        rules_dir: dirs::home_dir()
+            .expect("home dir exists")
+            .join(".claude")
+            .join("rules"),
     });
     api_routes(state)
 }
@@ -124,10 +128,21 @@ pub fn create_app_full(
     registry: RegistryHolder,
     static_dir: Option<PathBuf>,
 ) -> Router {
+    // Initialize LLM provider for intelligent session state classification
+    let llm_config = vibe_recall_core::llm::LlmConfig::default();
+    let provider = match vibe_recall_core::llm::factory::create_provider(&llm_config) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            tracing::warn!("LLM provider unavailable: {e}, using structural classification only");
+            None
+        }
+    };
+    let classifier = Arc::new(live::classifier::SessionStateClassifier::new(provider));
+
     // Start live session monitoring (file watcher, process detector, cleanup)
     let pricing = vibe_recall_db::default_pricing();
     let (_manager, live_sessions, live_tx) =
-        live::manager::LiveSessionManager::start(pricing.clone());
+        live::manager::LiveSessionManager::start(pricing.clone(), classifier);
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
@@ -141,6 +156,10 @@ pub fn create_app_full(
         pricing,
         live_sessions,
         live_tx,
+        rules_dir: dirs::home_dir()
+            .expect("home dir exists")
+            .join(".claude")
+            .join("rules"),
     });
 
     let mut app = Router::new()
