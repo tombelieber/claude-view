@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
 import { buildSessionUrl } from '../lib/url-utils'
 import { NO_BRANCH } from '../lib/constants'
@@ -11,6 +12,7 @@ import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
 import { ActivitySparkline } from './ActivitySparkline'
 import { SessionToolbar } from './SessionToolbar'
+import { ClassifyBanner } from './ClassifyBanner'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort } from '../hooks/use-session-filters'
 import { groupSessionsByDate } from '../lib/date-groups'
@@ -20,6 +22,7 @@ import { cn } from '../lib/utils'
 import { useTimeRange } from '../hooks/use-time-range'
 import { TimeRangeSelector, DateRangePicker } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
+import type { ClassifyStatusResponse } from '../types/generated'
 
 /** Human-readable labels for sort options */
 const SORT_LABELS: Record<SessionSort, string> = {
@@ -86,6 +89,16 @@ export function HistoryView() {
 
   const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
   const isMobile = useIsMobile()
+
+  const { data: classifyStatus } = useQuery({
+    queryKey: ['classify-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/classify/status')
+      if (!res.ok) return null
+      return res.json() as Promise<ClassifyStatusResponse>
+    },
+    staleTime: 30_000,
+  })
 
   const [searchText, setSearchText] = useState('')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -455,6 +468,16 @@ export function HistoryView() {
         {tooManyToGroup && groupByAutoReset && (
           <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
             Grouping disabled — {filteredSessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
+          </div>
+        )}
+
+        {/* Classify-all banner (shown after 3+ single classifies) */}
+        {classifyStatus && classifyStatus.unclassifiedSessions > 0 && (
+          <div className="mt-4">
+            <ClassifyBanner
+              unclassifiedCount={classifyStatus.unclassifiedSessions}
+              estimatedCostCents={Math.ceil(classifyStatus.unclassifiedSessions * 0.8)}
+            />
           </div>
         )}
 
