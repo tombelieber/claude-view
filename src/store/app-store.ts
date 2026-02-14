@@ -12,6 +12,9 @@ interface AppState {
   // Theme state
   theme: Theme
 
+  // Mission Control
+  recentLiveCommands: string[]
+
   // Actions
   setSearchQuery: (query: string) => void
   addRecentSearch: (query: string) => void
@@ -21,6 +24,7 @@ interface AppState {
   toggleCommandPalette: () => void
   setTheme: (theme: Theme) => void
   cycleTheme: () => void
+  addRecentLiveCommand: (id: string) => void
 }
 
 const THEME_CYCLE: Theme[] = ['light', 'dark', 'system']
@@ -32,6 +36,7 @@ export const useAppStore = create<AppState>()(
       recentSearches: [],
       isCommandPaletteOpen: false,
       theme: 'system',
+      recentLiveCommands: [],
 
       setSearchQuery: (query) => set({ searchQuery: query }),
 
@@ -50,6 +55,13 @@ export const useAppStore = create<AppState>()(
         isCommandPaletteOpen: !state.isCommandPaletteOpen
       })),
 
+      addRecentLiveCommand: (id) => set((state) => ({
+        recentLiveCommands: [
+          id,
+          ...state.recentLiveCommands.filter(c => c !== id)
+        ].slice(0, 5)
+      })),
+
       setTheme: (theme) => set({ theme }),
       cycleTheme: () => set((state) => {
         const idx = THEME_CYCLE.indexOf(state.theme)
@@ -60,6 +72,7 @@ export const useAppStore = create<AppState>()(
       name: 'claude-view-storage',
       partialize: (state) => ({
         recentSearches: state.recentSearches,
+        recentLiveCommands: state.recentLiveCommands,
         theme: state.theme,
       }),
     }
