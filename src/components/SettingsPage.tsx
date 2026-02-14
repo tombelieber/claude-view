@@ -11,7 +11,6 @@ import {
   Command,
   HardDrive,
   History,
-  Terminal,
   AlertTriangle,
   ChevronDown,
 } from 'lucide-react'
@@ -30,7 +29,7 @@ import { cn } from '../lib/utils'
 import { StorageOverview } from './StorageOverview'
 import { ClassificationStatus } from './ClassificationStatus'
 import { ProviderSettings } from './ProviderSettings'
-import type { IndexRunInfo, ClaudeCliStatus } from '../types/generated'
+import type { IndexRunInfo } from '../types/generated'
 
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
@@ -192,103 +191,6 @@ function IndexHistorySection({
 }
 
 // ============================================================================
-// Claude CLI Status Section
-// ============================================================================
-
-function CliStatusSection({
-  cli,
-  isLoading,
-}: {
-  cli?: ClaudeCliStatus
-  isLoading: boolean
-}) {
-  if (isLoading || !cli) {
-    return (
-      <SettingsSection icon={<Terminal className="w-4 h-4" />} title="Claude CLI">
-        <div className="flex items-center gap-2 text-gray-400 py-4">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading...</span>
-        </div>
-      </SettingsSection>
-    )
-  }
-
-  if (!cli.path) {
-    return (
-      <SettingsSection icon={<Terminal className="w-4 h-4" />} title="Claude CLI">
-        <div className="flex items-start gap-3">
-          <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-              Not installed
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-              Install Claude CLI to enable AI classification:
-            </p>
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-sm font-mono text-gray-700 dark:text-gray-300 space-y-1">
-              <p>npm install -g @anthropic-ai/claude-code</p>
-              <p className="text-gray-400"># or</p>
-              <p>brew install claude</p>
-            </div>
-          </div>
-        </div>
-      </SettingsSection>
-    )
-  }
-
-  return (
-    <SettingsSection icon={<Terminal className="w-4 h-4" />} title="Claude CLI">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-green-500" />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            Installed:{' '}
-            <code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
-              {cli.path}
-            </code>
-          </span>
-        </div>
-        {cli.version && (
-          <div className="flex items-center gap-2 ml-6">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Version: {cli.version}
-            </span>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          {cli.authenticated ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                Authenticated
-                {cli.subscriptionType && cli.subscriptionType !== 'unknown' && (
-                  <span className="text-gray-500 dark:text-gray-400">
-                    {' '}
-                    ({cli.subscriptionType.charAt(0).toUpperCase() + cli.subscriptionType.slice(1)}{' '}
-                    subscription)
-                  </span>
-                )}
-              </span>
-            </>
-          ) : (
-            <>
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Not authenticated</span>
-              <span className="text-xs text-gray-400 ml-1">
-                Run:{' '}
-                <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">
-                  claude auth login
-                </code>
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-    </SettingsSection>
-  )
-}
-
-// ============================================================================
 // Danger Zone Section
 // ============================================================================
 
@@ -406,13 +308,12 @@ function DangerZoneSection() {
  *
  * Sections:
  * 1. DATA & STORAGE: Donut chart, counts grid, rebuild index, clear cache, performance stats
- * 2. CLASSIFICATION: Classification status card + provider settings
- * 3. CLAUDE CLI: CLI install/auth status (powers classification)
- * 4. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
- * 5. INDEX HISTORY: Collapsible table of past index runs
- * 6. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
- * 7. ABOUT: Version, keyboard shortcuts
- * 8. DANGER ZONE: Reset All Data (type-to-confirm)
+ * 2. CLASSIFICATION: Classification status card + provider settings (CLI status inline)
+ * 3. GIT SYNC: Last sync, commits found, links created, [Sync Git History] button
+ * 4. INDEX HISTORY: Collapsible table of past index runs
+ * 5. EXPORT DATA: Format radio (JSON/CSV), Scope radio (All/Current project), [Download Export] button
+ * 6. ABOUT: Version, keyboard shortcuts
+ * 7. DANGER ZONE: Reset All Data (type-to-confirm)
  */
 export function SettingsPage() {
   const { data: status } = useStatus()
@@ -478,10 +379,7 @@ export function SettingsPage() {
           />
 
           {/* CLASSIFICATION PROVIDER SETTINGS */}
-          {showProviderSettings && <ProviderSettings />}
-
-          {/* CLAUDE CLI STATUS */}
-          <CliStatusSection cli={systemData?.claudeCli} isLoading={systemLoading} />
+          {showProviderSettings && <ProviderSettings cliStatus={systemData?.claudeCli} />}
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">

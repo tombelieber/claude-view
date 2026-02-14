@@ -63,9 +63,9 @@ export function KanbanView({ sessions, selectedId, onSelect }: KanbanViewProps) 
 
   if (sessions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-        <Columns3 className="h-10 w-10 mb-3 text-slate-600" />
-        <p className="text-sm font-medium text-slate-400">
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+        <Columns3 className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
           No active sessions detected
         </p>
         <p className="text-xs mt-1">
