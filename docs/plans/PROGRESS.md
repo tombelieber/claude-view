@@ -99,18 +99,18 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | Phase 7: Multi-Tool Providers | Draft | Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 | **Theme 4: Chat Insights** | **DONE** | 8/8 phases, 39/39 tasks — classification, patterns, insights page shipped | Personal |
-| **Ambient Coach (Insights v2)** | Pending | 0/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces | Personal |
+| **Ambient Coach (Insights v2)** | **DONE** | 13/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces, all tests green | Personal |
 | **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
 | **Mission Control** | Approved | 6 phases (A-F), 7,900+ lines of plans — live session monitoring, cost tracking, resume, sub-agent viz | Personal |
 | **Mobile PWA** | **Approved** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Same React SPA (mobile-first), silent daemon, QR pairing (WhatsApp model). Open source, cloud relay is paid tier. Depends on Mission Control A (M1) and F (M3) | Personal |
 
 **Current focus:** GTM Launch (build in public, first posts) + Mission Control Phase C (Monitor Mode)
 
-**Recently completed:** HTML Export upgrade (metadata header, dark mode, thinking blocks, icons — PR #11), Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Settings page merge (System → Settings unified view)
+**Recently completed:** HTML Export upgrade (metadata header, dark mode, thinking blocks, icons — PR #11), Mission Control Phase B (views, filters, keyboard shortcuts — PR #10), Mission Control Phase A (JSONL file watching, session state machine, SSE, Grid view — PR #9), Ambient Coach / Insights v2 (13 tasks — facet ingest, fluency score, ScoreBadge, QualityBadge, CoachCard, PatternAlert, QualityTab, 794 frontend tests), Continue This Chat (copy LLM-ready context to clipboard), Cold Start UX (bandwidth progress tracking, auto-open browser), Settings page merge (System → Settings unified view)
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
-**Code compiles:** Yes (cargo check passes, 548+ backend tests green, 552 frontend tests green, TypeScript compiles cleanly)
+**Code compiles:** Yes (cargo check passes, 548+ backend tests green, 794 frontend tests green, TypeScript compiles cleanly)
 
 ---
 
