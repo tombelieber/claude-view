@@ -74,6 +74,7 @@ mod tests {
             pricing: std::collections::HashMap::new(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
+            rules_dir: std::env::temp_dir().join("claude-rules-test"),
         });
 
         let app = Router::new()
