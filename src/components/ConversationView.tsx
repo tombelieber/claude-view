@@ -12,7 +12,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
-import { generateStandaloneHtml, downloadHtml, exportToPdf } from '../lib/export-html'
+import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
 import { generateMarkdown, generateResumeContext, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
@@ -94,17 +94,37 @@ export function ConversationView() {
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
 
+  const exportMeta: ExportMetadata | undefined = useMemo(() => {
+    if (!sessionDetail) return undefined
+    return {
+      sessionId: sessionId || '',
+      projectName,
+      projectPath: sessionDetail.projectPath,
+      primaryModel: sessionDetail.primaryModel,
+      durationSeconds: sessionDetail.durationSeconds,
+      totalInputTokens: sessionDetail.totalInputTokens,
+      totalOutputTokens: sessionDetail.totalOutputTokens,
+      messageCount: session?.messages?.length ?? 0,
+      userPromptCount: sessionDetail.userPromptCount,
+      toolCallCount: sessionDetail.toolCallCount,
+      filesEditedCount: sessionDetail.filesEditedCount,
+      filesReadCount: sessionDetail.filesReadCount,
+      commitCount: sessionDetail.commitCount,
+      gitBranch: sessionDetail.gitBranch,
+      exportDate: new Date().toISOString(),
+    }
+  }, [sessionDetail, sessionId, projectName, session])
+
   const handleExportHtml = useCallback(() => {
     if (!session) return
-    const html = generateStandaloneHtml(session.messages)
-    const filename = `conversation-${sessionId}.html`
-    downloadHtml(html, filename)
-  }, [session, sessionId])
+    const html = generateStandaloneHtml(session.messages, exportMeta)
+    downloadHtml(html, `conversation-${sessionId}.html`)
+  }, [session, sessionId, exportMeta])
 
   const handleExportPdf = useCallback(() => {
     if (!session) return
-    exportToPdf(session.messages)
-  }, [session])
+    exportToPdf(session.messages, exportMeta)
+  }, [session, exportMeta])
 
   const handleExportMarkdown = useCallback(() => {
     if (!session) return
