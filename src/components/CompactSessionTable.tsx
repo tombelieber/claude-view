@@ -16,6 +16,7 @@ import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 import { getSessionTitle } from '../utils/get-session-title'
 import { QualityBadge } from './QualityBadge'
+import { CategoryBadge } from './CategoryBadge'
 
 export type SortColumn = 'time' | 'branch' | 'prompts' | 'files' | 'commits' | 'duration'
 export type SortDirection = 'asc' | 'desc'
@@ -133,6 +134,23 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
               />
               <span className="truncate">{getSessionTitle(s.preview, s.summary)}</span>
             </span>
+          </Link>
+        )
+      },
+    }),
+    columnHelper.display({
+      id: 'category',
+      header: 'Type',
+      size: 90,
+      cell: ({ row }) => {
+        const s = row.original
+        return (
+          <Link to={sessionUrl(s)} className="block">
+            {s.categoryL2 ? (
+              <CategoryBadge l2={s.categoryL2} />
+            ) : (
+              <span className="text-[11px] text-gray-300 dark:text-gray-600">--</span>
+            )}
           </Link>
         )
       },
