@@ -107,9 +107,9 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
   if (sessions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-        <List className="h-10 w-10 mb-3 text-slate-600" />
-        <p className="text-sm font-medium text-slate-400">No sessions to display</p>
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+        <List className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No sessions to display</p>
         <p className="text-xs mt-1">Active Claude Code sessions will appear here</p>
       </div>
     )
@@ -117,16 +117,16 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full table-fixed border-collapse bg-slate-900 rounded-lg border border-slate-800">
-        <thead className="sticky top-0 bg-slate-800/90 backdrop-blur-sm z-10">
+      <table className="w-full table-fixed border-collapse bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
+        <thead className="sticky top-0 bg-gray-100/90 dark:bg-gray-800/90 backdrop-blur-sm z-10">
           <tr>
             {COLUMNS.map((col) => (
               <th
                 key={col.key}
                 className={cn(
-                  'px-2 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-slate-500',
+                  'px-2 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500',
                   col.width === 'flex-1' ? '' : col.width,
-                  col.sortable && 'cursor-pointer select-none hover:text-slate-300 transition-colors'
+                  col.sortable && 'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300 transition-colors'
                 )}
                 style={col.width === 'flex-1' ? {} : undefined}
                 onClick={col.sortable ? () => handleHeaderClick(col.key as SortColumn) : undefined}
@@ -135,9 +135,9 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                   {col.label}
                   {col.sortable && sortColumn === col.key && (
                     sortDir === 'asc' ? (
-                      <ArrowUp className="h-3 w-3 text-slate-400" />
+                      <ArrowUp className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                     ) : (
-                      <ArrowDown className="h-3 w-3 text-slate-400" />
+                      <ArrowDown className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                     )
                   )}
                 </span>
@@ -158,10 +158,10 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 data-session-id={session.id}
                 onClick={() => onSelect(session.id)}
                 className={cn(
-                  'border-b border-slate-800/50 transition-colors cursor-pointer',
+                  'border-b border-gray-200/50 dark:border-gray-800/50 transition-colors cursor-pointer',
                   isSelected
                     ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500'
-                    : 'border-l-2 border-l-transparent hover:bg-slate-800/50'
+                    : 'border-l-2 border-l-transparent hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
                 )}
               >
                 {/* Status */}
@@ -173,7 +173,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Project */}
                 <td className="px-2 py-2 w-[140px]">
-                  <span className="text-xs text-slate-300 truncate block">
+                  <span className="text-xs text-gray-700 dark:text-gray-300 truncate block">
                     {session.projectDisplayName || session.project}
                   </span>
                 </td>
@@ -182,33 +182,33 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 <td className="px-2 py-2 w-[120px]">
                   {session.gitBranch ? (
                     <span className="inline-flex items-center gap-1 max-w-full">
-                      <GitBranch className="h-3 w-3 text-slate-500 flex-shrink-0" />
-                      <span className="text-xs font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded truncate">
+                      <GitBranch className="h-3 w-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded truncate">
                         {session.gitBranch}
                       </span>
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-600">--</span>
+                    <span className="text-xs text-gray-300 dark:text-gray-600">--</span>
                   )}
                 </td>
 
                 {/* Activity */}
                 <td className="px-2 py-2">
-                  <span className="text-xs text-slate-300 truncate block">
+                  <span className="text-xs text-gray-700 dark:text-gray-300 truncate block">
                     {activityText}
                   </span>
                 </td>
 
                 {/* Turns */}
                 <td className="px-2 py-2 w-[60px]">
-                  <span className="text-xs text-slate-300 tabular-nums">
+                  <span className="text-xs text-gray-700 dark:text-gray-300 tabular-nums">
                     {session.turnCount}
                   </span>
                 </td>
 
                 {/* Cost */}
                 <td className="px-2 py-2 w-[70px]">
-                  <span className="text-xs text-slate-300 tabular-nums">
+                  <span className="text-xs text-gray-700 dark:text-gray-300 tabular-nums">
                     {formatCost(session.cost.totalUsd)}
                   </span>
                 </td>
@@ -220,7 +220,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Last Active */}
                 <td className="px-2 py-2 w-[90px]">
-                  <span className="text-xs text-slate-400 tabular-nums">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                     {session.lastActivityAt > 0 ? formatRelativeTime(session.lastActivityAt) : '--'}
                   </span>
                 </td>

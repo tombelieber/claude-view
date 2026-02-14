@@ -30,7 +30,7 @@ export function KanbanColumn({
     <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1">
       <div
         className={cn(
-          'bg-slate-900/50 rounded-lg border border-slate-800 flex flex-col',
+          'bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col',
           'overflow-hidden'
         )}
       >
@@ -39,14 +39,14 @@ export function KanbanColumn({
 
         {/* Header */}
         <div className="px-3 py-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-300">{title}</span>
-          <span className="text-xs text-slate-500">({sessions.length})</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">({sessions.length})</span>
         </div>
 
         {/* Cards */}
         <div className="space-y-3 p-3 max-h-[calc(100vh-220px)] overflow-y-auto">
           {sorted.length === 0 ? (
-            <p className="text-xs text-slate-500 py-8 text-center">
+            <p className="text-xs text-gray-400 dark:text-gray-500 py-8 text-center">
               {emptyMessage}
             </p>
           ) : (
