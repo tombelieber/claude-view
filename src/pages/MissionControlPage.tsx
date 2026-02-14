@@ -1,18 +1,127 @@
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useLiveSessions } from '../hooks/use-live-sessions'
+import { useLiveSessionFilters } from '../hooks/use-live-session-filters'
+import { useKeyboardShortcuts } from '../hooks/use-keyboard-shortcuts'
+import { filterLiveSessions } from '../lib/live-filter'
 import { SessionCard } from '../components/live/SessionCard'
+import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
+import { ListView } from '../components/live/ListView'
+import { KanbanView } from '../components/live/KanbanView'
+import { MonitorPlaceholder } from '../components/live/MonitorPlaceholder'
+import { LiveFilterBar } from '../components/live/LiveFilterBar'
+import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
+import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
+import { MobileTabBar } from '../components/live/MobileTabBar'
 import type { LiveSummary } from '../hooks/use-live-sessions'
+import type { LiveViewMode } from '../types/live'
+import { toDisplayStatus, LIVE_VIEW_STORAGE_KEY } from '../types/live'
+
+function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
+  const urlView = searchParams.get('view') as LiveViewMode | null
+  if (urlView && ['grid', 'list', 'kanban', 'monitor'].includes(urlView)) {
+    return urlView
+  }
+  const stored = localStorage.getItem(LIVE_VIEW_STORAGE_KEY) as LiveViewMode | null
+  if (stored && ['grid', 'list', 'kanban', 'monitor'].includes(stored)) {
+    return stored
+  }
+  return 'grid'
+}
 
 export function MissionControlPage() {
   const { sessions, summary, isConnected, lastUpdate } = useLiveSessions()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Filters
+  const [filters, filterActions] = useLiveSessionFilters(searchParams, setSearchParams)
+
+  // Filtered sessions
+  const filteredSessions = useMemo(
+    () => filterLiveSessions(sessions, filters),
+    [sessions, filters]
+  )
+
+  // Available filter options from current (unfiltered) sessions
+  const availableStatuses = useMemo(() => {
+    const set = new Set(sessions.map(s => toDisplayStatus(s.status)))
+    return Array.from(set)
+  }, [sessions])
+
+  const availableProjects = useMemo(() => {
+    const set = new Set(sessions.map(s => s.projectDisplayName || s.project))
+    return Array.from(set).sort()
+  }, [sessions])
+
+  const availableBranches = useMemo(() => {
+    const set = new Set(sessions.filter(s => s.gitBranch).map(s => s.gitBranch!))
+    return Array.from(set).sort()
+  }, [sessions])
+
+  // View mode change
+  const handleViewModeChange = useCallback((mode: LiveViewMode) => {
+    setViewMode(mode)
+    localStorage.setItem(LIVE_VIEW_STORAGE_KEY, mode)
+    const params = new URLSearchParams(searchParams)
+    params.set('view', mode)
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  // Session selection
+  const handleSelectSession = useCallback((id: string) => {
+    setSelectedId(prev => prev === id ? null : id)
+  }, [])
+
+  // Expand selected session (navigate to detail)
+  const handleExpandSession = useCallback((id: string) => {
+    navigate(`/sessions/${id}`)
+  }, [navigate])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    viewMode,
+    onViewModeChange: handleViewModeChange,
+    sessions: filteredSessions,
+    selectedId,
+    onSelect: setSelectedId,
+    onExpand: handleExpandSession,
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onToggleHelp: () => setShowHelp(prev => !prev),
+    enabled: !showCommandPalette && !showHelp,
+  })
+
+  // Cmd+K handler for command palette (capture phase to override global)
+  const handleCmdK = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      e.stopPropagation()
+      setShowCommandPalette(prev => !prev)
+    }
+  }, [])
+
+  // Register Cmd+K in capture phase
+  useEffect(() => {
+    document.addEventListener('keydown', handleCmdK, true)
+    return () => document.removeEventListener('keydown', handleCmdK, true)
+  }, [handleCmdK])
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-6 pb-20 sm:pb-6">
       <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Mission Control
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Mission Control
+            </h1>
+            <ViewModeSwitcher mode={viewMode} onChange={handleViewModeChange} />
+          </div>
           <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
             <span
               className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
@@ -27,34 +136,110 @@ export function MissionControlPage() {
         </div>
 
         {/* Summary bar */}
-        <SummaryBar summary={summary} />
+        <SummaryBar summary={summary} filteredCount={filteredSessions.length} totalCount={sessions.length} />
 
-        {/* Session grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {sessions.map(session => (
-            <SessionCard key={session.id} session={session} />
-          ))}
-        </div>
+        {/* Filter bar */}
+        <LiveFilterBar
+          filters={filters}
+          onStatusChange={filterActions.setStatus}
+          onProjectChange={filterActions.setProjects}
+          onBranchChange={filterActions.setBranches}
+          onSearchChange={filterActions.setSearch}
+          onClear={filterActions.clearAll}
+          activeCount={filterActions.activeCount}
+          availableStatuses={availableStatuses}
+          availableProjects={availableProjects}
+          availableBranches={availableBranches}
+          searchInputRef={searchInputRef}
+        />
+
+        {/* View content */}
+        {viewMode === 'grid' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredSessions.map(session => (
+              <div
+                key={session.id}
+                data-session-id={session.id}
+                onClick={() => handleSelectSession(session.id)}
+                className={selectedId === session.id ? 'ring-2 ring-indigo-500 rounded-lg' : ''}
+              >
+                <SessionCard session={session} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {viewMode === 'list' && (
+          <ListView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
+        )}
+
+        {viewMode === 'kanban' && (
+          <KanbanView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
+        )}
+
+        {viewMode === 'monitor' && <MonitorPlaceholder />}
 
         {/* Empty state */}
-        {sessions.length === 0 && isConnected && (
+        {filteredSessions.length === 0 && isConnected && viewMode !== 'monitor' && (
           <div className="text-center text-gray-400 dark:text-gray-500 py-16">
             <div className="text-4xl mb-4">~</div>
-            <div className="text-sm">
-              No active Claude Code sessions detected.
-            </div>
-            <div className="text-xs mt-1">
-              Start a session in your terminal and it will appear here.
-            </div>
+            {sessions.length === 0 ? (
+              <>
+                <div className="text-sm">No active Claude Code sessions detected.</div>
+                <div className="text-xs mt-1">Start a session in your terminal and it will appear here.</div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm">No sessions match your filters.</div>
+                <div className="text-xs mt-1">
+                  <button
+                    type="button"
+                    onClick={filterActions.clearAll}
+                    className="text-indigo-400 hover:text-indigo-300"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* Mobile tab bar */}
+      <MobileTabBar activeTab={viewMode} onTabChange={handleViewModeChange} />
+
+      {/* Command palette */}
+      <LiveCommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+        sessions={sessions}
+        selectedId={selectedId}
+        onSelectSession={handleSelectSession}
+        onFilterStatus={filterActions.setStatus}
+        onClearFilters={filterActions.clearAll}
+        onSort={filterActions.setSort}
+        onToggleHelp={() => { setShowCommandPalette(false); setShowHelp(true) }}
+      />
+
+      {/* Keyboard shortcut help */}
+      <KeyboardShortcutHelp isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   )
 }
 
-function SummaryBar({ summary }: { summary: LiveSummary | null }) {
+interface SummaryBarProps {
+  summary: LiveSummary | null
+  filteredCount: number
+  totalCount: number
+}
+
+function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
   if (!summary) return null
+
+  const showFiltered = filteredCount !== totalCount
 
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-2 p-3 rounded-lg bg-gray-100/50 dark:bg-gray-800/50 text-sm">
@@ -70,6 +255,12 @@ function SummaryBar({ summary }: { summary: LiveSummary | null }) {
         <span className="text-gray-400 font-medium">{summary.idleCount}</span>
         <span className="text-gray-500 dark:text-gray-400 ml-1">idle</span>
       </div>
+      {showFiltered && (
+        <div>
+          <span className="text-indigo-400 font-medium">{filteredCount}</span>
+          <span className="text-gray-500 dark:text-gray-400 ml-1">of {totalCount} shown</span>
+        </div>
+      )}
       <div className="ml-auto flex gap-4">
         <span className="text-gray-600 dark:text-gray-300 font-mono tabular-nums">
           ${summary.totalCostTodayUsd.toFixed(2)}
