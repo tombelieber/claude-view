@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   GitBranch,
   Download,
@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ChevronDown,
 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useStatus, formatRelativeTime } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useExport, type ExportFormat } from '../hooks/use-export'
@@ -327,6 +328,17 @@ export function SettingsPage() {
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [showProviderSettings, setShowProviderSettings] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Auto-expand provider settings when navigating with ?provider=show
+  useEffect(() => {
+    if (searchParams.get('provider') === 'show') {
+      setShowProviderSettings(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('provider')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const handleIntervalChange = useCallback(async (value: string) => {
     const secs = parseInt(value, 10)
