@@ -43,18 +43,28 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Personal Tier (Open Source)                            │
+│  Free Tier (Open Source)                                │
 │  - Browse, search, export sessions                      │
 │  - Full metrics: atomic units, derived stats, trends    │
 │  - Git correlation (ultra-conservative, provable only)  │
 │  - Mission Control: monitor all active sessions         │
 │  - Cost tracking, context usage, sub-agent viz          │
 │  - Resume sessions from web dashboard                   │
+│  - BYO Claude CLI classification (user's own quota)     │
 │  - `npx claude-view` — zero friction install            │
 │                                                         │
 │  ══════════════════════════════════════════════════════ │
 │                                                         │
-│  Enterprise Tier (Paid License)                         │
+│  Pro Tier (Paid — Individual)                           │
+│  - Hosted LLM classification (we pay for API calls)    │
+│  - Bulk classify all sessions (1-click)                 │
+│  - Auto-classify new sessions on ingest                 │
+│  - BYO API key (Anthropic, OpenAI, Google, Ollama)     │
+│  - Advanced cross-session pattern analysis              │
+│                                                         │
+│  ══════════════════════════════════════════════════════ │
+│                                                         │
+│  Enterprise Tier (Paid — Team)                          │
 │  - Team aggregation (multi-user data)                   │
 │  - Manager dashboards & admin controls                  │
 │  - AI fluency scoring across employees                  │
@@ -64,7 +74,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Strategy:** Build all analytics features (enterprise-grade quality) in Personal tier first. Enterprise tier adds the **team aggregation layer** on top — same features, but across multiple users. Mission Control monitoring is Personal tier; orchestration policies and team cost budgets are Enterprise.
+**Strategy:** Build all analytics features (enterprise-grade quality) in Free tier first. Pro tier adds **LLM-powered classification** (slow + expensive = natural paywall). Enterprise tier adds the **team aggregation layer** on top. Mission Control monitoring is Free tier; hosted classification is Pro; orchestration policies and team cost budgets are Enterprise.
 
 ---
 
@@ -106,6 +116,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Epic A: Smart Rules Engine** | **Draft** | Pattern insights → 1-click apply → `.claude/rules/` files → Claude auto-follows coaching. 6 tasks: backend API, PatternCard button, budget indicator, rules panel, tests, wiring | Personal |
 | **Epic B: Prompt Coach** | **Draft (Deferred)** | 4 phases: `/coach` skill (30min), Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts BEFORE they hit Claude | Personal |
 | **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
+| **Paid: LLM Classification** | **Draft (Deferred)** | 3 provider options: BYO Claude CLI (shipped), hosted API (paid), BYO API key. Free tier = user's own CLI. Pro tier = hosted bulk classify + auto-classify + BYO key. `LlmProvider` trait already extensible | **Pro** |
 
 **Current focus:** GTM Launch (build in public, first posts) + Epic A: Smart Rules Engine + Mission Control Phase C (Monitor Mode)
 
@@ -429,6 +440,8 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-15-epic-a-smart-rules-engine.md` | draft | **Epic A: Smart Rules Engine** — 1-click apply coaching rules to `~/.claude/rules/`. 6 tasks: REST API, PatternCard button, budget system (8 max), rules panel, tests. Uses official `.claude/rules/` mechanism, not CLAUDE.md modification |
 | `2026-02-15-epic-b-prompt-coach.md` | draft | **Epic B: Prompt Coach (Deferred)** — 4 phases: `/coach` skill, Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts before execution |
 | `2026-02-15-epic-c-trusted-marketplace.md` | draft | **Epic C: Trusted Marketplace (Deferred)** — 4 phases: curated list, dynamic GitHub data, 1-click install with safety preview, community submissions. Trust badge system (verified/community/unvetted/flagged) |
+| `2026-02-15-paid-llm-classification.md` | draft | **Paid: LLM Classification (Deferred)** — Session classification as Pro tier feature. 3 provider options: BYO Claude CLI (free, shipped), hosted API (paid), BYO API key (power user). `LlmProvider` trait already extensible. Blocked on GTM launch + user demand validation |
+| `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
