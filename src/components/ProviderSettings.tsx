@@ -9,6 +9,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import type { ClaudeCliStatus } from '../types/generated'
 
 type ProviderType = 'claude-cli' | 'anthropic-api' | 'openai-compatible'
 
@@ -22,6 +23,7 @@ interface ProviderOption {
 
 interface ProviderSettingsProps {
   onClose?: () => void
+  cliStatus?: ClaudeCliStatus
 }
 
 const PROVIDERS: ProviderOption[] = [
@@ -61,17 +63,29 @@ const PROVIDERS: ProviderOption[] = [
  * - Endpoint URL for OpenAI-compatible (future)
  * - Test connection button
  */
-export function ProviderSettings({ onClose: _onClose }: ProviderSettingsProps) {
+export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSettingsProps) {
   const [selectedProvider, setSelectedProvider] = useState<ProviderType>('claude-cli')
   const [model, setModel] = useState('haiku')
   const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<'idle' | 'success' | 'error'>('idle')
+  const [testResult, setTestResult] = useState<'idle' | 'success' | 'error' | 'not-installed' | 'not-authenticated'>('idle')
 
   const handleTestConnection = async () => {
     setIsTesting(true)
     setTestResult('idle')
 
     try {
+      if (selectedProvider === 'claude-cli') {
+        // Check the full provider chain: CLI installed → authenticated → API reachable
+        if (!cliStatus?.path) {
+          setTestResult('not-installed')
+          return
+        }
+        if (!cliStatus?.authenticated) {
+          setTestResult('not-authenticated')
+          return
+        }
+      }
+
       const res = await fetch('/api/classify/status')
       if (res.ok) {
         setTestResult('success')
@@ -82,7 +96,7 @@ export function ProviderSettings({ onClose: _onClose }: ProviderSettingsProps) {
       setTestResult('error')
     } finally {
       setIsTesting(false)
-      setTimeout(() => setTestResult('idle'), 3000)
+      setTimeout(() => setTestResult('idle'), 5000)
     }
   }
 
@@ -173,6 +187,50 @@ export function ProviderSettings({ onClose: _onClose }: ProviderSettingsProps) {
           </div>
         )}
 
+        {/* CLI status (inline when Claude CLI is selected) */}
+        {selectedProvider === 'claude-cli' && cliStatus && (
+          <div className="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 space-y-1.5">
+            <div className="flex items-center gap-2">
+              {cliStatus.path ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              )}
+              <span className="text-xs text-gray-600 dark:text-gray-400">
+                {cliStatus.path ? (
+                  <>Installed: <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">{cliStatus.path}</code></>
+                ) : (
+                  'CLI not installed'
+                )}
+              </span>
+            </div>
+            {cliStatus.path && (
+              <div className="flex items-center gap-2">
+                {cliStatus.authenticated ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                )}
+                <span className="text-xs text-gray-600 dark:text-gray-400">
+                  {cliStatus.authenticated ? (
+                    <>
+                      Authenticated
+                      {cliStatus.subscriptionType && cliStatus.subscriptionType !== 'unknown' && (
+                        <> ({cliStatus.subscriptionType.charAt(0).toUpperCase() + cliStatus.subscriptionType.slice(1)})</>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Not authenticated —{' '}
+                      run <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">claude auth login</code>
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Test connection */}
         <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
           <button
@@ -198,7 +256,19 @@ export function ProviderSettings({ onClose: _onClose }: ProviderSettingsProps) {
           {testResult === 'success' && (
             <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span className="text-xs">Connection OK</span>
+              <span className="text-xs">Ready to classify</span>
+            </div>
+          )}
+          {testResult === 'not-installed' && (
+            <div className="flex items-center gap-1 text-red-600 dark:text-red-400">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span className="text-xs">Claude CLI not installed</span>
+            </div>
+          )}
+          {testResult === 'not-authenticated' && (
+            <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span className="text-xs">CLI not authenticated — run <code className="font-mono bg-amber-50 dark:bg-amber-900/30 px-1 rounded">claude auth login</code></span>
             </div>
           )}
           {testResult === 'error' && (
