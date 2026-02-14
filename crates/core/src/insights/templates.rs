@@ -22,25 +22,25 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "P01",
         title: "Optimal Prompt Length",
         body_template: "{optimal_range} word prompts have {improvement}% better first-attempt success rate than {worst_range} word prompts.",
-        recommendation_template: Some("Try keeping prompts between {min_words} and {max_words} words for best results."),
+        recommendation_template: Some("Provide specific, concrete instructions with file paths and test criteria. Avoid vague requests — 'Edit src/auth/login.ts to add rate limiting' beats 'fix the login'."),
     },
     InsightTemplate {
         pattern_id: "P03",
         title: "File Path Specificity",
         body_template: "Prompts referencing specific file paths have {improvement}% fewer re-edits.",
-        recommendation_template: Some("Include file paths in your prompts when asking for edits."),
+        recommendation_template: Some("Always reference specific file paths when requesting changes. 'Edit src/components/Header.tsx' is better than 'update the header component'."),
     },
     InsightTemplate {
         pattern_id: "P04",
         title: "Context Before Prompting",
         body_template: "Sessions where files were read first have {improvement}% better outcomes.",
-        recommendation_template: Some("Read relevant files before asking for changes."),
+        recommendation_template: Some("Before modifying code, read the target file and at least one related file to absorb the project's naming conventions, error handling, and structure."),
     },
     InsightTemplate {
         pattern_id: "P10",
         title: "Follow-up Diminishing Returns",
         body_template: "Sessions with more than {threshold} follow-ups show diminishing returns ({reedit_rate}% re-edit rate).",
-        recommendation_template: Some("Consider starting a fresh session after {threshold} turns."),
+        recommendation_template: Some("After {threshold} follow-up corrections on the same issue, stop iterating. Summarize what was learned, then start a fresh session with a clearer prompt."),
     },
     // ============================
     // Session Patterns (S01-S08)
@@ -49,25 +49,25 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "S01",
         title: "Session Duration Sweet Spot",
         body_template: "Your {optimal_duration} sessions have {improvement}% lower re-edit rate than {worst_duration} sessions.",
-        recommendation_template: Some("Consider aiming for {optimal_duration} sessions when possible."),
+        recommendation_template: Some("Break complex tasks into focused sub-sessions of {optimal_duration}. Commit progress and start fresh rather than pushing through one long session."),
     },
     InsightTemplate {
         pattern_id: "S02",
         title: "Turn Count Sweet Spot",
         body_template: "{optimal_turns} turns per session yields the lowest re-edit rate ({reedit_rate}%).",
-        recommendation_template: Some("Aim for {optimal_turns} turns per session for best results."),
+        recommendation_template: Some("Keep sessions to around {optimal_turns} turns. If you need more iterations, commit what works and continue in a new session with clean context."),
     },
     InsightTemplate {
         pattern_id: "S04",
         title: "Session Fatigue",
         body_template: "Re-edit rate increases by {improvement}% after turn {threshold}.",
-        recommendation_template: Some("Consider taking a break or starting fresh after turn {threshold}."),
+        recommendation_template: Some("After turn {threshold}, context quality degrades. Commit current work and start a new session — a fresh context window with a clear prompt outperforms a stale one."),
     },
     InsightTemplate {
         pattern_id: "S08",
         title: "File Count Correlation",
         body_template: "Sessions editing {threshold} files have the highest re-edit rate ({improvement}% above the best bucket).",
-        recommendation_template: Some("Aim for fewer files per session to reduce re-edits."),
+        recommendation_template: Some("When a task touches many files, break it into smaller units. Implement and verify one module at a time rather than editing everything in a single session."),
     },
     // ============================
     // Temporal Patterns (T01-T07)
@@ -76,7 +76,7 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "T01",
         title: "Peak Productivity Hours",
         body_template: "You're {improvement}% more efficient during {best_time} compared to {worst_time}.",
-        recommendation_template: Some("Schedule complex tasks for {best_time} when possible."),
+        recommendation_template: Some("Tackle complex multi-file tasks during {best_time} when your decision quality is highest. Save routine fixes for other times."),
     },
     InsightTemplate {
         pattern_id: "T02",
@@ -88,7 +88,7 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "T05",
         title: "Break Impact",
         body_template: "Sessions after a {days}+ day break have {improvement}% higher re-edit rate.",
-        recommendation_template: Some("After long breaks, start with a warm-up session on familiar code."),
+        recommendation_template: Some("After a long break, start by reading recent git history and key files before making changes. Re-establish context before jumping into edits."),
     },
     InsightTemplate {
         pattern_id: "T07",
@@ -103,31 +103,31 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "W03",
         title: "Planning Before Execution",
         body_template: "Sessions with heavy planning (reading files first) have {improvement}% lower re-edit rate.",
-        recommendation_template: Some("Spend time reading relevant code before jumping into edits."),
+        recommendation_template: Some("Before editing any file, read at least one similar existing file in the codebase to absorb its patterns. Use subagents for research to keep the main session clean for implementation."),
     },
     InsightTemplate {
         pattern_id: "W04",
         title: "Test-First Correlation",
         body_template: "Sessions that include test files have {improvement}% fewer re-edits.",
-        recommendation_template: Some("Include test file edits in your sessions for better outcomes."),
+        recommendation_template: Some("Write or update tests after implementing changes, then run them before marking the task complete. Never commit code without verifying tests pass."),
     },
     InsightTemplate {
         pattern_id: "W05",
         title: "Commit Frequency",
         body_template: "Sessions with {commit_style} commits have {improvement}% better outcomes.",
-        recommendation_template: Some("Commit more frequently during sessions."),
+        recommendation_template: Some("Commit after each logical unit of work passes tests. Small, focused commits are easier to review and revert than one massive change."),
     },
     InsightTemplate {
         pattern_id: "W06",
         title: "Branch Discipline",
         body_template: "Feature branch sessions have {improvement}% lower re-edit rate than main branch.",
-        recommendation_template: Some("Use feature branches for AI-assisted development."),
+        recommendation_template: Some("Always work on a feature branch, never directly on main. This makes it safe to experiment and easy to discard failed approaches."),
     },
     InsightTemplate {
         pattern_id: "W07",
         title: "Read Before Write",
         body_template: "Sessions with {read_level} reads have {improvement}% better edit outcomes.",
-        recommendation_template: Some("Read more files before making changes."),
+        recommendation_template: Some("Before modifying code, read the file being changed plus any files it imports. Understand the dependency graph before touching anything."),
     },
     // ============================
     // Model Patterns (M01-M05)
@@ -136,13 +136,13 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "M01",
         title: "Model Task Fit",
         body_template: "{best_model} has {improvement}% lower re-edit rate than {worst_model}. Note: models may be used for different task complexities.",
-        recommendation_template: Some("Consider using {best_model} for similar tasks."),
+        recommendation_template: Some("Use {best_model} for tasks like this — it produces fewer re-edits for your usage patterns."),
     },
     InsightTemplate {
         pattern_id: "M05",
         title: "Model by Complexity",
         body_template: "For high complexity tasks, {best_model} outperforms by {improvement}%.",
-        recommendation_template: Some("Use {best_model} for complex multi-file tasks."),
+        recommendation_template: Some("For complex multi-file refactors, use {best_model}. Reserve lighter models for quick single-file fixes and questions."),
     },
     // ============================
     // Codebase Patterns (C01-C07)
@@ -181,7 +181,7 @@ pub static TEMPLATES: &[InsightTemplate] = &[
         pattern_id: "B01",
         title: "Retry Patterns",
         body_template: "On average, {avg_reedits} re-edits per session when re-editing occurs.",
-        recommendation_template: Some("If you hit 3+ re-edits, try rephrasing your prompt entirely."),
+        recommendation_template: Some("After 3 failed attempts at the same change, stop iterating. Read the failing code carefully, then try a completely different approach or start a fresh session."),
     },
     // B03 removed: commit_count==0 is not a reliable abandonment signal
     // ============================

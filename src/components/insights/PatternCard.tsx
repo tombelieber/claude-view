@@ -1,5 +1,6 @@
 import { cn } from '../../lib/utils'
 import type { GeneratedInsight } from '../../types/generated/GeneratedInsight'
+import { ApplyRuleButton } from './ApplyRuleButton'
 
 interface PatternCardProps {
   pattern: GeneratedInsight
@@ -114,11 +115,20 @@ export function PatternCard({ pattern }: PatternCardProps) {
       {/* Body */}
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{pattern.body}</p>
 
-      {/* Recommendation */}
+      {/* Recommendation + Apply Rule */}
       {pattern.recommendation && (
-        <p className="text-xs text-blue-600 dark:text-blue-400 mb-2 italic">
-          {pattern.recommendation}
-        </p>
+        <div className="mb-2">
+          <p className="text-xs text-blue-600 dark:text-blue-400 italic mb-1.5">
+            {pattern.recommendation}
+          </p>
+          <ApplyRuleButton
+            patternId={pattern.patternId}
+            recommendation={pattern.recommendation}
+            title={pattern.title}
+            impactScore={pattern.impactScore}
+            sampleSize={pattern.evidence.sampleSize}
+          />
+        </div>
       )}
 
       {/* Comparison bar */}
