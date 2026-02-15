@@ -164,10 +164,11 @@ pub struct LocalScores {
     pub context_economy: DimensionScore,
 }
 
-pub struct DimensionScore {
-    pub score: u8,          // 1-10
-    pub reasoning: String,  // Human-readable explanation
-}
+// NOTE: This is the SAME struct as AiDimensionScore in llm/types.rs.
+// Both local and AI dimensions use the same shape. Import from types.rs:
+//   use crate::llm::types::AiDimensionScore as DimensionScore;
+// Or just use AiDimensionScore directly everywhere.
+pub type DimensionScore = crate::llm::AiDimensionScore;
 
 pub fn score_local_metrics(metrics: &LocalMetrics) -> LocalScores {
     LocalScores {
@@ -255,6 +256,7 @@ The providers convert `reqwest::Error` via `.map_err(|e| LlmError::HttpError(e.t
 **New types** in `crates/core/src/llm/types.rs`:
 
 ```rust
+#[derive(Debug, Clone)]
 pub struct AnalysisRequest {
     pub session_id: String,
     pub digest_text: String,       // Rendered conversation digest
@@ -574,7 +576,7 @@ impl LlmConfig {
 
 ```sql
 CREATE TABLE IF NOT EXISTS session_analysis (
-    session_id            TEXT PRIMARY KEY REFERENCES sessions(id),
+    session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
     -- AI-scored dimensions (from LLM)
     prompt_clarity        INTEGER NOT NULL CHECK (prompt_clarity BETWEEN 1 AND 10),
     task_scoping          INTEGER NOT NULL CHECK (task_scoping BETWEEN 1 AND 10),
@@ -597,7 +599,7 @@ CREATE TABLE IF NOT EXISTS session_analysis (
     input_tokens          INTEGER,
     output_tokens         INTEGER,
     cost_cents            REAL,
-    analyzed_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    analyzed_at           INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
 CREATE INDEX idx_session_analysis_score ON session_analysis(fluency_score);
@@ -764,8 +766,8 @@ Costs are for the ~20-30K token digest (not the raw 55K average), so significant
 | `crates/core/src/llm/claude_cli.rs` | No changes needed (trait default impl handles `analyze()`) | UNCHANGED |
 | `crates/core/src/llm/config.rs` | Add `from_env()` to `LlmConfig` (ProviderType already has all needed variants) | MODIFY |
 | `crates/core/src/llm/factory.rs` | Add `AnthropicApi` + `OpenAi`/`Ollama`/`Custom` creation | MODIFY |
-| `crates/core/src/llm/mod.rs` | Export new modules and types | MODIFY |
-| `crates/core/src/lib.rs` | Export `digest`, `scoring`, `analysis` modules | MODIFY |
+| `crates/core/src/llm/mod.rs` | Export new modules and types (see exact changes below) | MODIFY |
+| `crates/core/src/lib.rs` | Export `digest`, `scoring`, `analysis` modules (see exact changes below) | MODIFY |
 | `crates/core/Cargo.toml` | Add `reqwest` dependency | MODIFY |
 | **Server routes** | | |
 | `crates/server/src/routes/analyze.rs` | Analysis API endpoints | NEW |
@@ -774,6 +776,36 @@ Costs are for the ~20-30K token digest (not the raw 55K average), so significant
 | **Database** | | |
 | `crates/db/src/migrations.rs` | Add `session_analysis` table as next migration (after `fluency_scores`) | MODIFY |
 | `crates/db/src/queries/session_analysis.rs` | Analysis CRUD queries (NOT `analysis.rs` — avoids confusion with `fluency.rs`) | NEW |
+### Exact Import/Export Changes
+
+**`crates/core/src/llm/provider.rs` line 5 — add imports:**
+```rust
+// BEFORE:
+use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError};
+// AFTER:
+use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, AnalysisRequest, AnalysisResponse, LlmError};
+```
+
+**`crates/core/src/llm/mod.rs` — add modules and re-exports:**
+```rust
+// Add after line 12 (pub mod types;):
+pub mod anthropic_api;
+pub mod openai_compat;
+
+// Add to line 17 (pub use types::{...}):
+pub use types::{..., AnalysisRequest, AnalysisResponse, AiDimensionScore};
+// Add re-exports for new providers:
+pub use anthropic_api::AnthropicApiProvider;
+pub use openai_compat::OpenAiCompatProvider;
+```
+
+**`crates/core/src/lib.rs` — add modules after line 21:**
+```rust
+pub mod digest;
+pub mod scoring;
+pub mod analysis;
+```
+
 | **Frontend (future, not in this plan)** | | |
 | Settings UI for provider configuration | — | DEFERRED |
 | Fluency Score dashboard | — | DEFERRED |
@@ -846,6 +878,42 @@ This avoids adding `Arc<dyn LlmProvider>` to `AppState` and the associated lifec
 - **Phase B2 (Intelligent Session States)** is in-flight on this branch with 30 uncommitted files. This plan builds on the same `LlmProvider` trait extensions. Recommend: commit Phase B2 first, then start this work.
 - **The `complete()` method** added in Phase B2 remains for pause classification. The new `analyze()` method is separate.
 - **`reqwest` dependency** is new for `crates/core` — currently only uses `tokio` for async.
+- **`classify.rs` hardcodes `ClaudeCliProvider`** at lines 475 and 621. When a user sets `LLM_PROVIDER=anthropic_api`, classification still uses Claude CLI. Updating `classify.rs` to use the factory is out of scope for this plan but should be a fast follow-up — replace both hardcoded `ClaudeCliProvider::new("haiku")` calls with `create_provider(&LlmConfig::from_env())?`.
+
+## Test Strategy
+
+Each new module needs tests. Minimum required:
+
+**`digest.rs` tests:**
+- Parse a sample JSONL file → verify `ConversationDigest` strips tool payloads, keeps user messages
+- Edge case: empty JSONL file → graceful error
+- Edge case: JSONL with only system messages → empty digest
+- Verify `LocalMetrics.tools_used` counts all tool names (not just 4 hardcoded)
+
+**`scoring.rs` tests:**
+- `score_tool_leverage()` — verify each tier boundary (1-2, 3-4, 5-6, 7-8, 9-10)
+- `score_iteration_efficiency()` — verify re-edit rate boundaries
+- `score_context_economy()` — verify utilization boundaries
+- Edge case: `files_edited = 0` → iteration efficiency should not divide by zero
+
+**`analysis.rs` tests:**
+- `compute_fluency_score()` — verify weighted average: all 10s → 100, all 1s → 10
+- `compute_fluency_score()` — verify specific weight application (e.g., Prompt Clarity=10, rest=5 should differ from Tool Leverage=10, rest=5)
+- Verify WEIGHTS sum to 1.0 (static assertion)
+
+**`llm/types.rs` tests:**
+- `AnalysisResponse` deserialization from camelCase JSON (the exact format the LLM prompt asks for)
+- Round-trip: serialize → deserialize for `AiDimensionScore`
+- Verify `#[serde(skip)]` fields default correctly (input_tokens=None, latency_ms=0)
+
+**Provider tests (require mocking):**
+- Create `MockLlmProvider` implementing `LlmProvider` trait for pipeline tests
+- `AnthropicApiProvider` — verify request headers (`x-api-key`, `anthropic-version`)
+- `OpenAiCompatProvider` — verify request format matches OpenAI `/chat/completions` spec
+
+**Integration tests:**
+- Full pipeline: JSONL file → digest → local scores → mock AI scores → FluencyAnalysis → DB insert
+- Verify `session_analysis` row matches expected values after pipeline
 
 ## Open Questions
 
@@ -872,3 +940,11 @@ This avoids adding `Arc<dyn LlmProvider>` to `AppState` and the associated lifec
 | 13 | Migration number not specified | Warning | Clarified: "next migration after `fluency_scores`" |
 | 14 | Files Changed table had stale entries | Minor | Updated: `claude_cli.rs` → UNCHANGED, `config.rs` description fixed, added `error.rs` |
 | 15 | Implementation order missing foundation steps | Minor | Added Phase 0 (7 foundation tasks) before Phase 1 (core pipeline) |
+| **Round 2 (adversarial review)** | | | |
+| 16 | `AnalysisRequest` missing `#[derive(Debug, Clone)]` | Blocker | Added derive macro |
+| 17 | `session_analysis` FK missing `ON DELETE CASCADE` | Blocker | Added to match codebase convention |
+| 18 | `analyzed_at` uses TEXT datetime, codebase uses INTEGER Unix timestamps | Blocker | Changed to `INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))` |
+| 19 | `classify.rs` hardcodes `ClaudeCliProvider`, won't use user's configured provider | Warning | Added note in Dependencies section — fast follow-up to update classify.rs |
+| 20 | `provider.rs` import changes not shown | Warning | Added exact import/export code blocks for `provider.rs`, `mod.rs`, `lib.rs` |
+| 21 | `DimensionScore` and `AiDimensionScore` are identical but separate types | Warning | Changed `DimensionScore` to a type alias of `AiDimensionScore` |
+| 22 | No test strategy | Warning | Added Test Strategy section with per-module test requirements |
