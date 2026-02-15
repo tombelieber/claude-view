@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, GitBranch, List } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { toDisplayStatus, DISPLAY_STATUS_ORDER } from '../../types/live'
+import { GROUP_ORDER } from './types'
 import { cleanPreviewText } from '../../utils/get-session-title'
-import type { LiveSession } from '../../hooks/use-live-sessions'
+import type { LiveSession } from './use-live-sessions'
 import { StatusDot } from './StatusDot'
+import { StateBadge } from './SessionCard'
 import { ContextBar } from './ContextBar'
 
 interface ListViewProps {
@@ -61,8 +62,8 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
       let cmp = 0
       switch (sortColumn) {
         case 'status': {
-          const aOrder = DISPLAY_STATUS_ORDER[toDisplayStatus(a.status)]
-          const bOrder = DISPLAY_STATUS_ORDER[toDisplayStatus(b.status)]
+          const aOrder = GROUP_ORDER[a.agentState.group]
+          const bOrder = GROUP_ORDER[b.agentState.group]
           cmp = aOrder - bOrder
           break
         }
@@ -147,7 +148,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
         </thead>
         <tbody>
           {sorted.map((session) => {
-            const displayStatus = toDisplayStatus(session.status)
+            const group = session.agentState.group
             const isSelected = session.id === selectedId
             const contextPercent = getContextPercent(session)
             const activityText = session.currentActivity || cleanPreviewText(session.lastUserMessage) || '--'
@@ -167,7 +168,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 {/* Status */}
                 <td className="px-2 py-2 w-[40px]">
                   <div className="flex items-center justify-center">
-                    <StatusDot status={displayStatus} size="sm" pulse={displayStatus === 'working'} />
+                    <StatusDot group={group} size="sm" pulse={group === 'autonomous'} />
                   </div>
                 </td>
 
@@ -194,9 +195,13 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Activity */}
                 <td className="px-2 py-2">
-                  <span className="text-xs text-gray-700 dark:text-gray-300 truncate block">
-                    {activityText}
-                  </span>
+                  {session.agentState.group === 'needs_you' ? (
+                    <StateBadge agentState={session.agentState} />
+                  ) : (
+                    <span className="text-xs text-gray-700 dark:text-gray-300 truncate block">
+                      {activityText}
+                    </span>
+                  )}
                 </td>
 
                 {/* Turns */}

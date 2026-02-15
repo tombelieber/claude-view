@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tokio::process::Command as TokioCommand;
 
 use super::provider::LlmProvider;
-use super::types::{ClassificationRequest, ClassificationResponse, LlmError};
+use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError};
 
 /// LLM provider that uses the Claude CLI binary.
 ///
@@ -39,9 +39,32 @@ impl ClaudeCliProvider {
         use tokio::time::{timeout, Duration};
 
         let timeout_duration = Duration::from_secs(self.timeout_secs);
+        let t0 = std::time::Instant::now();
 
-        let future = TokioCommand::new("claude")
-            .args([
+        // Strip ALL Claude Code env vars to prevent nested session detection.
+        // Belt-and-suspenders: explicitly remove the three known vars PLUS any
+        // future CLAUDE-prefixed vars discovered at runtime. Previous approach
+        // relied solely on std::env::vars() iteration, which can miss vars with
+        // unusual values on macOS.
+        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let extra_vars: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
+            .map(|(k, _)| k)
+            .collect();
+        let all_stripped: Vec<&str> = known_vars
+            .iter()
+            .copied()
+            .chain(extra_vars.iter().map(|s| s.as_str()))
+            .collect();
+        tracing::info!(
+            model = %self.model,
+            timeout_secs = self.timeout_secs,
+            stripped_vars = ?all_stripped,
+            "claude CLI: spawning"
+        );
+
+        let mut cmd = TokioCommand::new("claude");
+        cmd.args([
                 "-p",
                 "--output-format",
                 "json",
@@ -49,20 +72,40 @@ impl ClaudeCliProvider {
                 &self.model,
                 prompt,
             ])
-            .output();
+            // Null stdin so the child never blocks waiting for input
+            .stdin(std::process::Stdio::null());
+        // Strip ALL Claude-prefixed env vars to prevent nested session detection
+        for var in &all_stripped {
+            cmd.env_remove(var);
+        }
+        let future = cmd.output();
 
         let output = timeout(timeout_duration, future)
             .await
-            .map_err(|_| LlmError::Timeout(self.timeout_secs))?
-            .map_err(|e| LlmError::SpawnFailed(e.to_string()))?;
+            .map_err(|_| {
+                tracing::error!(elapsed_ms = t0.elapsed().as_millis() as u64, "claude CLI: timed out");
+                LlmError::Timeout(self.timeout_secs)
+            })?
+            .map_err(|e| {
+                tracing::error!(error = %e, "claude CLI: failed to spawn process");
+                LlmError::SpawnFailed(e.to_string())
+            })?;
+
+        let elapsed_ms = t0.elapsed().as_millis() as u64;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!(elapsed_ms, exit_code = ?output.status.code(), stderr = %&stderr[..stderr.len().min(500)], "claude CLI: non-zero exit");
             return Err(LlmError::CliError(stderr.to_string()));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        serde_json::from_str(&stdout).map_err(|e| LlmError::ParseFailed(e.to_string()))
+        tracing::info!(elapsed_ms, stdout_len = stdout.len(), "claude CLI: response received");
+
+        serde_json::from_str(&stdout).map_err(|e| {
+            tracing::warn!(stdout = %&stdout[..stdout.len().min(500)], "claude CLI: returned non-JSON");
+            LlmError::ParseFailed(e.to_string())
+        })
     }
 }
 
@@ -75,6 +118,86 @@ impl LlmProvider for ClaudeCliProvider {
         let prompt = build_classification_prompt(&request);
         let json = self.spawn_and_parse(&prompt).await?;
         parse_classification_response(json)
+    }
+
+    async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        use tokio::time::{timeout, Duration};
+
+        let start = std::time::Instant::now();
+        let timeout_duration = Duration::from_secs(self.timeout_secs);
+
+        // Build the combined prompt (system + user)
+        let prompt = if let Some(sys) = &request.system_prompt {
+            format!("{}\n\n{}", sys, request.user_prompt)
+        } else {
+            request.user_prompt.clone()
+        };
+
+        // Strip ALL Claude Code env vars to prevent nested session detection.
+        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let extra_vars: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
+            .map(|(k, _)| k)
+            .collect();
+        let all_stripped: Vec<&str> = known_vars
+            .iter()
+            .copied()
+            .chain(extra_vars.iter().map(|s| s.as_str()))
+            .collect();
+
+        tracing::info!(
+            model = %self.model,
+            timeout_secs = self.timeout_secs,
+            stripped_vars = ?all_stripped,
+            "claude CLI complete(): spawning"
+        );
+
+        let mut cmd = TokioCommand::new("claude");
+        cmd.args([
+                "-p",
+                "--output-format",
+                "json",
+                "--model",
+                &self.model,
+                &prompt,
+            ])
+            .stdin(std::process::Stdio::null());
+        for var in &all_stripped {
+            cmd.env_remove(var);
+        }
+        let future = cmd.output();
+
+        let output = timeout(timeout_duration, future)
+            .await
+            .map_err(|_| {
+                tracing::error!(elapsed_ms = start.elapsed().as_millis() as u64, "claude CLI complete(): timed out");
+                LlmError::Timeout(self.timeout_secs)
+            })?
+            .map_err(|e| {
+                tracing::error!(error = %e, "claude CLI complete(): failed to spawn process");
+                LlmError::SpawnFailed(e.to_string())
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(LlmError::CliError(stderr.to_string()));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed: serde_json::Value = serde_json::from_str(&stdout)
+            .map_err(|e| LlmError::ParseFailed(format!("Invalid JSON from CLI: {e}")))?;
+
+        let content = parsed["result"]
+            .as_str()
+            .unwrap_or_else(|| parsed["content"].as_str().unwrap_or(""))
+            .to_string();
+
+        Ok(CompletionResponse {
+            content,
+            input_tokens: None,
+            output_tokens: None,
+            latency_ms: start.elapsed().as_millis() as u64,
+        })
     }
 
     async fn health_check(&self) -> Result<(), LlmError> {
@@ -103,35 +226,21 @@ impl LlmProvider for ClaudeCliProvider {
 /// Build the classification prompt for a session.
 pub fn build_classification_prompt(request: &ClassificationRequest) -> String {
     format!(
-        r#"Classify this Claude Code session. Respond with JSON only.
+        r#"You are a JSON classifier. Output ONLY a JSON object, no other text.
 
-First prompt:
-```
-{}
-```
+Classify this Claude Code session based on the available information. The prompt may be truncated — classify using your best judgment from whatever is provided. Never refuse or ask for more context.
 
+First prompt: {}
 Files touched: {}
 Skills used: {}
 
-Categories:
 L1: code_work | support_work | thinking_work
-L2 (if code_work): feature | bugfix | refactor | testing
-L2 (if support_work): docs | config | ops
-L2 (if thinking_work): planning | explanation | architecture
-L3 (by L2):
-  - feature: new-component | add-functionality | integration
-  - bugfix: error-fix | logic-fix | performance-fix
-  - refactor: cleanup | pattern-migration | dependency-update
-  - testing: unit-tests | integration-tests | test-fixes
-  - docs: code-comments | readme-guides | api-docs
-  - config: env-setup | build-tooling | dependencies
-  - ops: ci-cd | deployment | monitoring
-  - planning: brainstorming | design-doc | task-breakdown
-  - explanation: code-understanding | concept-learning | debug-investigation
-  - architecture: system-design | data-modeling | api-design
+L2 (code_work): feature | bugfix | refactor | testing
+L2 (support_work): docs | config | ops
+L2 (thinking_work): planning | explanation | architecture
+L3: feature→new-component|add-functionality|integration, bugfix→error-fix|logic-fix|performance-fix, refactor→cleanup|pattern-migration|dependency-update, testing→unit-tests|integration-tests|test-fixes, docs→code-comments|readme-guides|api-docs, config→env-setup|build-tooling|dependencies, ops→ci-cd|deployment|monitoring, planning→brainstorming|design-doc|task-breakdown, explanation→code-understanding|concept-learning|debug-investigation, architecture→system-design|data-modeling|api-design
 
-Respond:
-{{"category_l1": "...", "category_l2": "...", "category_l3": "...", "confidence": 0.0-1.0}}"#,
+{{"category_l1":"...","category_l2":"...","category_l3":"...","confidence":0.0}}"#,
         request.first_prompt,
         request.files_touched.join(", "),
         request.skills_used.join(", ")
@@ -141,14 +250,25 @@ Respond:
 /// Parse LLM JSON response into a ClassificationResponse.
 ///
 /// Handles both direct JSON objects and Claude CLI's `result` wrapper format.
+/// The `result` field may contain extra text (markdown, explanation) around the JSON —
+/// we extract the first `{...}` block and parse that.
 pub fn parse_classification_response(
     json: serde_json::Value,
 ) -> Result<ClassificationResponse, LlmError> {
     // Claude CLI wraps output in { "result": "..." } — check for that
     let inner = if let Some(result_str) = json.get("result").and_then(|v| v.as_str()) {
-        // The result field contains a JSON string — parse it
-        serde_json::from_str(result_str)
-            .map_err(|e| LlmError::ParseFailed(format!("inner JSON parse failed: {}", e)))?
+        // Try direct parse first
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(result_str) {
+            v
+        } else {
+            // Model may have returned extra text around the JSON — extract it
+            extract_json_from_text(result_str).ok_or_else(|| {
+                LlmError::ParseFailed(format!(
+                    "no JSON object found in CLI result: {}",
+                    &result_str[..result_str.len().min(200)]
+                ))
+            })?
+        }
     } else {
         json
     };
@@ -156,6 +276,29 @@ pub fn parse_classification_response(
     serde_json::from_value(inner).map_err(|e| {
         LlmError::InvalidFormat(format!("response missing required fields: {}", e))
     })
+}
+
+/// Extract the first JSON object `{...}` from a text string.
+/// Handles cases where the model wraps JSON in markdown or explanation text.
+fn extract_json_from_text(text: &str) -> Option<serde_json::Value> {
+    let start = text.find('{')?;
+    let mut depth = 0;
+    let mut end = None;
+    for (i, ch) in text[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(start + i + 1);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let json_str = &text[start..end?];
+    serde_json::from_str(json_str).ok()
 }
 
 #[cfg(test)]

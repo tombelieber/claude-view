@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { sseUrl } from '../lib/sse-url'
+import { sseUrl } from '../../lib/sse-url'
+import type { AgentState } from './types'
 
 export interface LiveSession {
   id: string
@@ -7,7 +8,8 @@ export interface LiveSession {
   projectDisplayName: string
   projectPath: string
   filePath: string
-  status: 'streaming' | 'tool_use' | 'waiting_for_user' | 'idle' | 'complete'
+  status: 'working' | 'paused' | 'done'
+  agentState: AgentState
   gitBranch: string | null
   pid: number | null
   title: string
@@ -37,9 +39,9 @@ export interface LiveSession {
 }
 
 export interface LiveSummary {
-  activeCount: number
-  waitingCount: number
-  idleCount: number
+  needsYouCount: number
+  autonomousCount: number
+  deliveredCount: number
   totalCostTodayUsd: number
   totalTokensToday: number
 }
@@ -115,8 +117,8 @@ export function useLiveSessions(): UseLiveSessionsResult {
       es.addEventListener('summary', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          // Handle both wrapped and unwrapped formats
-          const s = data.activeCount !== undefined ? data : data.summary ?? data
+          // CRITICAL: detect summary by new field name
+          const s = data.needsYouCount !== undefined ? data : data.summary ?? data
           setSummary(s)
           setLastUpdate(new Date())
         } catch { /* ignore */ }

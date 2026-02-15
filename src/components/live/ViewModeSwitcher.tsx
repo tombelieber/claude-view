@@ -1,7 +1,7 @@
 import { LayoutGrid, List, Columns3, Monitor } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { LiveViewMode } from '../../types/live'
-import { LIVE_VIEW_MODES } from '../../types/live'
+import type { LiveViewMode } from './types'
+import { LIVE_VIEW_MODES } from './types'
 
 const ICON_MAP = {
   LayoutGrid,

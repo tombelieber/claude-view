@@ -439,8 +439,12 @@ async fn classify_single_session(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    let t0 = std::time::Instant::now();
+    tracing::info!(session_id = %session_id, "classify/single: request received");
+
     // 1. Check if already classified (O(1) query)
     if let Some((l1, l2, l3, conf)) = state.db.get_session_classification(&session_id).await? {
+        tracing::info!(session_id = %session_id, l2 = %l2, "classify/single: cache hit");
         return Ok((
             StatusCode::OK,
             Json(ClassifySingleResponse {
@@ -461,6 +465,9 @@ async fn classify_single_session(
         .await?
         .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
 
+    let preview_short = &preview[..preview.len().min(80)];
+    tracing::info!(session_id = %session_id, preview = %preview_short, "classify/single: calling Claude CLI");
+
     // 3. Parse skills
     let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
 
@@ -475,8 +482,19 @@ async fn classify_single_session(
     };
 
     let resp = provider.classify(request).await.map_err(|e| {
+        tracing::error!(session_id = %session_id, elapsed_ms = t0.elapsed().as_millis() as u64, error = %e, "classify/single: failed");
         ApiError::Internal(format!("Classification failed: {e}"))
     })?;
+
+    tracing::info!(
+        session_id = %session_id,
+        l1 = %resp.category_l1,
+        l2 = %resp.category_l2,
+        l3 = %resp.category_l3,
+        confidence = resp.confidence,
+        elapsed_ms = t0.elapsed().as_millis() as u64,
+        "classify/single: success"
+    );
 
     // 5. Persist to DB
     state

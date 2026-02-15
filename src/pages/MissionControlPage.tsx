@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useLiveSessions } from '../hooks/use-live-sessions'
-import { useLiveSessionFilters } from '../hooks/use-live-session-filters'
-import { useKeyboardShortcuts } from '../hooks/use-keyboard-shortcuts'
-import { filterLiveSessions } from '../lib/live-filter'
+import { useLiveSessions } from '../components/live/use-live-sessions'
+import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
+import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
+import { filterLiveSessions } from '../components/live/live-filter'
 import { SessionCard } from '../components/live/SessionCard'
 import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
 import { ListView } from '../components/live/ListView'
@@ -13,9 +13,9 @@ import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { MobileTabBar } from '../components/live/MobileTabBar'
-import type { LiveSummary } from '../hooks/use-live-sessions'
-import type { LiveViewMode } from '../types/live'
-import { toDisplayStatus, LIVE_VIEW_STORAGE_KEY } from '../types/live'
+import type { LiveSummary } from '../components/live/use-live-sessions'
+import type { LiveViewMode } from '../components/live/types'
+import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -50,7 +50,7 @@ export function MissionControlPage() {
 
   // Available filter options from current (unfiltered) sessions
   const availableStatuses = useMemo(() => {
-    const set = new Set(sessions.map(s => toDisplayStatus(s.status)))
+    const set = new Set(sessions.map(s => s.agentState.group))
     return Array.from(set)
   }, [sessions])
 
@@ -244,16 +244,16 @@ function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-2 p-3 rounded-lg bg-gray-100/50 dark:bg-gray-800/50 text-sm">
       <div>
-        <span className="text-green-500 font-medium">{summary.activeCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">active</span>
+        <span className="text-amber-500 font-medium">{summary.needsYouCount}</span>
+        <span className="text-gray-500 dark:text-gray-400 ml-1">needs you</span>
       </div>
       <div>
-        <span className="text-amber-500 font-medium">{summary.waitingCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">waiting</span>
+        <span className="text-green-500 font-medium">{summary.autonomousCount}</span>
+        <span className="text-gray-500 dark:text-gray-400 ml-1">autonomous</span>
       </div>
       <div>
-        <span className="text-gray-400 font-medium">{summary.idleCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">idle</span>
+        <span className="text-blue-400 font-medium">{summary.deliveredCount}</span>
+        <span className="text-gray-500 dark:text-gray-400 ml-1">delivered</span>
       </div>
       {showFiltered && (
         <div>

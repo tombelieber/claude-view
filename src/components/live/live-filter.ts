@@ -1,11 +1,11 @@
-import type { LiveSession } from '../hooks/use-live-sessions'
-import { toDisplayStatus, DISPLAY_STATUS_ORDER } from '../types/live'
+import type { LiveSession } from './use-live-sessions'
+import { GROUP_ORDER } from './types'
 
 export type LiveSortField = 'status' | 'last_active' | 'cost' | 'turns' | 'context' | 'project'
 export type LiveSortDirection = 'asc' | 'desc'
 
 export interface LiveSessionFilters {
-  statuses: string[] // display statuses to include (working, waiting, idle, done)
+  statuses: string[] // agent state groups to include (needs_you, autonomous, delivered)
   projects: string[] // project display names
   branches: string[] // git branch names
   search: string // text search query
@@ -32,8 +32,8 @@ export function sortLiveSessions(
 
     switch (field) {
       case 'status': {
-        const aOrder = DISPLAY_STATUS_ORDER[toDisplayStatus(a.status)]
-        const bOrder = DISPLAY_STATUS_ORDER[toDisplayStatus(b.status)]
+        const aOrder = GROUP_ORDER[a.agentState.group]
+        const bOrder = GROUP_ORDER[b.agentState.group]
         cmp = aOrder - bOrder
         break
       }
@@ -74,7 +74,7 @@ export function filterLiveSessions(
   // Status filter
   if (filters.statuses.length > 0) {
     result = result.filter((s) =>
-      filters.statuses.includes(toDisplayStatus(s.status))
+      filters.statuses.includes(s.agentState.group)
     )
   }
 
