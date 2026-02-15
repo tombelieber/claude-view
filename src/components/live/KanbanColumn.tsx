@@ -1,11 +1,11 @@
-import type { LiveSession } from '../../hooks/use-live-sessions'
-import type { LiveDisplayStatus } from '../../types/live'
-import { SessionCard } from '../../components/live/SessionCard'
+import type { LiveSession } from './use-live-sessions'
+import type { AgentStateGroup } from './types'
+import { SessionCard } from './SessionCard'
 import { cn } from '../../lib/utils'
 
 interface KanbanColumnProps {
   title: string
-  status: LiveDisplayStatus
+  group: AgentStateGroup
   sessions: LiveSession[]
   accentColor: string
   selectedId: string | null
@@ -13,44 +13,48 @@ interface KanbanColumnProps {
   emptyMessage: string
 }
 
+function NeedsYouSubCount({ sessions }: { sessions: LiveSession[] }) {
+  const urgent = sessions.filter(
+    (s) => s.agentState.state === 'awaiting_input' || s.agentState.state === 'needs_permission'
+  ).length
+  if (urgent === 0) return null
+  return (
+    <span className="ml-1.5 text-[10px] text-amber-500 font-normal">
+      {urgent} urgent
+    </span>
+  )
+}
+
 export function KanbanColumn({
   title,
-  status,
+  group,
   sessions,
   accentColor,
   selectedId,
   onSelect,
   emptyMessage,
 }: KanbanColumnProps) {
-  const sorted = [...sessions].sort(
-    (a, b) => b.lastActivityAt - a.lastActivityAt
-  )
-
   return (
     <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1">
-      <div
-        className={cn(
-          'bg-slate-900/50 rounded-lg border border-slate-800 flex flex-col',
-          'overflow-hidden'
-        )}
-      >
-        {/* Accent border */}
+      <div className={cn(
+        'bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col',
+        'overflow-hidden'
+      )}>
         <div className={cn('h-0.5', accentColor)} />
-
-        {/* Header */}
         <div className="px-3 py-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-300">{title}</span>
-          <span className="text-xs text-slate-500">({sessions.length})</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {title}
+            {group === 'needs_you' && <NeedsYouSubCount sessions={sessions} />}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">({sessions.length})</span>
         </div>
-
-        {/* Cards */}
         <div className="space-y-3 p-3 max-h-[calc(100vh-220px)] overflow-y-auto">
-          {sorted.length === 0 ? (
-            <p className="text-xs text-slate-500 py-8 text-center">
+          {sessions.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500 py-8 text-center">
               {emptyMessage}
             </p>
           ) : (
-            sorted.map((session) => (
+            sessions.map((session) => (
               <div
                 key={session.id}
                 data-session-id={session.id}

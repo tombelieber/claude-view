@@ -21,7 +21,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::live::state::{LiveSession, SessionEvent, SessionStatus};
+use crate::live::state::{AgentStateGroup, LiveSession, SessionEvent};
 use crate::state::AppState;
 
 /// Build the live monitoring sub-router.
@@ -281,27 +281,26 @@ async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Val
 
 /// Build a summary JSON object from the current live sessions map.
 fn build_summary(map: &HashMap<String, LiveSession>) -> serde_json::Value {
-    let mut active_count = 0usize;
-    let mut waiting_count = 0usize;
-    let mut idle_count = 0usize;
+    let mut needs_you_count = 0usize;
+    let mut autonomous_count = 0usize;
+    let mut delivered_count = 0usize;
     let mut total_cost = 0.0f64;
     let mut total_tokens = 0u64;
 
     for session in map.values() {
-        match session.status {
-            SessionStatus::Streaming | SessionStatus::ToolUse => active_count += 1,
-            SessionStatus::WaitingForUser => waiting_count += 1,
-            SessionStatus::Idle => idle_count += 1,
-            SessionStatus::Complete => {}
+        match session.agent_state.group {
+            AgentStateGroup::NeedsYou => needs_you_count += 1,
+            AgentStateGroup::Autonomous => autonomous_count += 1,
+            AgentStateGroup::Delivered => delivered_count += 1,
         }
         total_cost += session.cost.total_usd;
         total_tokens += session.tokens.total_tokens;
     }
 
     serde_json::json!({
-        "activeCount": active_count,
-        "waitingCount": waiting_count,
-        "idleCount": idle_count,
+        "needsYouCount": needs_you_count,
+        "autonomousCount": autonomous_count,
+        "deliveredCount": delivered_count,
         "totalCostTodayUsd": total_cost,
         "totalTokensToday": total_tokens,
     })
