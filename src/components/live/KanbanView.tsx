@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import { Columns3 } from 'lucide-react'
-import type { LiveSession } from '../../hooks/use-live-sessions'
-import type { LiveDisplayStatus } from '../../types/live'
-import { toDisplayStatus } from '../../types/live'
+import type { LiveSession } from './use-live-sessions'
+import type { AgentStateGroup } from './types'
 import { KanbanColumn } from './KanbanColumn'
 
 interface KanbanViewProps {
@@ -13,59 +12,67 @@ interface KanbanViewProps {
 
 const COLUMNS: {
   title: string
-  status: LiveDisplayStatus
+  group: AgentStateGroup
   accentColor: string
   emptyMessage: string
 }[] = [
   {
-    title: 'Working',
-    status: 'working',
-    accentColor: 'bg-green-500',
-    emptyMessage: 'No active sessions',
-  },
-  {
-    title: 'Waiting',
-    status: 'waiting',
+    title: 'Needs You',
+    group: 'needs_you',
     accentColor: 'bg-amber-500',
-    emptyMessage: 'No sessions waiting',
+    emptyMessage: 'No sessions need attention',
   },
   {
-    title: 'Idle',
-    status: 'idle',
-    accentColor: 'bg-gray-500',
-    emptyMessage: 'All sessions active',
+    title: 'Running',
+    group: 'autonomous',
+    accentColor: 'bg-green-500',
+    emptyMessage: 'No autonomous sessions',
   },
   {
     title: 'Done',
-    status: 'done',
+    group: 'delivered',
     accentColor: 'bg-blue-500',
     emptyMessage: 'No completed sessions',
   },
 ]
 
+/** Sort key for needs_you sessions: urgency ordering */
+export function needsYouSortKey(session: LiveSession): number {
+  switch (session.agentState.state) {
+    case 'needs_permission': return 0
+    case 'awaiting_input': return 1
+    case 'error': return 2
+    case 'awaiting_approval': return 3
+    case 'idle': return 4
+    default: return 5
+  }
+}
+
 export function KanbanView({ sessions, selectedId, onSelect }: KanbanViewProps) {
   const grouped = useMemo(() => {
-    const groups: Record<LiveDisplayStatus, LiveSession[]> = {
-      working: [],
-      waiting: [],
-      idle: [],
-      done: [],
+    const groups: Record<AgentStateGroup, LiveSession[]> = {
+      needs_you: [],
+      autonomous: [],
+      delivered: [],
     }
     for (const s of sessions) {
-      groups[toDisplayStatus(s.status)].push(s)
+      groups[s.agentState.group].push(s)
     }
-    // Sort within each group by lastActivityAt descending
-    for (const arr of Object.values(groups)) {
-      arr.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-    }
+    groups.autonomous.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    groups.delivered.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    groups.needs_you.sort((a, b) => {
+      const keyDiff = needsYouSortKey(a) - needsYouSortKey(b)
+      if (keyDiff !== 0) return keyDiff
+      return b.lastActivityAt - a.lastActivityAt
+    })
     return groups
   }, [sessions])
 
   if (sessions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-        <Columns3 className="h-10 w-10 mb-3 text-slate-600" />
-        <p className="text-sm font-medium text-slate-400">
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+        <Columns3 className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
           No active sessions detected
         </p>
         <p className="text-xs mt-1">
@@ -79,10 +86,10 @@ export function KanbanView({ sessions, selectedId, onSelect }: KanbanViewProps) 
     <div className="flex gap-4 overflow-x-auto pb-4">
       {COLUMNS.map((col) => (
         <KanbanColumn
-          key={col.status}
+          key={col.group}
           title={col.title}
-          status={col.status}
-          sessions={grouped[col.status]}
+          group={col.group}
+          sessions={grouped[col.group]}
           accentColor={col.accentColor}
           selectedId={selectedId}
           onSelect={onSelect}

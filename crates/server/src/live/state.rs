@@ -3,24 +3,58 @@
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
 use vibe_recall_core::live_parser::{LineType, LiveLine};
 
+/// The universal agent state — core protocol.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentState {
+    /// Which UI group this belongs to (fixed, never changes)
+    pub group: AgentStateGroup,
+    /// Sub-state within group (open string — new states added freely)
+    pub state: String,
+    /// Human-readable label (domain layer can override)
+    pub label: String,
+    /// How confident we are in this classification
+    pub confidence: f32,
+    /// How this state was determined
+    pub source: SignalSource,
+    /// Raw context for domain layers to interpret
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStateGroup {
+    NeedsYou,
+    Autonomous,
+    Delivered,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalSource {
+    Hook,
+    Jsonl,
+    Fallback,
+}
+
 /// The current status of a live Claude Code session.
+///
+/// 3-state model: Working (actively streaming/tool use), Paused (waiting for
+/// input, task complete, or idle), Done (session over).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
-    /// Assistant is actively generating a response.
-    Streaming,
-    /// A tool call is in progress (Read, Write, Bash, etc.).
-    ToolUse,
-    /// Waiting for the user to provide input.
-    WaitingForUser,
-    /// No activity for more than 60 seconds.
-    Idle,
-    /// Session is finished (no running process and >5 min inactive).
-    Complete,
+    /// Agent is actively streaming or using tools.
+    Working,
+    /// Agent paused -- reason available in pause_classification.
+    Paused,
+    /// Session is over (process exited + no new writes for 60s).
+    Done,
 }
 
 /// A live session snapshot broadcast to connected SSE clients.
@@ -39,6 +73,9 @@ pub struct LiveSession {
     pub file_path: String,
     /// Current derived session status.
     pub status: SessionStatus,
+    /// Universal agent state — replaces pause_classification.
+    /// Always present (never null), with group/state/label/confidence.
+    pub agent_state: AgentState,
     /// Git branch name, if detected.
     pub git_branch: Option<String>,
     /// PID of the running Claude process, if any.
@@ -85,10 +122,15 @@ pub enum SessionEvent {
     },
     /// Periodic aggregate summary of all live sessions.
     Summary {
-        active_count: usize,
-        waiting_count: usize,
-        idle_count: usize,
+        #[serde(rename = "needsYouCount")]
+        needs_you_count: usize,
+        #[serde(rename = "autonomousCount")]
+        autonomous_count: usize,
+        #[serde(rename = "deliveredCount")]
+        delivered_count: usize,
+        #[serde(rename = "totalCostTodayUsd")]
         total_cost_today_usd: f64,
+        #[serde(rename = "totalTokensToday")]
         total_tokens_today: u64,
     },
 }
@@ -96,15 +138,16 @@ pub enum SessionEvent {
 /// Derive the session status from the last parsed JSONL line, file age, and
 /// process presence.
 ///
-/// Status derivation priority (first match wins):
-/// 1. No data at all -> Idle
-/// 2. File inactive >5min AND no running process -> Complete
-/// 3. File inactive >60s -> Idle
-/// 4. Last line is Assistant with tool_use in tool_names -> ToolUse
-/// 5. Last line is Assistant streaming (no "end_turn" stop_reason) -> Streaming
-/// 6. Last line is User OR (Assistant with stop_reason "end_turn") OR System -> WaitingForUser
-/// 7. Last line is Progress -> ToolUse
-/// 8. Default -> Idle
+/// 3-state derivation (first match wins):
+/// 1. No data at all -> Paused
+/// 2. No running process AND file stale >60s -> Done
+/// 3. Activity within 30s:
+///    - Assistant with tools -> Working
+///    - Assistant still streaming (no end_turn) -> Working
+///    - Assistant with end_turn -> Paused
+///    - Progress -> Working
+///    - User/System/other -> Paused
+/// 4. >30s since last write -> Paused
 pub fn derive_status(
     last_line: Option<&LiveLine>,
     seconds_since_modified: u64,
@@ -112,35 +155,34 @@ pub fn derive_status(
 ) -> SessionStatus {
     let last_line = match last_line {
         Some(ll) => ll,
-        None => return SessionStatus::Idle,
+        None => return SessionStatus::Paused,
     };
 
-    // Complete: inactive for >5 min and no process
-    if seconds_since_modified > 300 && !has_running_process {
-        return SessionStatus::Complete;
+    // Done: process exited AND file stale >60s
+    if !has_running_process && seconds_since_modified > 60 {
+        return SessionStatus::Done;
     }
 
-    // Idle: inactive for >60s
-    if seconds_since_modified > 60 {
-        return SessionStatus::Idle;
-    }
-
-    match last_line.line_type {
-        LineType::Assistant => {
-            if !last_line.tool_names.is_empty() {
-                SessionStatus::ToolUse
-            } else if last_line.stop_reason.as_deref() == Some("end_turn") {
-                SessionStatus::WaitingForUser
-            } else {
-                // Still streaming (no stop reason or a non-end_turn reason)
-                SessionStatus::Streaming
+    // Working: active streaming or tool use (within last 30s)
+    if seconds_since_modified <= 30 {
+        match last_line.line_type {
+            LineType::Assistant => {
+                if !last_line.tool_names.is_empty() {
+                    return SessionStatus::Working;
+                }
+                if last_line.stop_reason.as_deref() != Some("end_turn") {
+                    return SessionStatus::Working;
+                }
+                // end_turn = Claude finished -> Paused
+                SessionStatus::Paused
             }
+            LineType::Progress => SessionStatus::Working,
+            // User message, System message, etc. -> Paused
+            _ => SessionStatus::Paused,
         }
-        LineType::User => SessionStatus::WaitingForUser,
-        LineType::System => SessionStatus::WaitingForUser,
-        LineType::Progress => SessionStatus::ToolUse,
-        // Summary, Other, etc. -> Idle
-        _ => SessionStatus::Idle,
+    } else {
+        // >30s since last write -> Paused
+        SessionStatus::Paused
     }
 }
 
@@ -213,88 +255,84 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // derive_status tests
+    // derive_status tests (3-state: Working, Paused, Done)
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_status_no_data() {
+    fn test_status_paused_no_data() {
         let status = derive_status(None, 0, false);
-        assert_eq!(status, SessionStatus::Idle);
+        assert_eq!(status, SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_streaming() {
+    fn test_status_working_streaming_recent() {
         let last = make_live_line(LineType::Assistant, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::Streaming);
+        let status = derive_status(Some(&last), 10, true);
+        assert_eq!(status, SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_streaming_with_non_end_turn_stop() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("max_tokens"));
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::Streaming);
+    fn test_status_working_tool_use_recent() {
+        let last = make_live_line(LineType::Assistant, vec!["Bash".to_string()], None);
+        let status = derive_status(Some(&last), 25, true);
+        assert_eq!(status, SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_tool_use() {
-        let last = make_live_line(
-            LineType::Assistant,
-            vec!["Read".to_string()],
-            Some("tool_use"),
-        );
-        let status = derive_status(Some(&last), 3, true);
-        assert_eq!(status, SessionStatus::ToolUse);
-    }
-
-    #[test]
-    fn test_status_waiting_for_user_end_turn() {
+    fn test_status_paused_end_turn_recent() {
         let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
         let status = derive_status(Some(&last), 10, true);
-        assert_eq!(status, SessionStatus::WaitingForUser);
+        assert_eq!(status, SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_waiting_for_user_after_user_message() {
-        let last = make_live_line(LineType::User, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::WaitingForUser);
+    fn test_status_paused_at_31s() {
+        let last = make_live_line(LineType::Assistant, vec![], None);
+        let status = derive_status(Some(&last), 31, true);
+        assert_eq!(status, SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_waiting_for_user_after_system() {
-        let last = make_live_line(LineType::System, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::WaitingForUser);
+    fn test_status_paused_at_61s_with_process() {
+        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
+        let status = derive_status(Some(&last), 61, true);
+        assert_eq!(status, SessionStatus::Paused, "At 61s with running process, status is Paused (not Done because process is active)");
     }
 
     #[test]
-    fn test_status_progress_means_tool_use() {
+    fn test_status_done_at_61s_no_process() {
+        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
+        let status = derive_status(Some(&last), 61, false);
+        assert_eq!(status, SessionStatus::Done);
+    }
+
+    #[test]
+    fn test_status_working_progress_recent() {
         let last = make_live_line(LineType::Progress, vec![], None);
         let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::ToolUse);
+        assert_eq!(status, SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_idle_after_60s() {
+    fn test_status_paused_user_message() {
+        let last = make_live_line(LineType::User, vec![], None);
+        let status = derive_status(Some(&last), 5, true);
+        assert_eq!(status, SessionStatus::Paused);
+    }
+
+    #[test]
+    fn test_status_working_streaming_no_process() {
+        // Edge case: process exits during active streaming -- recent activity keeps it Working
         let last = make_live_line(LineType::Assistant, vec![], None);
-        let status = derive_status(Some(&last), 61, true);
-        assert_eq!(status, SessionStatus::Idle);
+        let status = derive_status(Some(&last), 5, false);
+        assert_eq!(status, SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_complete_after_5min_no_process() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
-        let status = derive_status(Some(&last), 301, false);
-        assert_eq!(status, SessionStatus::Complete);
-    }
-
-    #[test]
-    fn test_status_not_complete_with_process() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
-        // >5min but process still running => Idle (not Complete)
-        let status = derive_status(Some(&last), 301, true);
-        assert_eq!(status, SessionStatus::Idle);
+    fn test_status_paused_system_message() {
+        let last = make_live_line(LineType::System, vec![], None);
+        let status = derive_status(Some(&last), 5, true);
+        assert_eq!(status, SessionStatus::Paused);
     }
 
     // -------------------------------------------------------------------------

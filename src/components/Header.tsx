@@ -4,6 +4,7 @@ import { useAppStore } from '../store/app-store'
 import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
 import { ScoreBadge } from './ScoreBadge'
+import { AuthPill } from './AuthPill'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
@@ -77,6 +78,7 @@ export function Header() {
           <HealthIndicator />
         </Link>
         <ScoreBadge />
+        <AuthPill />
 
         {breadcrumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className="flex items-center">
