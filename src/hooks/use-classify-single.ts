@@ -28,18 +28,22 @@ export function useClassifySingle(): UseClassifySingleResult {
       setError(null)
 
       try {
-        const res = await fetch(`/api/classify/single/${encodeURIComponent(sessionId)}`, {
-          method: 'POST',
-        })
+        const url = `/api/classify/single/${encodeURIComponent(sessionId)}`
+        console.log('[useClassifySingle] fetching', url)
+
+        const res = await fetch(url, { method: 'POST' })
+        console.log('[useClassifySingle] response', res.status, res.statusText)
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({ error: 'Unknown error' }))
           const msg = errData.details || errData.error || `Failed: ${res.status}`
+          console.error('[useClassifySingle] error response', msg)
           setError(msg)
           return null
         }
 
         const data: ClassifySingleResponse = await res.json()
+        console.log('[useClassifySingle] success', data)
 
         // Optimistically update session in React Query cache.
         // The server already persisted the result, so this IS the truth —

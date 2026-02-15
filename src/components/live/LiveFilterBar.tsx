@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Search, X, ChevronDown, Filter } from 'lucide-react'
-import type { LiveSessionFilters } from '../../lib/live-filter'
+import type { LiveSessionFilters } from './live-filter'
 
 interface LiveFilterBarProps {
   filters: LiveSessionFilters

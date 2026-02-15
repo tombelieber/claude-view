@@ -1,33 +1,67 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { GitBranch } from 'lucide-react'
-import type { LiveSession } from '../../hooks/use-live-sessions'
+import {
+  GitBranch,
+  MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
+  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive,
+} from 'lucide-react'
+import type { LiveSession } from './use-live-sessions'
+import type { AgentState } from './types'
+import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { cn } from '../../lib/utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
+  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive,
+}
+
+const COLOR_MAP: Record<string, string> = {
+  amber: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  red: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  green: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+}
+
+function StateBadge({ agentState }: { agentState: AgentState }) {
+  const known = KNOWN_STATES[agentState.state]
+  const defaults = GROUP_DEFAULTS[agentState.group]
+  const config = known ?? defaults
+
+  const Icon = ICON_MAP[config.icon] ?? Bell
+  const colorClass = COLOR_MAP[config.color] ?? COLOR_MAP.gray
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+      <Icon className="h-3 w-3" />
+      {agentState.label}
+    </span>
+  )
+}
+
+export { StateBadge }
+
 interface SessionCardProps {
   session: LiveSession
 }
 
-const STATUS_CONFIG = {
-  streaming: { color: 'bg-green-500', label: 'Streaming', pulse: true },
-  tool_use: { color: 'bg-green-500', label: 'Tool Use', pulse: false },
-  waiting_for_user: { color: 'bg-amber-500', label: 'Waiting', pulse: false },
-  idle: { color: 'bg-zinc-500', label: 'Idle', pulse: false },
-  complete: { color: 'bg-zinc-700', label: 'Complete', pulse: false },
+const GROUP_CONFIG = {
+  needs_you: { color: 'bg-amber-500', label: 'Needs You', pulse: false },
+  autonomous: { color: 'bg-green-500', label: 'Working', pulse: true },
+  delivered: { color: 'bg-zinc-700', label: 'Done', pulse: false },
 } as const
 
 export function SessionCard({ session }: SessionCardProps) {
   const [searchParams] = useSearchParams()
-  const statusConfig = STATUS_CONFIG[session.status] || STATUS_CONFIG.idle
+  const statusConfig = GROUP_CONFIG[session.agentState.group] || GROUP_CONFIG.autonomous
   const duration = formatDuration(session.startedAt, session.lastActivityAt)
 
   // Title: first user message (cleaned) > project display name > project id
   const rawTitle = session.title || ''
   const title = rawTitle ? cleanPreviewText(rawTitle) : (session.projectDisplayName || session.project)
-  const hasSemanticTitle = !!rawTitle
 
   // Show "last message" only when different from title
   const lastMsg = session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : ''
@@ -84,18 +118,26 @@ export function SessionCard({ session }: SessionCardProps) {
         </p>
       )}
 
-      {/* Current activity */}
-      {session.currentActivity && (
+      {/* State badge */}
+      {session.agentState.group === 'needs_you' ? (
+        <div className="mb-2">
+          <StateBadge agentState={session.agentState} />
+        </div>
+      ) : session.currentActivity ? (
         <div className="text-xs text-green-600 dark:text-green-400 truncate mb-2">
           {session.currentActivity}
         </div>
-      )}
+      ) : session.agentState.group === 'delivered' ? (
+        <div className="mb-2">
+          <StateBadge agentState={session.agentState} />
+        </div>
+      ) : null}
 
       {/* Context gauge */}
       <ContextGauge
         contextWindowTokens={session.contextWindowTokens}
         model={session.model}
-        status={session.status}
+        group={session.agentState.group}
       />
 
       {/* Footer: turns, duration, cost savings */}

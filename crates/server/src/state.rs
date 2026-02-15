@@ -8,6 +8,7 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::manager::LiveSessionMap;
 use crate::live::state::SessionEvent;
+use crate::live::state_resolver::StateResolver;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -50,6 +51,8 @@ pub struct AppState {
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
+    /// State resolver for merging hook + JSONL agent state signals.
+    pub state_resolver: StateResolver,
     /// Directory where coaching rule files are stored (~/.claude/rules).
     pub rules_dir: PathBuf,
 }
@@ -71,6 +74,7 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
+            state_resolver: StateResolver::new(),
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
@@ -93,6 +97,7 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
+            state_resolver: StateResolver::new(),
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
@@ -118,6 +123,7 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
+            state_resolver: StateResolver::new(),
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
