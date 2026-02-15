@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
 use vibe_recall_db::Database;
@@ -128,9 +127,13 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing (quiet — startup UX uses eprintln)
+    // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
+    // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::WARN)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        )
         .compact()
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;

@@ -13,14 +13,16 @@ function getContextLimit(model: string | null): number {
   return 200_000
 }
 
+import type { AgentStateGroup } from './types'
+
 interface ContextGaugeProps {
   /** Current context window fill (last turn's total input tokens). */
   contextWindowTokens: number
   model: string | null
-  status: 'streaming' | 'tool_use' | 'waiting_for_user' | 'idle' | 'complete'
+  group: AgentStateGroup
 }
 
-export function ContextGauge({ contextWindowTokens, model, status }: ContextGaugeProps) {
+export function ContextGauge({ contextWindowTokens, model, group }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
 
@@ -30,8 +32,8 @@ export function ContextGauge({ contextWindowTokens, model, status }: ContextGaug
     return String(n)
   }
 
-  // Idle/complete sessions get muted grey gauge; active & waiting stay colored
-  const isInactive = status === 'idle' || status === 'complete'
+  // Needs-you/delivered sessions get muted grey gauge; autonomous stays colored
+  const isInactive = group === 'needs_you' || group === 'delivered'
   const barColor = isInactive
     ? 'bg-zinc-500 opacity-50'
     : usedPct > 90
