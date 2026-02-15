@@ -1,6 +1,6 @@
 import { LayoutGrid, Columns3, List } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { LiveViewMode } from '../../types/live'
+import type { LiveViewMode } from './types'
 
 interface MobileTabBarProps {
   activeTab: LiveViewMode
