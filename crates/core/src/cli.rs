@@ -50,8 +50,12 @@ impl ClaudeCliStatus {
     }
 
     /// Run a command with a timeout, returning None if it times out or fails to start.
+    ///
+    /// Removes the `CLAUDECODE` env var so the CLI doesn't refuse to run
+    /// when our server was launched from within a Claude Code session.
     fn run_with_timeout(cmd: &mut Command) -> Option<std::process::Output> {
         let mut child = cmd
+            .env_remove("CLAUDECODE")
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()

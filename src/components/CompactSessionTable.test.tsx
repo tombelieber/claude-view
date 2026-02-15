@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SessionInfo } from '../hooks/use-projects'
 
@@ -72,11 +73,15 @@ const mockSessions: SessionInfo[] = [
   },
 ]
 
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
 function renderTable(sessions: SessionInfo[] = mockSessions, onSort?: (column: string) => void) {
   return render(
-    <BrowserRouter>
-      <CompactSessionTable sessions={sessions} onSort={onSort || vi.fn()} sortColumn="time" sortDirection="desc" />
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <CompactSessionTable sessions={sessions} onSort={onSort || vi.fn()} sortColumn="time" sortDirection="desc" />
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 
@@ -151,14 +156,16 @@ describe('CompactSessionTable', () => {
 
     it('shows sort arrow on sorted column', () => {
       render(
-        <BrowserRouter>
-          <CompactSessionTable
-            sessions={mockSessions}
-            onSort={vi.fn()}
-            sortColumn="prompts"
-            sortDirection="asc"
-          />
-        </BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <CompactSessionTable
+              sessions={mockSessions}
+              onSort={vi.fn()}
+              sortColumn="prompts"
+              sortDirection="asc"
+            />
+          </BrowserRouter>
+        </QueryClientProvider>
       )
 
       const activityHeader = screen.getByRole('columnheader', { name: /activity/i })
