@@ -2,7 +2,7 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-14
+> **Last updated:** 2026-02-15
 
 ---
 
@@ -117,6 +117,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Epic B: Prompt Coach** | **Draft (Deferred)** | 4 phases: `/coach` skill (30min), Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts BEFORE they hit Claude | Personal |
 | **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
 | **Paid: LLM Classification** | **Draft (Deferred)** | 3 provider options: BYO Claude CLI (shipped), hosted API (paid), BYO API key. Free tier = user's own CLI. Pro tier = hosted bulk classify + auto-classify + BYO key. `LlmProvider` trait already extensible | **Pro** |
+| **Full-Chat AI Fluency Score** | **Draft (Deferred → Next Phase)** | 7-dimension per-session scoring (Prompt Clarity, Task Scoping, Course Correction, Tool Leverage, Iteration Efficiency, Outcome Quality, Context Economy). Conversation digest preprocessor, local + AI scoring, Anthropic API + OpenAI-compat providers. Plan fully audited (22 issues fixed). Deferred to next phase so current branch can merge | Personal |
 
 **Current focus:** GTM Launch (build in public, first posts) + Epic A: Smart Rules Engine + Mission Control Phase C (Monitor Mode)
 
@@ -441,6 +442,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-15-epic-b-prompt-coach.md` | draft | **Epic B: Prompt Coach (Deferred)** — 4 phases: `/coach` skill, Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts before execution |
 | `2026-02-15-epic-c-trusted-marketplace.md` | draft | **Epic C: Trusted Marketplace (Deferred)** — 4 phases: curated list, dynamic GitHub data, 1-click install with safety preview, community submissions. Trust badge system (verified/community/unvetted/flagged) |
 | `2026-02-15-paid-llm-classification.md` | draft | **Paid: LLM Classification (Deferred)** — Session classification as Pro tier feature. 3 provider options: BYO Claude CLI (free, shipped), hosted API (paid), BYO API key (power user). `LlmProvider` trait already extensible. Blocked on GTM launch + user demand validation |
+| `2026-02-15-full-chat-fluency-score.md` | draft | **Full-Chat AI Fluency Score (Deferred → Next Phase)** — 7-dimension per-session scoring via conversation digest + LLM analysis. Anthropic API + OpenAI-compat providers. Plan audited (22 fixes applied). Deferred so current branch can merge first |
 | `2026-02-15-intelligent-session-states.md` | superseded | **Intelligent Session States** — superseded by `2026-02-15-agent-state-hooks-design.md` |
 | `2026-02-15-agent-state-hooks-design.md` | approved | **Agent State Hooks** — replacement for intelligent session states design |
 | `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
