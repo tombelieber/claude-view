@@ -14,9 +14,9 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
-import type { LiveViewMode, LiveDisplayStatus } from '../../types/live'
-import type { LiveSession } from '../../hooks/use-live-sessions'
-import type { LiveSortField } from '../../lib/live-filter'
+import type { LiveViewMode } from './types'
+import type { LiveSession } from './use-live-sessions'
+import type { LiveSortField } from './live-filter'
 
 type CommandActionType =
   | 'switch-view'
@@ -153,9 +153,9 @@ export function LiveCommandPalette({
 
     // Filter actions
     const statusFilters: { status: string; label: string }[] = [
-      { status: 'working', label: 'Show working sessions' },
-      { status: 'waiting', label: 'Show waiting sessions' },
-      { status: 'idle', label: 'Show idle sessions' },
+      { status: 'needs_you', label: 'Show sessions needing you' },
+      { status: 'autonomous', label: 'Show autonomous sessions' },
+      { status: 'delivered', label: 'Show delivered sessions' },
     ]
 
     for (const sf of statusFilters) {
@@ -327,21 +327,21 @@ export function LiveCommandPalette({
 
       {/* Container */}
       <div className="fixed inset-x-0 top-0 z-50 pt-[12vh] px-4">
-        <div className="max-w-lg mx-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+        <div className="max-w-lg mx-auto bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden">
           {/* Search input */}
-          <div className="flex items-center gap-2 px-3 border-b border-slate-800">
-            <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 px-3 border-b border-gray-200 dark:border-gray-800">
+            <Search className="w-4 h-4 text-gray-400 dark:text-gray-400 flex-shrink-0" />
             <input
               ref={inputRef}
               type="text"
-              className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder:text-slate-500 py-3"
+              className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 py-3"
               placeholder="Type a command or search sessions..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
             <button
               onClick={onClose}
-              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -353,7 +353,7 @@ export function LiveCommandPalette({
             className="max-h-[320px] overflow-y-auto py-1 px-1"
           >
             {visibleItems.length === 0 ? (
-              <div className="px-3 py-6 text-center text-sm text-slate-500">
+              <div className="px-3 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                 No matching commands
               </div>
             ) : (
@@ -365,27 +365,27 @@ export function LiveCommandPalette({
                     className={cn(
                       'px-3 py-2 flex items-center gap-3 cursor-pointer rounded-md',
                       index === highlightedIndex
-                        ? 'bg-slate-800'
-                        : 'hover:bg-slate-800/50'
+                        ? 'bg-gray-100 dark:bg-gray-800'
+                        : 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
                     )}
                     onClick={() => executeAction(item)}
                     onMouseEnter={() => setHighlightedIndex(index)}
                   >
                     {Icon ? (
-                      <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      <Icon className="w-4 h-4 text-gray-400 dark:text-gray-400 flex-shrink-0" />
                     ) : (
                       <div className="w-4 h-4 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-slate-200">{item.label}</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{item.label}</div>
                       {item.description && (
-                        <div className="text-xs text-slate-500 truncate">
+                        <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
                           {item.description}
                         </div>
                       )}
                     </div>
                     {item.shortcut && (
-                      <span className="ml-auto text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
+                      <span className="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
                         {item.shortcut}
                       </span>
                     )}
@@ -396,7 +396,7 @@ export function LiveCommandPalette({
           </div>
 
           {/* Footer */}
-          <div className="px-3 py-2 border-t border-slate-800 text-[10px] text-slate-500">
+          <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-500">
             <span className="inline-flex items-center gap-3">
               <span>
                 <kbd className="font-mono">↑↓</kbd> Navigate

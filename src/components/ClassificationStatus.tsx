@@ -2,8 +2,6 @@ import { useState } from 'react'
 import {
   Brain,
   Loader2,
-  Play,
-  Square,
   Settings2,
   CheckCircle2,
   AlertCircle,
@@ -24,39 +22,19 @@ interface ClassificationStatusProps {
  * Shows:
  * - Classification progress bar (sessions classified / total)
  * - Last run info (date, duration, cost, errors)
- * - Classify / Cancel button
  * - Provider settings link
+ * - Read-only hint to classify from Sessions list
  */
 export function ClassificationStatus({ onConfigure }: ClassificationStatusProps) {
   const {
     status,
-    isLoading,
     error,
-    startClassification,
-    cancelClassification,
     sseProgress,
-    isStreaming: _isStreaming,
   } = useClassification()
 
   const [showProgress, setShowProgress] = useState(false)
-  const [isStarting, setIsStarting] = useState(false)
 
   const isRunning = status?.status === 'running'
-  const isIdle = status?.status === 'idle' || status?.status === 'completed' || status?.status === 'cancelled'
-
-  const handleStartClassify = async () => {
-    setIsStarting(true)
-    const result = await startClassification('unclassified')
-    if (result) {
-      setShowProgress(true)
-    }
-    setIsStarting(false)
-  }
-
-  const handleCancel = async () => {
-    await cancelClassification()
-    setShowProgress(false)
-  }
 
   const totalSessions = status?.totalSessions ?? 0
   const classifiedSessions = status?.classifiedSessions ?? 0
@@ -80,39 +58,11 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               Classification
             </h2>
           </div>
-          {isIdle && unclassifiedSessions > 0 ? (
-            <button
-              type="button"
-              onClick={handleStartClassify}
-              disabled={isStarting || isLoading}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer',
-                'bg-blue-600 text-white hover:bg-blue-700',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                'transition-colors duration-150'
-              )}
-            >
-              {isStarting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Play className="w-3.5 h-3.5" />
-              )}
-              Classify
-            </button>
-          ) : isRunning ? (
-            <button
-              type="button"
-              onClick={handleCancel}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer',
-                'bg-red-600 text-white hover:bg-red-700',
-                'transition-colors duration-150'
-              )}
-            >
-              <Square className="w-3.5 h-3.5" />
-              Cancel
-            </button>
-          ) : null}
+          {unclassifiedSessions > 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Classify sessions from the Sessions list.
+            </p>
+          )}
         </div>
 
         {/* Body */}
