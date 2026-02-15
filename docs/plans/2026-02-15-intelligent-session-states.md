@@ -1,5 +1,6 @@
 ---
-status: draft
+status: superseded
+superseded_by: 2026-02-15-agent-state-hooks-design.md
 date: 2026-02-15
 ---
 
@@ -18,6 +19,88 @@ Mission Control's Kanban board has two UX failures:
 The state machine is **rule-based on timers**, not **content-aware**. It treats `seconds_since_modified > 60` as a state change, when the real signal is in the JSONL content: what did Claude last say? Did it ask a question? Did it finish the task?
 
 ## Design
+
+### Module Scoping Rule (MANDATORY)
+
+**All Mission Control frontend code MUST live under `src/components/live/`.** No MC types in `src/types/`, no MC hooks in `src/hooks/`, no MC lib in `src/lib/`. This eliminates any possible confusion with the insights/classification feature (which has its own `CategoryBadge`, `category-utils`, `WorkTypeBadge`, etc.).
+
+**Current leaks to fix (prerequisite task):**
+
+| Current Location | Move To | Why |
+|-----------------|---------|-----|
+| `src/types/live.ts` | `src/components/live/types.ts` | MC types mixed into shared types dir |
+| `src/hooks/use-live-sessions.ts` | `src/components/live/use-live-sessions.ts` | MC hook in shared hooks dir |
+| `src/hooks/use-live-session-filters.ts` | `src/components/live/use-live-session-filters.ts` | MC hook in shared hooks dir |
+| `src/lib/live-filter.ts` | `src/components/live/live-filter.ts` | MC lib in shared lib dir |
+| `src/hooks/use-keyboard-shortcuts.ts` | `src/components/live/use-keyboard-shortcuts.ts` | MC hook in shared hooks dir (only used by MissionControlPage) |
+
+**After the move, `src/components/live/` is the single source of truth for Mission Control frontend:**
+
+```
+src/components/live/                    # Mission Control module (self-contained)
+├── types.ts                            # All MC types (LiveDisplayStatus, PauseClassification, etc.)
+├── use-live-sessions.ts                # SSE hook + LiveSession interface
+├── use-live-session-filters.ts         # Filter state management
+├── use-keyboard-shortcuts.ts           # Keyboard shortcut bindings (only used by MC)
+├── live-filter.ts                      # Filter matching logic
+├── KanbanView.tsx                      # Board view
+├── KanbanColumn.tsx                    # Single column
+├── SessionCard.tsx                     # Card component
+├── StatusDot.tsx                       # Status indicator
+├── ListView.tsx                        # Table view
+├── LiveFilterBar.tsx                   # Search + filters
+├── LiveCommandPalette.tsx              # Cmd+K palette
+├── ViewModeSwitcher.tsx                # Grid/List/Board/Monitor tabs
+├── KeyboardShortcutHelp.tsx            # ? shortcut modal
+├── MonitorPlaceholder.tsx              # Phase C placeholder
+├── MobileTabBar.tsx                    # Mobile bottom nav
+├── BottomSheet.tsx                     # Mobile sheet
+├── ContextBar.tsx                      # Context window bar
+├── ContextGauge.tsx                    # Context gauge
+└── CostTooltip.tsx                     # Cost hover tooltip
+```
+
+**Import convention after the move:**
+- Components import from siblings: `from './types'`, `from './use-live-sessions'`
+- MissionControlPage imports from: `from '../components/live/types'`, etc.
+- Backend scope is already correct: `crates/server/src/live/`
+
+**Complete import path update list (EXHAUSTIVE — every file that needs changes):**
+
+| File | Old Import | New Import |
+|------|-----------|------------|
+| `src/components/live/KanbanView.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/KanbanView.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/KanbanColumn.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/KanbanColumn.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/SessionCard.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/SessionCard.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/StatusDot.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/ContextGauge.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/ListView.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/ListView.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/LiveFilterBar.tsx` | `from '../../lib/live-filter'` | `from './live-filter'` |
+| `src/components/live/LiveFilterBar.tsx` | `from '../../hooks/use-live-session-filters'` | `from './use-live-session-filters'` |
+| `src/components/live/LiveCommandPalette.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/LiveCommandPalette.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/LiveCommandPalette.tsx` | `from '../../lib/live-filter'` | `from './live-filter'` |
+| `src/components/live/ViewModeSwitcher.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/MobileTabBar.tsx` | `from '../../types/live'` | `from './types'` |
+| `src/components/live/BottomSheet.tsx` | `from '../../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/components/live/use-keyboard-shortcuts.ts` | `from '../types/live'` | `from './types'` |
+| `src/components/live/use-keyboard-shortcuts.ts` | `from './use-live-sessions'` | `from './use-live-sessions'` (unchanged — already sibling) |
+| `src/components/live/use-live-sessions.ts` | `from '../lib/sse-url'` | `from '../../lib/sse-url'` (NOT moved — shared utility) |
+| `src/components/live/use-live-session-filters.ts` | `from '../lib/live-filter'` | `from './live-filter'` |
+| `src/components/live/live-filter.ts` | `from '../hooks/use-live-sessions'` | `from './use-live-sessions'` |
+| `src/pages/MissionControlPage.tsx` | `from '../types/live'` | `from '../components/live/types'` |
+| `src/pages/MissionControlPage.tsx` | `from '../hooks/use-live-sessions'` | `from '../components/live/use-live-sessions'` |
+| `src/pages/MissionControlPage.tsx` | `from '../hooks/use-live-session-filters'` | `from '../components/live/use-live-session-filters'` |
+| `src/pages/MissionControlPage.tsx` | `from '../hooks/use-keyboard-shortcuts'` | `from '../components/live/use-keyboard-shortcuts'` |
+| `src/pages/MissionControlPage.tsx` | `from '../lib/live-filter'` | `from '../components/live/live-filter'` |
+
+**NOTE:** `sse-url.ts` is a shared utility (used by non-MC code too) — it stays in `src/lib/`. The import depth increases by 1 level after the move.
+
+**New files from this plan also go under `src/components/live/`** — no exceptions.
 
 ### 3-Column Board: Working → Paused → Done
 
@@ -53,6 +136,8 @@ Parse JSONL content for known patterns. These are structural facts, not heuristi
 Covers ~70% of cases. When confidence ≥ 0.9, use directly without AI.
 
 #### Tier 2: AI Classification (on-transition, cached, provider-agnostic)
+
+> **DISABLED (2026-02-15).** Tier 2 was removed from the initial implementation because it spawned unbounded `claude -p` processes on startup. With 40+ JSONL files discovered simultaneously, every Paused session triggered a concurrent CLI call → timeouts, rate limits, and an effective infinite retry loop. **Do NOT re-enable without a `Semaphore(1)` concurrency limit and explicit opt-in (not on first discovery).** Structural classification (Tier 1) + sync fallback covers the common cases adequately.
 
 When Tier 1 is ambiguous (confidence < 0.9 or no match), send the last 3-5 messages to the configured LLM:
 
@@ -140,6 +225,10 @@ pub trait LlmProvider: Send + Sync {
     fn model(&self) -> &str;
 }
 
+// NOTE: These types go in crates/core/src/llm/types.rs (alongside ClassificationRequest/Response),
+// NOT in provider.rs. Re-exported via llm/mod.rs. Shown here with the trait for context.
+
+#[derive(Debug, Clone)]
 pub struct CompletionRequest {
     pub system_prompt: Option<String>,
     pub user_prompt: String,
@@ -148,11 +237,13 @@ pub struct CompletionRequest {
     pub response_format: ResponseFormat,
 }
 
+#[derive(Debug, Clone)]
 pub enum ResponseFormat {
     Text,
     Json,
 }
 
+#[derive(Debug, Clone)]
 pub struct CompletionResponse {
     pub content: String,
     pub input_tokens: Option<u64>,
@@ -161,7 +252,64 @@ pub struct CompletionResponse {
 }
 ```
 
-The existing `ClaudeCliProvider` must be updated to implement the new `complete()` method in addition to its existing `classify()` method.
+The existing `ClaudeCliProvider` must be updated to implement the new `complete()` method in addition to its existing `classify()` method:
+
+```rust
+// crates/core/src/llm/claude_cli.rs — add to existing #[async_trait] impl LlmProvider block
+// NOTE: Follows the same pattern as existing spawn_and_parse() — timeout, env removal, arg order.
+
+async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+    let start = std::time::Instant::now();
+    let timeout_duration = Duration::from_secs(self.timeout_secs);
+
+    // Build the combined prompt (system + user)
+    let prompt = if let Some(sys) = &request.system_prompt {
+        format!("{}\n\n{}", sys, request.user_prompt)
+    } else {
+        request.user_prompt.clone()
+    };
+
+    // Spawn with timeout, matching existing classify() pattern
+    let future = TokioCommand::new("claude")
+        // NOTE: -p flag is "print mode". Prompt goes LAST as positional arg.
+        // Other flags go between -p and the prompt. Matches existing spawn_and_parse().
+        .args(["-p", "--output-format", "json", "--model", &self.model, &prompt])
+        // Remove ALL Claude env vars to avoid nested-session errors.
+        // Must match the 3 env vars removed in spawn_and_parse().
+        .env_remove("CLAUDECODE")
+        .env_remove("CLAUDE_CODE_SSE_PORT")
+        .env_remove("CLAUDE_CODE_ENTRYPOINT")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    let output = tokio::time::timeout(timeout_duration, future)
+        .await
+        .map_err(|_| LlmError::Timeout(self.timeout_secs))?
+        .map_err(|e| LlmError::SpawnFailed(format!("claude CLI not found: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(LlmError::CliError(format!("CLI exited with {}: {stderr}", output.status)));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // CLI JSON output has a "result" field with the text content
+    let parsed: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| LlmError::ParseFailed(format!("Invalid JSON from CLI: {e}")))?;
+
+    let content = parsed["result"].as_str()
+        .unwrap_or_else(|| parsed["content"].as_str().unwrap_or(""))
+        .to_string();
+
+    Ok(CompletionResponse {
+        content,
+        input_tokens: None,  // CLI doesn't expose token counts
+        output_tokens: None,
+        latency_ms: start.elapsed().as_millis() as u64,
+    })
+}
+```
 
 #### Provider Implementations
 
@@ -184,11 +332,11 @@ pub fn create_provider(config: &LlmConfig) -> Result<Arc<dyn LlmProvider>, LlmEr
     match config.provider {
         ProviderType::ClaudeCli => Ok(Arc::new(ClaudeCliProvider::new(&config.model))),
         ProviderType::AnthropicApi => Ok(Arc::new(AnthropicApiProvider::new(
-            config.api_key.as_deref().ok_or(LlmError::NotAvailable("API key required"))?,
+            config.api_key.as_deref().ok_or(LlmError::NotAvailable("API key required".into()))?,
             &config.model,
         ))),
         ProviderType::OpenAi => Ok(Arc::new(OpenAiProvider::new(
-            config.api_key.as_deref().ok_or(LlmError::NotAvailable("API key required"))?,
+            config.api_key.as_deref().ok_or(LlmError::NotAvailable("API key required".into()))?,
             &config.model,
             config.endpoint.as_deref(),
         ))),
@@ -197,7 +345,7 @@ pub fn create_provider(config: &LlmConfig) -> Result<Arc<dyn LlmProvider>, LlmEr
             config.endpoint.as_deref().unwrap_or("http://localhost:11434"),
         ))),
         ProviderType::Custom => Ok(Arc::new(CustomEndpointProvider::new(
-            config.endpoint.as_deref().ok_or(LlmError::NotAvailable("Endpoint required"))?,
+            config.endpoint.as_deref().ok_or(LlmError::NotAvailable("Endpoint required".into()))?,
             config.api_key.as_deref(),
             &config.model,
         ))),
@@ -210,6 +358,7 @@ pub fn create_provider(config: &LlmConfig) -> Result<Arc<dyn LlmProvider>, LlmEr
 ```rust
 // crates/core/src/llm/config.rs
 
+#[derive(Debug, Clone)]
 pub struct LlmConfig {
     pub provider: ProviderType,
     pub model: String,
@@ -219,6 +368,7 @@ pub struct LlmConfig {
     pub timeout_secs: u64,
 }
 
+#[derive(Debug, Clone)]
 pub enum ProviderType {
     ClaudeCli,
     AnthropicApi,
@@ -249,6 +399,7 @@ Stored in SQLite settings table. Configurable via future Settings UI (`/settings
 // crates/server/src/live/classifier.rs
 
 use std::sync::Arc;
+use serde::{Serialize, Deserialize};
 use vibe_recall_core::llm::{CompletionRequest, LlmError, LlmProvider, ResponseFormat};
 
 #[derive(Clone)]
@@ -256,6 +407,7 @@ pub struct SessionStateClassifier {
     provider: Option<Arc<dyn LlmProvider>>,
 }
 
+#[derive(Clone)]
 pub struct SessionStateContext {
     /// Last 3-5 messages with role, content_preview, tool_names
     pub recent_messages: Vec<MessageSummary>,
@@ -280,7 +432,7 @@ pub struct MessageSummary {
 
 // NOTE: Using camelCase to match LiveSession's #[serde(rename_all = "camelCase")]
 // so the entire API is consistent. Frontend expects camelCase everywhere.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PauseClassification {
     pub reason: PauseReason,
@@ -289,7 +441,7 @@ pub struct PauseClassification {
     pub source: ClassificationSource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PauseReason {
     #[serde(rename = "needsInput")]
     NeedsInput,
@@ -301,7 +453,7 @@ pub enum PauseReason {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClassificationSource {
     #[serde(rename = "structural")]
     Structural,
@@ -517,21 +669,33 @@ pub struct LiveSession {
 ```rust
 // crates/server/src/live/state.rs
 // Update the Summary variant to match the new 3-state model.
+// IMPORTANT: SessionEvent uses #[serde(tag = "type", rename_all = "snake_case")]
+// which serializes field names as snake_case. To match the camelCase convention
+// used by build_summary() (initial connect), use #[serde(rename)] on each field.
 SessionEvent::Summary {
+    #[serde(rename = "workingCount")]
     working_count: usize,       // was: active_count
+    #[serde(rename = "pausedCount")]
     paused_count: usize,        // was: waiting_count + idle_count
+    #[serde(rename = "doneCount")]
     done_count: usize,          // NEW — sessions in Done state (kept in memory for 10min)
+    #[serde(rename = "totalCostTodayUsd")]
     total_cost_today_usd: f64,
+    #[serde(rename = "totalTokensToday")]
     total_tokens_today: u64,
 },
 ```
+
+This ensures both the on-connect `build_summary()` and the broadcast `SessionEvent::Summary` produce identical camelCase JSON keys.
+
+> **NOTE:** `SessionEvent::Summary` is currently **defined but never constructed** — summaries are sent via `build_summary()` as raw JSON. The variant is matched in the SSE handler (`routes/live.rs:106`) but no code broadcasts it. The `#[serde(rename)]` attributes are forward-compatible for when summary broadcasting is added. Both paths (variant serialization and `build_summary()` JSON) produce identical camelCase keys.
 
 #### Modified SessionAccumulator
 
 ```rust
 // crates/server/src/live/manager.rs
 use std::collections::VecDeque;
-use super::classifier::{MessageSummary, PauseClassification, SessionStateClassifier};
+use super::classifier::{MessageSummary, PauseClassification, SessionStateClassifier, SessionStateContext};
 
 struct SessionAccumulator {
     // ... all existing fields unchanged ...
@@ -645,7 +809,9 @@ impl LiveSessionManager {
     /// Handle a status change for a session. Detects transitions, triggers
     /// classification on Working→Paused, clears classification on →Working.
     /// Called from both process_jsonl_update() and the process detector loop.
-    async fn handle_status_change(
+    /// NOTE: This is NOT async — structural_classify() is sync, and AI
+    /// classification is fire-and-forget via spawn_ai_classification().
+    fn handle_status_change(
         &self,
         session_id: &str,
         new_status: SessionStatus,
@@ -655,8 +821,10 @@ impl LiveSessionManager {
     ) {
         let old_status = acc.last_status.clone();
 
-        // Working → Paused: trigger classification
-        if new_status == SessionStatus::Paused && old_status == Some(SessionStatus::Working) {
+        // Working → Paused (or first discovery while Paused): trigger classification
+        if new_status == SessionStatus::Paused
+            && (old_status == Some(SessionStatus::Working) || old_status.is_none())
+        {
             let ctx = SessionStateContext {
                 recent_messages: acc.recent_messages.iter().cloned().collect(),
                 last_stop_reason: acc.last_line.as_ref().and_then(|l| l.stop_reason.clone()),
@@ -711,27 +879,33 @@ impl LiveSessionManager {
 
     /// Spawn an async Tier 2 AI classification task.
     /// Re-checks session status before broadcasting to avoid stale updates.
+    /// IMPORTANT: Updates BOTH the session map AND the accumulator so that
+    /// subsequent process_jsonl_update() calls don't overwrite the AI result.
     fn spawn_ai_classification(&self, session_id: String, ctx: SessionStateContext) {
         let classifier = self.classifier.clone();
         let sessions = Arc::clone(&self.sessions);
+        let accumulators = Arc::clone(&self.accumulators);
         let tx = self.tx.clone();
 
         tokio::spawn(async move {
-            match classifier.classify(&ctx).await {
-                classification => {
-                    // Re-acquire lock and check current status before broadcasting.
-                    // The session may have transitioned back to Working while AI was running.
-                    let mut sessions = sessions.write().await;
-                    if let Some(session) = sessions.get_mut(&session_id) {
-                        if session.status == SessionStatus::Paused {
-                            session.pause_classification = Some(classification);
-                            let _ = tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
-                        }
-                        // If status is no longer Paused, discard the classification
+            let classification = classifier.classify(&ctx).await;
+            // Re-acquire BOTH locks and check current status before broadcasting.
+            // The session may have transitioned back to Working while AI was running.
+            // Lock ordering: sessions first, then accumulators (consistent with process detector).
+            let mut sessions = sessions.write().await;
+            let mut accs = accumulators.write().await;
+            if let Some(session) = sessions.get_mut(&session_id) {
+                if session.status == SessionStatus::Paused {
+                    session.pause_classification = Some(classification.clone());
+                    // Also update accumulator so next process_jsonl_update() preserves the result
+                    if let Some(acc) = accs.get_mut(&session_id) {
+                        acc.pause_classification = Some(classification);
                     }
+                    let _ = tx.send(SessionEvent::SessionUpdated {
+                        session: session.clone(),
+                    });
                 }
+                // If status is no longer Paused, discard the classification
             }
         });
     }
@@ -748,7 +922,7 @@ pub struct LiveSessionManager {
     tx: broadcast::Sender<SessionEvent>,
     finders: Arc<TailFinders>,
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
-    processes: Arc<RwLock<HashMap<String, u32>>>,
+    processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,  // NOTE: keyed by PathBuf, not String
     pricing: Arc<HashMap<String, cost::ModelPricing>>,
     classifier: Arc<SessionStateClassifier>,  // NEW
 }
@@ -764,6 +938,11 @@ let provider = match llm::factory::create_provider(&llm_config) {
 };
 let classifier = Arc::new(SessionStateClassifier::new(provider));
 
+// Updated start() signature — add classifier parameter:
+// pub fn start(
+//     pricing: HashMap<String, ModelPricing>,
+//     classifier: Arc<SessionStateClassifier>,   // NEW
+// ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>)
 let (manager, live_sessions, live_tx) = LiveSessionManager::start(pricing, classifier);
 ```
 
@@ -829,10 +1008,10 @@ for (session_id, session) in sessions.iter_mut() {
         let new_status = derive_status(acc.last_line.as_ref(), seconds_since, running);
 
         if session.status != new_status || session.pid != pid {
-            // Trigger transition detection + classification
+            // Trigger transition detection + classification (sync — not .await)
             manager.handle_status_change(
                 session_id, new_status, acc, running, seconds_since,
-            ).await;
+            );
 
             session.status = new_status;
             session.pid = pid;
@@ -845,69 +1024,154 @@ for (session_id, session) in sessions.iter_mut() {
 }
 ```
 
-#### derive_status Tests
+#### Updated mod.rs Files
+
+Both `mod.rs` files must be updated to export the new modules:
 
 ```rust
-// crates/server/src/live/state.rs — add to existing tests module
+// crates/server/src/live/mod.rs — add:
+pub mod classifier;  // NEW — session state classification
+// existing: pub mod state; pub mod process; pub mod watcher; pub mod manager;
+```
+
+```rust
+// crates/core/src/llm/mod.rs — add:
+pub mod factory;  // NEW — provider factory
+
+// Update pub use exports to include new types:
+pub use types::{
+    ClassificationRequest, ClassificationResponse, LlmError,
+    CompletionRequest, CompletionResponse, ResponseFormat,  // NEW
+};
+```
+
+#### Updated process_jsonl_update()
+
+The `process_jsonl_update()` function must also call `handle_status_change()` — it is the PRIMARY source of state changes (JSONL file writes), not just the process detector.
+
+```rust
+// crates/server/src/live/manager.rs — in process_jsonl_update(), after derive_status():
+// (approximately after current line 474)
+
+let new_status = derive_status(acc.last_line.as_ref(), seconds_since, has_process);
+// Detect transitions and trigger classification
+self.handle_status_change(session_id, new_status.clone(), acc, has_process, seconds_since);
+// Then build the LiveSession with the (possibly updated) pause_classification:
+```
+
+#### LiveSession Construction in process_jsonl_update()
+
+Add `pause_classification` to the `LiveSession` struct literal in `process_jsonl_update()` (approximately line 516-536 of `manager.rs`):
+
+```rust
+let session = LiveSession {
+    // ... all existing fields ...
+    status: new_status,
+    pause_classification: acc.pause_classification.clone(),  // NEW
+};
+```
+
+#### Updated derive_activity() call in process_jsonl_update()
+
+The current code at approximately line 494 of `manager.rs` uses the deleted `Streaming` variant:
+
+```rust
+// BEFORE (won't compile — Streaming variant removed):
+let is_streaming = status == SessionStatus::Streaming;
+let current_activity = derive_activity(tool_names, is_streaming);
+```
+
+Replace with a Working + last_line inspection that preserves the semantics ("streaming" = actively generating text, not using tools, not finished):
+
+```rust
+// AFTER:
+let is_streaming = status == SessionStatus::Working
+    && acc.last_line.as_ref().map_or(false, |l| {
+        l.tool_names.is_empty() && l.stop_reason.as_deref() != Some("end_turn")
+    });
+let current_activity = derive_activity(tool_names, is_streaming);
+```
+
+#### derive_status Tests
+
+> **IMPORTANT:** The existing test module has 10 `derive_status` tests that assert on the old 5-variant enum (`SessionStatus::Streaming`, `ToolUse`, `WaitingForUser`, `Idle`, `Complete`). **DELETE all existing `derive_status` tests** before adding these replacements — the old tests won't compile after the enum change. Keep `make_live_line()` and other non-derive_status tests untouched.
+
+```rust
+// crates/server/src/live/state.rs — REPLACE all existing derive_status tests in #[cfg(test)] module
 
 #[test]
-fn test_new_status_paused_no_data() {
+fn test_status_paused_no_data() {
     let status = derive_status(None, 0, false);
     assert_eq!(status, SessionStatus::Paused);
 }
 
 #[test]
-fn test_new_status_working_streaming_recent() {
+fn test_status_working_streaming_recent() {
     let last = make_live_line(LineType::Assistant, vec![], None);
     let status = derive_status(Some(&last), 10, true);
     assert_eq!(status, SessionStatus::Working);
 }
 
 #[test]
-fn test_new_status_working_tool_use_recent() {
+fn test_status_working_tool_use_recent() {
     let last = make_live_line(LineType::Assistant, vec!["Bash".to_string()], None);
     let status = derive_status(Some(&last), 25, true);
     assert_eq!(status, SessionStatus::Working);
 }
 
 #[test]
-fn test_new_status_paused_end_turn_recent() {
+fn test_status_paused_end_turn_recent() {
     let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
     let status = derive_status(Some(&last), 10, true);
     assert_eq!(status, SessionStatus::Paused);
 }
 
 #[test]
-fn test_new_status_paused_at_31s() {
+fn test_status_paused_at_31s() {
     let last = make_live_line(LineType::Assistant, vec![], None);
     let status = derive_status(Some(&last), 31, true);
     assert_eq!(status, SessionStatus::Paused);
 }
 
 #[test]
-fn test_new_status_paused_at_60s_with_process() {
+fn test_status_paused_at_61s_with_process() {
     let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
     let status = derive_status(Some(&last), 61, true);
-    assert_eq!(status, SessionStatus::Paused, "Process still running keeps it from Done");
+    assert_eq!(status, SessionStatus::Paused, "At 61s with running process, status is Paused (not Done because process is active)");
 }
 
 #[test]
-fn test_new_status_done_at_61s_no_process() {
+fn test_status_done_at_61s_no_process() {
     let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
     let status = derive_status(Some(&last), 61, false);
     assert_eq!(status, SessionStatus::Done);
 }
 
 #[test]
-fn test_new_status_working_progress_recent() {
+fn test_status_working_progress_recent() {
     let last = make_live_line(LineType::Progress, vec![], None);
     let status = derive_status(Some(&last), 5, true);
     assert_eq!(status, SessionStatus::Working);
 }
 
 #[test]
-fn test_new_status_paused_user_message() {
+fn test_status_paused_user_message() {
     let last = make_live_line(LineType::User, vec![], None);
+    let status = derive_status(Some(&last), 5, true);
+    assert_eq!(status, SessionStatus::Paused);
+}
+
+#[test]
+fn test_status_working_streaming_no_process() {
+    // Edge case: process exits during active streaming — recent activity keeps it Working
+    let last = make_live_line(LineType::Assistant, vec![], None);
+    let status = derive_status(Some(&last), 5, false);
+    assert_eq!(status, SessionStatus::Working);
+}
+
+#[test]
+fn test_status_paused_system_message() {
+    let last = make_live_line(LineType::System, vec![], None);
     let status = derive_status(Some(&last), 5, true);
     assert_eq!(status, SessionStatus::Paused);
 }
@@ -918,7 +1182,7 @@ fn test_new_status_paused_user_message() {
 #### Updated Types
 
 ```typescript
-// src/types/live.ts
+// src/components/live/types.ts  (moved from src/types/live.ts)
 
 export type LiveDisplayStatus = 'working' | 'paused' | 'done'
 
@@ -955,9 +1219,9 @@ export const DISPLAY_STATUS_ORDER: Record<LiveDisplayStatus, number> = {
 #### Updated LiveSession Interface
 
 ```typescript
-// src/hooks/use-live-sessions.ts
+// src/components/live/use-live-sessions.ts  (moved from src/hooks/use-live-sessions.ts)
 
-import type { PauseClassification } from '../types/live'
+import type { PauseClassification } from './types'
 
 export interface LiveSession {
   id: string
@@ -991,10 +1255,25 @@ export interface LiveSummary {
 }
 ```
 
+Update the `summary` event handler to use new field names:
+
+```typescript
+// In src/components/live/use-live-sessions.ts, summary handler:
+es.addEventListener('summary', (e: MessageEvent) => {
+  try {
+    const data = JSON.parse(e.data)
+    // UPDATED: was data.activeCount !== undefined
+    if (data.workingCount !== undefined) {
+      setSummary(data as LiveSummary)
+    }
+  } catch { /* ignore */ }
+})
+```
+
 Add SSE payload validation for `pauseClassification`:
 
 ```typescript
-// In use-live-sessions.ts, session_updated handler:
+// In src/components/live/use-live-sessions.ts, session_updated handler:
 es.addEventListener('session_updated', (e: MessageEvent) => {
   try {
     const data = JSON.parse(e.data)
@@ -1015,7 +1294,7 @@ es.addEventListener('session_updated', (e: MessageEvent) => {
 #### Updated KanbanView
 
 ```typescript
-// src/components/live/KanbanView.tsx
+// src/components/live/KanbanView.tsx  (imports from './types' instead of '../../types/live')
 
 const COLUMNS: {
   title: string
@@ -1027,7 +1306,7 @@ const COLUMNS: {
     title: 'Working',
     status: 'working',
     accentColor: 'bg-green-500',
-    emptyMessage: 'No active sessions',
+    emptyMessage: 'No working sessions',
   },
   {
     title: 'Paused',
@@ -1047,7 +1326,8 @@ const COLUMNS: {
 Updated grouping with actionability-based sub-sorting for Paused column:
 
 ```typescript
-function pausedSortKey(session: LiveSession): number {
+// Exported for reuse in ListView and testing
+export function pausedSortKey(session: LiveSession): number {
   if (!session.pauseClassification) return 2
   switch (session.pauseClassification.reason) {
     case 'needsInput': return 0   // Most urgent — you need to respond
@@ -1096,7 +1376,7 @@ Each pause reason gets a distinct visual indicator on the card:
 ```tsx
 // In SessionCard.tsx
 import { GitBranch, MessageCircle, AlertTriangle, Pause, CheckCircle } from 'lucide-react'
-import type { PauseClassification } from '../../types/live'
+import type { PauseClassification } from './types'
 
 function PauseReasonBadge({ classification }: { classification: PauseClassification }) {
   const config = {
@@ -1207,7 +1487,7 @@ function PausedColumnHeader({ sessions }: { sessions: LiveSession[] }) {
 
 ```typescript
 // src/components/live/StatusDot.tsx
-import type { LiveDisplayStatus } from '../../types/live'
+import type { LiveDisplayStatus } from './types'
 
 interface StatusDotProps {
   status: LiveDisplayStatus  // was: hardcoded 4-state union
@@ -1226,6 +1506,13 @@ const STATUS_COLORS: Record<LiveDisplayStatus, string> = {
 
 ```typescript
 // src/components/live/ContextGauge.tsx
+import type { LiveDisplayStatus } from './types'
+
+interface ContextGaugeProps {
+  // ... existing fields ...
+  status: LiveDisplayStatus  // was: 'streaming' | 'tool_use' | 'waiting_for_user' | 'idle' | 'complete'
+}
+
 // Update inactive status check:
 const isInactive = status === 'paused' || status === 'done'
 // was: status === 'idle' || status === 'complete'
@@ -1234,7 +1521,7 @@ const isInactive = status === 'paused' || status === 'done'
 #### Updated LiveCommandPalette
 
 ```typescript
-// src/components/live/LiveCommandPalette.tsx
+// src/components/live/LiveCommandPalette.tsx  (imports from './types')
 // Update status filter options:
 const statusFilters: { status: string; label: string }[] = [
   { status: 'working', label: 'Show working sessions' },
@@ -1243,10 +1530,35 @@ const statusFilters: { status: string; label: string }[] = [
 ]
 ```
 
+#### Updated LiveFilterBar Status Options
+
+The `LiveFilterBar.tsx` renders clickable status filter buttons. Update the status options to match the new 3-state model:
+
+```typescript
+// src/components/live/LiveFilterBar.tsx
+// Replace old status filter options (working, waiting, idle, done) with:
+const statusOptions: { value: LiveDisplayStatus; label: string }[] = [
+  { value: 'working', label: 'Working' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'done', label: 'Done' },
+]
+// removed: 'waiting' and 'idle' options (merged into 'paused')
+```
+
+Also update the `live-filter.ts` comment from old 4-status list to new 3-status list:
+
+```typescript
+// src/components/live/live-filter.ts
+// line 8 — update comment:
+statuses: string[] // display statuses to include (working, paused, done)
+// was: (working, waiting, idle, done)
+```
+
 #### Updated MissionControlPage SummaryBar
 
 ```tsx
 // src/pages/MissionControlPage.tsx
+// Update imports: from '../components/live/types', '../components/live/use-live-sessions', etc.
 // Update SummaryBar to use new field names:
 <div>
   <span className="text-green-500 font-medium">{summary.workingCount}</span>
@@ -1261,7 +1573,7 @@ const statusFilters: { status: string; label: string }[] = [
 #### Updated ListView Pause Reason Display
 
 ```tsx
-// src/components/live/ListView.tsx
+// src/components/live/ListView.tsx  (imports from './types', './use-live-sessions')
 // In the Activity column, show pause badge when paused:
 <td className="px-2 py-2">
   {toDisplayStatus(session.status) === 'paused' && session.pauseClassification ? (
@@ -1302,36 +1614,46 @@ The `LiveSession` payload now includes `pauseClassification` (camelCase, matchin
 
 | File | Change | Phase |
 |------|--------|-------|
+| **Prerequisite — Module Scoping** | | |
+| `src/types/live.ts` → `src/components/live/types.ts` | **Move.** MC types out of shared types dir. Update all consumer imports | Pre |
+| `src/hooks/use-live-sessions.ts` → `src/components/live/use-live-sessions.ts` | **Move.** MC hook out of shared hooks dir. Update all consumer imports | Pre |
+| `src/hooks/use-live-session-filters.ts` → `src/components/live/use-live-session-filters.ts` | **Move.** MC hook out of shared hooks dir. Update all consumer imports | Pre |
+| `src/lib/live-filter.ts` → `src/components/live/live-filter.ts` | **Move.** MC lib out of shared lib dir. Update all consumer imports | Pre |
+| `src/hooks/use-keyboard-shortcuts.ts` → `src/components/live/use-keyboard-shortcuts.ts` | **Move.** MC keyboard shortcut hook out of shared hooks dir. Update MissionControlPage import | Pre |
 | **Backend — Core** | | |
 | `crates/server/src/live/state.rs` | Replace 5-state enum with 3-state. Update `derive_status()`. Add `pause_classification` to `LiveSession`. Update `SessionEvent::Summary` fields | MVP |
 | `crates/server/src/live/classifier.rs` | **New file.** `SessionStateClassifier` with Tier 1 structural + Tier 2 AI logic | MVP |
-| `crates/server/src/live/manager.rs` | Add `classifier` field to manager. Add `handle_status_change()` shared method. Add message history tracking to accumulator. Update process detector + cleanup task | MVP |
+| `crates/server/src/live/mod.rs` | Add `pub mod classifier;` | MVP |
+| `crates/server/src/live/manager.rs` | Add `classifier` field to manager. Add `handle_status_change()` shared method. Add message history tracking to accumulator. Update process detector + cleanup task. Fix `is_streaming` derivation (was `SessionStatus::Streaming`, now uses Working + last_line inspection) | MVP |
 | `crates/server/src/routes/live.rs` | Update `build_summary()` match for 3-state enum. New field names: `workingCount`, `pausedCount`, `doneCount` | MVP |
 | **Backend — LLM** | | |
 | `crates/core/src/llm/provider.rs` | **Extend** trait: add `complete()` method alongside existing `classify()`. DO NOT remove `classify()` | MVP |
 | `crates/core/src/llm/types.rs` | Add `CompletionRequest`, `CompletionResponse`, `ResponseFormat` types | MVP |
-| `crates/core/src/llm/claude_cli.rs` | Add `complete()` method implementation to existing `ClaudeCliProvider` | MVP |
+| `crates/core/src/llm/mod.rs` | Add `pub mod factory;`, add `pub use` for `CompletionRequest`, `CompletionResponse`, `ResponseFormat` | MVP |
+| `crates/core/src/llm/claude_cli.rs` | Add `complete()` method implementation to existing `ClaudeCliProvider` (with timeout, env removal, correct arg order) | MVP |
 | `crates/core/src/llm/config.rs` | Add `LlmConfig`, `ProviderType` (may already exist partially) | MVP |
 | `crates/core/src/llm/factory.rs` | **New file.** Provider factory with fallback | MVP |
 | `crates/core/src/llm/anthropic_api.rs` | **New file.** Direct Anthropic API provider | Phase 2 |
 | `crates/core/src/llm/openai_api.rs` | **New file.** OpenAI-compatible provider | Phase 2 |
 | `crates/core/src/llm/ollama.rs` | **New file.** Ollama local provider | Phase 2 |
 | `crates/core/src/llm/custom.rs` | **New file.** Custom endpoint provider | Phase 2 |
-| **Frontend — Types** | | |
-| `src/types/live.ts` | 3-state `LiveDisplayStatus`, `PauseClassification` type, `PauseReason` type, update `toDisplayStatus()`, update `DISPLAY_STATUS_ORDER` | MVP |
-| **Frontend — Hooks** | | |
-| `src/hooks/use-live-sessions.ts` | Update `LiveSession.status` union (3 states). Add `pauseClassification` field. Update `LiveSummary` fields. Add SSE validation | MVP |
-| `src/hooks/use-live-session-filters.ts` | Update status filter options (remove idle/waiting) | MVP |
-| **Frontend — Components** | | |
-| `src/components/live/KanbanView.tsx` | 3 columns. Add `pausedSortKey()`. Update grouped state keys | MVP |
-| `src/components/live/SessionCard.tsx` | Add `PauseReasonBadge` component. Update `STATUS_CONFIG` to 3 states. Add badge placement logic. Add icon imports | MVP |
-| `src/components/live/KanbanColumn.tsx` | Add `PausedColumnHeader` with sub-count. Conditional header rendering | MVP |
-| `src/components/live/StatusDot.tsx` | Update type from hardcoded 4-state to `LiveDisplayStatus`. Update `STATUS_COLORS` map to 3 states | MVP |
+| **Frontend — Types (under `src/components/live/`)** | | |
+| `src/components/live/types.ts` | 3-state `LiveDisplayStatus`, `PauseClassification` type, `PauseReason` type, update `toDisplayStatus()`, update `DISPLAY_STATUS_ORDER` | MVP |
+| **Frontend — Hooks (under `src/components/live/`)** | | |
+| `src/components/live/use-live-sessions.ts` | Update `LiveSession.status` union (3 states). Add `pauseClassification` field. Update `LiveSummary` fields. Add SSE validation | MVP |
+| `src/components/live/use-live-session-filters.ts` | Update status filter options (remove idle/waiting) | MVP |
+| **Frontend — Components (under `src/components/live/`)** | | |
+| `src/components/live/KanbanView.tsx` | 3 columns. Add `pausedSortKey()`. Update grouped state keys. Update imports to `./types` | MVP |
+| `src/components/live/SessionCard.tsx` | Add `PauseReasonBadge` component. Update `STATUS_CONFIG` to 3 states. Add badge placement logic. Import from `./types` | MVP |
+| `src/components/live/KanbanColumn.tsx` | Add `PausedColumnHeader` with sub-count. Conditional header rendering. Import from `./use-live-sessions` | MVP |
+| `src/components/live/StatusDot.tsx` | Update type from hardcoded 4-state to `LiveDisplayStatus`. Update `STATUS_COLORS` map to 3 states. Import from `./types` | MVP |
 | `src/components/live/ContextGauge.tsx` | Update `isInactive` check: `'paused' \| 'done'` instead of `'idle' \| 'complete'` | MVP |
-| `src/components/live/ListView.tsx` | Add pause reason display in Activity column for paused sessions | MVP |
-| `src/components/live/LiveCommandPalette.tsx` | Update status filter options (remove waiting/idle, add paused) | MVP |
-| `src/pages/MissionControlPage.tsx` | Update SummaryBar: `workingCount`/`pausedCount` instead of `activeCount`/`waitingCount`/`idleCount` | MVP |
-| `src/lib/live-filter.ts` | Update comment referencing 4 display statuses → 3 | MVP |
+| `src/components/live/ListView.tsx` | Add pause reason display in Activity column. Import from `./types`, `./use-live-sessions` | MVP |
+| `src/components/live/LiveCommandPalette.tsx` | Update status filter options (remove waiting/idle, add paused). Import from `./types` | MVP |
+| `src/components/live/LiveFilterBar.tsx` | Update status filter buttons (remove waiting/idle, replace with paused). 3 options: working, paused, done | MVP |
+| `src/components/live/live-filter.ts` | Update status comment from `(working, waiting, idle, done)` to `(working, paused, done)` | MVP |
+| **Frontend — Page** | | |
+| `src/pages/MissionControlPage.tsx` | Update SummaryBar: `workingCount`/`pausedCount`. Update imports to `../components/live/types`, `../components/live/use-live-sessions`, etc. | MVP |
 
 ### Migration
 
@@ -1347,6 +1669,17 @@ No database migration needed. No backward compatibility shims.
 
 Before declaring this done, verify:
 
+**Module Scoping (prerequisite):**
+- [ ] `src/types/live.ts` no longer exists (moved to `src/components/live/types.ts`)
+- [ ] `src/hooks/use-live-sessions.ts` no longer exists (moved to `src/components/live/use-live-sessions.ts`)
+- [ ] `src/hooks/use-live-session-filters.ts` no longer exists (moved to `src/components/live/use-live-session-filters.ts`)
+- [ ] `src/lib/live-filter.ts` no longer exists (moved to `src/components/live/live-filter.ts`)
+- [ ] `src/hooks/use-keyboard-shortcuts.ts` no longer exists (moved to `src/components/live/use-keyboard-shortcuts.ts`)
+- [ ] All MC component imports use `./` (sibling) not `../../types/` or `../../hooks/`
+- [ ] `MissionControlPage.tsx` imports from `../components/live/` not `../types/` or `../hooks/`
+- [ ] No MC-specific types/hooks/lib remain outside `src/components/live/`
+- [ ] `bun run typecheck` passes after the move
+
 **Backend (Rust):**
 - [ ] `SessionStatus` enum has 3 variants (Working, Paused, Done)
 - [ ] `derive_status()` returns the new 3 variants with correct thresholds
@@ -1356,6 +1689,12 @@ Before declaring this done, verify:
 - [ ] Process detector calls `handle_status_change()` for transition detection
 - [ ] `LlmProvider` trait retains `classify()` AND adds `complete()`
 - [ ] `PauseClassification` serializes with camelCase (matching LiveSession convention)
+- [ ] `crates/server/src/live/mod.rs` includes `pub mod classifier;`
+- [ ] `crates/core/src/llm/mod.rs` includes `pub mod factory;` and new `pub use` exports
+- [ ] `process_jsonl_update()` calls `handle_status_change()` for transition detection
+- [ ] `LiveSession` struct literal in `process_jsonl_update()` includes `pause_classification: acc.pause_classification.clone()`
+- [ ] `spawn_ai_classification` updates BOTH session map AND accumulator
+- [ ] `SessionEvent::Summary` fields have `#[serde(rename)]` to emit camelCase
 - [ ] Run `cargo test -p vibe-recall-server` — all new + existing tests pass
 
 **Frontend (TypeScript):**
@@ -1369,6 +1708,10 @@ Before declaring this done, verify:
 - [ ] `LiveCommandPalette` filter options updated
 - [ ] `MissionControlPage` SummaryBar uses new field names
 - [ ] `SessionCard` handles `pauseClassification: null` gracefully
+- [ ] `ContextGauge` prop type is `LiveDisplayStatus` (not hardcoded 5-state union)
+- [ ] `use-live-sessions.ts` summary handler detects `data.workingCount` (not `activeCount`)
+- [ ] All 27 import paths in module scoping table are updated
+- [ ] `sse-url.ts` remains in `src/lib/` (shared utility — NOT moved)
 - [ ] Run `bun run typecheck` — no errors
 
 ### Future Extensions
@@ -1406,3 +1749,45 @@ Before declaring this done, verify:
 | 21 | MissionControlPage SummaryBar had waitingCount/idleCount | Blocker | Updated to workingCount/pausedCount |
 | 22 | Missing icon imports in SessionCard | Minor | Added MessageCircle, AlertTriangle, Pause, CheckCircle imports |
 | 23 | SSE payload validation missing | Warning | Added runtime validation in session_updated handler |
+| 24 | MC frontend files leaked into shared dirs (src/types/, src/hooks/, src/lib/) — risk of confusion with insights/classification features | Blocker | Added Module Scoping Rule: move 4 files into src/components/live/, update all imports, add prerequisite task and verification checklist |
+| 25 | `use-keyboard-shortcuts.ts` missing from module scoping plan — imports from `../types/live` and `./use-live-sessions`, only used by MissionControlPage | Blocker | Added to module scoping table, file tree, Files Changed table, and Breaking Changes Checklist |
+| 26 | `spawn_ai_classification` used invalid `match ... { classification => {` syntax | Blocker | Changed to `let classification = classifier.classify(&ctx).await;` |
+| 27 | `processes` field type was `HashMap<String, u32>`, actual codebase uses `HashMap<PathBuf, ClaudeProcess>` | Blocker | Fixed to `Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>` with comment |
+| 28 | `handle_status_change` was `async fn` but body is entirely sync (structural_classify is sync, spawn is fire-and-forget) | Blocker | Changed to `fn`, removed `.await` on caller in process detector |
+| 29 | `SessionStateContext` missing `Clone` derive (needed for `spawn_ai_classification` to move it into async block) | Blocker | Added `#[derive(Clone)]` |
+| 30 | `CompletionRequest/Response/ResponseFormat` missing derive macros (needed for trait bounds) | Blocker | Added `#[derive(Debug, Clone)]` to all three |
+| 31 | `ClaudeCliProvider.complete()` implementation not shown — plan just said "must be updated" | Blocker | Added full implementation with `TokioCommand`, `env_remove("CLAUDECODE")`, JSON parsing |
+| 32 | `PauseReason`/`ClassificationSource`/`PauseClassification` missing `Deserialize` derive | Warning | Added `Deserialize` to all three enums/struct |
+| 33 | `LiveSessionManager::start()` signature change not shown | Warning | Added commented signature showing new `classifier: Arc<SessionStateClassifier>` parameter |
+| 34 | `emptyMessage` for Working column was "No active sessions" (inconsistent with column title "Working") | Minor | Changed to "No working sessions" |
+| 35 | `pausedSortKey` was private — needed by ListView and for testing | Minor | Changed to `export function pausedSortKey` |
+| 36 | `complete()` used nonexistent `LlmError::ProviderError` — actual enum has `CliError` | Blocker | Changed to `LlmError::CliError(...)` and `LlmError::SpawnFailed(...)` matching existing pattern |
+| 37 | `complete()` CLI args passed `--output-format` as prompt value for `-p` flag | Blocker | Reordered args: `-p` flag first, then options, then prompt last (matches existing `spawn_and_parse()`) |
+| 38 | `complete()` had no timeout — would hang indefinitely if CLI stalled | Blocker | Wrapped with `tokio::time::timeout(Duration::from_secs(self.timeout_secs), ...)` |
+| 39 | `complete()` only removed `CLAUDECODE` env var — missing `CLAUDE_CODE_SSE_PORT` and `CLAUDE_CODE_ENTRYPOINT` | Blocker | Added all 3 `.env_remove()` calls matching existing `spawn_and_parse()` |
+| 40 | `classifier.rs` missing `use serde::{Serialize, Deserialize};` import | Blocker | Added to imports |
+| 41 | `manager.rs` import missing `SessionStateContext` — used in `handle_status_change` | Blocker | Added to `use super::classifier::{...}` import |
+| 42 | `crates/server/src/live/mod.rs` not updated — `pub mod classifier;` missing | Blocker | Added mod.rs update section + Files Changed entry |
+| 43 | `crates/core/src/llm/mod.rs` not updated — new types/modules not exported | Blocker | Added mod.rs update section + Files Changed entry |
+| 44 | `LiveSession` struct literal in `process_jsonl_update()` missing `pause_classification` field | Blocker | Added explicit instruction with code showing `pause_classification: acc.pause_classification.clone()` |
+| 45 | `process_jsonl_update()` never called `handle_status_change()` — only process detector did | Blocker | Added section showing `handle_status_change()` call in JSONL update path |
+| 46 | `spawn_ai_classification` wrote to session map but not accumulator — AI result overwritten by next JSONL update | Blocker | Spawned task now acquires both locks, updates both `acc.pause_classification` and `session.pause_classification` |
+| 47 | Module scoping missed 10+ import path updates (LiveFilterBar, MobileTabBar, ViewModeSwitcher, LiveCommandPalette, BottomSheet, use-live-sessions/sse-url, etc.) | Blocker | Added exhaustive import path update table (27 entries) |
+| 48 | `ContextGauge` prop type was hardcoded 5-state union, not `LiveDisplayStatus` | Blocker | Updated plan to show `status: LiveDisplayStatus` in `ContextGaugeProps` interface |
+| 49 | `SessionEvent::Summary` fields serialized as snake_case but frontend expects camelCase | Warning | Added `#[serde(rename)]` on each field to match `build_summary()` camelCase output |
+| 50 | Frontend summary handler used old `data.activeCount` detection | Warning | Updated to `data.workingCount !== undefined` |
+| 51 | `CompletionRequest`/`ResponseFormat` placed in `provider.rs` but Files Changed said `types.rs` | Warning | Clarified: types defined in `types.rs`, shown with trait for context. Added `pub use` to `mod.rs` |
+| 52 | `LlmConfig`/`ProviderType` missing derive macros | Warning | Added `#[derive(Debug, Clone)]` to both |
+| 53 | `spawn_ai_classification` acquires locks as `accumulators→sessions`, but process detector does `sessions→accumulators` — classic deadlock | Blocker | Reversed lock order to `sessions.write()` then `accumulators.write()` to match process detector |
+| 54 | Plan adds 9 new tests but doesn't say to DELETE existing 10 `derive_status` tests that reference removed enum variants — won't compile | Blocker | Added explicit DELETE instruction, changed comment from "add to" to "REPLACE all existing" |
+| 55 | Test names used `test_new_status_*` prefix suggesting temporary duplication instead of replacement | Warning | Renamed all tests to `test_status_*` |
+| 56 | `LlmError::NotAvailable("API key required")` in factory.rs — `NotAvailable` takes `String`, not `&str` | Blocker | Added `.into()` to all 3 string literals in `create_provider()` |
+| 57 | First-call classification skipped: session discovered while already Paused gets `old_status == None`, never triggers classification | Warning | Added `\|\| old_status.is_none()` condition to Working→Paused check in `handle_status_change()` |
+| 58 | Missing edge case test: process exits during active streaming (seconds=5, no process) | Warning | Added `test_status_working_streaming_no_process` test |
+| 59 | Missing `LineType::System` test coverage | Warning | Added `test_status_paused_system_message` test |
+| 60 | Test assertion message at line 1109 says "60s" but test uses 61s | Minor | Updated message to clarify: "At 61s with running process, status is Paused (not Done because process is active)" |
+| 61 | `LlmError::Timeout` in `complete()` missing required `u64` arg — actual variant is `Timeout(u64)` | Blocker | Changed to `LlmError::Timeout(self.timeout_secs)` |
+| 62 | `is_streaming = status == SessionStatus::Streaming` in `process_jsonl_update()` line 494 — `Streaming` variant deleted | Blocker | Added "Updated derive_activity() call" section with Working + last_line inspection logic |
+| 63 | `LiveFilterBar.tsx` status filter buttons still show `waiting`/`idle` — plan only updated `LiveCommandPalette` | Blocker | Added "Updated LiveFilterBar Status Options" section + Files Changed entry |
+| 64 | `MissionControlPage.tsx` import `from '../lib/live-filter'` missing from module scoping import table | Warning | Added row to import path update table (28 entries now) |
+| 65 | `SessionEvent::Summary` variant is defined but never constructed — unclear if rename attrs needed | Minor | Added note confirming variant is unused but kept forward-compatible, both paths produce identical camelCase |
