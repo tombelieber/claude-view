@@ -646,7 +646,21 @@ impl LiveSessionManager {
             } else {
                 // No structural match -- use fallback.
                 let c = self.classifier.fallback_classify(&ctx);
-                acc.agent_state = pause_classification_to_agent_state(&c);
+                // MidWork + running process = between tool calls, not genuinely idle.
+                // Without this, long-running multi-tool tasks flicker NeedsYou↔Autonomous
+                // on every Working→Paused micro-transition between tool invocations.
+                if c.reason == PauseReason::MidWork && has_running_process {
+                    acc.agent_state = AgentState {
+                        group: AgentStateGroup::Autonomous,
+                        state: "thinking".into(),
+                        label: "Between steps...".into(),
+                        confidence: 0.5,
+                        source: SignalSource::Jsonl,
+                        context: None,
+                    };
+                } else {
+                    acc.agent_state = pause_classification_to_agent_state(&c);
+                }
             }
         }
 
