@@ -14,9 +14,9 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
-import type { LiveViewMode, LiveDisplayStatus } from '../../types/live'
-import type { LiveSession } from '../../hooks/use-live-sessions'
-import type { LiveSortField } from '../../lib/live-filter'
+import type { LiveViewMode } from './types'
+import type { LiveSession } from './use-live-sessions'
+import type { LiveSortField } from './live-filter'
 
 type CommandActionType =
   | 'switch-view'
@@ -153,9 +153,9 @@ export function LiveCommandPalette({
 
     // Filter actions
     const statusFilters: { status: string; label: string }[] = [
-      { status: 'working', label: 'Show working sessions' },
-      { status: 'waiting', label: 'Show waiting sessions' },
-      { status: 'idle', label: 'Show idle sessions' },
+      { status: 'needs_you', label: 'Show sessions needing you' },
+      { status: 'autonomous', label: 'Show autonomous sessions' },
+      { status: 'delivered', label: 'Show delivered sessions' },
     ]
 
     for (const sf of statusFilters) {

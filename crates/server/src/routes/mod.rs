@@ -6,6 +6,7 @@ pub mod contributions;
 pub mod export;
 pub mod facets;
 pub mod health;
+pub mod hooks;
 pub mod indexing;
 pub mod insights;
 pub mod invocables;
@@ -98,6 +99,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", score::router())
         .nest("/api", facets::router())
         .nest("/api", live::router())
+        .nest("/api", hooks::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)

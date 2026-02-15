@@ -24,6 +24,32 @@ pub struct ClassificationResponse {
     pub reasoning: Option<String>,
 }
 
+/// Request for a general-purpose LLM completion.
+#[derive(Debug, Clone)]
+pub struct CompletionRequest {
+    pub system_prompt: Option<String>,
+    pub user_prompt: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub response_format: ResponseFormat,
+}
+
+/// Desired response format for a completion request.
+#[derive(Debug, Clone)]
+pub enum ResponseFormat {
+    Text,
+    Json,
+}
+
+/// Response from a general-purpose LLM completion.
+#[derive(Debug, Clone)]
+pub struct CompletionResponse {
+    pub content: String,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub latency_ms: u64,
+}
+
 /// Errors that can occur during LLM operations.
 #[derive(Debug, Error)]
 pub enum LlmError {
