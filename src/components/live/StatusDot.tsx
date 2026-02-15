@@ -1,16 +1,16 @@
 import { cn } from '../../lib/utils'
+import type { AgentStateGroup } from './types'
 
 interface StatusDotProps {
-  status: 'working' | 'waiting' | 'idle' | 'done'
+  group: AgentStateGroup
   size?: 'sm' | 'md'
   pulse?: boolean
 }
 
-const STATUS_COLORS: Record<StatusDotProps['status'], string> = {
-  working: 'bg-green-500',
-  waiting: 'bg-amber-500',
-  idle: 'bg-gray-500',
-  done: 'bg-blue-500',
+const GROUP_COLORS: Record<AgentStateGroup, string> = {
+  needs_you: 'bg-amber-500',
+  autonomous: 'bg-green-500',
+  delivered: 'bg-blue-500',
 }
 
 const SIZE_CLASSES: Record<NonNullable<StatusDotProps['size']>, string> = {
@@ -18,8 +18,8 @@ const SIZE_CLASSES: Record<NonNullable<StatusDotProps['size']>, string> = {
   md: 'h-2.5 w-2.5',
 }
 
-export function StatusDot({ status, size = 'sm', pulse = false }: StatusDotProps) {
-  const showPulse = pulse && status === 'working'
+export function StatusDot({ group, size = 'sm', pulse = false }: StatusDotProps) {
+  const showPulse = pulse && group === 'autonomous'
 
   return (
     <span className="relative inline-flex">
@@ -28,7 +28,7 @@ export function StatusDot({ status, size = 'sm', pulse = false }: StatusDotProps
           className={cn(
             'absolute inline-flex rounded-full opacity-75 animate-ping',
             SIZE_CLASSES[size],
-            STATUS_COLORS[status]
+            GROUP_COLORS[group]
           )}
         />
       )}
@@ -36,7 +36,7 @@ export function StatusDot({ status, size = 'sm', pulse = false }: StatusDotProps
         className={cn(
           'relative inline-flex rounded-full',
           SIZE_CLASSES[size],
-          STATUS_COLORS[status]
+          GROUP_COLORS[group]
         )}
       />
     </span>

@@ -266,6 +266,35 @@ impl Database {
         Ok(rows)
     }
 
+    /// Get a single session's data for classification.
+    /// Returns (id, preview, skills_used) or None if not found.
+    pub async fn get_session_for_classification(
+        &self,
+        session_id: &str,
+    ) -> DbResult<Option<(String, String, String)>> {
+        let row: Option<(String, String, String)> = sqlx::query_as(
+            "SELECT id, preview, skills_used FROM sessions WHERE id = ?1",
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row)
+    }
+
+    /// Check if a session is already classified. Returns (l1, l2, l3, confidence) if so.
+    pub async fn get_session_classification(
+        &self,
+        session_id: &str,
+    ) -> DbResult<Option<(String, String, String, f64)>> {
+        let row: Option<(String, String, String, f64)> = sqlx::query_as(
+            "SELECT category_l1, category_l2, category_l3, category_confidence FROM sessions WHERE id = ?1 AND category_l1 IS NOT NULL",
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row)
+    }
+
     /// Count unclassified sessions.
     pub async fn count_unclassified_sessions(&self) -> DbResult<i64> {
         let row: (i64,) = sqlx::query_as(
