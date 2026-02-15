@@ -23,6 +23,7 @@ pub use indexing_state::{IndexingState, IndexingStatus};
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
+use live::state_resolver::StateResolver;
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
@@ -109,6 +110,11 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         pricing: vibe_recall_db::default_pricing(),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
+        state_resolver: StateResolver::new(),
+        rules_dir: dirs::home_dir()
+            .expect("home dir exists")
+            .join(".claude")
+            .join("rules"),
     });
     api_routes(state)
 }
@@ -141,6 +147,11 @@ pub fn create_app_full(
         pricing,
         live_sessions,
         live_tx,
+        state_resolver: StateResolver::new(),
+        rules_dir: dirs::home_dir()
+            .expect("home dir exists")
+            .join(".claude")
+            .join("rules"),
     });
 
     let mut app = Router::new()
