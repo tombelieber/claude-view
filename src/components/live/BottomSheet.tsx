@@ -43,20 +43,20 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
       {/* Sheet */}
       <div
         className={cn(
-          'fixed inset-x-0 bottom-0 z-50 bg-slate-900 border-t border-slate-700 rounded-t-2xl max-h-[80vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out',
+          'fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 rounded-t-2xl max-h-[80vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out',
           visible ? 'translate-y-0' : 'translate-y-full'
         )}
       >
         {/* Drag Handle */}
-        <div className="mx-auto mt-3 mb-2 w-8 h-1 rounded-full bg-slate-600" />
+        <div className="mx-auto mt-3 mb-2 w-8 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
 
         {/* Header */}
-        <div className="px-4 py-2 flex items-center justify-between border-b border-slate-800">
-          <span className="text-sm font-medium text-slate-200">{title}</span>
+        <div className="px-4 py-2 flex items-center justify-between border-b border-gray-200 dark:border-gray-800">
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{title}</span>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-200"
+            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
           >
             <X className="w-4 h-4" />
           </button>

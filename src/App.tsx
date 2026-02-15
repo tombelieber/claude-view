@@ -11,6 +11,7 @@ import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { DashboardSkeleton, ErrorState, EmptyState } from './components/LoadingStates'
 import { ColdStartOverlay } from './components/ColdStartOverlay'
+import { AuthBanner } from './components/AuthBanner'
 import { PatternAlert } from './components/PatternAlert'
 
 export default function App() {
@@ -76,6 +77,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
       <a href="#main" className="skip-to-content">Skip to content</a>
       <Header />
+      <AuthBanner />
       <ColdStartOverlay progress={indexingProgress} />
 
       <div className="flex-1 flex overflow-hidden">

@@ -120,8 +120,9 @@ export function useClassification(): UseClassificationResult {
       es.close()
       eventSourceRef.current = null
       fetchStatus()
-      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['project-sessions'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
+      queryClient.invalidateQueries({ queryKey: ['facet-badges'] })
     })
 
     es.addEventListener('cancelled', (_event: MessageEvent) => {
