@@ -36,7 +36,7 @@ const actionShortcuts: ShortcutEntry[] = [
 
 function Kbd({ children }: { children: string }) {
   return (
-    <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-300">
+    <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-[11px] font-mono text-gray-700 dark:text-gray-300">
       {children}
     </kbd>
   )
@@ -51,7 +51,7 @@ function ShortcutRow({ entry }: { entry: ShortcutEntry }) {
         {isSeparated ? (
           <>
             <Kbd>{entry.keys[0]}</Kbd>
-            <span className="text-slate-500 text-xs">/</span>
+            <span className="text-gray-400 dark:text-gray-500 text-xs">/</span>
             <Kbd>{entry.keys[2]}</Kbd>
           </>
         ) : (
@@ -60,7 +60,7 @@ function ShortcutRow({ entry }: { entry: ShortcutEntry }) {
           ))
         )}
       </div>
-      <span className="text-sm text-slate-400">{entry.description}</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400">{entry.description}</span>
     </div>
   )
 }
@@ -68,7 +68,7 @@ function ShortcutRow({ entry }: { entry: ShortcutEntry }) {
 function ShortcutSection({ title, shortcuts }: { title: string; shortcuts: ShortcutEntry[] }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+      <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
         {title}
       </h3>
       <div className="space-y-0.5">
@@ -104,14 +104,14 @@ export function KeyboardShortcutHelp({ isOpen, onClose }: KeyboardShortcutHelpPr
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full mx-auto mt-[15vh] p-6 h-fit"
+        className="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl shadow-2xl max-w-md w-full mx-auto mt-[15vh] p-6 h-fit"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-slate-100">Keyboard Shortcuts</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>

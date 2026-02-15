@@ -4,7 +4,7 @@
 //! JSONL tail parser, and cleanup task to maintain an in-memory map of all
 //! active Claude Code sessions.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18,8 +18,13 @@ use vibe_recall_core::cost::{
 use vibe_recall_core::live_parser::{LiveLine, LineType, TailFinders, parse_tail};
 use vibe_recall_db::ModelPricing;
 
+use super::classifier::{
+    MessageSummary, PauseClassification, PauseReason,
+    SessionStateClassifier, SessionStateContext,
+};
 use super::process::{ClaudeProcess, detect_claude_processes, has_running_process};
 use super::state::{
+    AgentState, AgentStateGroup, SignalSource,
     LiveSession, SessionEvent, SessionStatus, derive_activity, derive_status,
 };
 use super::watcher::{FileEvent, initial_scan, start_watcher};
@@ -51,8 +56,14 @@ struct SessionAccumulator {
     started_at: Option<i64>,
     /// The last LiveLine parsed (for status derivation).
     last_line: Option<LiveLine>,
-    /// Unix timestamp when this session was marked Complete (for cleanup).
+    /// Unix timestamp when this session was marked Done (for cleanup).
     completed_at: Option<u64>,
+    /// Current agent state (replaces pause_classification).
+    agent_state: AgentState,
+    /// Recent messages for classification context (ring buffer, last 5).
+    recent_messages: VecDeque<MessageSummary>,
+    /// Previous status for transition detection.
+    last_status: Option<SessionStatus>,
 }
 
 impl SessionAccumulator {
@@ -69,7 +80,35 @@ impl SessionAccumulator {
             started_at: None,
             last_line: None,
             completed_at: None,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "thinking".into(),
+                label: "Discovered...".into(),
+                confidence: 0.3,
+                source: SignalSource::Fallback,
+                context: None,
+            },
+            recent_messages: VecDeque::new(),
+            last_status: None,
         }
+    }
+}
+
+/// Convert a PauseClassification (from the structural classifier) to AgentState.
+fn pause_classification_to_agent_state(c: &PauseClassification) -> AgentState {
+    let (group, state) = match c.reason {
+        PauseReason::NeedsInput => (AgentStateGroup::NeedsYou, "awaiting_input"),
+        PauseReason::TaskComplete => (AgentStateGroup::Delivered, "task_complete"),
+        PauseReason::MidWork => (AgentStateGroup::NeedsYou, "idle"),
+        PauseReason::Error => (AgentStateGroup::NeedsYou, "error"),
+    };
+    AgentState {
+        group,
+        state: state.into(),
+        label: c.label.clone(),
+        confidence: c.confidence,
+        source: SignalSource::Jsonl,
+        context: None,
     }
 }
 
@@ -88,6 +127,8 @@ pub struct LiveSessionManager {
     processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,
     /// Per-model pricing table for cost calculation (core-level types).
     pricing: Arc<HashMap<String, cost::ModelPricing>>,
+    /// Session state classifier for intelligent pause classification.
+    classifier: Arc<SessionStateClassifier>,
 }
 
 impl LiveSessionManager {
@@ -98,6 +139,7 @@ impl LiveSessionManager {
     pub fn start(
         pricing: HashMap<String, ModelPricing>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
+        let classifier = Arc::new(SessionStateClassifier::new());
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
 
@@ -124,6 +166,7 @@ impl LiveSessionManager {
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             processes: Arc::new(RwLock::new(HashMap::new())),
             pricing: Arc::new(core_pricing),
+            classifier,
         });
 
         // Spawn background tasks
@@ -257,10 +300,10 @@ impl LiveSessionManager {
                 // Re-derive status for all sessions with the updated process info
                 let processes = manager.processes.read().await;
                 let mut sessions = manager.sessions.write().await;
-                let accumulators = manager.accumulators.read().await;
+                let mut accumulators = manager.accumulators.write().await;
 
                 for (session_id, session) in sessions.iter_mut() {
-                    if let Some(acc) = accumulators.get(session_id) {
+                    if let Some(acc) = accumulators.get_mut(session_id) {
                         let seconds_since = seconds_since_modified_from_timestamp(
                             session.last_activity_at,
                         );
@@ -270,8 +313,14 @@ impl LiveSessionManager {
                             derive_status(acc.last_line.as_ref(), seconds_since, running);
 
                         if session.status != new_status || session.pid != pid {
+                            // Trigger transition detection + classification (sync)
+                            manager.handle_status_change(
+                                session_id, new_status.clone(), acc, running, seconds_since,
+                            );
+
                             session.status = new_status;
                             session.pid = pid;
+                            session.agent_state = acc.agent_state.clone();
                             let _ = manager.tx.send(SessionEvent::SessionUpdated {
                                 session: session.clone(),
                             });
@@ -284,7 +333,7 @@ impl LiveSessionManager {
 
     /// Spawn the cleanup background task.
     ///
-    /// Every 30 seconds, removes sessions that have been `Complete` for more
+    /// Every 30 seconds, removes sessions that have been `Done` for more
     /// than 10 minutes and broadcasts `SessionCompleted` events.
     fn spawn_cleanup_task(self: &Arc<Self>) {
         let manager = self.clone();
@@ -306,7 +355,7 @@ impl LiveSessionManager {
                     let accumulators = manager.accumulators.read().await;
 
                     for (session_id, session) in sessions.iter() {
-                        if session.status == SessionStatus::Complete {
+                        if session.status == SessionStatus::Done {
                             if let Some(acc) = accumulators.get(session_id) {
                                 if let Some(completed_at) = acc.completed_at {
                                     if now.saturating_sub(completed_at) > 600 {
@@ -328,7 +377,7 @@ impl LiveSessionManager {
                             session_id: session_id.clone(),
                         });
                     }
-                    info!("Cleaned up {} completed sessions", to_remove.len());
+                    info!("Cleaned up {} done sessions", to_remove.len());
                 }
             }
         });
@@ -463,6 +512,27 @@ impl LiveSessionManager {
             }
         }
 
+        // Track recent messages for pause classification
+        for line in &new_lines {
+            if line.line_type == LineType::User || line.line_type == LineType::Assistant {
+                acc.recent_messages.push_back(MessageSummary {
+                    role: match line.line_type {
+                        LineType::User => "user".to_string(),
+                        LineType::Assistant => "assistant".to_string(),
+                        _ => continue,
+                    },
+                    content_preview: line.content_preview.clone(),
+                    tool_names: line.tool_names.clone(),
+                });
+
+                // Keep only last 5 messages
+                const MAX_RECENT_MESSAGES: usize = 5;
+                while acc.recent_messages.len() > MAX_RECENT_MESSAGES {
+                    acc.recent_messages.pop_front();
+                }
+            }
+        }
+
         // Keep the last line for status derivation
         if let Some(last) = new_lines.last() {
             acc.last_line = Some(last.clone());
@@ -473,17 +543,8 @@ impl LiveSessionManager {
         let (running, pid) = has_running_process(&processes, &project_path);
         let status = derive_status(acc.last_line.as_ref(), seconds_since, running);
 
-        // Track when session became Complete for cleanup
-        if status == SessionStatus::Complete && acc.completed_at.is_none() {
-            acc.completed_at = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            );
-        } else if status != SessionStatus::Complete {
-            acc.completed_at = None;
-        }
+        // Detect transitions and trigger classification
+        self.handle_status_change(&session_id, status.clone(), acc, running, seconds_since);
 
         // Derive activity
         let tool_names = acc
@@ -491,7 +552,10 @@ impl LiveSessionManager {
             .as_ref()
             .map(|l| l.tool_names.as_slice())
             .unwrap_or(&[]);
-        let is_streaming = status == SessionStatus::Streaming;
+        let is_streaming = status == SessionStatus::Working
+            && acc.last_line.as_ref().map_or(false, |l| {
+                l.tool_names.is_empty() && l.stop_reason.as_deref() != Some("end_turn")
+            });
         let current_activity = derive_activity(tool_names, is_streaming);
 
         // Calculate cost
@@ -520,6 +584,7 @@ impl LiveSessionManager {
             project_path,
             file_path: file_path_str,
             status,
+            agent_state: acc.agent_state.clone(),
             git_branch: acc.git_branch.clone(),
             pid,
             title: acc.first_user_message.clone(),
@@ -543,6 +608,101 @@ impl LiveSessionManager {
         let mut sessions = self.sessions.write().await;
         sessions.insert(session_id, live_session);
     }
+
+    /// Handle a status change for a session. Detects transitions, triggers
+    /// structural classification on Working->Paused, clears classification on ->Working.
+    /// Called from both `process_jsonl_update()` and the process detector loop.
+    fn handle_status_change(
+        &self,
+        _session_id: &str,
+        new_status: SessionStatus,
+        acc: &mut SessionAccumulator,
+        has_running_process: bool,
+        seconds_since_modified: u64,
+    ) {
+        let old_status = acc.last_status.clone();
+
+        // Working -> Paused: trigger classification.
+        // NOTE: We intentionally skip first-discovery (old_status.is_none()) to avoid
+        // classifying all ~40 stale sessions on startup. Classification only fires on
+        // actual Working->Paused transitions observed in real-time.
+        if new_status == SessionStatus::Paused
+            && old_status == Some(SessionStatus::Working)
+        {
+            let ctx = SessionStateContext {
+                recent_messages: acc.recent_messages.iter().cloned().collect(),
+                last_stop_reason: acc.last_line.as_ref().and_then(|l| l.stop_reason.clone()),
+                last_tool: acc.last_line.as_ref().and_then(|l| l.tool_names.last().cloned()),
+                has_running_process,
+                seconds_since_modified,
+                turn_count: acc.user_turn_count,
+            };
+
+            // Tier 1: structural classification (instant)
+            let classification = self.classifier.structural_classify(&ctx);
+
+            if let Some(c) = classification {
+                acc.agent_state = pause_classification_to_agent_state(&c);
+            } else {
+                // No structural match -- use fallback.
+                let c = self.classifier.fallback_classify(&ctx);
+                // MidWork + running process = between tool calls, not genuinely idle.
+                // Without this, long-running multi-tool tasks flicker NeedsYou↔Autonomous
+                // on every Working→Paused micro-transition between tool invocations.
+                if c.reason == PauseReason::MidWork && has_running_process {
+                    acc.agent_state = AgentState {
+                        group: AgentStateGroup::Autonomous,
+                        state: "thinking".into(),
+                        label: "Between steps...".into(),
+                        confidence: 0.5,
+                        source: SignalSource::Jsonl,
+                        context: None,
+                    };
+                } else {
+                    acc.agent_state = pause_classification_to_agent_state(&c);
+                }
+            }
+        }
+
+        // -> Working: set autonomous state
+        if new_status == SessionStatus::Working {
+            acc.agent_state = AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working...".into(),
+                confidence: 0.7,
+                source: SignalSource::Jsonl,
+                context: None,
+            };
+        }
+
+        // Track Done timestamp for cleanup + set delivered state
+        if new_status == SessionStatus::Done && acc.completed_at.is_none() {
+            acc.agent_state = AgentState {
+                group: AgentStateGroup::Delivered,
+                state: "session_ended".into(),
+                label: "Session ended".into(),
+                confidence: 0.9,
+                source: SignalSource::Jsonl,
+                context: None,
+            };
+            acc.completed_at = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            );
+        } else if new_status != SessionStatus::Done {
+            acc.completed_at = None;
+        }
+
+        // Update last_status for next transition check
+        acc.last_status = Some(new_status);
+    }
+
+    // NOTE: Tier 2 AI classification (spawn_ai_classification) was removed.
+    // It spawned unbounded `claude -p` processes on startup (40+ sessions discovered
+    // simultaneously). Re-add with a Semaphore(1) rate limiter when needed.
 }
 
 // =============================================================================
