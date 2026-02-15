@@ -1,10 +1,12 @@
 //! API route handlers for the vibe-recall server.
 
 pub mod classify;
+pub mod coaching;
 pub mod contributions;
 pub mod export;
 pub mod facets;
 pub mod health;
+pub mod hooks;
 pub mod indexing;
 pub mod insights;
 pub mod invocables;
@@ -57,6 +59,9 @@ use crate::state::AppState;
 /// - GET  /api/classify/status - Get classification status
 /// - GET  /api/classify/stream - SSE stream of classification progress
 /// - POST /api/classify/cancel - Cancel running classification
+/// - GET    /api/coaching/rules      - List all coaching rules
+/// - POST   /api/coaching/rules      - Apply (create) a coaching rule
+/// - DELETE  /api/coaching/rules/{id} - Remove a coaching rule
 /// - GET  /api/insights - Computed behavioral insights and patterns
 /// - GET /api/contributions - Contribution metrics and insights
 /// - GET /api/contributions/sessions/:id - Session contribution detail
@@ -88,11 +93,13 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", sync::router())
         .nest("/api", system::router())
         .nest("/api", classify::router())
+        .nest("/api", coaching::router())
         .nest("/api", insights::router())
         .nest("/api", contributions::router())
         .nest("/api", score::router())
         .nest("/api", facets::router())
         .nest("/api", live::router())
+        .nest("/api", hooks::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)

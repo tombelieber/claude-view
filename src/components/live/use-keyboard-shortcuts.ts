@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import type { LiveViewMode } from '../types/live'
+import type { LiveViewMode } from './types'
 import type { LiveSession } from './use-live-sessions'
 
 interface UseKeyboardShortcutsOptions {

@@ -3,8 +3,8 @@ import type {
   LiveSessionFilters,
   LiveSortField,
   LiveSortDirection,
-} from '../lib/live-filter'
-import { DEFAULT_LIVE_FILTERS } from '../lib/live-filter'
+} from './live-filter'
+import { DEFAULT_LIVE_FILTERS } from './live-filter'
 
 const FILTER_KEYS = ['status', 'project', 'branch', 'q', 'sort', 'dir'] as const
 

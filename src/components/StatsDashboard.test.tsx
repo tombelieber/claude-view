@@ -33,6 +33,10 @@ vi.mock('./ContributionSummaryCard', () => ({
   ContributionSummaryCard: () => <div data-testid="contribution-summary">Contribution Summary</div>,
 }))
 
+vi.mock('./CoachCard', () => ({
+  CoachCard: () => <div data-testid="coach-card">Coach Card</div>,
+}))
+
 function makeStats(overrides = {}) {
   return {
     totalSessions: 42,

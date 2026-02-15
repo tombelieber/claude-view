@@ -14,6 +14,7 @@ feature: mission-control
 |-------|------|--------|-------------|
 | A | Read-Only Monitoring | `done` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
 | B | Views & Layout | `done` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
+| B2 | Intelligent Session States | `superseded` | Superseded by `2026-02-15-agent-state-hooks-design.md`. Original: 3-state model, pause classification, module scoping |
 | C | Monitor Mode | `pending` | Live terminal grid, WebSocket + xterm.js, responsive pane grid |
 | D | Sub-Agent Visualization | `pending` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
@@ -22,14 +23,15 @@ feature: mission-control
 ## Dependencies
 
 ```
-Phase A ──► Phase B ──► Phase C ──► Phase D
-                                       │
-                              Phase E ◄─┘
-                              Phase F (independent of E, depends on A)
+Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
+                                                    │
+                                           Phase E ◄─┘
+                                           Phase F (independent of E, depends on A)
 ```
 
 - **A** is the foundation - everything depends on it
 - **B** depends on A (needs session data to display in different views)
+- **B2** superseded by `2026-02-15-agent-state-hooks-design.md` (originally: replaces 5-state enum with 3-state, adds intelligent pause classification)
 - **C** depends on B (Monitor is a view mode, needs the view switcher infrastructure)
 - **D** depends on C (sub-agent viz appears inside Monitor panes and session cards)
 - **E** depends on C (custom layout applies to Monitor mode panes)
@@ -46,6 +48,7 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 | [`design.md`](design.md) | All | `approved` |
 | [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `done` |
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
+| [`phase-b2-intelligent-states.md`](phase-b2-intelligent-states.md) | B2 | `superseded` |
 | [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `pending` |
 | [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `pending` |
 | [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
@@ -55,6 +58,7 @@ Phase A ──► Phase B ──► Phase C ──► Phase D
 
 | Date | Decision | Context |
 |------|----------|---------|
+| 2026-02-15 | **NO unbounded AI classification on session discovery.** Tier 2 AI (claude CLI) disabled until rate-limited. Structural-only + fallback. | Phase B2 shipped with `spawn_ai_classification()` firing for every Paused session on startup. 40 JSONL files → 40 concurrent `claude -p` processes → timeouts, rate limits, infinite retry loop. Fix: removed `old_status.is_none()` trigger, replaced AI fallback with sync fallback. Re-add AI with `Semaphore(1)` when needed. |
 | 2026-02-10 | Read-only monitoring for terminal sessions, no PTY attachment | macOS blocks TIOCSTI, reptyr not supported. Zero-friction > bidirectional control. |
 | 2026-02-10 | Agent SDK for "Resume in Dashboard" (spawns new process with conversation history) | SDK cannot attach to existing sessions. Resume loads JSONL history into new subprocess. |
 | 2026-02-10 | No tmux prerequisite | Too much friction for users. File watching is zero-setup. |
