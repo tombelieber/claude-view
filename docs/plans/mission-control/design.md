@@ -59,7 +59,7 @@ A new **Mission Control** page within claude-view that discovers all active Clau
 | **Grid view** | Responsive card grid showing all sessions at a glance | A |
 | **List view** | Sortable, dense table for many sessions | B |
 | **Kanban view** | Sessions grouped by status columns (Active/Waiting/Idle) | B |
-| **Monitor mode** | Live terminal output grid via xterm.js | C |
+| **Monitor mode** | Live session chat grid via RichPane (HTML) | C |
 | **Sub-agent visualization** | Swim lanes showing parallel agent activity | D |
 | **Custom layout** | Drag-and-drop pane arrangement via react-mosaic | E |
 | **Resume in Dashboard** | Take over a waiting session via Agent SDK | F |
@@ -124,7 +124,7 @@ The MONITOR layer is the core of Mission Control. It runs inside the existing `v
 | **Cost Calculator** | `core` | Computes per-session and aggregate costs from token counts × model-specific pricing. Pure math, no API calls. |
 | **In-Memory State** | `server` | `DashMap<SessionId, LiveSession>` for lock-free concurrent reads/writes. No SQLite for live data (latency concern at 1-5s update frequency with ~20-50 sessions). |
 | **SSE Endpoint** | `server` | Streams `SessionEvent` objects to connected frontends. One SSE connection per browser tab. Server-side fan-out from state changes. |
-| **WebSocket Endpoint** | `server` | Streams raw terminal output bytes for Monitor mode. One WebSocket per monitored pane. Reads from JSONL assistant message content in real-time. |
+| **WebSocket Endpoint** | `server` | Streams structured JSONL messages for Monitor mode. One WebSocket per monitored pane. Rich mode parses messages into user/assistant/tool/thinking types. |
 
 #### File Watcher design
 
@@ -247,9 +247,9 @@ The frontend adds a new `/mission-control` route to the existing React SPA. It u
 
 | Package | Version | Size | Purpose |
 |---------|---------|------|---------|
-| `xterm` | 5.x | ~150KB | Terminal emulator for Monitor mode |
-| `@xterm/addon-fit` | 0.10.x | ~5KB | Auto-resize terminal to container |
-| `@xterm/addon-webgl` | 0.18.x | ~80KB | GPU-accelerated rendering |
+| `xterm` | 5.x | ~150KB | Terminal emulator -- **deferred to Phase F (Interactive Control)** |
+| `@xterm/addon-fit` | 0.10.x | ~5KB | Auto-resize terminal to container -- **deferred to Phase F** |
+| `@xterm/addon-webgl` | 0.18.x | ~80KB | GPU-accelerated rendering -- **deferred to Phase F** |
 | `react-mosaic-component` | 6.x | ~8KB | Drag-and-drop tiling layout (Phase E) |
 
 #### Route structure
@@ -884,7 +884,7 @@ Cards animate smoothly (300ms ease) when transitioning between columns. New sess
 
 #### Monitor Mode
 
-Live terminal output grid. Each pane shows a read-only terminal (xterm.js) displaying the Claude Code output for one session.
+Live session chat grid. Each pane shows a read-only chat view (RichPane) displaying the conversation for one session, with markdown rendering for tables, code blocks, etc.
 
 ```
 ┌─────────────────────────────────┬─────────────────────────────────┐
@@ -919,6 +919,13 @@ Live terminal output grid. Each pane shows a read-only terminal (xterm.js) displ
 |------|----------|
 | **Auto Grid** (default) | Automatically arranges panes in a grid based on active session count and screen size |
 | **Custom Layout** (Phase E) | User drags panes with react-mosaic to create custom tiling arrangement |
+
+**Verbose toggle (per-pane):**
+
+| Mode | What is shown |
+|------|---------------|
+| **Chat** (default) | User prompts + assistant text responses only. Clean, scannable view. |
+| **Verbose** | All message types: user, assistant, tool calls, tool results, thinking blocks. Full detail. |
 
 **Auto Grid responsive sizing:**
 
@@ -1095,16 +1102,16 @@ Mission Control uses two transport protocols, chosen based on data characteristi
 | All sessions are `WAITING` or `IDLE` | 5s |
 | No active sessions | 10s (heartbeat only) |
 
-### WebSocket — terminal byte stream (Monitor mode)
+### WebSocket — structured message stream (Monitor mode)
 
 | Aspect | Detail |
 |--------|--------|
-| **What** | Raw text content from assistant messages for xterm.js rendering |
+| **What** | Structured JSONL messages parsed into user/assistant/tool/thinking types for RichPane rendering |
 | **Endpoint** | `GET /api/live/sessions/:id/terminal` (upgrade to WS) |
-| **Format** | Binary frames (UTF-8 text) |
+| **Format** | JSON text frames (structured message objects) |
 | **Frequency** | Real-time (~100ms batching for rendering efficiency) |
 | **Reconnection** | Manual reconnect with exponential backoff (1s, 2s, 4s, 8s, max 30s) |
-| **Why WebSocket** | Bidirectional (for future interactive features), binary-capable, no proxy buffering issues, xterm.js expects WS natively |
+| **Why WebSocket** | Bidirectional (for future interactive features, verbose toggle), low-latency streaming, no proxy buffering issues |
 
 ### Vite Dev Proxy workaround
 
@@ -1331,7 +1338,7 @@ data: {"timestamp":1707350400}
 
 #### `GET /api/live/sessions/:id/terminal` → Upgrade to WebSocket
 
-Streams terminal output for Monitor mode. The server reads new JSONL entries for the session and extracts assistant message content, streaming it as text frames to xterm.js.
+Streams structured messages for Monitor mode. The server reads new JSONL entries for the session, parses them into typed message objects (user/assistant/tool_use/tool_result/thinking), and streams them as JSON text frames to RichPane.
 
 **Protocol:**
 
@@ -1655,4 +1662,4 @@ These are explicitly out of scope for the Phase A-F roadmap but inform architect
 | **Cost alerts** | "Notify me when total cost exceeds $X" | Cost calculator already supports thresholds |
 | **Historical playback** | Replay a completed session in Monitor mode | WebSocket endpoint can serve from JSONL history |
 | **Linux/Windows** | Platform-specific process detection | Abstract `sysinfo` behind a trait |
-| **tmux integration** | Actual PTY sharing for read-only terminal view | Keep Monitor mode's xterm.js, swap content source |
+| **tmux integration** | Actual PTY sharing for read-only terminal view | Phase F adds xterm.js for interactive control; tmux can feed into it |
