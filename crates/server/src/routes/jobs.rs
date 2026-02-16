@@ -76,6 +76,7 @@ mod tests {
             live_tx: tokio::sync::broadcast::channel(256).0,
             state_resolver: crate::live::state_resolver::StateResolver::new(),
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
+            terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
         });
 
         let app = Router::new()

@@ -8,7 +8,7 @@ import { SessionCard } from '../components/live/SessionCard'
 import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
 import { ListView } from '../components/live/ListView'
 import { KanbanView } from '../components/live/KanbanView'
-import { MonitorPlaceholder } from '../components/live/MonitorPlaceholder'
+import { MonitorView } from '../components/live/MonitorView'
 import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
@@ -177,7 +177,7 @@ export function MissionControlPage() {
           <KanbanView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
         )}
 
-        {viewMode === 'monitor' && <MonitorPlaceholder />}
+        {viewMode === 'monitor' && <MonitorView sessions={filteredSessions} />}
 
         {/* Empty state */}
         {filteredSessions.length === 0 && isConnected && viewMode !== 'monitor' && (
