@@ -30,7 +30,7 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 }
 
 export function MissionControlPage() {
-  const { sessions, summary, isConnected, lastUpdate } = useLiveSessions()
+  const { sessions, summary: serverSummary, isConnected, lastUpdate, stalledSessions, currentTime } = useLiveSessions()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
@@ -47,6 +47,27 @@ export function MissionControlPage() {
     () => filterLiveSessions(sessions, filters),
     [sessions, filters]
   )
+
+  // Derive summary from current sessions so it always matches the kanban/grid.
+  // Server-side summary is only used for cost/tokens (which may include cleaned-up sessions).
+  const summary = useMemo<LiveSummary | null>(() => {
+    if (sessions.length === 0 && !serverSummary) return null
+    let needsYouCount = 0
+    let autonomousCount = 0
+    let deliveredCount = 0
+    let totalCostTodayUsd = 0
+    let totalTokensToday = 0
+    for (const s of sessions) {
+      switch (s.agentState.group) {
+        case 'needs_you': needsYouCount++; break
+        case 'autonomous': autonomousCount++; break
+        case 'delivered': deliveredCount++; break
+      }
+      totalCostTodayUsd += s.cost?.totalUsd ?? 0
+      totalTokensToday += s.tokens?.totalTokens ?? 0
+    }
+    return { needsYouCount, autonomousCount, deliveredCount, totalCostTodayUsd, totalTokensToday }
+  }, [sessions, serverSummary])
 
   // Available filter options from current (unfiltered) sessions
   const availableStatuses = useMemo(() => {
@@ -163,7 +184,7 @@ export function MissionControlPage() {
                 onClick={() => handleSelectSession(session.id)}
                 className={selectedId === session.id ? 'ring-2 ring-indigo-500 rounded-lg' : ''}
               >
-                <SessionCard session={session} />
+                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} />
               </div>
             ))}
           </div>
@@ -174,7 +195,7 @@ export function MissionControlPage() {
         )}
 
         {viewMode === 'kanban' && (
-          <KanbanView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
+          <KanbanView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} stalledSessions={stalledSessions} currentTime={currentTime} />
         )}
 
         {viewMode === 'monitor' && <MonitorView sessions={filteredSessions} />}
