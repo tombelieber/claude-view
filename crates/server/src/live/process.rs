@@ -32,7 +32,17 @@ pub fn detect_claude_processes() -> HashMap<PathBuf, ClaudeProcess> {
     let mut result = HashMap::new();
     for (pid, process) in sys.processes() {
         let name = process.name().to_string_lossy();
-        if !name.contains("claude") {
+
+        // Check process name first (native binary installs where name IS "claude")
+        let is_claude = name.contains("claude")
+            // Also check command-line args for Node.js-based installs.
+            // Claude Code runs as `node /path/to/@anthropic-ai/claude-code/cli.js`
+            // where the process name is "node", not "claude".
+            || process.cmd().iter().any(|arg| {
+                arg.to_string_lossy().contains("@anthropic-ai/claude")
+            });
+
+        if !is_claude {
             continue;
         }
         if let Some(cwd) = process.cwd() {
