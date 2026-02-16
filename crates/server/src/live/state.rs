@@ -31,6 +31,7 @@ pub struct AgentState {
 pub enum AgentStateGroup {
     NeedsYou,
     Autonomous,
+    #[allow(dead_code)]
     Delivered,
 }
 
@@ -127,6 +128,7 @@ pub enum SessionEvent {
         #[serde(rename = "autonomousCount")]
         autonomous_count: usize,
         #[serde(rename = "deliveredCount")]
+        #[allow(dead_code)]
         delivered_count: usize,
         #[serde(rename = "totalCostTodayUsd")]
         total_cost_today_usd: f64,

@@ -134,7 +134,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             context: None,
         },
         "SessionEnd" => AgentState {
-            group: AgentStateGroup::Delivered,
+            group: AgentStateGroup::NeedsYou,
             state: "session_ended".into(),
             label: "Session closed".into(),
             confidence: 0.99,
@@ -142,7 +142,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             context: None,
         },
         "TaskCompleted" => AgentState {
-            group: AgentStateGroup::Delivered,
+            group: AgentStateGroup::NeedsYou,
             state: "task_complete".into(),
             label: payload.task_subject.clone().unwrap_or_else(|| "Task completed".into()),
             confidence: 0.99,
