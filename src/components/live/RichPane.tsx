@@ -27,9 +27,6 @@ export interface RichMessage {
 export interface RichPaneProps {
   messages: RichMessage[]
   isVisible: boolean
-  /** Whether to auto-follow new output. Disable during initial buffer load
-   *  so the user sees content from the top, not the bottom. */
-  followOutput?: boolean
   /** When false (default), only show user + assistant + error messages. */
   verboseMode?: boolean
 }
@@ -267,7 +264,7 @@ function MessageCard({ message }: { message: RichMessage }) {
 
 // --- Main Component ---
 
-export function RichPane({ messages, isVisible, followOutput: followOutputProp = true, verboseMode = false }: RichPaneProps) {
+export function RichPane({ messages, isVisible, verboseMode = false }: RichPaneProps) {
   const displayMessages = useMemo(() => {
     if (verboseMode) return messages
     return messages.filter((m) => m.type === 'user' || m.type === 'assistant' || m.type === 'error')
@@ -320,7 +317,8 @@ export function RichPane({ messages, isVisible, followOutput: followOutputProp =
       <Virtuoso
         ref={virtuosoRef}
         data={displayMessages}
-        followOutput={followOutputProp ? 'smooth' : false}
+        initialTopMostItemIndex={displayMessages.length - 1}
+        followOutput={'smooth'}
         atBottomStateChange={handleAtBottomStateChange}
         atBottomThreshold={30}
         itemContent={(_index, message) => (
