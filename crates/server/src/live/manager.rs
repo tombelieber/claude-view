@@ -349,7 +349,11 @@ impl LiveSessionManager {
 
                 // Phase 2: Feed JSONL states into resolver (async, no external locks held).
                 // update_from_jsonl() only needs StateResolver's internal lock.
-                for (session_id, _, _, ref jsonl_state) in &pending_updates {
+                for (session_id, ref new_status, _, ref jsonl_state) in &pending_updates {
+                    // Clear stale hook states when JSONL evidence shows Working.
+                    if *new_status == SessionStatus::Working {
+                        manager.state_resolver.clear_hook_state(session_id).await;
+                    }
                     manager.state_resolver.update_from_jsonl(session_id, jsonl_state.clone()).await;
                 }
 
@@ -365,13 +369,69 @@ impl LiveSessionManager {
                     for (session_id, new_status, pid, _) in pending_updates {
                         if let Some(session) = sessions.get_mut(&session_id) {
                             let resolved = manager.state_resolver.resolve(&session_id).await;
-                            session.status = new_status;
+                            session.status = new_status.clone();
                             session.pid = pid;
                             session.agent_state = resolved;
+                            // Clear stale activity when session is no longer Working.
+                            // Without this, Done sessions keep showing "Generating response..."
+                            // from the last Working state.
+                            if new_status != SessionStatus::Working {
+                                session.current_activity = String::new();
+                            }
                             let _ = manager.tx.send(SessionEvent::SessionUpdated {
                                 session: session.clone(),
                             });
                         }
+                    }
+                }
+
+                // Phase 4: Stale-Autonomous re-evaluation.
+                // Catch sessions that are Paused + Autonomous for >2 minutes (no JSONL
+                // activity) but still have a running process. These are sessions where
+                // Claude finished a turn without matching a structural pattern. Re-classify
+                // as NeedsYou so the user sees that the session needs attention.
+                // Skip sessions whose state was set by a hook — those are intentional.
+                {
+                    let processes = manager.processes.read().await;
+                    let mut sessions = manager.sessions.write().await;
+
+                    for (_session_id, session) in sessions.iter_mut() {
+                        if session.status != SessionStatus::Paused {
+                            continue;
+                        }
+                        if session.agent_state.group != AgentStateGroup::Autonomous {
+                            continue;
+                        }
+                        // Don't override hook-sourced states (e.g. SubagentStart set
+                        // delegating — long subagent runs are legitimately autonomous).
+                        if matches!(session.agent_state.source, SignalSource::Hook) {
+                            continue;
+                        }
+                        let seconds_since = seconds_since_modified_from_timestamp(
+                            session.last_activity_at,
+                        );
+                        if seconds_since <= 120 {
+                            continue;
+                        }
+                        let (running, _) =
+                            has_running_process(&processes, &session.project_path);
+                        if !running {
+                            // No process + >120s → derive_status should return Done on next cycle
+                            continue;
+                        }
+                        // Process is running but no JSONL activity for 2+ minutes.
+                        // Claude is genuinely waiting for user input.
+                        session.agent_state = AgentState {
+                            group: AgentStateGroup::NeedsYou,
+                            state: "idle".into(),
+                            label: "Waiting for your next message".into(),
+                            confidence: 0.6,
+                            source: SignalSource::Jsonl,
+                            context: None,
+                        };
+                        let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                            session: session.clone(),
+                        });
                     }
                 }
             }
@@ -656,6 +716,12 @@ impl LiveSessionManager {
         drop(processes);
         drop(accumulators);
 
+        // When JSONL shows Working, clear stale hook states (e.g. awaiting_input
+        // from a prior turn). The user has responded and Claude is active again.
+        if live_session.status == SessionStatus::Working {
+            self.state_resolver.clear_hook_state(&session_id).await;
+        }
+
         // Feed JSONL state to resolver, then resolve (hook wins if fresh).
         // These calls only acquire StateResolver's internal locks, safe without external locks.
         self.state_resolver.update_from_jsonl(&session_id, live_session.agent_state.clone()).await;
@@ -704,15 +770,20 @@ impl LiveSessionManager {
             } else {
                 // No structural match -- use fallback.
                 let c = self.classifier.fallback_classify(&ctx);
-                // MidWork + running process = between tool calls, not genuinely idle.
-                // Without this, long-running multi-tool tasks flicker NeedsYou↔Autonomous
-                // on every Working→Paused micro-transition between tool invocations.
-                if c.reason == PauseReason::MidWork && has_running_process {
+                // MidWork = ambiguous pause. Keep Autonomous if EITHER:
+                //   (a) process is detected (between tool calls), OR
+                //   (b) JSONL file was active within 60s (process detection unreliable —
+                //       Claude Code runs as "node" not "claude" on many installs).
+                // Sessions with no process + no JSONL activity for >60s transition to
+                // Done via derive_status, so they never reach this MidWork check.
+                if c.reason == PauseReason::MidWork
+                    && (has_running_process || seconds_since_modified <= 60)
+                {
                     acc.agent_state = AgentState {
                         group: AgentStateGroup::Autonomous,
                         state: "thinking".into(),
                         label: "Between steps...".into(),
-                        confidence: 0.5,
+                        confidence: if has_running_process { 0.5 } else { 0.4 },
                         source: SignalSource::Jsonl,
                         context: None,
                     };
