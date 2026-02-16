@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { sseUrl } from '../../lib/sse-url'
 import type { AgentState } from './types'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 const STALL_THRESHOLD_MS = 3000
 
@@ -40,6 +41,7 @@ export interface LiveSession {
   cacheStatus: 'warm' | 'cold' | 'unknown'
   currentTurnStartedAt?: number | null
   lastTurnTaskSeconds?: number | null
+  subAgents?: SubAgentInfo[]
 }
 
 export interface LiveSummary {
