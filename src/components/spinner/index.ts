@@ -8,3 +8,6 @@ export {
   formatModelShort,
   formatDurationCompact,
 } from './constants'
+
+export { SessionSpinner } from './SessionSpinner'
+export type { SessionSpinnerProps } from './SessionSpinner'
