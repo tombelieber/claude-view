@@ -5,7 +5,7 @@ export type LiveSortField = 'status' | 'last_active' | 'cost' | 'turns' | 'conte
 export type LiveSortDirection = 'asc' | 'desc'
 
 export interface LiveSessionFilters {
-  statuses: string[] // agent state groups to include (needs_you, autonomous, delivered)
+  statuses: string[] // agent state groups to include (needs_you, autonomous)
   projects: string[] // project display names
   branches: string[] // git branch names
   search: string // text search query

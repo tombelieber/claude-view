@@ -21,7 +21,7 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   inputTokens: number
   outputTokens: number
   isStalled?: boolean
-  agentStateGroup?: 'needs_you' | 'autonomous' | 'delivered'
+  agentStateGroup?: 'needs_you' | 'autonomous'
   spinnerVerb?: string
 }
 
@@ -116,16 +116,6 @@ export function SessionSpinner(props: SessionSpinnerProps) {
       <span className="flex items-center gap-1.5 text-xs">
         <span className="w-3 text-center inline-block text-amber-500">●</span>
         <span className="text-muted-foreground">Awaiting input</span>
-      </span>
-    )
-  }
-
-  // delivered -> green check + "Done"
-  if (agentStateGroup === 'delivered') {
-    return (
-      <span className="flex items-center gap-1.5 text-xs">
-        <span className="w-3 text-center inline-block text-green-500">✓</span>
-        <span className="text-muted-foreground">Done</span>
       </span>
     )
   }
