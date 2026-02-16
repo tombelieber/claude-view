@@ -158,4 +158,9 @@ export type { OverviewMetrics } from './OverviewMetrics'
 export type { SessionContribution } from './SessionContribution'
 export type { SessionContributionResponse } from './SessionContributionResponse'
 export type { SkillStats } from './SkillStats'
+export type { TurnInfo } from './TurnInfo'
 export type { UncommittedWork } from './UncommittedWork'
+
+// Mission Control: Sub-Agent Visualization (Phase D)
+export type { SubAgentStatus } from './SubAgentStatus'
+export type { SubAgentInfo } from './SubAgentInfo'
