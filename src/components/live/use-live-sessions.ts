@@ -38,6 +38,8 @@ export interface LiveSession {
     cacheSavingsUsd: number
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
+  currentTurnStartedAt?: number | null
+  lastTurnTaskSeconds?: number | null
 }
 
 export interface LiveSummary {
