@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
-import { CacheCountdownRing } from './CacheCountdownRing'
 import { cn } from '../../lib/utils'
 
 // --- Helpers (shared logic with MonitorPane) ---
@@ -37,17 +36,6 @@ function contextColor(pct: number): string {
   if (pct > 80) return 'text-red-400'
   if (pct >= 50) return 'text-amber-400'
   return 'text-green-400'
-}
-
-function groupDotColor(group: AgentStateGroup): string {
-  switch (group) {
-    case 'autonomous':
-      return 'bg-green-500'
-    case 'needs_you':
-      return 'bg-amber-500'
-    default:
-      return 'bg-zinc-500'
-  }
 }
 
 function GroupIcon({ group, className }: { group: AgentStateGroup; className?: string }) {
@@ -128,21 +116,6 @@ export function ExpandedPaneOverlay({
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800 select-none">
-          {/* Status dot */}
-          <span
-            className={cn(
-              'inline-block h-2.5 w-2.5 rounded-full flex-shrink-0',
-              groupDotColor(session.agentState.group),
-              session.agentState.group === 'autonomous' && 'animate-pulse'
-            )}
-            title={session.agentState.label}
-          />
-
-          {/* Cache countdown ring (needs_you only) */}
-          {session.agentState.group === 'needs_you' && (
-            <CacheCountdownRing lastActivityAt={session.lastActivityAt} size={18} />
-          )}
-
           {/* Project name */}
           <span
             className="text-sm font-medium text-gray-200 truncate max-w-[30ch]"
