@@ -4,8 +4,6 @@ import { cn } from '../../lib/utils'
 
 interface SwimLanesProps {
   subAgents: SubAgentInfo[]
-  /** Whether the parent session is still active */
-  sessionActive: boolean
 }
 
 /** Format cost as $X.XX */
@@ -38,18 +36,11 @@ function ProgressBar() {
   return (
     <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
       <div
-        className="h-full bg-blue-500 rounded-full animate-progress"
+        className="h-full bg-blue-500 rounded-full"
         style={{
-          animation: 'progress 1.5s ease-in-out infinite',
+          animation: 'swimlane-progress 1.5s ease-in-out infinite',
         }}
       />
-      <style>{`
-        @keyframes progress {
-          0% { width: 0%; margin-left: 0%; }
-          50% { width: 40%; margin-left: 30%; }
-          100% { width: 0%; margin-left: 100%; }
-        }
-      `}</style>
     </div>
   )
 }
@@ -67,10 +58,7 @@ function ProgressBar() {
  * Rows are sorted: running first (by startedAt), then completed (by completedAt desc).
  * Empty state returns null when no sub-agents exist.
  */
-export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
-  // Early return if no sub-agents
-  if (subAgents.length === 0) return null
-
+export function SwimLanes({ subAgents }: SwimLanesProps) {
   // Sort: Running first (by startedAt asc), then Complete/Error (by completedAt desc)
   const sortedAgents = useMemo(() => {
     const running = subAgents
@@ -83,6 +71,9 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
 
     return [...running, ...finished]
   }, [subAgents])
+
+  // Early return if no sub-agents
+  if (subAgents.length === 0) return null
 
   return (
     <div
@@ -121,7 +112,7 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
 
           {/* Complete/Error: metrics row */}
           {agent.status !== 'running' && (
-            <div className="flex items-center gap-4 pl-4 text-xs font-mono text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-4 pl-4 text-xs font-mono text-gray-400">
               {agent.costUsd != null && (
                 <span>{formatCost(agent.costUsd)}</span>
               )}
@@ -132,7 +123,7 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
                 <span>{agent.toolUseCount} tool call{agent.toolUseCount !== 1 ? 's' : ''}</span>
               )}
               {agent.agentId && (
-                <span className="text-gray-600 dark:text-gray-500">id:{agent.agentId}</span>
+                <span className="text-gray-500">id:{agent.agentId}</span>
               )}
             </div>
           )}
