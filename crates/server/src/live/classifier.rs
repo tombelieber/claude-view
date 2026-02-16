@@ -163,18 +163,21 @@ impl SessionStateClassifier {
     }
 
     /// Fallback classification when structural signals don't match.
+    ///
+    /// `end_turn` means Claude intentionally finished its turn — it's NOT mid-work.
+    /// Non-end_turn pauses (between tool calls) are genuinely ambiguous.
     pub fn fallback_classify(&self, ctx: &SessionStateContext) -> PauseClassification {
         if ctx.last_stop_reason.as_deref() == Some("end_turn") {
             PauseClassification {
-                reason: PauseReason::MidWork,
+                reason: PauseReason::NeedsInput,
                 label: "Waiting for your next message".into(),
-                confidence: 0.5,
+                confidence: 0.6,
                 source: ClassificationSource::Fallback,
             }
         } else {
             PauseClassification {
                 reason: PauseReason::MidWork,
-                label: "Session paused".into(),
+                label: "Between steps...".into(),
                 confidence: 0.3,
                 source: ClassificationSource::Fallback,
             }
@@ -288,25 +291,27 @@ mod tests {
     }
 
     #[test]
-    fn test_fallback_end_turn() {
+    fn test_fallback_end_turn_is_needs_input() {
         let classifier = make_classifier();
         let mut ctx = make_context();
         ctx.last_stop_reason = Some("end_turn".to_string());
 
         let result = classifier.fallback_classify(&ctx);
-        assert_eq!(result.reason, PauseReason::MidWork);
+        assert_eq!(result.reason, PauseReason::NeedsInput,
+            "end_turn means Claude finished its turn — should be NeedsInput, not MidWork");
         assert_eq!(result.label, "Waiting for your next message");
-        assert!((result.confidence - 0.5).abs() < f32::EPSILON);
+        assert!((result.confidence - 0.6).abs() < f32::EPSILON);
     }
 
     #[test]
-    fn test_fallback_no_stop_reason() {
+    fn test_fallback_no_stop_reason_is_midwork() {
         let classifier = make_classifier();
         let ctx = make_context();
 
         let result = classifier.fallback_classify(&ctx);
-        assert_eq!(result.reason, PauseReason::MidWork);
-        assert_eq!(result.label, "Session paused");
+        assert_eq!(result.reason, PauseReason::MidWork,
+            "No stop_reason = between tool calls = genuinely ambiguous");
+        assert_eq!(result.label, "Between steps...");
         assert!((result.confidence - 0.3).abs() < f32::EPSILON);
     }
 
