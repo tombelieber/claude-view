@@ -4,7 +4,6 @@ import { useMonitorStore } from '../../store/monitor-store'
 import { MonitorGrid } from './MonitorGrid'
 import { GridControls } from './GridControls'
 import { MonitorPane } from './MonitorPane'
-import { TerminalPane } from './TerminalPane'
 import { RichPane, parseRichMessage, type RichMessage } from './RichPane'
 import { ExpandedPaneOverlay } from './ExpandedPaneOverlay'
 import { PaneContextMenu } from './PaneContextMenu'
@@ -21,7 +20,7 @@ interface MonitorViewProps {
  * RichTerminalPane — wraps useTerminalSocket + RichPane for rich mode.
  * Manages its own WebSocket connection and parses messages into RichMessage[].
  */
-function RichTerminalPane({ sessionId, isVisible }: { sessionId: string; isVisible: boolean }) {
+function RichTerminalPane({ sessionId, isVisible, verboseMode }: { sessionId: string; isVisible: boolean; verboseMode: boolean }) {
   const [messages, setMessages] = useState<RichMessage[]>([])
   const [bufferLoaded, setBufferLoaded] = useState(false)
 
@@ -48,7 +47,7 @@ function RichTerminalPane({ sessionId, isVisible }: { sessionId: string; isVisib
     onConnectionChange: handleConnectionChange,
   })
 
-  return <RichPane messages={messages} isVisible={isVisible} followOutput={bufferLoaded} />
+  return <RichPane messages={messages} isVisible={isVisible} followOutput={bufferLoaded} verboseMode={verboseMode} />
 }
 
 /**
@@ -65,7 +64,7 @@ export function MonitorView({ sessions }: MonitorViewProps) {
   const expandedPaneId = useMonitorStore((s) => s.expandedPaneId)
   const pinnedPaneIds = useMonitorStore((s) => s.pinnedPaneIds)
   const hiddenPaneIds = useMonitorStore((s) => s.hiddenPaneIds)
-  const paneMode = useMonitorStore((s) => s.paneMode)
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
 
   // Store actions
   const setGridOverride = useMonitorStore((s) => s.setGridOverride)
@@ -75,7 +74,7 @@ export function MonitorView({ sessions }: MonitorViewProps) {
   const pinPane = useMonitorStore((s) => s.pinPane)
   const unpinPane = useMonitorStore((s) => s.unpinPane)
   const hidePane = useMonitorStore((s) => s.hidePane)
-  const setPaneMode = useMonitorStore((s) => s.setPaneMode)
+  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
 
   // Visibility tracking from MonitorGrid's IntersectionObserver
   const [visiblePanes, setVisiblePanes] = useState<Set<string>>(new Set())
@@ -155,14 +154,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
       expandPane(expandedPaneId === id ? null : id)
     },
     [expandPane, expandedPaneId]
-  )
-
-  const handleModeToggle = useCallback(
-    (id: string) => {
-      const current = paneMode[id] || 'rich'
-      setPaneMode(id, current === 'raw' ? 'rich' : 'raw')
-    },
-    [paneMode, setPaneMode]
   )
 
   const handlePin = useCallback(
