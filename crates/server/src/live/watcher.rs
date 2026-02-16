@@ -39,14 +39,19 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
     let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         match res {
             Ok(event) => {
-                // Filter to only .jsonl files
+                // Filter to only .jsonl files, excluding sub-agent and tool-result files
                 let jsonl_paths: Vec<PathBuf> = event
                     .paths
                     .into_iter()
                     .filter(|p| {
-                        p.extension()
-                            .map(|ext| ext == "jsonl")
-                            .unwrap_or(false)
+                        // Must be a .jsonl file
+                        if p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
+                            // Exclude files in subagents/ or tool-results/ subdirectories
+                            let path_str = p.to_string_lossy();
+                            !path_str.contains("/subagents/") && !path_str.contains("/tool-results/")
+                        } else {
+                            false
+                        }
                     })
                     .collect();
 
