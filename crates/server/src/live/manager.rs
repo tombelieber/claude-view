@@ -732,6 +732,7 @@ impl LiveSessionManager {
             cache_status,
             current_turn_started_at: acc.current_turn_started_at,
             last_turn_task_seconds: acc.last_turn_task_seconds,
+            sub_agents: Vec::new(),  // TODO: Will be populated from acc.sub_agents in Task 4
         };
 
         // Drop the accumulators lock before acquiring sessions lock
@@ -769,13 +770,14 @@ impl LiveSessionManager {
     ) {
         let old_status = acc.last_status.clone();
 
-        // Working -> Paused: trigger classification.
-        // NOTE: We intentionally skip first-discovery (old_status.is_none()) to avoid
-        // classifying all ~40 stale sessions on startup. Classification only fires on
-        // actual Working->Paused transitions observed in real-time.
-        if new_status == SessionStatus::Paused
-            && old_status == Some(SessionStatus::Working)
-        {
+        // Paused: trigger structural classification.
+        // Fires on Working->Paused transitions AND first-discovery-as-Paused.
+        // Structural classification is instant (Tier 1, no AI call) — safe for
+        // all sessions on startup.
+        let is_first_discovery = old_status.is_none();
+        let should_classify = new_status == SessionStatus::Paused
+            && (old_status == Some(SessionStatus::Working) || is_first_discovery);
+        if should_classify {
             let ctx = SessionStateContext {
                 recent_messages: acc.recent_messages.iter().cloned().collect(),
                 last_stop_reason: acc.last_line.as_ref().and_then(|l| l.stop_reason.clone()),
@@ -797,13 +799,25 @@ impl LiveSessionManager {
                 //   (a) process is detected (between tool calls), OR
                 //   (b) JSONL file was active within 60s (process detection unreliable —
                 //       Claude Code runs as "node" not "claude" on many installs).
-                // Sessions with no process + no JSONL activity for >300s transition to
-                // Done via derive_status. Between 60-300s with no process, they may reach
-                // this MidWork check — the 60s threshold here is intentional (show NeedsYou
-                // after 60s of silence, but don't immediately classify as Done).
-                if c.reason == PauseReason::MidWork
-                    && (has_running_process || seconds_since_modified <= 60)
-                {
+                //
+                // EXCEPTION: On first discovery, process detection hasn't run yet
+                // (5s interval), so has_running_process is always false. Don't let
+                // seconds_since_modified alone keep a session Autonomous — we have
+                // no evidence it's actually working. Classify it as NeedsYou and
+                // let the process detector correct it to Autonomous on its next cycle
+                // if a process IS found.
+                let keep_autonomous = if is_first_discovery {
+                    // First discovery: only keep Autonomous if we have CONFIRMED
+                    // process evidence (which we won't on first call, but the
+                    // process detector may have run for re-discovered sessions).
+                    c.reason == PauseReason::MidWork && has_running_process
+                } else {
+                    // Ongoing transition: trust both process and recency signals.
+                    c.reason == PauseReason::MidWork
+                        && (has_running_process || seconds_since_modified <= 60)
+                };
+
+                if keep_autonomous {
                     acc.agent_state = AgentState {
                         group: AgentStateGroup::Autonomous,
                         state: "thinking".into(),
