@@ -9,8 +9,10 @@ import {
   Terminal,
   MessageSquare,
   GitBranch,
+  Bell,
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
+import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
 
 // --- Helpers ---
@@ -44,27 +46,28 @@ function contextColor(pct: number): string {
   return 'text-green-400'
 }
 
-/** Status dot color based on session.status. */
-function statusDotColor(status: LiveSession['status']): string {
-  switch (status) {
-    case 'working':
-      return 'bg-green-500' // #22C55E
-    case 'paused':
-      return 'bg-amber-500' // #F59E0B
-    case 'done':
+/** Status dot color based on agentState.group (consistent with all other views). */
+function groupDotColor(group: AgentStateGroup): string {
+  switch (group) {
+    case 'autonomous':
+      return 'bg-green-500'
+    case 'needs_you':
+      return 'bg-amber-500'
+    case 'delivered':
+      return 'bg-blue-500'
     default:
-      return 'bg-zinc-500' // #6B7280
+      return 'bg-zinc-500'
   }
 }
 
-/** Status icon component based on session.status. */
-function StatusIcon({ status, className }: { status: LiveSession['status']; className?: string }) {
-  switch (status) {
-    case 'working':
+/** Status icon component based on agentState.group. */
+function GroupIcon({ group, className }: { group: AgentStateGroup; className?: string }) {
+  switch (group) {
+    case 'autonomous':
       return <Loader2 className={cn('animate-spin', className)} />
-    case 'paused':
-      return <Pause className={className} />
-    case 'done':
+    case 'needs_you':
+      return <Bell className={className} />
+    case 'delivered':
       return <Check className={className} />
     default:
       return <Pause className={className} />
@@ -223,10 +226,10 @@ function FullHeader({
       <span
         className={cn(
           'inline-block h-2.5 w-2.5 rounded-full flex-shrink-0',
-          statusDotColor(session.status),
-          session.status === 'working' && 'animate-pulse'
+          groupDotColor(session.agentState.group),
+          session.agentState.group === 'autonomous' && 'animate-pulse'
         )}
-        title={session.status}
+        title={session.agentState.label}
       />
 
       {/* Project name */}
@@ -259,7 +262,7 @@ function FullHeader({
       </span>
 
       {/* Status icon */}
-      <StatusIcon status={session.status} className="w-3 h-3 text-gray-400 flex-shrink-0" />
+      <GroupIcon group={session.agentState.group} className="w-3 h-3 text-gray-400 flex-shrink-0" />
 
       {/* Divider */}
       <div className="w-px h-3.5 bg-gray-700" />
@@ -352,8 +355,8 @@ function CompactHeader({
       <span
         className={cn(
           'inline-block h-2 w-2 rounded-full flex-shrink-0',
-          statusDotColor(session.status),
-          session.status === 'working' && 'animate-pulse'
+          groupDotColor(session.agentState.group),
+          session.agentState.group === 'autonomous' && 'animate-pulse'
         )}
       />
 

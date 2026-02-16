@@ -34,6 +34,13 @@ impl StateResolver {
             .insert(session_id.to_string(), state);
     }
 
+    /// Clear the hook state for a session. Called when JSONL evidence shows the
+    /// session is actively Working — any previous blocking hook state (e.g.
+    /// awaiting_input from a prior turn) is now stale.
+    pub async fn clear_hook_state(&self, session_id: &str) {
+        self.hook_states.write().await.remove(session_id);
+    }
+
     pub(crate) fn is_expired(state: &str, elapsed: Duration) -> bool {
         match Self::state_category(state) {
             StateCategory::Terminal => false,
@@ -174,6 +181,33 @@ mod tests {
         let resolved = resolver.resolve("nonexistent").await;
         assert_eq!(resolved.state, "unknown");
         assert_eq!(resolved.group, AgentStateGroup::Autonomous);
+    }
+
+    #[tokio::test]
+    async fn clear_hook_state_allows_jsonl_to_win() {
+        let resolver = StateResolver::new();
+
+        // Hook says awaiting_input (blocking, would normally never expire)
+        resolver.update_from_hook(
+            "s1", make_hook_state("awaiting_input", AgentStateGroup::NeedsYou)
+        ).await;
+        // JSONL says acting (user responded, Claude is working)
+        resolver.update_from_jsonl(
+            "s1", make_jsonl_state("acting", AgentStateGroup::Autonomous)
+        ).await;
+
+        // Without clearing, hook wins (blocking state never expires)
+        let resolved = resolver.resolve("s1").await;
+        assert_eq!(resolved.group, AgentStateGroup::NeedsYou, "hook should win before clear");
+
+        // Clear stale hook state (simulating Working transition detection)
+        resolver.clear_hook_state("s1").await;
+
+        // Now JSONL state takes over
+        let resolved = resolver.resolve("s1").await;
+        assert_eq!(resolved.state, "acting");
+        assert_eq!(resolved.group, AgentStateGroup::Autonomous,
+            "after clearing hook, JSONL state should win");
     }
 
     #[tokio::test]
