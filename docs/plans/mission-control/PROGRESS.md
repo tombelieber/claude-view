@@ -15,18 +15,26 @@ feature: mission-control
 | A | Read-Only Monitoring | `done` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
 | B | Views & Layout | `done` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
 | B2 | Intelligent Session States | `superseded` | Superseded by `2026-02-15-agent-state-hooks-design.md`. Original: 3-state model, pause classification, module scoping |
-| C | Monitor Mode | `in-progress` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
-| D | Sub-Agent Visualization | `pending` | Swim lanes, sub-agent extraction, compact pills, timeline view |
+| C | Monitor Mode | `done` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
+| D | Sub-Agent Visualization | `in-progress` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
 | F | Interactive Control | `pending` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
+| G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
+| H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support |
+| I | Codex Live Mission Control | `pending` | Codex watcher/process/parser integration into live manager + mixed-source Mission Control UI |
+| J | Codex Hardening & Rollout | `pending` | Fixture corpus, migration/backfill hardening, source-scoped reindex, metrics, rollout flags |
 
 ## Dependencies
 
 ```
 Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
-                                                    │
-                                           Phase E ◄─┘
-                                           Phase F (independent of E, depends on A)
+                                                   │
+                                          Phase E ◄─┘
+                                          Phase F (independent of E, depends on A)
+
+Phase A ──► Phase G ──► Phase H ──┐
+                    └──► Phase I ─┼──► Phase J
+                                  ┘
 ```
 
 - **A** is the foundation - everything depends on it
@@ -36,6 +44,10 @@ Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
 - **D** depends on C (sub-agent viz appears inside Monitor panes and session cards)
 - **E** depends on C (custom layout applies to Monitor mode panes)
 - **F** depends on A only (Agent SDK sidecar just needs the session list to know what to resume)
+- **G** depends on A (builds source-aware foundation on top of existing session/live infrastructure)
+- **H** depends on G (Codex historical indexing/parsing requires source model + provider routing)
+- **I** depends on G (Codex live monitoring requires source-tagged watcher/manager/process plumbing)
+- **J** depends on H + I (hardening and rollout after historical + live paths are both implemented)
 
 **External dependents:**
 - **Mobile PWA** (M1: Status Monitor) depends on **Phase A** — needs JSONL file watching + session state machine for remote status
@@ -50,14 +62,19 @@ Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
 | [`phase-b2-intelligent-states.md`](phase-b2-intelligent-states.md) | B2 | `superseded` |
 | [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `in-progress` |
-| [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `pending` |
+| [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `in-progress` |
 | [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
 | [`phase-f-interactive.md`](phase-f-interactive.md) | F | `pending` |
+| [`phase-g-codex-foundation.md`](phase-g-codex-foundation.md) | G | `pending` |
+| [`phase-h-codex-historical-sessions.md`](phase-h-codex-historical-sessions.md) | H | `pending` |
+| [`phase-i-codex-live-mission-control.md`](phase-i-codex-live-mission-control.md) | I | `pending` |
+| [`phase-j-codex-hardening-rollout.md`](phase-j-codex-hardening-rollout.md) | J | `pending` |
 
 ## Key Decisions Log
 
 | Date | Decision | Context |
 |------|----------|---------|
+| 2026-02-16 | **Codex support uses explicit source-aware identity (`source`, `source_session_id`, canonical `id`) instead of path inference.** | Robust multi-provider requirement: avoid session ID collisions and eliminate Claude-only assumptions in indexing/live routes. |
 | 2026-02-16 | **Monitor mode uses RichPane (HTML) exclusively -- no xterm.js.** xterm.js deferred to Phase F (Interactive Control) where we own the PTY via Agent SDK. Monitor mode reads JSONL (structured data) so HTML rendering is strictly better. Verbose toggle replaces raw/rich toggle. | Existing sessions run in VS Code/terminal -- we can't tap their PTY. Our only interface is JSONL log files. HTML renders markdown (tables, bold, code) better than terminal ANSI conversion. |
 | 2026-02-15 | **NO unbounded AI classification on session discovery.** Tier 2 AI (claude CLI) disabled until rate-limited. Structural-only + fallback. | Phase B2 shipped with `spawn_ai_classification()` firing for every Paused session on startup. 40 JSONL files → 40 concurrent `claude -p` processes → timeouts, rate limits, infinite retry loop. Fix: removed `old_status.is_none()` trigger, replaced AI fallback with sync fallback. Re-add AI with `Semaphore(1)` when needed. |
 | 2026-02-10 | Read-only monitoring for terminal sessions, no PTY attachment | macOS blocks TIOCSTI, reptyr not supported. Zero-friction > bidirectional control. |
@@ -72,6 +89,132 @@ Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
 | 2026-02-10 | Swim lanes for sub-agent visualization, timeline for history | Most intuitive for real-time parallel work. Node graph deferred to Teams/Swarm mode. |
 | 2026-02-10 | react-mosaic for custom layout (Phase E) | Lightweight (8KB), React-native, used by Palantir. Over GoldenLayout (jQuery-era). |
 | 2026-02-10 | Node.js sidecar for Agent SDK (Phase F) | SDK is npm-only. Rust handles HTTP/SSE/WebSocket/SQLite. Node handles Agent SDK IPC. |
+
+## Phase D: Sub-Agent Visualization - Implementation Progress
+
+**Status:** `in-progress` (4 of 7 tasks complete, 2026-02-16)
+
+### Completed Work (Tasks 1-4)
+
+#### ✅ Task 1: TimelineView Component (Complete)
+- **Files:** `src/components/live/TimelineView.tsx` (234 lines), `TimelineView.test.tsx` (400+ lines)
+- **Features:**
+  - Gantt-like horizontal timeline visualization
+  - Adaptive time intervals (5s, 10s, 30s, 1m, 5m, 10m based on duration)
+  - Percentage-based CSS positioning (no chart libraries)
+  - Radix UI tooltips with agent details
+  - Color coding: green (complete), red (error), animated pulse (running)
+  - Min 2px bar width for visibility
+- **Tests:** 23 tests passing (coverage: empty state, intervals, positioning, tooltips, edge cases)
+- **Quality:** Spec 100% ✓, Code approved, all tests passing
+
+#### ✅ Task 2: useSubAgents Hook (Complete)
+- **Files:** `src/components/live/use-sub-agents.ts` (31 lines), `use-sub-agents.test.ts` (320+ lines)
+- **Features:**
+  - Filters sub-agents by status (active, completed, errored)
+  - Aggregates total cost (handles null/undefined with `?? 0`)
+  - Convenience flags: activeCount, isAnyRunning
+  - useMemo for stable references
+- **Tests:** 20 tests passing (status filtering, cost aggregation, memoization, null handling, large arrays)
+- **Quality:** Spec 100% ✓, Code approved, character-for-character match to plan
+
+#### ✅ Task 3: CostTooltip Updates (Complete)
+- **Files:** `src/components/live/CostTooltip.tsx`, `SessionCard.tsx`
+- **Features:**
+  - Added `subAgents?: SubAgentInfo[]` prop
+  - Tree-structured breakdown with `├──` and `└──` characters
+  - Main agent cost calculation: total - sum(sub-agents)
+  - Monospace font, `.toFixed(4)` formatting
+  - Sub-agent count indicator in SessionCard: "(N sub-agents)"
+  - Conditional rendering (only when sub-agents have costs)
+- **Quality:** Spec 100% ✓, Code approved with polish fixes applied
+
+#### ✅ Task 4: UI Integration (Complete)
+- **Files:** `MonitorPane.tsx`, `MonitorView.tsx`, `SwimLanes.tsx`, `SwimLanes.test.tsx` (NEW)
+- **Features:**
+  - **MonitorPane:** SubAgentPills in footer with expand callback
+  - **MonitorView:** SwimLanes above terminal stream in expanded overlay
+  - **SwimLanes:** Added `sessionActive` prop, fixed interface, component wiring
+  - Conditional rendering based on `session.subAgents?.length > 0`
+- **Tests:** 14 SwimLanes tests passing (rendering, sorting, metrics, sessionActive prop, scrolling)
+- **Quality:** Spec 100% ✓ (after fixes), Code approved
+
+### Test Coverage Summary
+
+| Component | Tests | Status |
+|-----------|-------|--------|
+| TimelineView | 23 tests | ✅ All passing |
+| useSubAgents | 20 tests | ✅ All passing |
+| SwimLanes | 14 tests | ✅ All passing |
+| **Total** | **57 tests** | **✅ 100% passing with vitest** |
+
+### Backend Data Flow (Complete from Prior Tasks)
+
+| Layer | File | Status |
+|-------|------|--------|
+| Types | `crates/core/src/subagent.rs` | ✅ SubAgentInfo, SubAgentStatus with ts-rs |
+| Parsing | `crates/core/src/live_parser.rs` | ✅ SIMD finders, spawn/completion extraction |
+| State | `crates/server/src/live/state.rs` | ✅ LiveSession.sub_agents field |
+| Manager | `crates/server/src/live/manager.rs` | ✅ Accumulator tracking, cost calculation |
+| API | SSE `session_updated` events | ✅ Automatic broadcast with full LiveSession |
+| Frontend | `src/components/live/use-live-sessions.ts` | ✅ TypeScript types + subAgents field |
+
+### Remaining Work (Tasks 5-7)
+
+| # | Task | Status | Description |
+|---|------|--------|-------------|
+| 5 | Backend tests | 📋 Pending | JSONL parsing tests (spawn/completion detection, SIMD pre-filter, edge cases) |
+| 6 | Frontend tests | 🔄 Mostly done | Component tests complete (57 tests), may need integration tests |
+| 7 | Verification | 📋 Pending | Run full test suite, verify ts-rs generation, end-to-end testing |
+
+### Files Created/Modified
+
+**New Files (10):**
+- `crates/core/src/subagent.rs`
+- `src/components/live/TimelineView.tsx`
+- `src/components/live/TimelineView.test.tsx`
+- `src/components/live/use-sub-agents.ts`
+- `src/components/live/use-sub-agents.test.ts`
+- `src/components/live/SwimLanes.test.tsx`
+- CSS animations in `src/index.css` (timeline-bar-growing, swimlane-progress)
+
+**Modified Files (9):**
+- `crates/core/src/lib.rs`
+- `crates/core/src/live_parser.rs`
+- `crates/server/src/live/state.rs`
+- `crates/server/src/live/manager.rs`
+- `src/components/live/use-live-sessions.ts`
+- `src/components/live/CostTooltip.tsx`
+- `src/components/live/SessionCard.tsx`
+- `src/components/live/MonitorPane.tsx`
+- `src/components/live/MonitorView.tsx`
+- `src/components/live/SwimLanes.tsx`
+
+### How to Test
+
+```bash
+# Start dev server
+bun dev
+
+# Run component tests
+bun run vitest run src/components/live/TimelineView.test.tsx
+bun run vitest run src/components/live/use-sub-agents.test.ts
+bun run vitest run src/components/live/SwimLanes.test.tsx
+
+# Type check
+bun run typecheck
+
+# Backend tests (when Task 5 complete)
+cargo test -p vibe-recall-core -- live_parser
+cargo test -p vibe-recall-core -- subagent
+```
+
+### Next Session Goals
+
+1. **Task 5:** Add backend tests for JSONL sub-agent parsing
+2. **Task 6:** Verify frontend test coverage, add integration tests if needed
+3. **Task 7:** Run full verification suite, test end-to-end with real sessions
+4. **Optional:** Add TimelineView to MonitorView for completed sessions (marked optional in spec)
 
 ## Research Artifacts
 
