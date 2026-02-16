@@ -37,7 +37,7 @@ export function useAutoFill(options: UseAutoFillOptions): Set<string> {
 
     const now = Date.now()
     for (const session of sessions) {
-      const isIdle = session.status === 'paused' || session.status === 'done'
+      const isIdle = session.agentState.group === 'needs_you' || session.agentState.group === 'delivered'
       if (isIdle && !idleTimersRef.current.has(session.id)) {
         idleTimersRef.current.set(session.id, now)
       } else if (!isIdle) {
@@ -111,7 +111,7 @@ export function useAutoFill(options: UseAutoFillOptions): Set<string> {
       const waitingSessions = sessions.filter(
         (s) =>
           store.hiddenPaneIds.has(s.id) &&
-          s.status === 'working'
+          s.agentState.group === 'autonomous'
       )
 
       if (waitingSessions.length === 0) return
