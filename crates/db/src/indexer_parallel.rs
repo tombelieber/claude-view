@@ -21,11 +21,14 @@ use crate::Database;
 /// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
 /// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
 /// Version 3: Deep indexing now updates last_message_at from parsed timestamps.
-pub const CURRENT_PARSE_VERSION: i32 = 5;
+/// Version 4: LOC estimation, AI contribution tracking, work type classification.
+/// Version 5: Git branch extraction, primary model detection.
+/// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
+pub const CURRENT_PARSE_VERSION: i32 = 6;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (51 params).
+// Must match the sqlx `_tx` function in queries.rs exactly (54 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -79,7 +82,10 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
         primary_model = ?49,
         last_message_at = COALESCE(?50, last_message_at),
-        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
+        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
+        total_task_time_seconds = ?52,
+        longest_task_seconds = ?53,
+        longest_task_preview = ?54
     WHERE id = ?1
 "#;
 
@@ -197,6 +203,18 @@ pub struct ExtendedMetadata {
     /// First user prompt text (truncated to 500 chars).
     /// Used to populate `preview` for filesystem-discovered sessions that lack index metadata.
     pub first_user_prompt: Option<String>,
+
+    // Turn tracking for wall-clock task time
+    /// Timestamp of the current (in-progress) turn start
+    pub current_turn_start_ts: Option<i64>,
+    /// First 60 chars of the current turn's prompt
+    pub current_turn_prompt: Option<String>,
+    /// Longest single turn in wall-clock seconds
+    pub longest_task_seconds: Option<u32>,
+    /// First 60 chars of the prompt that started the longest turn
+    pub longest_task_preview: Option<String>,
+    /// Sum of all turn wall-clock durations in seconds
+    pub total_task_time_seconds: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +614,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
     let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
+    // Turn detection: tool_result user messages are continuations, not real turns
+    let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
+
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
 
@@ -664,11 +685,30 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         if type_user.find(line).is_some() {
             diag.lines_user += 1;
             user_count += 1;
+            // Check if this is a tool_result continuation (not a real user turn)
+            let is_tool_result = tool_result_finder.find(line).is_some();
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                if first_user_content.is_none() && !is_system_user_content(&content) {
+                if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                     first_user_content = Some(content.clone());
                 }
-                last_user_content = Some(content);
+                last_user_content = Some(content.clone());
+
+                // Turn detection: real user prompts (not system prefixes, not tool_result)
+                if !is_tool_result && !is_system_user_content(&content) {
+                    let current_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
+                    // Close previous turn if one was open
+                    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                        let wall_secs = (end_ts - start_ts).max(0) as u32;
+                        result.deep.total_task_time_seconds += wall_secs;
+                        if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+                            result.deep.longest_task_seconds = Some(wall_secs);
+                            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                        }
+                    }
+                    // Start new turn
+                    result.deep.current_turn_start_ts = current_ts;
+                    result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
+                }
             }
             extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
             if let Some(ts) = extract_timestamp_from_bytes(line, &timestamp_finder) {
@@ -775,11 +815,30 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 // Spacing variant that SIMD missed
                 diag.lines_user += 1;
                 user_count += 1;
+                let is_tool_result = tool_result_finder.find(line).is_some();
                 if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                    if first_user_content.is_none() && !is_system_user_content(&content) {
+                    if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                         first_user_content = Some(content.clone());
                     }
-                    last_user_content = Some(content);
+                    last_user_content = Some(content.clone());
+
+                    // Turn detection: real user prompts (not system prefixes, not tool_result)
+                    if !is_tool_result && !is_system_user_content(&content) {
+                        // Timestamp was already extracted above (before the match)
+                        let current_ts = extract_timestamp_from_value(&value);
+                        // Close previous turn if one was open
+                        if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                            let wall_secs = (end_ts - start_ts).max(0) as u32;
+                            result.deep.total_task_time_seconds += wall_secs;
+                            if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+                                result.deep.longest_task_seconds = Some(wall_secs);
+                                result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                            }
+                        }
+                        // Start new turn
+                        result.deep.current_turn_start_ts = current_ts;
+                        result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
+                    }
                 }
                 extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
             }
@@ -874,6 +933,16 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             _ => {
                 diag.lines_unknown_type += 1;
             }
+        }
+    }
+
+    // Close the final turn at EOF using the last known timestamp
+    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+        let wall_secs = (end_ts - start_ts).max(0) as u32;
+        result.deep.total_task_time_seconds += wall_secs;
+        if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+            result.deep.longest_task_seconds = Some(wall_secs);
+            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
         }
     }
 
@@ -1925,7 +1994,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (51 params: ?1=id, ?2-?51=fields)
+                    // UPDATE session deep fields (54 params: ?1=id, ?2-?54=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1978,6 +2047,9 @@ where
                         primary_model,                    // ?49 (Option<String>)
                         meta.last_timestamp,              // ?50 (Option<i64>)
                         meta.first_user_prompt,           // ?51 (Option<String>)
+                        meta.total_task_time_seconds as i32,       // ?52
+                        meta.longest_task_seconds.map(|v| v as i32), // ?53 (Option<i32>)
+                        meta.longest_task_preview,        // ?54 (Option<String>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // DELETE stale turns/invocations before re-inserting
@@ -2181,6 +2253,9 @@ async fn write_results_sqlx(
             primary_model.as_deref(),
             meta.last_timestamp,
             meta.first_user_prompt.as_deref(),
+            meta.total_task_time_seconds as i32,
+            meta.longest_task_seconds.map(|v| v as i32),
+            meta.longest_task_preview.as_deref(),
         )
         .await
         .map_err(|e| {
@@ -3506,6 +3581,23 @@ mod tests {
 
         // File snapshot
         assert_eq!(result.deep.file_snapshot_count, 1);
+
+        // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:04:00 = 240s)
+        assert!(result.deep.total_task_time_seconds > 0, "total_task_time_seconds should be > 0");
+        assert_eq!(result.deep.total_task_time_seconds, 240);
+        assert!(result.deep.longest_task_seconds.is_some(), "longest_task_seconds should be Some");
+        assert_eq!(result.deep.longest_task_seconds, Some(240));
+        assert!(result.deep.longest_task_preview.is_some(), "longest_task_preview should be Some");
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read and fix auth.rs"));
+
+        // Sanity check: wall-clock task time >= CC turn_duration_total_ms / 1000
+        let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
+        assert!(
+            result.deep.total_task_time_seconds as u64 >= turn_duration_total_secs,
+            "Wall-clock task time ({}) should be >= turn_duration_total_ms/1000 ({})",
+            result.deep.total_task_time_seconds,
+            turn_duration_total_secs,
+        );
     }
 
     #[test]
@@ -3549,6 +3641,85 @@ mod tests {
         assert_eq!(result.deep.files_read_count, 0);
         assert_eq!(result.deep.total_input_tokens, 300);
         assert_eq!(result.deep.total_output_tokens, 150);
+    }
+
+    // ============================================================================
+    // Wall-clock task time tests
+    // ============================================================================
+
+    #[test]
+    fn test_multi_turn_task_time() {
+        // Fixture has 3 real user turns plus tool_result and system-prefix user messages.
+        // Turn 1: ts=1700000000 "Implement the login page" → ends at last_ts=1700000100 → 100s
+        // Turn 2: ts=1700000200 "Now add form validation..." → ends at last_ts=1700000295 → 95s
+        // Turn 3: ts=1700000500 "Fix the CSS styling..."    → ends at last_ts=1700000540 → 40s
+        let data = include_bytes!("../tests/golden_fixtures/multi_turn_task_time.jsonl");
+        let result = parse_bytes(data);
+
+        // 6 user lines total (3 real prompts + 2 tool_result + 1 system prefix)
+        assert_eq!(result.deep.user_prompt_count, 6);
+
+        // Wall-clock task time = 100 + 95 + 40 = 235s
+        assert_eq!(result.deep.total_task_time_seconds, 235);
+
+        // Longest task is turn 1 at 100 seconds
+        assert_eq!(result.deep.longest_task_seconds, Some(100));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Implement the login page"));
+
+        // Verify longest is the maximum, not first or last
+        assert!(result.deep.longest_task_seconds.unwrap() > 40, "longest should not be the last turn (40s)");
+        assert!(result.deep.longest_task_seconds.unwrap() > 95, "longest should not be the second turn (95s)");
+
+        // Sanity check: wall-clock >= CC turn_duration_total / 1000
+        let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
+        assert!(
+            result.deep.total_task_time_seconds as u64 >= turn_duration_total_secs,
+            "Wall-clock ({}) should be >= turn_duration_total/1000 ({})",
+            result.deep.total_task_time_seconds,
+            turn_duration_total_secs,
+        );
+    }
+
+    #[test]
+    fn test_task_time_system_prefix_not_counted() {
+        // A session with a system-prefix user message should not start a new turn
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Hello world"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000060,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hi!"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","timestamp":1700000100,"sessionId":"test","message":{"role":"user","content":"<system-reminder>Context refresh</system-reminder>"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700000120,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Ok."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Only 1 real turn: "Hello world" at ts=1700000000 → ends at ts=1700000120 (last_timestamp) = 120s
+        assert_eq!(result.deep.total_task_time_seconds, 120);
+        assert_eq!(result.deep.longest_task_seconds, Some(120));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Hello world"));
+    }
+
+    #[test]
+    fn test_task_time_tool_result_not_counted() {
+        // Tool result user messages should not start a new turn
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Read the file"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"/project/foo.rs"}}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700000060,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"fn main() {}"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700000090,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Only 1 real turn: "Read the file" at ts=1700000000 → ends at ts=1700000090 = 90s
+        assert_eq!(result.deep.total_task_time_seconds, 90);
+        assert_eq!(result.deep.longest_task_seconds, Some(90));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read the file"));
+    }
+
+    #[test]
+    fn test_task_time_empty_session() {
+        let data = include_bytes!("../tests/golden_fixtures/empty_session.jsonl");
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.total_task_time_seconds, 0);
+        assert_eq!(result.deep.longest_task_seconds, None);
+        assert_eq!(result.deep.longest_task_preview, None);
     }
 
     // ============================================================================
