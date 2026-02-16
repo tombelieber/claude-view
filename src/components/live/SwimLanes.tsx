@@ -4,6 +4,8 @@ import { cn } from '../../lib/utils'
 
 interface SwimLanesProps {
   subAgents: SubAgentInfo[]
+  /** Whether the parent session is still active */
+  sessionActive: boolean
 }
 
 /** Format cost as $X.XX */
@@ -57,8 +59,11 @@ function ProgressBar() {
  *
  * Rows are sorted: running first (by startedAt), then completed (by completedAt desc).
  * Empty state returns null when no sub-agents exist.
+ *
+ * When sessionActive is false, all sub-agents should have status 'complete' or 'error'
+ * (this is enforced by the backend state machine).
  */
-export function SwimLanes({ subAgents }: SwimLanesProps) {
+export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
   // Sort: Running first (by startedAt asc), then Complete/Error (by completedAt desc)
   const sortedAgents = useMemo(() => {
     const running = subAgents
