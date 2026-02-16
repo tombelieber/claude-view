@@ -24,6 +24,7 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   agentStateGroup?: 'needs_you' | 'autonomous'
   spinnerVerb?: string
   lastActivityAt?: number
+  lastTurnTaskSeconds?: number | null
 }
 
 interface HistoricalSpinnerProps extends BaseSpinnerProps {
@@ -126,8 +127,12 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
   const shortModel = formatModelShort(model)
 
-  // needs_you -> amber dot + "Awaiting input" + wait time with cache-colored text
+  // needs_you -> show completed task time if available, else "Awaiting input"
+  // + cache countdown
   if (agentStateGroup === 'needs_you') {
+    const lastTurnTaskSeconds = props.mode === 'live' ? props.lastTurnTaskSeconds : null
+    const hasBakedTime = lastTurnTaskSeconds != null && lastTurnTaskSeconds > 0
+
     const CACHE_TTL = 300
     const lastActivity = lastActivityAt
     const elapsed = lastActivity > 0 ? Math.floor(Date.now() / 1000) - lastActivity : CACHE_TTL
@@ -147,8 +152,17 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
     return (
       <span className="flex items-center gap-1.5 text-xs">
-        <span className="w-3 text-center inline-block text-amber-500">●</span>
-        <span className="text-muted-foreground">Awaiting input</span>
+        {hasBakedTime ? (
+          <>
+            <span className="w-3 text-center inline-block text-amber-500">✻</span>
+            <span className="text-muted-foreground">Baked {formatDurationCompact(lastTurnTaskSeconds)}</span>
+          </>
+        ) : (
+          <>
+            <span className="w-3 text-center inline-block text-amber-500">●</span>
+            <span className="text-muted-foreground">Awaiting input</span>
+          </>
+        )}
         <span className={`font-mono tabular-nums ${countdownColor}`}>· {countdownText}</span>
       </span>
     )
