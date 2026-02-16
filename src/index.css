@@ -375,6 +375,15 @@ body {
   100% { width: 0%; margin-left: 100%; }
 }
 
+/* TimelineView: growing bar animation for running agents */
+@keyframes timeline-bar-grow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+.timeline-bar-growing {
+  animation: timeline-bar-grow 1.5s ease-in-out infinite;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
