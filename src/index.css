@@ -368,6 +368,13 @@ body {
   animation: indeterminate 1.5s ease-in-out infinite;
 }
 
+/* SwimLanes progress bar: animated width + margin slide */
+@keyframes swimlane-progress {
+  0% { width: 0%; margin-left: 0%; }
+  50% { width: 40%; margin-left: 30%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
