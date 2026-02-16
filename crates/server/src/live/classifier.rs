@@ -56,6 +56,8 @@ pub enum PauseReason {
     NeedsInput,
     #[serde(rename = "taskComplete")]
     TaskComplete,
+    #[serde(rename = "workDelivered")]
+    WorkDelivered,
     #[serde(rename = "midWork")]
     MidWork,
     #[serde(rename = "error")]
@@ -115,6 +117,20 @@ impl SessionStateClassifier {
         if let Some(last_msg) = ctx.recent_messages.last() {
             if last_msg.role == "assistant" {
                 let content = last_msg.content_preview.to_lowercase();
+
+                // PR creation pattern (more specific, check before commit/push)
+                if last_msg.tool_names.iter().any(|t| t == "Bash")
+                    && (content.contains("pull request") || content.contains("pr created")
+                        || content.contains("gh pr create"))
+                    && ctx.last_stop_reason.as_deref() == Some("end_turn")
+                {
+                    return Some(PauseClassification {
+                        reason: PauseReason::WorkDelivered,
+                        label: "PR ready for review".into(),
+                        confidence: 0.90,
+                        source: ClassificationSource::Structural,
+                    });
+                }
 
                 // Commit/push pattern
                 if last_msg.tool_names.iter().any(|t| t == "Bash")
