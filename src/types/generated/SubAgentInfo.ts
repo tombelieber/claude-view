@@ -3,8 +3,6 @@ import type { SubAgentStatus } from "./SubAgentStatus";
 
 /**
  * Information about a sub-agent spawned via the Task tool.
- *
- * Note: ts-rs exports i64 as TypeScript `number` (safe for Unix timestamps).
  */
 export type SubAgentInfo = { 
 /**
@@ -37,17 +35,17 @@ status: SubAgentStatus,
  * Parsed from the ISO 8601 `timestamp` field on the JSONL line
  * via `chrono::DateTime::parse_from_rfc3339`.
  */
-startedAt: bigint, 
+startedAt: number, 
 /**
  * Unix timestamp (seconds) when the sub-agent completed or errored.
  * None while status is Running.
  */
-completedAt?: bigint | null, 
+completedAt?: number | null, 
 /**
  * Duration in milliseconds from `toolUseResult.totalDurationMs`.
  * None while status is Running.
  */
-durationMs?: bigint | null, 
+durationMs?: number | null, 
 /**
  * Number of tool calls the sub-agent made, from `toolUseResult.totalToolUseCount`.
  * None while status is Running.
