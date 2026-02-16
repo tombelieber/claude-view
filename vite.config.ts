@@ -16,6 +16,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/api/live/sessions': {
+        target: 'http://localhost:47892',
+        ws: true,
+      },
       '/api': 'http://localhost:47892',
     },
   },

@@ -7,6 +7,7 @@
 pub mod classify_state;
 pub mod error;
 pub mod facet_ingest;
+pub mod file_tracker;
 pub mod git_sync_state;
 pub mod indexing_state;
 pub mod jobs;
@@ -15,6 +16,7 @@ pub mod insights;
 pub mod metrics;
 pub mod routes;
 pub mod state;
+pub mod terminal_state;
 
 pub use error::*;
 pub use facet_ingest::{FacetIngestState, IngestStatus};
@@ -115,6 +117,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
+        terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
     });
     api_routes(state)
 }
@@ -130,10 +133,14 @@ pub fn create_app_full(
     registry: RegistryHolder,
     static_dir: Option<PathBuf>,
 ) -> Router {
-    // Start live session monitoring (file watcher, process detector, cleanup)
+    // Start live session monitoring (file watcher, process detector, cleanup).
+    // CRITICAL: Create ONE resolver shared between manager and AppState.
+    // The manager's process detector calls resolve() to merge hook+JSONL signals.
+    // AppState's hooks.rs calls update_from_hook() on the same resolver instance.
     let pricing = vibe_recall_db::default_pricing();
+    let resolver = StateResolver::new();
     let (_manager, live_sessions, live_tx) =
-        live::manager::LiveSessionManager::start(pricing.clone());
+        live::manager::LiveSessionManager::start(pricing.clone(), resolver.clone());
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
@@ -147,11 +154,12 @@ pub fn create_app_full(
         pricing,
         live_sessions,
         live_tx,
-        state_resolver: StateResolver::new(),
+        state_resolver: resolver,  // REPLACES: StateResolver::new() — shares with manager
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
+        terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
     });
 
     let mut app = Router::new()
