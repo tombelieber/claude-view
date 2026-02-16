@@ -253,6 +253,8 @@ mod tests {
             stop_reason: stop_reason.map(String::from),
             git_branch: None,
             is_meta: false,
+            is_tool_result_continuation: false,
+            has_system_prefix: false,
         }
     }
 
