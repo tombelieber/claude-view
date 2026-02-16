@@ -647,6 +647,12 @@ impl LiveSessionManager {
 
             // --- Sub-agent spawn tracking ---
             for spawn in &line.sub_agent_spawns {
+                // Guard against re-processing the same spawn line
+                // (can happen if accumulator reset while file exists, or offset tracking bug)
+                if acc.sub_agents.iter().any(|a| a.tool_use_id == spawn.tool_use_id) {
+                    continue;
+                }
+
                 // Parse timestamp from the JSONL line to get started_at
                 let started_at = line.timestamp.as_deref()
                     .and_then(parse_timestamp_to_unix)
