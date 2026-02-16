@@ -21,6 +21,7 @@ pub mod stats;
 pub mod status;
 pub mod sync;
 pub mod system;
+pub mod terminal;
 pub mod trends;
 
 use std::sync::Arc;
@@ -75,6 +76,7 @@ use crate::state::AppState;
 /// - GET  /api/live/sessions            - List all live sessions
 /// - GET  /api/live/sessions/:id        - Get single live session
 /// - GET  /api/live/sessions/:id/messages - Get recent messages for a live session
+/// - WS   /api/live/sessions/:id/terminal - WebSocket terminal stream
 /// - GET  /api/live/summary             - Aggregate live session statistics
 /// - GET  /api/live/pricing             - Model pricing table
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
@@ -99,6 +101,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", score::router())
         .nest("/api", facets::router())
         .nest("/api", live::router())
+        .nest("/api/live", terminal::router())
         .nest("/api", hooks::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
