@@ -29,6 +29,7 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
 interface HistoricalSpinnerProps extends BaseSpinnerProps {
   mode: 'historical'
   pastTenseVerb?: string
+  taskTimeSeconds?: number | null
 }
 
 export type SessionSpinnerProps = LiveSpinnerProps | HistoricalSpinnerProps
@@ -92,12 +93,17 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // ---------------------------------------------------------------------------
   if (mode === 'historical') {
     const verb = props.pastTenseVerb ?? 'Worked'
+    const taskTime = props.taskTimeSeconds
+    const formattedTaskTime = taskTime && taskTime > 0 ? formatDurationCompact(taskTime) : null
     const shortModel = formatModelShort(model)
 
     return (
       <span className="flex items-center gap-1.5 text-xs">
         <span className="w-3 text-center inline-block text-muted-foreground">·</span>
         <span className="text-muted-foreground">{verb}</span>
+        {formattedTaskTime && (
+          <span className="text-muted-foreground font-mono tabular-nums">{formattedTaskTime}</span>
+        )}
         {shortModel && (
           <>
             <span className="text-muted-foreground"> · </span>
