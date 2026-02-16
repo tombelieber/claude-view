@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import Markdown from 'react-markdown'
 import {
@@ -29,9 +29,28 @@ export interface RichPaneProps {
   /** Whether to auto-follow new output. Disable during initial buffer load
    *  so the user sees content from the top, not the bottom. */
   followOutput?: boolean
+  /** When false (default), only show user + assistant + error messages. */
+  verboseMode?: boolean
 }
 
 // --- Parser ---
+
+/** Strip Claude Code internal command tags from content.
+ * These tags appear in JSONL but are not meant for display:
+ * <command-name>...</command-name>
+ * <command-message>...</command-message>
+ * <command-args>...</command-args>
+ * <local-command-stdout>...</local-command-stdout>
+ */
+function stripCommandTags(content: string): string {
+  return content
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, '')
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, '')
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .trim()
+}
 
 /**
  * Parse a raw WebSocket/SSE message string into a structured RichMessage.
@@ -41,9 +60,11 @@ export function parseRichMessage(raw: string): RichMessage | null {
   try {
     const msg = JSON.parse(raw)
     if (msg.type === 'message') {
+      const content = stripCommandTags(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))
+      if (!content.trim()) return null
       return {
         type: msg.role === 'user' ? 'user' : 'assistant',
-        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+        content,
         ts: msg.ts,
       }
     }
@@ -57,16 +78,20 @@ export function parseRichMessage(raw: string): RichMessage | null {
       }
     }
     if (msg.type === 'tool_result') {
+      const content = stripCommandTags(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''))
+      if (!content.trim()) return null
       return {
         type: 'tool_result',
-        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+        content,
         ts: msg.ts,
       }
     }
     if (msg.type === 'thinking') {
+      const content = stripCommandTags(typeof msg.content === 'string' ? msg.content : '')
+      if (!content.trim()) return null
       return {
         type: 'thinking',
-        content: typeof msg.content === 'string' ? msg.content : '',
+        content,
         ts: msg.ts,
       }
     }
@@ -77,9 +102,11 @@ export function parseRichMessage(raw: string): RichMessage | null {
       }
     }
     if (msg.type === 'line') {
+      const content = stripCommandTags(typeof msg.data === 'string' ? msg.data : '')
+      if (!content.trim()) return null
       return {
         type: 'assistant',
-        content: typeof msg.data === 'string' ? msg.data : '',
+        content,
       }
     }
     return null
@@ -239,23 +266,28 @@ function MessageCard({ message }: { message: RichMessage }) {
 
 // --- Main Component ---
 
-export function RichPane({ messages, isVisible, followOutput: followOutputProp = true }: RichPaneProps) {
+export function RichPane({ messages, isVisible, followOutput: followOutputProp = true, verboseMode = false }: RichPaneProps) {
+  const displayMessages = useMemo(() => {
+    if (verboseMode) return messages
+    return messages.filter((m) => m.type === 'user' || m.type === 'assistant' || m.type === 'error')
+  }, [messages, verboseMode])
+
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [hasNewMessages, setHasNewMessages] = useState(false)
-  const prevMessageCountRef = useRef(messages.length)
+  const prevMessageCountRef = useRef(displayMessages.length)
 
   // Track when new messages arrive while user is scrolled up
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current) {
+    if (displayMessages.length > prevMessageCountRef.current) {
       if (isAtBottom) {
         setHasNewMessages(false)
       } else {
         setHasNewMessages(true)
       }
     }
-    prevMessageCountRef.current = messages.length
-  }, [messages.length, isAtBottom])
+    prevMessageCountRef.current = displayMessages.length
+  }, [displayMessages.length, isAtBottom])
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setIsAtBottom(atBottom)
@@ -266,15 +298,15 @@ export function RichPane({ messages, isVisible, followOutput: followOutputProp =
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
-      index: messages.length - 1,
+      index: displayMessages.length - 1,
       behavior: 'smooth',
     })
     setHasNewMessages(false)
-  }, [messages.length])
+  }, [displayMessages.length])
 
   if (!isVisible) return null
 
-  if (messages.length === 0) {
+  if (displayMessages.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-gray-600">
         No messages yet
@@ -286,7 +318,7 @@ export function RichPane({ messages, isVisible, followOutput: followOutputProp =
     <div className="relative h-full w-full">
       <Virtuoso
         ref={virtuosoRef}
-        data={messages}
+        data={displayMessages}
         followOutput={followOutputProp ? 'smooth' : false}
         atBottomStateChange={handleAtBottomStateChange}
         atBottomThreshold={30}
