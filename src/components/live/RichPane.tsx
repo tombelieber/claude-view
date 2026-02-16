@@ -29,6 +29,9 @@ export interface RichPaneProps {
   isVisible: boolean
   /** When false (default), only show user + assistant + error messages. */
   verboseMode?: boolean
+  /** Signals that the initial WebSocket buffer has been fully loaded.
+   *  Triggers an imperative scroll-to-bottom so panes start at the latest message. */
+  bufferDone?: boolean
 }
 
 // --- Parser ---
@@ -264,7 +267,7 @@ function MessageCard({ message }: { message: RichMessage }) {
 
 // --- Main Component ---
 
-export function RichPane({ messages, isVisible, verboseMode = false }: RichPaneProps) {
+export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false }: RichPaneProps) {
   const displayMessages = useMemo(() => {
     if (verboseMode) return messages
     return messages.filter((m) => m.type === 'user' || m.type === 'assistant' || m.type === 'error')
@@ -274,6 +277,21 @@ export function RichPane({ messages, isVisible, verboseMode = false }: RichPaneP
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [hasNewMessages, setHasNewMessages] = useState(false)
   const prevMessageCountRef = useRef(displayMessages.length)
+  const hasScrolledToBottomRef = useRef(false)
+
+  // Jump to bottom once after initial buffer loads
+  useEffect(() => {
+    if (bufferDone && !hasScrolledToBottomRef.current && displayMessages.length > 0) {
+      hasScrolledToBottomRef.current = true
+      // Use requestAnimationFrame to ensure Virtuoso has rendered the data
+      requestAnimationFrame(() => {
+        virtuosoRef.current?.scrollToIndex({
+          index: displayMessages.length - 1,
+          behavior: 'auto',
+        })
+      })
+    }
+  }, [bufferDone, displayMessages.length])
 
   // Track when new messages arrive while user is scrolled up
   useEffect(() => {
@@ -317,7 +335,6 @@ export function RichPane({ messages, isVisible, verboseMode = false }: RichPaneP
       <Virtuoso
         ref={virtuosoRef}
         data={displayMessages}
-        initialTopMostItemIndex={displayMessages.length - 1}
         followOutput={'smooth'}
         atBottomStateChange={handleAtBottomStateChange}
         atBottomThreshold={30}

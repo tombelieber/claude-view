@@ -9,7 +9,7 @@ import { ExpandedPaneOverlay } from './ExpandedPaneOverlay'
 import { PaneContextMenu } from './PaneContextMenu'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 import { useAutoFill, FADED_PANE_CLASS } from './useAutoFill'
-import { useTerminalSocket } from '../../hooks/use-terminal-socket'
+import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
 import { cn } from '../../lib/utils'
 
 interface MonitorViewProps {
@@ -22,6 +22,7 @@ interface MonitorViewProps {
  */
 function RichTerminalPane({ sessionId, isVisible, verboseMode }: { sessionId: string; isVisible: boolean; verboseMode: boolean }) {
   const [messages, setMessages] = useState<RichMessage[]>([])
+  const [bufferDone, setBufferDone] = useState(false)
 
   const handleMessage = useCallback((data: string) => {
     const parsed = parseRichMessage(data)
@@ -30,14 +31,21 @@ function RichTerminalPane({ sessionId, isVisible, verboseMode }: { sessionId: st
     }
   }, [])
 
+  const handleConnectionChange = useCallback((state: ConnectionState) => {
+    if (state === 'connected') {
+      setBufferDone(true)
+    }
+  }, [])
+
   useTerminalSocket({
     sessionId,
     mode: 'rich',
     enabled: isVisible,
     onMessage: handleMessage,
+    onConnectionChange: handleConnectionChange,
   })
 
-  return <RichPane messages={messages} isVisible={isVisible} verboseMode={verboseMode} />
+  return <RichPane messages={messages} isVisible={isVisible} verboseMode={verboseMode} bufferDone={bufferDone} />
 }
 
 /**
