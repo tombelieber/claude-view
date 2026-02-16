@@ -16,6 +16,30 @@ pub struct TailState {
     pub last_modified: std::time::SystemTime,
 }
 
+/// Extracted from a Task tool_use block on an assistant line.
+#[derive(Debug, Clone)]
+pub struct SubAgentSpawn {
+    pub tool_use_id: String,
+    pub agent_type: String,
+    pub description: String,
+}
+
+/// Extracted from a toolUseResult on a user line (Task completion).
+#[derive(Debug, Clone)]
+pub struct SubAgentResult {
+    pub tool_use_id: String,
+    /// 7-char short hash from `toolUseResult.agentId` (e.g., "a33bda6").
+    pub agent_id: Option<String>,
+    pub status: String,  // "completed", "error", etc.
+    pub total_duration_ms: Option<u64>,
+    /// Number of tool calls from `toolUseResult.totalToolUseCount`.
+    pub total_tool_use_count: Option<u32>,
+    pub usage_input_tokens: Option<u64>,
+    pub usage_output_tokens: Option<u64>,
+    pub usage_cache_read_tokens: Option<u64>,
+    pub usage_cache_creation_tokens: Option<u64>,
+}
+
 /// A single parsed JSONL line from the session log.
 #[derive(Debug, Clone)]
 pub struct LiveLine {
@@ -40,6 +64,11 @@ pub struct LiveLine {
     /// Whether this user-type line starts with a system-injected prefix
     /// (e.g. `<local-command-caveat>`, `<task-notification>`, continuation markers).
     pub has_system_prefix: bool,
+    /// If this assistant line contains a Task tool_use, the spawn info.
+    /// Vec because a single assistant message can spawn multiple sub-agents.
+    pub sub_agent_spawns: Vec<SubAgentSpawn>,
+    /// If this user line has a `toolUseResult` (Task completion), the result info.
+    pub sub_agent_result: Option<SubAgentResult>,
 }
 
 /// Broad classification of a JSONL line.
@@ -67,6 +96,8 @@ pub struct TailFinders {
     pub tool_use_key: memmem::Finder<'static>,
     pub name_key: memmem::Finder<'static>,
     pub stop_reason_key: memmem::Finder<'static>,
+    pub task_name_key: memmem::Finder<'static>,
+    pub tool_use_result_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -84,6 +115,8 @@ impl TailFinders {
             tool_use_key: memmem::Finder::new(b"\"tool_use\""),
             name_key: memmem::Finder::new(b"\"name\""),
             stop_reason_key: memmem::Finder::new(b"\"stop_reason\""),
+            task_name_key: memmem::Finder::new(b"\"name\":\"Task\""),
+            tool_use_result_key: memmem::Finder::new(b"\"toolUseResult\""),
         }
     }
 }
@@ -186,6 +219,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 is_meta: false,
                 is_tool_result_continuation: false,
                 has_system_prefix: false,
+                sub_agent_spawns: Vec::new(),
+                sub_agent_result: None,
             };
         }
     };
@@ -278,6 +313,90 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // --- Sub-agent spawn detection (assistant lines with Task tool_use) ---
+    let mut sub_agent_spawns = Vec::new();
+    if line_type == LineType::Assistant && finders.task_name_key.find(raw).is_some() {
+        // Already have `parsed` from JSON parse above
+        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+            for block in content {
+                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                    && block.get("name").and_then(|n| n.as_str()) == Some("Task")
+                {
+                    let tool_use_id = block.get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let input = block.get("input");
+                    let description = input
+                        .and_then(|i| i.get("description"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let agent_type = input
+                        .and_then(|i| i.get("subagent_type"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Task")
+                        .to_string();
+                    if !tool_use_id.is_empty() {
+                        sub_agent_spawns.push(SubAgentSpawn {
+                            tool_use_id,
+                            agent_type,
+                            description,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Sub-agent completion detection (user lines with toolUseResult) ---
+    let sub_agent_result = if line_type == LineType::User
+        && finders.tool_use_result_key.find(raw).is_some()
+    {
+        // Extract toolUseResult from top-level (NOT inside message.content)
+        parsed.get("toolUseResult").and_then(|tur| {
+            // Find the matching tool_use_id from the tool_result block in content
+            let tool_use_id = msg
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|blocks| {
+                    blocks.iter().find_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                })?;
+
+            let agent_id = tur.get("agentId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let status = tur.get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("completed")
+                .to_string();
+            let total_duration_ms = tur.get("totalDurationMs").and_then(|v| v.as_u64());
+            let total_tool_use_count = tur.get("totalToolUseCount")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32);
+            let usage = tur.get("usage");
+            Some(SubAgentResult {
+                tool_use_id,
+                agent_id,
+                status,
+                total_duration_ms,
+                total_tool_use_count,
+                usage_input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
+                usage_output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
+                usage_cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
+                usage_cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+            })
+        })
+    } else {
+        None
+    };
+
     LiveLine {
         line_type,
         role,
@@ -294,6 +413,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         is_meta,
         is_tool_result_continuation: is_tool_result,
         has_system_prefix,
+        sub_agent_spawns,
+        sub_agent_result,
     }
 }
 

@@ -274,6 +274,8 @@ mod tests {
             is_meta: false,
             is_tool_result_continuation: false,
             has_system_prefix: false,
+            sub_agent_spawns: Vec::new(),
+            sub_agent_result: None,
         }
     }
 
