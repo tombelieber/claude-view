@@ -892,6 +892,7 @@ mod tests {
                 cache_status: CacheStatus::Unknown,
                 current_turn_started_at: None,
                 last_turn_task_seconds: None,
+                sub_agents: Vec::new(),
             };
             map.insert(session_id.to_string(), session);
         }
