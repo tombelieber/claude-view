@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Loader2, WifiOff, ArrowDown } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
-import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
+import { useTerminalSocket, type ConnectionState } from '../../../hooks/use-terminal-socket'
 
 export interface TerminalPaneProps {
   sessionId: string
