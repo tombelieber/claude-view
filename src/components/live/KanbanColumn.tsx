@@ -11,6 +11,8 @@ interface KanbanColumnProps {
   selectedId: string | null
   onSelect: (id: string) => void
   emptyMessage: string
+  stalledSessions?: Set<string>
+  currentTime: number
 }
 
 function NeedsYouSubCount({ sessions }: { sessions: LiveSession[] }) {
@@ -33,6 +35,8 @@ export function KanbanColumn({
   selectedId,
   onSelect,
   emptyMessage,
+  stalledSessions,
+  currentTime,
 }: KanbanColumnProps) {
   return (
     <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1">
@@ -64,7 +68,7 @@ export function KanbanColumn({
                   session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg'
                 )}
               >
-                <SessionCard session={session} />
+                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} />
               </div>
             ))
           )}
