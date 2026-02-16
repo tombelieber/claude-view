@@ -805,7 +805,7 @@ impl LiveSessionManager {
             };
         }
 
-        // Track Done timestamp for cleanup + set delivered state
+        // Track Done timestamp for cleanup + set session-ended state
         if new_status == SessionStatus::Done && acc.completed_at.is_none() {
             acc.agent_state = AgentState {
                 group: AgentStateGroup::NeedsYou,
