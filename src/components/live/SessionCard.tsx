@@ -52,7 +52,8 @@ interface SessionCardProps {
 
 export function SessionCard({ session, stalledSessions, currentTime }: SessionCardProps) {
   const [searchParams] = useSearchParams()
-  const elapsedSeconds = currentTime - (session.startedAt ?? currentTime)
+  const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
+  const elapsedSeconds = currentTime - turnStart
 
   // Title: first user message (cleaned) > project display name > project id
   const rawTitle = session.title || ''
@@ -117,6 +118,7 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
           agentStateGroup={session.agentState.group}
           spinnerVerb={pickVerb(session.id)}
           lastActivityAt={session.lastActivityAt}
+          lastTurnTaskSeconds={session.lastTurnTaskSeconds}
         />
       </div>
 
