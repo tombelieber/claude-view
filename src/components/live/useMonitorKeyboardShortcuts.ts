@@ -34,7 +34,7 @@ function isInputFocused(): boolean {
  * | Escape  | Close expanded pane, or deselect              |
  * | p       | Toggle pin on selected pane                  |
  * | h       | Hide selected pane                           |
- * | m       | Toggle raw/rich mode on selected pane        |
+ * | m       | Toggle verbose mode (global)                 |
  * | + / =   | Increase grid columns (up to 4)              |
  * | -       | Decrease grid columns (down to 1)            |
  */
@@ -117,12 +117,8 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
         }
 
         case 'm': {
-          const selectedId = store.selectedPaneId
-          if (selectedId) {
-            const currentMode = store.paneMode[selectedId] || 'rich'
-            store.setPaneMode(selectedId, currentMode === 'raw' ? 'rich' : 'raw')
-            e.preventDefault()
-          }
+          store.toggleVerbose()
+          e.preventDefault()
           break
         }
 
