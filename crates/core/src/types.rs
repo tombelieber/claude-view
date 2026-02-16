@@ -293,6 +293,15 @@ pub struct SessionInfo {
     pub correction_count: u32,
     #[serde(default)]
     pub same_file_edit_count: u32,
+    // Wall-clock task time metrics
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub total_task_time_seconds: Option<u32>,    // sum of all turn wall-clock durations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub longest_task_seconds: Option<u32>,       // single longest turn (wall clock)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub longest_task_preview: Option<String>,    // first 60 chars of the prompt that started it
 }
 
 impl SessionInfo {
@@ -1056,6 +1065,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1179,6 +1191,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         }
     }
 

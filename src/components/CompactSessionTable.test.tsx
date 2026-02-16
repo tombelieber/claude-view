@@ -52,6 +52,9 @@ const mockSession: SessionInfo = {
   linesRemoved: 45,
   locSource: 1,
   parseVersion: 1,
+  totalTaskTimeSeconds: null,
+  longestTaskSeconds: null,
+  longestTaskPreview: null,
 }
 
 const mockSessions: SessionInfo[] = [
