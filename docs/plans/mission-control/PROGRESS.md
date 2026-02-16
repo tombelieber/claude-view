@@ -15,7 +15,7 @@ feature: mission-control
 | A | Read-Only Monitoring | `done` | JSONL file watching, session state machine, cost calculator, SSE, Grid view |
 | B | Views & Layout | `done` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
 | B2 | Intelligent Session States | `superseded` | Superseded by `2026-02-15-agent-state-hooks-design.md`. Original: 3-state model, pause classification, module scoping |
-| C | Monitor Mode | `pending` | Live terminal grid, WebSocket + xterm.js, responsive pane grid |
+| C | Monitor Mode | `in-progress` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
 | D | Sub-Agent Visualization | `pending` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
 | F | Interactive Control | `pending` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
@@ -49,7 +49,7 @@ Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
 | [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `done` |
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
 | [`phase-b2-intelligent-states.md`](phase-b2-intelligent-states.md) | B2 | `superseded` |
-| [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `pending` |
+| [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `in-progress` |
 | [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `pending` |
 | [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
 | [`phase-f-interactive.md`](phase-f-interactive.md) | F | `pending` |
@@ -58,6 +58,7 @@ Phase A ──► Phase B ──► Phase B2 ──► Phase C ──► Phase D
 
 | Date | Decision | Context |
 |------|----------|---------|
+| 2026-02-16 | **Monitor mode uses RichPane (HTML) exclusively -- no xterm.js.** xterm.js deferred to Phase F (Interactive Control) where we own the PTY via Agent SDK. Monitor mode reads JSONL (structured data) so HTML rendering is strictly better. Verbose toggle replaces raw/rich toggle. | Existing sessions run in VS Code/terminal -- we can't tap their PTY. Our only interface is JSONL log files. HTML renders markdown (tables, bold, code) better than terminal ANSI conversion. |
 | 2026-02-15 | **NO unbounded AI classification on session discovery.** Tier 2 AI (claude CLI) disabled until rate-limited. Structural-only + fallback. | Phase B2 shipped with `spawn_ai_classification()` firing for every Paused session on startup. 40 JSONL files → 40 concurrent `claude -p` processes → timeouts, rate limits, infinite retry loop. Fix: removed `old_status.is_none()` trigger, replaced AI fallback with sync fallback. Re-add AI with `Semaphore(1)` when needed. |
 | 2026-02-10 | Read-only monitoring for terminal sessions, no PTY attachment | macOS blocks TIOCSTI, reptyr not supported. Zero-friction > bidirectional control. |
 | 2026-02-10 | Agent SDK for "Resume in Dashboard" (spawns new process with conversation history) | SDK cannot attach to existing sessions. Resume loads JSONL history into new subprocess. |
