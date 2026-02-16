@@ -55,18 +55,22 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
-  // Title: first user message (cleaned) > project display name > project id
+  // Title: last user message (cleaned) > first user message > project display name
+  const rawLastMessage = session.lastUserMessage || ''
   const rawTitle = session.title || ''
-  const title = rawTitle ? cleanPreviewText(rawTitle) : (session.projectDisplayName || session.project)
+  const cleanedLastMessage = rawLastMessage ? cleanPreviewText(rawLastMessage) : ''
+  const cleanedTitle = rawTitle ? cleanPreviewText(rawTitle) : ''
+  const title = cleanedLastMessage || cleanedTitle || (session.projectDisplayName || session.project)
 
   // Show "last message" only when different from title
-  const lastMsg = session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : ''
+  const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
 
   return (
     <Link
       to={buildSessionUrl(session.id, searchParams)}
-      className="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 transition-colors"
+      className="group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer hover:cursor-pointer transition-colors"
+      style={{ cursor: 'pointer' }}
     >
       {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
@@ -87,14 +91,21 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
             </span>
           )}
         </div>
-        <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus}>
-          <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums flex-shrink-0">
-            ${session.cost.totalUsd.toFixed(2)}
-          </span>
-        </CostTooltip>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus} subAgents={session.subAgents}>
+            <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
+              ${session.cost.totalUsd.toFixed(2)}
+            </span>
+          </CostTooltip>
+          {session.subAgents && session.subAgents.length > 0 && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              ({session.subAgents.length} sub-agent{session.subAgents.length !== 1 ? 's' : ''})
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Title: semantic (first user message) or project name */}
+      {/* Title: latest human prompt, with fallback to first prompt/project name */}
       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mb-1">
         {title}
       </p>
@@ -136,4 +147,3 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
     </Link>
   )
 }
-
