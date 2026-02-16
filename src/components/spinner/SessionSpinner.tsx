@@ -100,15 +100,15 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
     return (
       <span className="flex items-center gap-1.5 text-xs">
-        <span className="w-3 text-center inline-block text-muted-foreground">·</span>
-        <span className="text-muted-foreground">{verb}</span>
+        <span className="w-3 text-center inline-block text-gray-500 dark:text-gray-400">·</span>
+        <span className="text-gray-500 dark:text-gray-400">{verb}</span>
         {formattedTaskTime && (
-          <span className="text-muted-foreground font-mono tabular-nums">{formattedTaskTime}</span>
+          <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">{formattedTaskTime}</span>
         )}
         {shortModel && (
           <>
-            <span className="text-muted-foreground"> · </span>
-            <span className="text-muted-foreground font-mono tabular-nums">{shortModel}</span>
+            <span className="text-gray-500 dark:text-gray-400"> · </span>
+            <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">{shortModel}</span>
           </>
         )}
       </span>
@@ -155,12 +155,12 @@ export function SessionSpinner(props: SessionSpinnerProps) {
         {hasBakedTime ? (
           <>
             <span className="w-3 text-center inline-block text-amber-500">✻</span>
-            <span className="text-muted-foreground">Baked {formatDurationCompact(lastTurnTaskSeconds)}</span>
+            <span className="text-gray-500 dark:text-gray-400">Baked {formatDurationCompact(lastTurnTaskSeconds)}</span>
           </>
         ) : (
           <>
             <span className="w-3 text-center inline-block text-amber-500">●</span>
-            <span className="text-muted-foreground">Awaiting input</span>
+            <span className="text-gray-500 dark:text-gray-400">Awaiting input</span>
           </>
         )}
         <span className={`font-mono tabular-nums ${countdownColor}`}>· {countdownText}</span>
@@ -188,8 +188,8 @@ export function SessionSpinner(props: SessionSpinnerProps) {
       >
         {spinnerChar}
       </span>
-      <span className="text-muted-foreground">{verb}…</span>
-      <span className="text-muted-foreground font-mono tabular-nums">
+      <span className="text-gray-500 dark:text-gray-400">{verb}…</span>
+      <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
         {formattedDuration}
         {' · '}
         {arrow}{formattedTokens}
