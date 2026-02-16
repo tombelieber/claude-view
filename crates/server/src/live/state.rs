@@ -109,6 +109,10 @@ pub struct LiveSession {
     /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
     /// Used by frontend to show task time for needs_you sessions.
     pub last_turn_task_seconds: Option<u32>,
+    /// Sub-agents spawned via the Task tool in this session.
+    /// Empty vec if no sub-agents have been detected.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
 }
 
 /// Events broadcast over the SSE channel to connected Mission Control clients.
