@@ -111,7 +111,7 @@ pub struct LiveSession {
     pub last_turn_task_seconds: Option<u32>,
     /// Sub-agents spawned via the Task tool in this session.
     /// Empty vec if no sub-agents have been detected.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
 }
 
