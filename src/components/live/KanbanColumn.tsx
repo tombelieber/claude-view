@@ -64,8 +64,9 @@ export function KanbanColumn({
                 data-session-id={session.id}
                 onClick={() => onSelect(session.id)}
                 className={cn(
-                  'cursor-pointer rounded-lg',
-                  session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg'
+                  'cursor-pointer rounded-lg transition-opacity',
+                  session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg',
+                  group === 'needs_you' && session.cacheStatus !== 'warm' && 'opacity-70'
                 )}
               >
                 <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} />
