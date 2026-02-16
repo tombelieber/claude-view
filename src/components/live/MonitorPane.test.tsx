@@ -54,12 +54,10 @@ function renderMonitorPane(overrides: Partial<MonitorPaneProps> = {}) {
     isSelected: false,
     isExpanded: false,
     isPinned: false,
-    mode: 'raw',
     compactHeader: false,
     isVisible: true,
     onSelect: vi.fn(),
     onExpand: vi.fn(),
-    onModeToggle: vi.fn(),
     onPin: vi.fn(),
     onHide: vi.fn(),
     onContextMenu: vi.fn(),
@@ -239,12 +237,10 @@ describe('MonitorPane', () => {
           isSelected={false}
           isExpanded={false}
           isPinned={false}
-          mode="raw"
           compactHeader={false}
           isVisible={true}
           onSelect={vi.fn()}
           onExpand={vi.fn()}
-          onModeToggle={vi.fn()}
           onPin={vi.fn()}
           onHide={vi.fn()}
           onContextMenu={vi.fn()}
