@@ -11,7 +11,7 @@ describe('useMonitorStore', () => {
       expandedPaneId: null,
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
-      paneMode: {},
+      verboseMode: false,
     })
   })
 
@@ -40,8 +40,8 @@ describe('useMonitorStore', () => {
       expect(useMonitorStore.getState().hiddenPaneIds.size).toBe(0)
     })
 
-    it('has empty paneMode record', () => {
-      expect(Object.keys(useMonitorStore.getState().paneMode)).toHaveLength(0)
+    it('has verboseMode false', () => {
+      expect(useMonitorStore.getState().verboseMode).toBe(false)
     })
   })
 
@@ -184,27 +184,17 @@ describe('useMonitorStore', () => {
     })
   })
 
-  describe('setPaneMode', () => {
-    it('sets mode for a pane', () => {
-      useMonitorStore.getState().setPaneMode('pane-1', 'rich')
-
-      expect(useMonitorStore.getState().paneMode['pane-1']).toBe('rich')
+  describe('verboseMode', () => {
+    it('verboseMode defaults to false', () => {
+      const state = useMonitorStore.getState()
+      expect(state.verboseMode).toBe(false)
     })
 
-    it('can set different modes for different panes', () => {
-      useMonitorStore.getState().setPaneMode('pane-1', 'rich')
-      useMonitorStore.getState().setPaneMode('pane-2', 'raw')
-
-      const modes = useMonitorStore.getState().paneMode
-      expect(modes['pane-1']).toBe('rich')
-      expect(modes['pane-2']).toBe('raw')
-    })
-
-    it('overwrites existing mode', () => {
-      useMonitorStore.getState().setPaneMode('pane-1', 'raw')
-      useMonitorStore.getState().setPaneMode('pane-1', 'rich')
-
-      expect(useMonitorStore.getState().paneMode['pane-1']).toBe('rich')
+    it('toggleVerbose flips verboseMode', () => {
+      useMonitorStore.getState().toggleVerbose()
+      expect(useMonitorStore.getState().verboseMode).toBe(true)
+      useMonitorStore.getState().toggleVerbose()
+      expect(useMonitorStore.getState().verboseMode).toBe(false)
     })
   })
 })
