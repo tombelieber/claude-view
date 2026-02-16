@@ -6,6 +6,7 @@ import { WorkTypeBadge } from './WorkTypeBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { ClassifyButton } from './ClassifyButton'
 import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
+import { SessionSpinner, pickPastVerb } from './spinner'
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -149,8 +150,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const projectLabel = projectDisplayName || undefined
 
   // Calculate total tokens (input + output)
-  const totalTokens = ((session?.totalInputTokens ?? 0n) as bigint) + ((session?.totalOutputTokens ?? 0n) as bigint)
-  const hasTokens = totalTokens > 0n
+  const totalTokens = (session?.totalInputTokens ?? 0) + (session?.totalOutputTokens ?? 0)
+  const hasTokens = totalTokens > 0
 
   // New atomic unit metrics
   const prompts = session?.userPromptCount ?? 0
@@ -235,6 +236,17 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           </p>
         )}
       </div>
+
+      {/* Spinner: verb + model */}
+      {session.primaryModel && (
+        <div className="mt-1.5">
+          <SessionSpinner
+            mode="historical"
+            model={session.primaryModel}
+            pastTenseVerb={pickPastVerb(session.id)}
+          />
+        </div>
+      )}
 
       {/* Metrics row: prompts, tokens, files, re-edits */}
       <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
