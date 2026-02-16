@@ -30,12 +30,6 @@ const COLUMNS: {
     accentColor: 'bg-green-500',
     emptyMessage: 'No autonomous sessions',
   },
-  {
-    title: 'Done',
-    group: 'delivered',
-    accentColor: 'bg-blue-500',
-    emptyMessage: 'No completed sessions',
-  },
 ]
 
 /** Sort key for needs_you sessions: urgency ordering */
@@ -55,13 +49,11 @@ export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, cu
     const groups: Record<AgentStateGroup, LiveSession[]> = {
       needs_you: [],
       autonomous: [],
-      delivered: [],
     }
     for (const s of sessions) {
       groups[s.agentState.group].push(s)
     }
     groups.autonomous.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-    groups.delivered.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     groups.needs_you.sort((a, b) => {
       const keyDiff = needsYouSortKey(a) - needsYouSortKey(b)
       if (keyDiff !== 0) return keyDiff

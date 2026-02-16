@@ -2,7 +2,6 @@ import { useState, useCallback, type ReactNode } from 'react'
 import {
   Loader2,
   Pause,
-  Check,
   Maximize2,
   X,
   Pin,
@@ -51,8 +50,6 @@ function groupDotColor(group: AgentStateGroup): string {
       return 'bg-green-500'
     case 'needs_you':
       return 'bg-amber-500'
-    case 'delivered':
-      return 'bg-blue-500'
     default:
       return 'bg-zinc-500'
   }
@@ -65,8 +62,6 @@ function GroupIcon({ group, className }: { group: AgentStateGroup; className?: s
       return <Loader2 className={cn('animate-spin', className)} />
     case 'needs_you':
       return <Bell className={className} />
-    case 'delivered':
-      return <Check className={className} />
     default:
       return <Pause className={className} />
   }

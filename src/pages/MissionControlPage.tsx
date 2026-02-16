@@ -54,19 +54,17 @@ export function MissionControlPage() {
     if (sessions.length === 0 && !serverSummary) return null
     let needsYouCount = 0
     let autonomousCount = 0
-    let deliveredCount = 0
     let totalCostTodayUsd = 0
     let totalTokensToday = 0
     for (const s of sessions) {
       switch (s.agentState.group) {
         case 'needs_you': needsYouCount++; break
         case 'autonomous': autonomousCount++; break
-        case 'delivered': deliveredCount++; break
       }
       totalCostTodayUsd += s.cost?.totalUsd ?? 0
       totalTokensToday += s.tokens?.totalTokens ?? 0
     }
-    return { needsYouCount, autonomousCount, deliveredCount, totalCostTodayUsd, totalTokensToday }
+    return { needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday }
   }, [sessions, serverSummary])
 
   // Available filter options from current (unfiltered) sessions
@@ -271,10 +269,6 @@ function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
       <div>
         <span className="text-green-500 font-medium">{summary.autonomousCount}</span>
         <span className="text-gray-500 dark:text-gray-400 ml-1">autonomous</span>
-      </div>
-      <div>
-        <span className="text-blue-400 font-medium">{summary.deliveredCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">delivered</span>
       </div>
       {showFiltered && (
         <div>
