@@ -62,7 +62,7 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
                   Session Cost: ${cost.totalUsd.toFixed(2)}
                 </div>
                 <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
-                  <AgentCostRow label="Main agent" cost={mainAgentCost} isLast={false} />
+                  <AgentCostRow label="Main agent:" cost={mainAgentCost} isLast={false} />
                   {subAgentsWithCost.map((sa, idx) => (
                     <AgentCostRow
                       key={sa.toolUseId}
