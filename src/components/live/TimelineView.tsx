@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { cn } from '../../lib/utils'
@@ -103,6 +103,20 @@ export function TimelineView({
     return [...subAgents].sort((a, b) => a.startedAt - b.startedAt)
   }, [subAgents])
 
+  // Force re-render every 2 seconds when any agent is running
+  // This allows running agent bars to grow as time progresses
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const hasRunning = sortedAgents.some((a) => a.status === 'running')
+    if (!hasRunning) return
+
+    const interval = setInterval(() => {
+      setTick((prev) => prev + 1)
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [sortedAgents])
+
   // Early return if no sub-agents
   if (subAgents.length === 0) return null
 
@@ -192,7 +206,12 @@ export function TimelineView({
             <Tooltip.Provider key={agent.toolUseId} delayDuration={200}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
-                  <div className="flex items-center gap-2 h-6">
+                  <div
+                    className="flex items-center gap-2 h-6"
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`${agent.agentType} agent: ${agent.description}`}
+                  >
                     {/* Agent type label */}
                     <span className="text-xs text-gray-400 w-20 truncate flex-shrink-0">
                       {agent.agentType}
