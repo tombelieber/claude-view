@@ -54,7 +54,7 @@ pub enum SessionStatus {
     Working,
     /// Agent paused -- reason available in pause_classification.
     Paused,
-    /// Session is over (process exited + no new writes for 60s).
+    /// Session is over (process exited + no new writes for 300s).
     Done,
 }
 
@@ -142,7 +142,7 @@ pub enum SessionEvent {
 ///
 /// 3-state derivation (first match wins):
 /// 1. No data at all -> Paused
-/// 2. No running process AND file stale >60s -> Done
+/// 2. No running process AND file stale >300s -> Done
 /// 3. Activity within 30s:
 ///    - Assistant with tools -> Working
 ///    - Assistant still streaming (no end_turn) -> Working
@@ -160,8 +160,8 @@ pub fn derive_status(
         None => return SessionStatus::Paused,
     };
 
-    // Done: process exited AND file stale >60s
-    if !has_running_process && seconds_since_modified > 60 {
+    // Done: process exited AND file stale >300s
+    if !has_running_process && seconds_since_modified > 300 {
         return SessionStatus::Done;
     }
 
@@ -302,9 +302,16 @@ mod tests {
     }
 
     #[test]
-    fn test_status_done_at_61s_no_process() {
+    fn test_status_paused_at_61s_no_process() {
         let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
         let status = derive_status(Some(&last), 61, false);
+        assert_eq!(status, SessionStatus::Paused); // was Done before; now in grace window
+    }
+
+    #[test]
+    fn test_status_done_at_301s_no_process() {
+        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
+        let status = derive_status(Some(&last), 301, false);
         assert_eq!(status, SessionStatus::Done);
     }
 
