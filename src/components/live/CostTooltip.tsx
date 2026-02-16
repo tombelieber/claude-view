@@ -114,9 +114,9 @@ function AgentCostRow({ label, cost, isLast }: { label: string; cost: number; is
   return (
     <div className="flex items-center justify-between">
       <span>
-        {treeChar} {label}
+        {treeChar} {label}:
       </span>
-      <span className="tabular-nums">${cost.toFixed(2)}</span>
+      <span className="tabular-nums">${cost.toFixed(4)}</span>
     </div>
   )
 }
