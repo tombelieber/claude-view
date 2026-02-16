@@ -4,6 +4,7 @@
 //! - `GET /api/live/sessions`            -- List all live sessions
 //! - `GET /api/live/sessions/:id`        -- Get a single live session
 //! - `GET /api/live/sessions/:id/messages` -- Get recent messages for a live session
+//! - `POST /api/live/sessions/:id/kill`   -- Send SIGTERM to a session's process
 //! - `GET /api/live/summary`             -- Aggregate live session statistics
 //! - `GET /api/live/pricing`             -- Model pricing table
 
@@ -16,7 +17,7 @@ use axum::{
     extract::{Path, Query, State},
     response::sse::{Event, Sse},
     response::{IntoResponse, Json, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use serde::Deserialize;
@@ -31,6 +32,7 @@ use crate::state::AppState;
 /// - `GET /live/sessions`               - List all live sessions
 /// - `GET /live/sessions/:id`           - Get single live session
 /// - `GET /live/sessions/:id/messages`  - Get recent messages for a live session
+/// - `POST /live/sessions/:id/kill`     - Send SIGTERM to a session's process
 /// - `GET /live/summary`                - Aggregate statistics
 /// - `GET /live/pricing`                - Model pricing table
 pub fn router() -> Router<Arc<AppState>> {
@@ -39,6 +41,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/live/sessions", get(list_live_sessions))
         .route("/live/sessions/{id}", get(get_live_session))
         .route("/live/sessions/{id}/messages", get(get_live_session_messages))
+        .route("/live/sessions/{id}/kill", post(kill_session))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
 }
@@ -240,6 +243,41 @@ async fn get_live_session_messages(
             )
                 .into_response()
         }
+    }
+}
+
+/// POST /api/live/sessions/:id/kill -- Send SIGTERM to the session's Claude process.
+///
+/// Returns `{ "killed": true, "pid": <pid> }` on success.
+/// Returns 404 with `{ "canDismiss": true }` if the session has no PID (already exited).
+/// Returns 404 with `{ "error": "Session not found" }` if the session ID is unknown.
+async fn kill_session(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> Response {
+    let map = state.live_sessions.read().await;
+    match map.get(&session_id) {
+        Some(session) => {
+            if let Some(pid) = session.pid {
+                let pid_i32 = pid as i32; // safe: macOS PIDs max ~99999, Linux ~4M
+                let result = unsafe { libc::kill(pid_i32, libc::SIGTERM) };
+                if result != 0 {
+                    tracing::warn!(session_id = %session_id, pid, "Failed to send SIGTERM");
+                }
+                Json(serde_json::json!({ "killed": true, "pid": pid })).into_response()
+            } else {
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "canDismiss": true })),
+                )
+                    .into_response()
+            }
+        }
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Session not found" })),
+        )
+            .into_response(),
     }
 }
 
