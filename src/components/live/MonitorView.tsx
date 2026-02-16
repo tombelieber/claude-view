@@ -8,9 +8,9 @@ import { RichPane, parseRichMessage, type RichMessage } from './RichPane'
 import { ExpandedPaneOverlay } from './ExpandedPaneOverlay'
 import { PaneContextMenu } from './PaneContextMenu'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
-import { useAutoFill, FADED_PANE_CLASS } from './useAutoFill'
+import { useAutoFill } from './useAutoFill'
 import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
-import { cn } from '../../lib/utils'
+import { SwimLanes } from './SwimLanes'
 
 interface MonitorViewProps {
   sessions: LiveSession[]
@@ -133,8 +133,8 @@ export function MonitorView({ sessions }: MonitorViewProps) {
       .slice(0, gridCapacity)
   }, [sessions, hiddenPaneIds, sessionOrder, gridCapacity])
 
-  // Auto-fill hook — returns set of faded (idle) pane IDs
-  const fadedPanes = useAutoFill({ sessions, enabled: true })
+  // Auto-fill: auto-show new sessions and swap idle ones out
+  useAutoFill({ sessions, enabled: true })
 
   // Keyboard shortcuts — active when monitor view is showing
   useMonitorKeyboardShortcuts({ enabled: true, sessions: visibleSessions })
@@ -211,7 +211,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
         >
           {visibleSessions.map((session) => {
             const isPinned = pinnedPaneIds.has(session.id)
-            const isFaded = fadedPanes.has(session.id)
             // Default to visible when observer hasn't fired yet (size === 0) since we've
             // already limited the number of panes to gridCapacity above.
             // When a pane is expanded in the overlay, disconnect the grid pane's WebSocket
@@ -224,7 +223,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
               <div
                 key={session.id}
                 data-pane-id={session.id}
-                className={cn(isFaded && FADED_PANE_CLASS)}
               >
                 <MonitorPane
                   session={session}
@@ -257,11 +255,20 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           session={expandedSession}
           onClose={() => expandPane(null)}
         >
-          <RichTerminalPane
-            sessionId={expandedSession.id}
-            isVisible={true}
-            verboseMode={verboseMode}
-          />
+          <div className="flex flex-col h-full gap-3">
+            {/* Sub-agent swim lanes */}
+            {expandedSession.subAgents && expandedSession.subAgents.length > 0 && (
+              <SwimLanes subAgents={expandedSession.subAgents} />
+            )}
+            {/* Terminal stream */}
+            <div className="flex-1 min-h-0">
+              <RichTerminalPane
+                sessionId={expandedSession.id}
+                isVisible={true}
+                verboseMode={verboseMode}
+              />
+            </div>
+          </div>
         </ExpandedPaneOverlay>
       )}
 
