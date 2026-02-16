@@ -16,6 +16,7 @@ use vibe_recall_core::cost::{
     self, calculate_live_cost, derive_cache_status, TokenUsage,
 };
 use vibe_recall_core::live_parser::{LiveLine, LineType, TailFinders, parse_tail};
+use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
 use vibe_recall_db::ModelPricing;
 
 use super::classifier::{
@@ -69,6 +70,8 @@ struct SessionAccumulator {
     current_turn_started_at: Option<i64>,
     /// Seconds the agent spent on the last completed turn (Working->Paused).
     last_turn_task_seconds: Option<u32>,
+    /// Sub-agents spawned in this session (accumulated across tail polls).
+    sub_agents: Vec<SubAgentInfo>,
 }
 
 impl SessionAccumulator {
@@ -97,6 +100,7 @@ impl SessionAccumulator {
             last_status: None,
             current_turn_started_at: None,
             last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
         }
     }
 }
@@ -640,6 +644,59 @@ impl LiveSessionManager {
                     acc.started_at = parse_timestamp_to_unix(ts);
                 }
             }
+
+            // --- Sub-agent spawn tracking ---
+            for spawn in &line.sub_agent_spawns {
+                // Parse timestamp from the JSONL line to get started_at
+                let started_at = line.timestamp.as_deref()
+                    .and_then(parse_timestamp_to_unix)
+                    .unwrap_or(0);
+                acc.sub_agents.push(SubAgentInfo {
+                    tool_use_id: spawn.tool_use_id.clone(),
+                    agent_id: None, // populated on completion from toolUseResult.agentId
+                    agent_type: spawn.agent_type.clone(),
+                    description: spawn.description.clone(),
+                    status: SubAgentStatus::Running,
+                    started_at,
+                    completed_at: None,
+                    duration_ms: None,
+                    tool_use_count: None,
+                    cost_usd: None,
+                });
+            }
+
+            // --- Sub-agent completion tracking ---
+            if let Some(ref result) = line.sub_agent_result {
+                if let Some(agent) = acc.sub_agents.iter_mut()
+                    .find(|a| a.tool_use_id == result.tool_use_id)
+                {
+                    agent.status = if result.status == "completed" {
+                        SubAgentStatus::Complete
+                    } else {
+                        SubAgentStatus::Error
+                    };
+                    agent.agent_id = result.agent_id.clone();
+                    agent.completed_at = line.timestamp.as_deref()
+                        .and_then(parse_timestamp_to_unix);
+                    agent.duration_ms = result.total_duration_ms;
+                    agent.tool_use_count = result.total_tool_use_count;
+                    // Compute cost from token usage via pricing table
+                    if let Some(model) = acc.model.as_deref() {
+                        let sub_tokens = TokenUsage {
+                            input_tokens: result.usage_input_tokens.unwrap_or(0),
+                            output_tokens: result.usage_output_tokens.unwrap_or(0),
+                            cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
+                            cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
+                            total_tokens: 0, // not used by calculate_live_cost
+                        };
+                        let sub_cost = calculate_live_cost(&sub_tokens, Some(model), &self.pricing);
+                        if sub_cost.total_usd > 0.0 {
+                            agent.cost_usd = Some(sub_cost.total_usd);
+                        }
+                    }
+                }
+                // If no matching spawn found, ignore gracefully (orphaned tool_result)
+            }
         }
 
         // Track recent messages for pause classification
@@ -732,7 +789,7 @@ impl LiveSessionManager {
             cache_status,
             current_turn_started_at: acc.current_turn_started_at,
             last_turn_task_seconds: acc.last_turn_task_seconds,
-            sub_agents: Vec::new(),  // TODO: Will be populated from acc.sub_agents in Task 4
+            sub_agents: acc.sub_agents.clone(),
         };
 
         // Drop the accumulators lock before acquiring sessions lock
@@ -864,12 +921,19 @@ impl LiveSessionManager {
                 source: SignalSource::Jsonl,
                 context: None,
             };
-            acc.completed_at = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            );
+            let completed_at_secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            acc.completed_at = Some(completed_at_secs);
+
+            // Orphaned sub-agent cleanup: mark any still-running sub-agents as Error
+            for agent in &mut acc.sub_agents {
+                if agent.status == SubAgentStatus::Running {
+                    agent.status = SubAgentStatus::Error;
+                    agent.completed_at = Some(completed_at_secs as i64);
+                }
+            }
         } else if new_status != SessionStatus::Done {
             acc.completed_at = None;
         }
