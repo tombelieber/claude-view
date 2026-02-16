@@ -233,13 +233,16 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
     }),
     columnHelper.accessor('durationSeconds', {
       id: 'duration',
-      header: 'Dur.',
+      header: 'Task',
       size: 52,
       enableSorting: true,
       meta: { align: 'right' },
       cell: ({ row }) => {
         const s = row.original
-        const duration = s.durationSeconds > 0 ? formatDuration(s.durationSeconds) : null
+        // Prefer totalTaskTimeSeconds; fall back to durationSeconds for pre-reindex sessions
+        const taskTime = s.totalTaskTimeSeconds ?? null
+        const displaySeconds = (taskTime && taskTime > 0) ? taskTime : s.durationSeconds
+        const duration = displaySeconds > 0 ? formatDuration(displaySeconds) : null
         return (
           <Link to={sessionUrl(s)} className="block text-[12px]">
             {duration ? (
