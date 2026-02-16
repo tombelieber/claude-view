@@ -5,8 +5,6 @@ import {
   EyeOff,
   ArrowUpToLine,
   Maximize2,
-  Terminal,
-  MessageSquare,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -15,14 +13,12 @@ export interface PaneContextMenuProps {
   y: number
   sessionId: string
   isPinned: boolean
-  mode: 'raw' | 'rich'
   onClose: () => void
   onPin: () => void
   onUnpin: () => void
   onHide: () => void
   onMoveToFront: () => void
   onExpand: () => void
-  onToggleMode: () => void
 }
 
 interface MenuItem {
@@ -39,14 +35,12 @@ export function PaneContextMenu({
   x,
   y,
   isPinned,
-  mode,
   onClose,
   onPin,
   onUnpin,
   onHide,
   onMoveToFront,
   onExpand,
-  onToggleMode,
 }: PaneContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -62,12 +56,6 @@ export function PaneContextMenu({
   items.push({ icon: EyeOff, label: 'Hide pane', action: onHide })
   items.push({ icon: ArrowUpToLine, label: 'Move to front', action: onMoveToFront })
   items.push({ icon: Maximize2, label: 'Expand', action: onExpand })
-
-  if (mode === 'raw') {
-    items.push({ icon: MessageSquare, label: 'Switch to Rich', action: onToggleMode })
-  } else {
-    items.push({ icon: Terminal, label: 'Switch to Raw', action: onToggleMode })
-  }
 
   // Compute position, flipping if the menu would go off-screen
   const menuHeight = items.length * MENU_ITEM_HEIGHT + MENU_PADDING * 2
