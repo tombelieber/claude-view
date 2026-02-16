@@ -187,6 +187,43 @@ impl RichModeFinders {
     }
 }
 
+/// Strip Claude Code internal command tags from content.
+///
+/// Removes matched pairs of tags like `<command-name>...</command-name>` that
+/// Claude Code injects for internal command routing. These are noise in the
+/// terminal monitor and should never reach the WebSocket stream.
+fn strip_command_tags(content: &str) -> String {
+    let mut result = content.to_string();
+    let tags = [
+        "command-name",
+        "command-message",
+        "command-args",
+        "local-command-stdout",
+        "system-reminder",
+    ];
+
+    for tag in &tags {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+
+        // Loop until no more opening tags are found
+        while let Some(start) = result.find(&open) {
+            // Search for closing tag AFTER the opening tag position
+            match result[start..].find(&close) {
+                Some(offset) => {
+                    let end = start + offset + close.len();
+                    result.replace_range(start..end, "");
+                }
+                None => {
+                    // No closing tag found — break to avoid infinite loop
+                    break;
+                }
+            }
+        }
+    }
+    result.trim().to_string()
+}
+
 /// Format a JSONL line for sending over WebSocket.
 ///
 /// - In "raw" mode: wraps the line in `{ "type": "line", "data": "..." }`.
@@ -268,10 +305,14 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
     // For plain string content, return a single message
     if let Some(src) = content_source {
         if let Some(serde_json::Value::String(s)) = src.get("content") {
+            let stripped = strip_command_tags(s);
+            if stripped.is_empty() {
+                return vec![];
+            }
             let mut result = serde_json::json!({
                 "type": "message",
                 "role": role.unwrap_or(line_type),
-                "content": s,
+                "content": stripped,
             });
             if let Some(ts) = timestamp {
                 result["ts"] = serde_json::Value::String(ts.to_string());
@@ -358,18 +399,21 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
         results.push(result.to_string());
     }
 
-    // Emit concatenated text (all text blocks joined)
+    // Emit concatenated text (all text blocks joined), with command tags stripped
     if !text_parts.is_empty() {
         let full_text = text_parts.join("\n");
-        let mut result = serde_json::json!({
-            "type": "message",
-            "role": role.unwrap_or(line_type),
-            "content": full_text,
-        });
-        if let Some(ts) = timestamp {
-            result["ts"] = serde_json::Value::String(ts.to_string());
+        let stripped = strip_command_tags(&full_text);
+        if !stripped.is_empty() {
+            let mut result = serde_json::json!({
+                "type": "message",
+                "role": role.unwrap_or(line_type),
+                "content": stripped,
+            });
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            results.push(result.to_string());
         }
-        results.push(result.to_string());
     }
 
     results
@@ -1427,5 +1471,63 @@ mod tests {
         assert_eq!(text["type"], "message");
         assert!(text["content"].as_str().unwrap().contains("Part 1"));
         assert!(text["content"].as_str().unwrap().contains("Part 2"));
+    }
+
+    // =========================================================================
+    // Unit tests for strip_command_tags
+    // =========================================================================
+
+    #[test]
+    fn strip_command_tags_removes_all_known_tags() {
+        let input = r#"<command-name>/clear</command-name>
+<command-message>clear</command-message>
+<command-args></command-args>
+
+NaN ago
+<local-command-stdout></local-command-stdout>"#;
+        let result = strip_command_tags(input);
+        assert!(!result.contains("<command-name>"));
+        assert!(!result.contains("<local-command-stdout>"));
+        // After stripping all tags and trimming, only "NaN ago" should remain
+        assert_eq!(result, "NaN ago");
+    }
+
+    #[test]
+    fn strip_command_tags_preserves_normal_content() {
+        let input = "Here is a table:\n\n| Col1 | Col2 |\n|------|------|\n| a    | b    |";
+        let result = strip_command_tags(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn strip_command_tags_handles_missing_close_tag() {
+        let input = "<command-name>unclosed content but normal text after";
+        let result = strip_command_tags(input);
+        // Should not infinite loop; returns input unchanged since no closing tag
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn strip_command_tags_empty_after_stripping_skips_string_content() {
+        let finders = RichModeFinders::new();
+        // Content is entirely command tags — should produce empty vec after stripping
+        let line = r#"{"type":"assistant","message":{"role":"assistant","content":"<command-name>/clear</command-name><command-args></command-args>"},"timestamp":"2026-02-16T00:00:00Z"}"#;
+        let results = format_line_for_mode(line, "rich", &finders);
+        assert!(
+            results.is_empty(),
+            "Messages that become empty after tag stripping should not be emitted"
+        );
+    }
+
+    #[test]
+    fn strip_command_tags_empty_after_stripping_skips_text_blocks() {
+        let finders = RichModeFinders::new();
+        // Content is array with a text block that is entirely command tags
+        let line = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"<command-name>/clear</command-name>"}]},"timestamp":"2026-02-16T00:00:00Z"}"#;
+        let results = format_line_for_mode(line, "rich", &finders);
+        assert!(
+            results.is_empty(),
+            "Text blocks that become empty after tag stripping should not be emitted"
+        );
     }
 }
