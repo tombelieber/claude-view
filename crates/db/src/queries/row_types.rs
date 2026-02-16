@@ -481,6 +481,10 @@ pub(crate) struct SessionRow {
     pub(crate) prompt_word_count: Option<i32>,
     pub(crate) correction_count: i32,
     pub(crate) same_file_edit_count: i32,
+    // Wall-clock task time metrics
+    pub(crate) total_task_time_seconds: Option<i32>,
+    pub(crate) longest_task_seconds: Option<i32>,
+    pub(crate) longest_task_preview: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -551,6 +555,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             prompt_word_count: row.try_get("prompt_word_count").ok().flatten(),
             correction_count: row.try_get("correction_count").unwrap_or(0),
             same_file_edit_count: row.try_get("same_file_edit_count").unwrap_or(0),
+            // Wall-clock task time metrics
+            total_task_time_seconds: row.try_get("total_task_time_seconds").ok().flatten(),
+            longest_task_seconds: row.try_get("longest_task_seconds").ok().flatten(),
+            longest_task_preview: row.try_get("longest_task_preview").ok().flatten(),
         })
     }
 }
@@ -633,6 +641,10 @@ impl SessionRow {
             prompt_word_count: self.prompt_word_count.map(|v| v as u32),
             correction_count: self.correction_count as u32,
             same_file_edit_count: self.same_file_edit_count as u32,
+            // Wall-clock task time metrics
+            total_task_time_seconds: self.total_task_time_seconds.map(|v| v as u32),
+            longest_task_seconds: self.longest_task_seconds.map(|v| v as u32),
+            longest_task_preview: self.longest_task_preview,
         }
     }
 }
