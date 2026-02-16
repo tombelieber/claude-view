@@ -13,8 +13,6 @@ pub enum SubAgentStatus {
 }
 
 /// Information about a sub-agent spawned via the Task tool.
-///
-/// Note: ts-rs exports i64 as TypeScript `number` (safe for Unix timestamps).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
@@ -43,15 +41,18 @@ pub struct SubAgentInfo {
     /// Unix timestamp (seconds) when the sub-agent was spawned.
     /// Parsed from the ISO 8601 `timestamp` field on the JSONL line
     /// via `chrono::DateTime::parse_from_rfc3339`.
+    #[ts(type = "number")]
     pub started_at: i64,
 
     /// Unix timestamp (seconds) when the sub-agent completed or errored.
     /// None while status is Running.
+    #[ts(type = "number | null")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<i64>,
 
     /// Duration in milliseconds from `toolUseResult.totalDurationMs`.
     /// None while status is Running.
+    #[ts(type = "number | null")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 
