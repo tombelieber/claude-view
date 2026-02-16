@@ -258,7 +258,10 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           <div className="flex flex-col h-full gap-3">
             {/* Sub-agent swim lanes */}
             {expandedSession.subAgents && expandedSession.subAgents.length > 0 && (
-              <SwimLanes subAgents={expandedSession.subAgents} />
+              <SwimLanes
+                subAgents={expandedSession.subAgents}
+                sessionActive={expandedSession.status === 'working'}
+              />
             )}
             {/* Terminal stream */}
             <div className="flex-1 min-h-0">
