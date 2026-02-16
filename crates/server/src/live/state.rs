@@ -154,7 +154,8 @@ pub enum SessionEvent {
 ///    - Assistant still streaming (no end_turn) -> Working
 ///    - Assistant with end_turn -> Paused
 ///    - Progress -> Working
-///    - User/System/other -> Paused
+///    - Real user prompt -> Working (Claude enters local thinking immediately)
+///    - Meta/system-injected user line, System/other -> Paused
 /// 4. >30s since last write -> Paused
 pub fn derive_status(
     last_line: Option<&LiveLine>,
@@ -185,7 +186,19 @@ pub fn derive_status(
                 SessionStatus::Paused
             }
             LineType::Progress => SessionStatus::Working,
-            // User message, System message, etc. -> Paused
+            LineType::User => {
+                // A real user prompt means Claude is now thinking/working, even if
+                // no assistant tokens have streamed yet.
+                let is_real_user_prompt = !last_line.is_meta
+                    && !last_line.is_tool_result_continuation
+                    && !last_line.has_system_prefix;
+                if is_real_user_prompt {
+                    SessionStatus::Working
+                } else {
+                    SessionStatus::Paused
+                }
+            }
+            // System message and other line types -> Paused
             _ => SessionStatus::Paused,
         }
     } else {
@@ -331,8 +344,18 @@ mod tests {
     }
 
     #[test]
-    fn test_status_paused_user_message() {
+    fn test_status_working_recent_user_prompt() {
+        // After a real user prompt, Claude enters local "thinking" immediately.
+        // Status should surface as Working so the UI flips to Running right away.
         let last = make_live_line(LineType::User, vec![], None);
+        let status = derive_status(Some(&last), 5, true);
+        assert_eq!(status, SessionStatus::Working);
+    }
+
+    #[test]
+    fn test_status_paused_meta_user_message() {
+        let mut last = make_live_line(LineType::User, vec![], None);
+        last.is_meta = true;
         let status = derive_status(Some(&last), 5, true);
         assert_eq!(status, SessionStatus::Paused);
     }
