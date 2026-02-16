@@ -21,7 +21,9 @@ export function CacheCountdownRing({ lastActivityAt, size = 16 }: CacheCountdown
     setRemaining(computeRemaining(lastActivityAt))
 
     const interval = setInterval(() => {
-      setRemaining(computeRemaining(lastActivityAt))
+      const r = computeRemaining(lastActivityAt)
+      setRemaining(r)
+      if (r <= 0) clearInterval(interval)
     }, 1000)
 
     return () => clearInterval(interval)
