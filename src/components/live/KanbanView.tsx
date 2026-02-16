@@ -55,6 +55,13 @@ export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, cu
     }
     groups.autonomous.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     groups.needs_you.sort((a, b) => {
+      // Warm sessions first; 'unknown' sorts between warm and cold
+      const cacheRank = (s: LiveSession) =>
+        s.cacheStatus === 'warm' ? 0 : s.cacheStatus === 'unknown' ? 1 : 2
+      const cacheDiff = cacheRank(a) - cacheRank(b)
+      if (cacheDiff !== 0) return cacheDiff
+
+      // Within same cache tier: sort by urgency then recency
       const keyDiff = needsYouSortKey(a) - needsYouSortKey(b)
       if (keyDiff !== 0) return keyDiff
       return b.lastActivityAt - a.lastActivityAt
