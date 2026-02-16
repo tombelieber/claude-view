@@ -3293,6 +3293,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "indicatif",
+ "libc",
  "memchr",
  "metrics",
  "metrics-exporter-prometheus",
