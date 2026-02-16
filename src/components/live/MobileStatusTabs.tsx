@@ -11,7 +11,6 @@ interface MobileStatusTabsProps {
 const TABS: { group: AgentStateGroup; label: string; color: string }[] = [
   { group: 'needs_you', label: 'Needs You', color: 'text-amber-500 border-amber-500' },
   { group: 'autonomous', label: 'Running', color: 'text-green-500 border-green-500' },
-  { group: 'delivered', label: 'Done', color: 'text-blue-400 border-blue-400' },
 ]
 
 export function MobileStatusTabs({ activeGroup, onGroupChange, summary }: MobileStatusTabsProps) {
@@ -20,7 +19,6 @@ export function MobileStatusTabs({ activeGroup, onGroupChange, summary }: Mobile
     switch (group) {
       case 'needs_you': return summary.needsYouCount
       case 'autonomous': return summary.autonomousCount
-      case 'delivered': return summary.deliveredCount
     }
   }
 

@@ -43,7 +43,6 @@ export interface LiveSession {
 export interface LiveSummary {
   needsYouCount: number
   autonomousCount: number
-  deliveredCount: number
   totalCostTodayUsd: number
   totalTokensToday: number
 }

@@ -54,7 +54,6 @@ interface SessionCardProps {
 const GROUP_CONFIG = {
   needs_you: { color: 'bg-amber-500', label: 'Needs You', pulse: false },
   autonomous: { color: 'bg-green-500', label: 'Running', pulse: true },
-  delivered: { color: 'bg-blue-500', label: 'Done', pulse: false },
 } as const
 
 export function SessionCard({ session, stalledSessions, currentTime }: SessionCardProps) {

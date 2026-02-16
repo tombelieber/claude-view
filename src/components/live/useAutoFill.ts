@@ -37,7 +37,7 @@ export function useAutoFill(options: UseAutoFillOptions): Set<string> {
 
     const now = Date.now()
     for (const session of sessions) {
-      const isIdle = session.agentState.group === 'needs_you' || session.agentState.group === 'delivered'
+      const isIdle = session.agentState.group === 'needs_you'
       if (isIdle && !idleTimersRef.current.has(session.id)) {
         idleTimersRef.current.set(session.id, now)
       } else if (!isIdle) {

@@ -155,7 +155,6 @@ export function LiveCommandPalette({
     const statusFilters: { status: string; label: string }[] = [
       { status: 'needs_you', label: 'Show sessions needing you' },
       { status: 'autonomous', label: 'Show autonomous sessions' },
-      { status: 'delivered', label: 'Show delivered sessions' },
     ]
 
     for (const sf of statusFilters) {

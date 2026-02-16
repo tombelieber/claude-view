@@ -32,8 +32,8 @@ export function ContextGauge({ contextWindowTokens, model, group }: ContextGauge
     return String(n)
   }
 
-  // Needs-you/delivered sessions get muted grey gauge; autonomous stays colored
-  const isInactive = group === 'needs_you' || group === 'delivered'
+  // Needs-you sessions get muted grey gauge; autonomous stays colored
+  const isInactive = group === 'needs_you'
   const barColor = isInactive
     ? 'bg-zinc-500 opacity-50'
     : usedPct > 90
