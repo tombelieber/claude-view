@@ -6,7 +6,7 @@ import { WorkTypeBadge } from './WorkTypeBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { ClassifyButton } from './ClassifyButton'
 import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
-import { SessionSpinner, pickPastVerb } from './spinner'
+import { SessionSpinner, pickPastVerb, formatDurationCompact } from './spinner'
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -160,6 +160,9 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const commitCount = session?.commitCount ?? 0
   const durationSeconds = session?.durationSeconds ?? 0
 
+  // Task time metrics
+  const longestTaskSeconds = session?.longestTaskSeconds ?? 0
+
   // Theme 3: Contribution metrics (optional, populated by deep index)
   const workType = session?.workType ?? null
   const aiLinesAdded = session?.aiLinesAdded ? Number(session.aiLinesAdded) : null
@@ -237,13 +240,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         )}
       </div>
 
-      {/* Spinner: verb + model */}
+      {/* Spinner: verb + task time + model */}
       {session.primaryModel && (
         <div className="mt-1.5">
           <SessionSpinner
             mode="historical"
             model={session.primaryModel}
             pastTenseVerb={pickPastVerb(session.id)}
+            taskTimeSeconds={session.totalTaskTimeSeconds}
           />
         </div>
       )}
@@ -270,6 +274,12 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         )}
         {reeditedFiles > 0 && (
           <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+        )}
+        {longestTaskSeconds > 0 && (
+          <>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
+          </>
         )}
         {/* Fallback to legacy display if no new metrics */}
         {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
