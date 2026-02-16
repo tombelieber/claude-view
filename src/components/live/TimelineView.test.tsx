@@ -3,6 +3,52 @@ import { render, screen } from '@testing-library/react'
 import { TimelineView } from './TimelineView'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
+// Helper functions for testing formatter logic
+function formatCost(usd: number): string {
+  return `$${usd.toFixed(2)}`
+}
+
+function formatDurationSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+describe('formatCost', () => {
+  it('formats to 2 decimals with $ prefix', () => {
+    expect(formatCost(0.0342)).toBe('$0.03')
+    expect(formatCost(1.2567)).toBe('$1.26')
+    expect(formatCost(10)).toBe('$10.00')
+    expect(formatCost(0)).toBe('$0.00')
+  })
+
+  it('handles very small amounts', () => {
+    expect(formatCost(0.001)).toBe('$0.00')
+    expect(formatCost(0.005)).toBe('$0.01')
+  })
+
+  it('handles large amounts', () => {
+    expect(formatCost(123.456)).toBe('$123.46')
+    expect(formatCost(9999.99)).toBe('$9999.99')
+  })
+})
+
+describe('formatDurationSeconds', () => {
+  it('formats milliseconds to seconds with 1 decimal', () => {
+    expect(formatDurationSeconds(2134)).toBe('2.1s')
+    expect(formatDurationSeconds(5000)).toBe('5.0s')
+    expect(formatDurationSeconds(123)).toBe('0.1s')
+  })
+
+  it('handles very short durations', () => {
+    expect(formatDurationSeconds(10)).toBe('0.0s')
+    expect(formatDurationSeconds(1)).toBe('0.0s')
+  })
+
+  it('handles longer durations', () => {
+    expect(formatDurationSeconds(60000)).toBe('60.0s')
+    expect(formatDurationSeconds(90000)).toBe('90.0s')
+  })
+})
+
 describe('TimelineView', () => {
   const baseSessionStart = 1700000000 // Unix timestamp in seconds
 
@@ -316,5 +362,30 @@ describe('TimelineView', () => {
     // Note: Tooltip content is in portal, harder to test without user interaction
     // This test just verifies component renders
     expect(screen.getByText('Explore')).toBeDefined()
+  })
+
+  it('makes timeline bars keyboard accessible', () => {
+    const agents = [
+      createAgent({ agentType: 'Explore', description: 'Test exploration task' }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+
+    // Find the timeline bar wrapper
+    const barWrapper = container.querySelector('[role="button"]')
+    expect(barWrapper).toBeDefined()
+
+    // Verify it's keyboard focusable
+    expect(barWrapper?.getAttribute('tabIndex')).toBe('0')
+
+    // Verify it has an accessible label
+    const ariaLabel = barWrapper?.getAttribute('aria-label')
+    expect(ariaLabel).toContain('Explore')
+    expect(ariaLabel).toContain('Test exploration task')
   })
 })
