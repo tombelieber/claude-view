@@ -1,14 +1,16 @@
 import { useCallback } from 'react'
-import { Grid3x3, Maximize2, Minimize2, RotateCcw } from 'lucide-react'
+import { Grid3x3, ListTree, Maximize2, MessageSquare, Minimize2, RotateCcw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 interface GridControlsProps {
   gridOverride: { cols: number; rows: number } | null
   compactHeaders: boolean
+  verboseMode: boolean
   sessionCount: number
   visibleCount: number
   onGridOverrideChange: (override: { cols: number; rows: number } | null) => void
   onCompactHeadersChange: (compact: boolean) => void
+  onVerboseModeChange: () => void
 }
 
 /**
@@ -23,10 +25,12 @@ interface GridControlsProps {
 export function GridControls({
   gridOverride,
   compactHeaders,
+  verboseMode,
   sessionCount,
   visibleCount,
   onGridOverrideChange,
   onCompactHeadersChange,
+  onVerboseModeChange,
 }: GridControlsProps) {
   const isAutoMode = gridOverride === null
 
@@ -159,6 +163,30 @@ export function GridControls({
           <Maximize2 className="h-3 w-3" />
         )}
         Compact
+      </button>
+
+      {/* Separator */}
+      <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+
+      {/* Verbose toggle */}
+      <button
+        type="button"
+        onClick={onVerboseModeChange}
+        className={cn(
+          'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
+          verboseMode
+            ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 border border-transparent'
+        )}
+        aria-pressed={verboseMode}
+        title={verboseMode ? 'Showing all messages (tool calls, thinking, etc.)' : 'Showing chat only (user + assistant)'}
+      >
+        {verboseMode ? (
+          <ListTree className="h-3 w-3" />
+        ) : (
+          <MessageSquare className="h-3 w-3" />
+        )}
+        {verboseMode ? 'Verbose' : 'Chat'}
       </button>
 
       {/* Spacer */}
