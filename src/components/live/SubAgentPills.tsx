@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
@@ -14,10 +15,10 @@ interface SubAgentPillsProps {
  * Layout example: [E ⟳] [C ⟳] [S done]    3 agents (2 active)
  */
 export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
-  // Call hooks before early return
+  // Derive computed values before early return
   const activeCount = subAgents.filter(a => a.status === 'running').length
   const displayAgents = subAgents.slice(0, 3)
-  const hasMore = subAgents.length > 4
+  const hasMore = subAgents.length > 3
 
   // Early return if no sub-agents
   if (subAgents.length === 0) {
@@ -29,18 +30,23 @@ export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
     ? `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (${activeCount} active)`
     : `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (all done)`
 
+  // Memoized keyboard handler for performance in list rendering
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault()
+      onExpand()
+    }
+  }, [onExpand])
+
   return (
     <div
-      className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 px-2 py-1 rounded transition-colors"
+      className={`flex items-center gap-2 px-2 py-1 rounded transition-colors ${
+        onExpand ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50' : ''
+      }`}
       onClick={onExpand}
       role={onExpand ? 'button' : undefined}
       tabIndex={onExpand ? 0 : undefined}
-      onKeyDown={(e) => {
-        if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault()
-          onExpand()
-        }
-      }}
+      onKeyDown={handleKeyDown}
     >
       {/* Pills container */}
       <div className="flex items-center gap-1.5">
