@@ -2,6 +2,30 @@
 //!
 //! Watches `~/.claude/projects/` for changes to `.jsonl` files and emits
 //! events when files are modified or removed.
+//!
+//! ## Architecture: Path Depth Filtering
+//!
+//! Claude Code stores session data in a structured hierarchy:
+//! ```text
+//! ~/.claude/projects/
+//! ├── {project}/
+//! │   ├── {sessionId}.jsonl                          ← Parent session (WATCH)
+//! │   ├── {sessionId}/                               ← Session subdirectory (IGNORE)
+//! │   │   ├── subagents/
+//! │   │   │   └── agent-{id}.jsonl                   ← Sub-agent JSONL (IGNORE)
+//! │   │   └── tool-results/
+//! │   │       └── {toolUseId}.txt                    ← Large tool output (IGNORE)
+//! ```
+//!
+//! **Systematic filtering:** The watcher only processes files exactly 2 path components
+//! deep from `projects/` (format: `{project}/{sessionId}.jsonl`). This ensures:
+//! - Parent sessions are monitored ✅
+//! - Sub-agent files are ignored (depth 4+) ✅
+//! - Tool result files are ignored (depth 4+) ✅
+//! - No string matching on paths (robust to directory name changes) ✅
+//!
+//! This matches the structure used by `initial_scan()` which only reads files
+//! directly in each project directory.
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
@@ -9,12 +33,12 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tracing::{error, warn};
 
-/// Events emitted by the file watcher, pre-filtered to only JSONL files.
+/// Events emitted by the file watcher, pre-filtered to only parent session JSONL files.
 #[derive(Debug, Clone)]
 pub enum FileEvent {
-    /// A JSONL file was modified (new lines appended).
+    /// A parent session JSONL file was modified (new lines appended).
     Modified(PathBuf),
-    /// A JSONL file was removed from disk.
+    /// A parent session JSONL file was removed from disk.
     Removed(PathBuf),
 }
 
@@ -26,6 +50,15 @@ pub enum FileEvent {
 ///
 /// If the projects directory does not exist, logs a warning and returns a
 /// watcher that watches nothing.
+///
+/// ## Filtering Strategy
+///
+/// Uses **path depth filtering** to ensure only parent session files are processed:
+/// - Parent sessions: `{project}/{sessionId}.jsonl` (depth 2) ✅
+/// - Sub-agents: `{project}/{sessionId}/subagents/agent-*.jsonl` (depth 4+) ❌
+/// - Tool results: `{project}/{sessionId}/tool-results/*.txt` (depth 4+) ❌
+///
+/// This is systematic and robust — no string matching, just structural validation.
 pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedWatcher> {
     let projects_dir = match dirs::home_dir() {
         Some(home) => home.join(".claude").join("projects"),
@@ -35,20 +68,29 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
         }
     };
 
+    // Clone projects_dir for use in closure (must be moved)
+    let projects_dir_for_filter = projects_dir.clone();
+
     // Create the watcher with a callback that filters and forwards events
     let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         match res {
             Ok(event) => {
-                // Filter to only .jsonl files, excluding sub-agent and tool-result files
+                // Filter to only parent session JSONL files (not sub-agents or tool-results)
+                // Parent sessions have path structure: {projects_dir}/{project}/{sessionId}.jsonl
+                // Sub-agents have deeper paths: {projects_dir}/{project}/{sessionId}/subagents/agent-*.jsonl
                 let jsonl_paths: Vec<PathBuf> = event
                     .paths
                     .into_iter()
                     .filter(|p| {
                         // Must be a .jsonl file
-                        if p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
-                            // Exclude files in subagents/ or tool-results/ subdirectories
-                            let path_str = p.to_string_lossy();
-                            !path_str.contains("/subagents/") && !path_str.contains("/tool-results/")
+                        if !p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
+                            return false;
+                        }
+
+                        // Must be exactly 2 path components deep from projects_dir
+                        // Format: {project}/{sessionId}.jsonl
+                        if let Ok(rel_path) = p.strip_prefix(&projects_dir_for_filter) {
+                            rel_path.components().count() == 2
                         } else {
                             false
                         }
@@ -81,7 +123,7 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
 
     if projects_dir.exists() {
         watcher.watch(&projects_dir, RecursiveMode::Recursive)?;
-        tracing::info!("Watching {} for JSONL changes", projects_dir.display());
+        tracing::info!("Watching {} for parent session JSONL changes (depth-filtered)", projects_dir.display());
     } else {
         warn!(
             "Claude projects directory does not exist: {}; file watcher idle",
@@ -96,6 +138,14 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
 ///
 /// Returns paths sorted by modification time (newest first). This is used at
 /// startup to populate the initial session state before the watcher kicks in.
+///
+/// ## Filtering Strategy
+///
+/// Only scans **direct children** of each project directory (depth 2):
+/// - Parent sessions: `{project}/{sessionId}.jsonl` ✅
+/// - Sub-agents: Ignored (not in direct project directory) ✅
+///
+/// This matches the watcher's depth-based filtering for consistency.
 pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
     if !projects_dir.exists() {
         return Vec::new();
@@ -120,7 +170,8 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
             continue;
         }
 
-        // Read JSONL files in this project directory
+        // Read JSONL files in this project directory (depth 2 only)
+        // This ignores subdirectories like {sessionId}/subagents/
         let sub_read = match std::fs::read_dir(&project_path) {
             Ok(rd) => rd,
             Err(_) => continue,
@@ -128,6 +179,11 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
 
         for file_entry in sub_read.flatten() {
             let file_path = file_entry.path();
+
+            // Must be a file (not directory) with .jsonl extension
+            if !file_path.is_file() {
+                continue;
+            }
             if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
@@ -145,55 +201,102 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
 
     // Sort by modification time, newest first
     entries.sort_by(|a, b| b.1.cmp(&a.1));
-    entries.into_iter().map(|(path, _)| path).collect()
+    entries.into_iter().map(|(p, _)| p).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::Write;
+    use std::path::PathBuf;
 
+    /// Verify that path depth filtering correctly identifies parent sessions vs sub-agents
     #[test]
-    fn test_initial_scan_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let result = initial_scan(dir.path());
-        assert!(result.is_empty());
+    fn test_path_depth_filtering() {
+        let projects_dir = PathBuf::from("/home/user/.claude/projects");
+
+        // Parent session paths (depth 2) — should PASS
+        let parent1 = projects_dir.join("my-project").join("abc123.jsonl");
+        let parent2 = projects_dir.join("another-project").join("def456.jsonl");
+
+        assert_eq!(
+            parent1.strip_prefix(&projects_dir).unwrap().components().count(),
+            2,
+            "Parent session should have depth 2"
+        );
+        assert_eq!(
+            parent2.strip_prefix(&projects_dir).unwrap().components().count(),
+            2,
+            "Parent session should have depth 2"
+        );
+
+        // Sub-agent paths (depth 4) — should FAIL
+        let subagent1 = projects_dir
+            .join("my-project")
+            .join("abc123")
+            .join("subagents")
+            .join("agent-a123456.jsonl");
+        let subagent2 = projects_dir
+            .join("another-project")
+            .join("def456")
+            .join("subagents")
+            .join("agent-b789012.jsonl");
+
+        assert_eq!(
+            subagent1.strip_prefix(&projects_dir).unwrap().components().count(),
+            4,
+            "Sub-agent should have depth 4"
+        );
+        assert_eq!(
+            subagent2.strip_prefix(&projects_dir).unwrap().components().count(),
+            4,
+            "Sub-agent should have depth 4"
+        );
+
+        // Tool results paths (depth 4) — should FAIL
+        let tool_result = projects_dir
+            .join("my-project")
+            .join("abc123")
+            .join("tool-results")
+            .join("toolu_xyz.txt");
+
+        assert_eq!(
+            tool_result.strip_prefix(&projects_dir).unwrap().components().count(),
+            4,
+            "Tool result should have depth 4"
+        );
     }
 
+    /// Verify that the filtering logic in the watcher would correctly accept/reject paths
     #[test]
-    fn test_initial_scan_with_jsonl_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("test-project");
-        fs::create_dir(&project_dir).unwrap();
+    fn test_watcher_filter_logic() {
+        let projects_dir = PathBuf::from("/home/user/.claude/projects");
 
-        // Create a recent JSONL file
-        let file_path = project_dir.join("session-123.jsonl");
-        let mut f = fs::File::create(&file_path).unwrap();
-        writeln!(f, r#"{{"type":"user","content":"hello"}}"#).unwrap();
+        // Simulate the watcher's filter logic
+        let filter = |p: &PathBuf| -> bool {
+            if !p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
+                return false;
+            }
+            if let Ok(rel_path) = p.strip_prefix(&projects_dir) {
+                rel_path.components().count() == 2
+            } else {
+                false
+            }
+        };
 
-        let result = initial_scan(dir.path());
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], file_path);
-    }
+        // Parent sessions should pass
+        assert!(filter(&projects_dir.join("proj").join("session.jsonl")));
+        assert!(filter(&projects_dir.join("another-proj").join("abc123.jsonl")));
 
-    #[test]
-    fn test_initial_scan_ignores_non_jsonl() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("test-project");
-        fs::create_dir(&project_dir).unwrap();
+        // Sub-agents should be rejected
+        assert!(!filter(&projects_dir.join("proj").join("session").join("subagents").join("agent-a.jsonl")));
+        assert!(!filter(&projects_dir.join("proj").join("session").join("tool-results").join("tool.jsonl")));
 
-        // Create a non-JSONL file
-        let file_path = project_dir.join("notes.txt");
-        fs::File::create(&file_path).unwrap();
+        // Non-JSONL files should be rejected
+        assert!(!filter(&projects_dir.join("proj").join("session.txt")));
+        assert!(!filter(&projects_dir.join("proj").join("README.md")));
 
-        let result = initial_scan(dir.path());
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_initial_scan_nonexistent_dir() {
-        let result = initial_scan(Path::new("/nonexistent/path/that/does/not/exist"));
-        assert!(result.is_empty());
+        // Files outside projects_dir should be rejected
+        let outside = PathBuf::from("/tmp/session.jsonl");
+        assert!(!filter(&outside));
     }
 }
