@@ -23,6 +23,7 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   isStalled?: boolean
   agentStateGroup?: 'needs_you' | 'autonomous'
   spinnerVerb?: string
+  lastActivityAt?: number
 }
 
 interface HistoricalSpinnerProps extends BaseSpinnerProps {
@@ -77,6 +78,14 @@ export function SessionSpinner(props: SessionSpinnerProps) {
     return () => cancelAnimationFrame(rafId)
   }, [mode, agentStateGroup, prefersReducedMotion])
 
+  // Countdown tick for needs_you wait-time display (1s resolution)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (agentStateGroup !== 'needs_you') return
+    const interval = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(interval)
+  }, [agentStateGroup])
+
   // ---------------------------------------------------------------------------
   // Historical mode
   // ---------------------------------------------------------------------------
@@ -110,12 +119,30 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
   const shortModel = formatModelShort(model)
 
-  // needs_you -> amber dot + "Awaiting input"
+  // needs_you -> amber dot + "Awaiting input" + wait time with cache-colored text
   if (agentStateGroup === 'needs_you') {
+    const CACHE_TTL = 300
+    const lastActivity = (props as LiveSpinnerProps).lastActivityAt ?? 0
+    const elapsed = lastActivity > 0 ? Math.floor(Date.now() / 1000) - lastActivity : CACHE_TTL
+    const remaining = Math.max(0, CACHE_TTL - elapsed)
+
+    const countdownText = remaining > 0
+      ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+      : 'cache cold'
+
+    const countdownColor = remaining <= 0
+      ? 'text-gray-400'
+      : remaining < 60
+        ? 'text-red-500'
+        : remaining < 180
+          ? 'text-amber-500'
+          : 'text-green-500'
+
     return (
       <span className="flex items-center gap-1.5 text-xs">
         <span className="w-3 text-center inline-block text-amber-500">●</span>
         <span className="text-muted-foreground">Awaiting input</span>
+        <span className={`font-mono tabular-nums ${countdownColor}`}>· {countdownText}</span>
       </span>
     )
   }
