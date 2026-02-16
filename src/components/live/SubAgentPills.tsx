@@ -20,6 +20,15 @@ export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
   const displayAgents = subAgents.slice(0, 3)
   const hasMore = subAgents.length > 3
 
+  // Memoized keyboard handler for performance in list rendering
+  // MUST be called before early return to satisfy Rules of Hooks
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault()
+      onExpand()
+    }
+  }, [onExpand])
+
   // Early return if no sub-agents
   if (subAgents.length === 0) {
     return null
@@ -29,14 +38,6 @@ export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
   const summaryText = activeCount > 0
     ? `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (${activeCount} active)`
     : `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (all done)`
-
-  // Memoized keyboard handler for performance in list rendering
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault()
-      onExpand()
-    }
-  }, [onExpand])
 
   return (
     <div
