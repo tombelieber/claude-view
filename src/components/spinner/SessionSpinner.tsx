@@ -53,6 +53,7 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // Determine live-mode specifics via discriminant narrowing (no `as` casts)
   const agentStateGroup = props.mode === 'live' ? props.agentStateGroup ?? 'autonomous' : 'autonomous'
   const isStalled = props.mode === 'live' ? props.isStalled ?? false : false
+  const lastActivityAt = props.mode === 'live' ? props.lastActivityAt ?? 0 : 0
 
   // ---------------------------------------------------------------------------
   // RAF animation — only runs in live + autonomous mode
@@ -122,7 +123,7 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // needs_you -> amber dot + "Awaiting input" + wait time with cache-colored text
   if (agentStateGroup === 'needs_you') {
     const CACHE_TTL = 300
-    const lastActivity = (props as LiveSpinnerProps).lastActivityAt ?? 0
+    const lastActivity = lastActivityAt
     const elapsed = lastActivity > 0 ? Math.floor(Date.now() / 1000) - lastActivity : CACHE_TTL
     const remaining = Math.max(0, CACHE_TTL - elapsed)
 
