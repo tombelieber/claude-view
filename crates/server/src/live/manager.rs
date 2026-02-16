@@ -65,6 +65,10 @@ struct SessionAccumulator {
     recent_messages: VecDeque<MessageSummary>,
     /// Previous status for transition detection.
     last_status: Option<SessionStatus>,
+    /// Unix timestamp when the current user turn started (real prompt, not meta/tool-result/system).
+    current_turn_started_at: Option<i64>,
+    /// Seconds the agent spent on the last completed turn (Working->Paused).
+    last_turn_task_seconds: Option<u32>,
 }
 
 impl SessionAccumulator {
@@ -91,6 +95,8 @@ impl SessionAccumulator {
             },
             recent_messages: VecDeque::new(),
             last_status: None,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
         }
     }
 }
@@ -332,6 +338,7 @@ impl LiveSessionManager {
                                 // JSONL-based classification (sync, no .await)
                                 manager.handle_status_change(
                                     session_id, new_status.clone(), acc, running, seconds_since,
+                                    session.last_activity_at,
                                 );
 
                                 // Collect: (session_id, new_status, pid, jsonl_derived_state)
@@ -614,6 +621,19 @@ impl LiveSessionManager {
                 }
             }
 
+            // Track current turn start time when a real user prompt is detected.
+            // Filter out meta messages, tool result continuations, and system-prefixed
+            // messages — those are not genuine user prompts that start a new turn.
+            if line.line_type == LineType::User
+                && !line.is_meta
+                && !line.is_tool_result_continuation
+                && !line.has_system_prefix
+            {
+                if let Some(ref ts) = line.timestamp {
+                    acc.current_turn_started_at = parse_timestamp_to_unix(ts);
+                }
+            }
+
             // Track session start time from first timestamp
             if acc.started_at.is_none() {
                 if let Some(ref ts) = line.timestamp {
@@ -654,7 +674,7 @@ impl LiveSessionManager {
         let status = derive_status(acc.last_line.as_ref(), seconds_since, running);
 
         // Detect transitions and trigger classification
-        self.handle_status_change(&session_id, status.clone(), acc, running, seconds_since);
+        self.handle_status_change(&session_id, status.clone(), acc, running, seconds_since, last_activity_at);
 
         // Derive activity
         let tool_names = acc
@@ -710,6 +730,8 @@ impl LiveSessionManager {
             context_window_tokens: acc.context_window_tokens,
             cost,
             cache_status,
+            current_turn_started_at: acc.current_turn_started_at,
+            last_turn_task_seconds: acc.last_turn_task_seconds,
         };
 
         // Drop the accumulators lock before acquiring sessions lock
@@ -743,6 +765,7 @@ impl LiveSessionManager {
         acc: &mut SessionAccumulator,
         has_running_process: bool,
         seconds_since_modified: u64,
+        last_activity_at: i64,
     ) {
         let old_status = acc.last_status.clone();
 
@@ -793,10 +816,20 @@ impl LiveSessionManager {
                     acc.agent_state = pause_classification_to_agent_state(&c);
                 }
             }
+
+            // Compute last_turn_task_seconds: how long the agent worked on this turn.
+            // last_activity_at is when the JSONL file was last written (agent's last action).
+            // current_turn_started_at is when the user prompt that started this turn was sent.
+            if let Some(turn_start) = acc.current_turn_started_at {
+                let elapsed = (last_activity_at - turn_start).max(0) as u32;
+                acc.last_turn_task_seconds = Some(elapsed);
+            }
         }
 
-        // -> Working: set autonomous state
+        // -> Working: set autonomous state and reset turn tracking
         if new_status == SessionStatus::Working {
+            // Clear last_turn_task_seconds — agent is active again, no frozen time to show.
+            acc.last_turn_task_seconds = None;
             acc.agent_state = AgentState {
                 group: AgentStateGroup::Autonomous,
                 state: "acting".into(),
