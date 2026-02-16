@@ -7,10 +7,8 @@ import {
 import type { LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
-import { CacheCountdownRing } from './CacheCountdownRing'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
-import { cn } from '../../lib/utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
@@ -52,14 +50,8 @@ interface SessionCardProps {
   currentTime: number
 }
 
-const GROUP_CONFIG = {
-  needs_you: { color: 'bg-amber-500', label: 'Needs You', pulse: false },
-  autonomous: { color: 'bg-green-500', label: 'Running', pulse: true },
-} as const
-
 export function SessionCard({ session, stalledSessions, currentTime }: SessionCardProps) {
   const [searchParams] = useSearchParams()
-  const statusConfig = GROUP_CONFIG[session.agentState.group] || GROUP_CONFIG.autonomous
   const elapsedSeconds = currentTime - (session.startedAt ?? currentTime)
 
   // Title: first user message (cleaned) > project display name > project id
@@ -75,19 +67,8 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
       to={buildSessionUrl(session.id, searchParams)}
       className="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 transition-colors"
     >
-      {/* Header: status dot + badges + cost */}
+      {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
-        <span
-          className={cn(
-            'inline-block h-2.5 w-2.5 rounded-full flex-shrink-0',
-            statusConfig.color,
-            statusConfig.pulse && 'animate-pulse'
-          )}
-          title={statusConfig.label}
-        />
-        {session.agentState.group === 'needs_you' && (
-          <CacheCountdownRing lastActivityAt={session.lastActivityAt} />
-        )}
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           <span
             className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
@@ -135,6 +116,7 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
           isStalled={stalledSessions?.has(session.id)}
           agentStateGroup={session.agentState.group}
           spinnerVerb={pickVerb(session.id)}
+          lastActivityAt={session.lastActivityAt}
         />
       </div>
 
