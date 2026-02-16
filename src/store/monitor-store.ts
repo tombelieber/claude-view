@@ -11,7 +11,7 @@ interface MonitorState {
   expandedPaneId: string | null
   pinnedPaneIds: Set<string>
   hiddenPaneIds: Set<string>
-  paneMode: Record<string, 'raw' | 'rich'> // per-pane mode override
+  verboseMode: boolean
 
   // Actions
   setGridOverride: (override: { cols: number; rows: number } | null) => void
@@ -22,7 +22,7 @@ interface MonitorState {
   unpinPane: (id: string) => void
   hidePane: (id: string) => void
   showPane: (id: string) => void
-  setPaneMode: (id: string, mode: 'raw' | 'rich') => void
+  toggleVerbose: () => void
 }
 
 export const useMonitorStore = create<MonitorState>()(
@@ -34,7 +34,7 @@ export const useMonitorStore = create<MonitorState>()(
       expandedPaneId: null,
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
-      paneMode: {},
+      verboseMode: false,
 
       setGridOverride: (override) => set({ gridOverride: override }),
       setCompactHeaders: (compact) => set({ compactHeaders: compact }),
@@ -66,9 +66,7 @@ export const useMonitorStore = create<MonitorState>()(
         return { hiddenPaneIds: next }
       }),
 
-      setPaneMode: (id, mode) => set((state) => ({
-        paneMode: { ...state.paneMode, [id]: mode },
-      })),
+      toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
     }),
     {
       name: 'claude-view:monitor-grid-prefs',
@@ -77,7 +75,7 @@ export const useMonitorStore = create<MonitorState>()(
         compactHeaders: state.compactHeaders,
         pinnedPaneIds: state.pinnedPaneIds,
         hiddenPaneIds: state.hiddenPaneIds,
-        paneMode: state.paneMode,
+        verboseMode: state.verboseMode,
       }),
       storage: {
         getItem: (name: string): StorageValue<Partial<MonitorState>> | null => {
