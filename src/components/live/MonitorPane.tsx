@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
+import { CacheCountdownRing } from './CacheCountdownRing'
 import { cn } from '../../lib/utils'
 
 // --- Helpers ---
@@ -215,6 +216,11 @@ function FullHeader({
         title={session.agentState.label}
       />
 
+      {/* Cache countdown ring (needs_you only) */}
+      {session.agentState.group === 'needs_you' && (
+        <CacheCountdownRing lastActivityAt={session.lastActivityAt} />
+      )}
+
       {/* Project name */}
       <span
         className="text-xs font-medium text-gray-200 truncate max-w-[20ch]"
@@ -327,6 +333,11 @@ function CompactHeader({
           session.agentState.group === 'autonomous' && 'animate-pulse'
         )}
       />
+
+      {/* Cache countdown ring (needs_you only) */}
+      {session.agentState.group === 'needs_you' && (
+        <CacheCountdownRing lastActivityAt={session.lastActivityAt} size={14} />
+      )}
 
       {/* Project name (shorter truncation) */}
       <span className="text-[10px] font-medium text-gray-300 truncate max-w-[14ch]">

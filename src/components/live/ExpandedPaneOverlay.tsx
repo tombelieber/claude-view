@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
+import { CacheCountdownRing } from './CacheCountdownRing'
 import { cn } from '../../lib/utils'
 
 // --- Helpers (shared logic with MonitorPane) ---
@@ -136,6 +137,11 @@ export function ExpandedPaneOverlay({
             )}
             title={session.agentState.label}
           />
+
+          {/* Cache countdown ring (needs_you only) */}
+          {session.agentState.group === 'needs_you' && (
+            <CacheCountdownRing lastActivityAt={session.lastActivityAt} size={18} />
+          )}
 
           {/* Project name */}
           <span
