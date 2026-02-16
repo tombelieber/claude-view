@@ -69,7 +69,6 @@ function GroupIcon({ group, className }: { group: AgentStateGroup; className?: s
 
 export interface ExpandedPaneOverlayProps {
   session: LiveSession
-  mode: 'raw' | 'rich'
   onClose: () => void
   children: ReactNode
 }
@@ -78,7 +77,6 @@ export interface ExpandedPaneOverlayProps {
 
 export function ExpandedPaneOverlay({
   session,
-  mode,
   onClose,
   children,
 }: ExpandedPaneOverlayProps) {
@@ -175,11 +173,6 @@ export function ExpandedPaneOverlay({
 
           {/* Status icon */}
           <GroupIcon group={session.agentState.group} className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-
-          {/* Mode label */}
-          <span className="text-[10px] text-gray-600 flex-shrink-0 uppercase tracking-wide">
-            {mode}
-          </span>
 
           {/* Divider */}
           <div className="w-px h-4 bg-gray-700" />
