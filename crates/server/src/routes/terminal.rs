@@ -890,6 +890,8 @@ mod tests {
                 context_window_tokens: 0,
                 cost: CostBreakdown::default(),
                 cache_status: CacheStatus::Unknown,
+                current_turn_started_at: None,
+                last_turn_task_seconds: None,
             };
             map.insert(session_id.to_string(), session);
         }

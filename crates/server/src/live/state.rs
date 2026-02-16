@@ -103,6 +103,12 @@ pub struct LiveSession {
     pub cost: CostBreakdown,
     /// Whether the Anthropic prompt cache is likely warm or cold.
     pub cache_status: CacheStatus,
+    /// Unix timestamp when the current user turn started (real prompt detected).
+    /// Used by frontend to compute live elapsed time for autonomous sessions.
+    pub current_turn_started_at: Option<i64>,
+    /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
+    /// Used by frontend to show task time for needs_you sessions.
+    pub last_turn_task_seconds: Option<u32>,
 }
 
 /// Events broadcast over the SSE channel to connected Mission Control clients.
