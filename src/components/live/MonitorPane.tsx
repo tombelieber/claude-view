@@ -6,8 +6,6 @@ import {
   Maximize2,
   X,
   Pin,
-  Terminal,
-  MessageSquare,
   GitBranch,
   Bell,
 } from 'lucide-react'
@@ -81,12 +79,10 @@ export interface MonitorPaneProps {
   isSelected: boolean
   isExpanded: boolean
   isPinned: boolean
-  mode: 'raw' | 'rich'
   compactHeader: boolean
   isVisible: boolean
   onSelect: () => void
   onExpand: () => void
-  onModeToggle: () => void
   onPin: () => void
   onHide: () => void
   onContextMenu: (e: React.MouseEvent) => void
@@ -100,12 +96,10 @@ export function MonitorPane({
   isSelected,
   isExpanded,
   isPinned,
-  mode,
   compactHeader,
   isVisible,
   onSelect,
   onExpand,
-  onModeToggle,
   onPin,
   onHide,
   onContextMenu,
@@ -165,9 +159,7 @@ export function MonitorPane({
           cost={cost}
           ctxPct={ctxPct}
           isPinned={isPinned}
-          mode={mode}
           onExpand={onExpand}
-          onModeToggle={onModeToggle}
           onPin={onPin}
           onHide={onHide}
           onClick={handleHeaderClick}
@@ -198,9 +190,7 @@ function FullHeader({
   cost,
   ctxPct,
   isPinned,
-  mode,
   onExpand,
-  onModeToggle,
   onPin,
   onHide,
   onClick,
@@ -210,9 +200,7 @@ function FullHeader({
   cost: string
   ctxPct: number
   isPinned: boolean
-  mode: 'raw' | 'rich'
   onExpand: () => void
-  onModeToggle: () => void
   onPin: () => void
   onHide: () => void
   onClick: (e: React.MouseEvent) => void
@@ -273,21 +261,6 @@ function FullHeader({
       )}
 
       {/* Action buttons */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onModeToggle()
-        }}
-        className="p-0.5 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
-        title={mode === 'raw' ? 'Switch to rich view' : 'Switch to raw view'}
-      >
-        {mode === 'raw' ? (
-          <MessageSquare className="w-3 h-3" />
-        ) : (
-          <Terminal className="w-3 h-3" />
-        )}
-      </button>
-
       <button
         onClick={(e) => {
           e.stopPropagation()

@@ -53,7 +53,7 @@ function RichTerminalPane({ sessionId, isVisible, verboseMode }: { sessionId: st
 /**
  * MonitorView — orchestrates the full Monitor Mode experience.
  *
- * Wires together: MonitorGrid, GridControls, MonitorPane, TerminalPane/RichPane,
+ * Wires together: MonitorGrid, GridControls, MonitorPane, RichPane,
  * ExpandedPaneOverlay, PaneContextMenu, keyboard shortcuts, and auto-fill.
  */
 export function MonitorView({ sessions }: MonitorViewProps) {
@@ -195,10 +195,12 @@ export function MonitorView({ sessions }: MonitorViewProps) {
       <GridControls
         gridOverride={gridOverride}
         compactHeaders={compactHeaders}
+        verboseMode={verboseMode}
         sessionCount={sessions.length}
         visibleCount={visibleSessions.length}
         onGridOverrideChange={setGridOverride}
         onCompactHeadersChange={setCompactHeaders}
+        onVerboseModeChange={toggleVerbose}
       />
 
       {/* Monitor grid */}
@@ -210,13 +212,12 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           onVisibilityChange={setVisiblePanes}
         >
           {visibleSessions.map((session) => {
-            const mode = paneMode[session.id] || 'rich'
             const isPinned = pinnedPaneIds.has(session.id)
             const isFaded = fadedPanes.has(session.id)
             // Default to visible when observer hasn't fired yet (size === 0) since we've
             // already limited the number of panes to gridCapacity above.
             // When a pane is expanded in the overlay, disconnect the grid pane's WebSocket
-            // to avoid doubling connections (overlay creates its own TerminalPane).
+            // to avoid doubling connections (overlay creates its own RichTerminalPane).
             const isPaneVisible =
               expandedPaneId !== session.id &&
               (visiblePanes.size === 0 || visiblePanes.has(session.id))
@@ -232,28 +233,19 @@ export function MonitorView({ sessions }: MonitorViewProps) {
                   isSelected={selectedPaneId === session.id}
                   isExpanded={false}
                   isPinned={isPinned}
-                  mode={mode}
                   compactHeader={compactHeaders}
                   isVisible={isPaneVisible}
                   onSelect={() => handleSelect(session.id)}
                   onExpand={() => handleExpand(session.id)}
-                  onModeToggle={() => handleModeToggle(session.id)}
                   onPin={() => handlePin(session.id)}
                   onHide={() => hidePane(session.id)}
                   onContextMenu={(e) => handleContextMenu(e, session.id)}
                 >
-                  {mode === 'raw' ? (
-                    <TerminalPane
-                      sessionId={session.id}
-                      mode="raw"
-                      isVisible={isPaneVisible}
-                    />
-                  ) : (
-                    <RichTerminalPane
-                      sessionId={session.id}
-                      isVisible={isPaneVisible}
-                    />
-                  )}
+                  <RichTerminalPane
+                    sessionId={session.id}
+                    isVisible={isPaneVisible}
+                    verboseMode={verboseMode}
+                  />
                 </MonitorPane>
               </div>
             )
@@ -265,21 +257,13 @@ export function MonitorView({ sessions }: MonitorViewProps) {
       {expandedSession && (
         <ExpandedPaneOverlay
           session={expandedSession}
-          mode={paneMode[expandedSession.id] || 'rich'}
           onClose={() => expandPane(null)}
         >
-          {(paneMode[expandedSession.id] || 'rich') === 'raw' ? (
-            <TerminalPane
-              sessionId={expandedSession.id}
-              mode="raw"
-              isVisible={true}
-            />
-          ) : (
-            <RichTerminalPane
-              sessionId={expandedSession.id}
-              isVisible={true}
-            />
-          )}
+          <RichTerminalPane
+            sessionId={expandedSession.id}
+            isVisible={true}
+            verboseMode={verboseMode}
+          />
         </ExpandedPaneOverlay>
       )}
 
@@ -290,7 +274,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           y={contextMenu.y}
           sessionId={contextMenu.sessionId}
           isPinned={pinnedPaneIds.has(contextMenu.sessionId)}
-          mode={paneMode[contextMenu.sessionId] || 'rich'}
           onClose={handleCloseContextMenu}
           onPin={() => {
             pinPane(contextMenu.sessionId)
@@ -312,10 +295,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           }}
           onExpand={() => {
             expandPane(contextMenu.sessionId)
-            handleCloseContextMenu()
-          }}
-          onToggleMode={() => {
-            handleModeToggle(contextMenu.sessionId)
             handleCloseContextMenu()
           }}
         />
