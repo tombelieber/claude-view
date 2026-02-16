@@ -10,7 +10,6 @@ interface StatusDotProps {
 const GROUP_COLORS: Record<AgentStateGroup, string> = {
   needs_you: 'bg-amber-500',
   autonomous: 'bg-green-500',
-  delivered: 'bg-blue-500',
 }
 
 const SIZE_CLASSES: Record<NonNullable<StatusDotProps['size']>, string> = {
