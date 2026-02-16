@@ -335,6 +335,8 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
       <Virtuoso
         ref={virtuosoRef}
         data={displayMessages}
+        initialTopMostItemIndex={displayMessages.length - 1}
+        alignToBottom
         followOutput={'smooth'}
         atBottomStateChange={handleAtBottomStateChange}
         atBottomThreshold={30}
