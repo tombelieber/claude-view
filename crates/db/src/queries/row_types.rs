@@ -183,6 +183,9 @@ pub async fn update_session_deep_fields_tx(
     primary_model: Option<&str>,
     last_message_at: Option<i64>,
     first_user_prompt: Option<&str>,
+    total_task_time_seconds: i32,
+    longest_task_seconds: Option<i32>,
+    longest_task_preview: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -238,7 +241,10 @@ pub async fn update_session_deep_fields_tx(
             git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
             primary_model = ?49,
             last_message_at = COALESCE(?50, last_message_at),
-            preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
+            preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
+            total_task_time_seconds = ?52,
+            longest_task_seconds = ?53,
+            longest_task_preview = ?54
         WHERE id = ?1
         "#,
     )
@@ -293,6 +299,9 @@ pub async fn update_session_deep_fields_tx(
     .bind(primary_model)
     .bind(last_message_at)
     .bind(first_user_prompt)
+    .bind(total_task_time_seconds)
+    .bind(longest_task_seconds)
+    .bind(longest_task_preview)
     .execute(&mut **tx)
     .await?;
 
