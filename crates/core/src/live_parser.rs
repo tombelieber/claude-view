@@ -34,6 +34,12 @@ pub struct LiveLine {
     pub git_branch: Option<String>,
     /// Whether this is a meta/system message (not real user content).
     pub is_meta: bool,
+    /// Whether this line's content array contains a `tool_result` block,
+    /// indicating it's a continuation after tool execution (not a new user turn).
+    pub is_tool_result_continuation: bool,
+    /// Whether this user-type line starts with a system-injected prefix
+    /// (e.g. `<local-command-caveat>`, `<task-notification>`, continuation markers).
+    pub has_system_prefix: bool,
 }
 
 /// Broad classification of a JSONL line.
@@ -178,6 +184,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 stop_reason: None,
                 git_branch: None,
                 is_meta: false,
+                is_tool_result_continuation: false,
+                has_system_prefix: false,
             };
         }
     };
@@ -200,7 +208,23 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names) = extract_content_and_tools(content_source, finders);
+    let (content_preview, tool_names, is_tool_result) =
+        extract_content_and_tools(content_source, finders);
+
+    // Detect system-injected prefixes in user-type lines.
+    // These are not real user prompts — they're tool result continuations,
+    // command outputs, or session continuation markers injected by Claude Code.
+    let has_system_prefix = if line_type == LineType::User {
+        let c = content_preview.trim_start();
+        c.starts_with("<local-command-caveat>")
+            || c.starts_with("<local-command-stdout>")
+            || c.starts_with("<command-name>/clear")
+            || c.starts_with("<command-name>/context")
+            || c.starts_with("This session is being continued")
+            || c.starts_with("<task-notification>")
+    } else {
+        false
+    };
 
     let model = if finders.model_key.find(raw).is_some() {
         parsed
@@ -268,16 +292,20 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         stop_reason,
         git_branch,
         is_meta,
+        is_tool_result_continuation: is_tool_result,
+        has_system_prefix,
     }
 }
 
-/// Extract content preview (truncated to 200 chars) and tool_use names.
+/// Extract content preview (truncated to 200 chars), tool_use names, and
+/// whether the content array contains a `tool_result` block.
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
     _finders: &TailFinders,
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, bool) {
     let mut preview = String::new();
     let mut tool_names = Vec::new();
+    let mut has_tool_result = false;
 
     match parsed.get("content") {
         Some(serde_json::Value::String(s)) => {
@@ -298,6 +326,9 @@ fn extract_content_and_tools(
                             tool_names.push(name.to_string());
                         }
                     }
+                    Some("tool_result") => {
+                        has_tool_result = true;
+                    }
                     _ => {}
                 }
             }
@@ -305,7 +336,7 @@ fn extract_content_and_tools(
         _ => {}
     }
 
-    (preview, tool_names)
+    (preview, tool_names, has_tool_result)
 }
 
 /// Extract token counts from a `usage` sub-object.
@@ -541,5 +572,332 @@ mod tests {
         // 200 chars + "..." = 203 chars
         assert_eq!(result.len(), 203);
         assert!(result.ends_with("..."));
+    }
+
+    // -------------------------------------------------------------------------
+    // Turn detection: is_tool_result_continuation
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_tool_result_continuation_true() {
+        // Content array with a tool_result block should set is_tool_result_continuation = true
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool_result.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"toolu_123","content":"file contents here"}}]}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].is_tool_result_continuation,
+            "Expected is_tool_result_continuation = true for content with tool_result block"
+        );
+    }
+
+    #[test]
+    fn test_tool_result_continuation_false_text_only() {
+        // Content array with only text blocks should NOT set is_tool_result_continuation
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("text_only.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Hello world"}}]}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            !lines[0].is_tool_result_continuation,
+            "Expected is_tool_result_continuation = false for text-only content"
+        );
+    }
+
+    #[test]
+    fn test_tool_result_continuation_false_text_and_tool_use() {
+        // Content array with text + tool_use (but no tool_result) should NOT set it
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("text_tool_use.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Let me check"}},{{"type":"tool_use","name":"bash","id":"123","input":{{}}}}]}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            !lines[0].is_tool_result_continuation,
+            "Expected is_tool_result_continuation = false for text + tool_use content"
+        );
+    }
+
+    #[test]
+    fn test_tool_result_continuation_false_string_content() {
+        // String content (not array) should NOT set is_tool_result_continuation
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("string_content.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Just a plain message"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            !lines[0].is_tool_result_continuation,
+            "Expected is_tool_result_continuation = false for string content"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Turn detection: has_system_prefix
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_system_prefix_local_command_caveat() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("caveat.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<local-command-caveat>some caveat text</local-command-caveat>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for <local-command-caveat>"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_local_command_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stdout.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<local-command-stdout>ls -la output</local-command-stdout>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for <local-command-stdout>"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_command_name_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clear.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<command-name>/clear</command-name>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for <command-name>/clear"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_command_name_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("context.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<command-name>/context add file.rs</command-name>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for <command-name>/context"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_session_continuation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("continuation.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"This session is being continued from a previous conversation."}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for session continuation marker"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_task_notification() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("task_notif.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<task-notification>Task completed</task-notification>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].has_system_prefix,
+            "Expected has_system_prefix = true for <task-notification>"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_false_normal_user_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("normal_user.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Fix the bug in auth.rs"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            !lines[0].has_system_prefix,
+            "Expected has_system_prefix = false for normal user message"
+        );
+    }
+
+    #[test]
+    fn test_system_prefix_false_for_assistant_messages() {
+        // has_system_prefix should only apply to User-type lines
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("assistant_with_prefix.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"<local-command-caveat>this text happens to start like a prefix"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            !lines[0].has_system_prefix,
+            "Expected has_system_prefix = false for assistant messages even with prefix-like content"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Turn detection: edge cases
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_turn_detection_empty_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty_content.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":""}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(!lines[0].is_tool_result_continuation);
+        assert!(!lines[0].has_system_prefix);
+    }
+
+    #[test]
+    fn test_turn_detection_missing_content_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no_content.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(!lines[0].is_tool_result_continuation);
+        assert!(!lines[0].has_system_prefix);
+        assert_eq!(lines[0].content_preview, "");
+    }
+
+    #[test]
+    fn test_turn_detection_empty_content_array() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty_array.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":[]}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(!lines[0].is_tool_result_continuation);
+        assert!(!lines[0].has_system_prefix);
     }
 }
