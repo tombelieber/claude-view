@@ -84,7 +84,7 @@ impl StateResolver {
 
     fn state_category(state: &str) -> StateCategory {
         match state {
-            "task_complete" | "session_ended" => StateCategory::Terminal,
+            "task_complete" | "session_ended" | "work_delivered" => StateCategory::Terminal,
             "awaiting_input" | "awaiting_approval" | "needs_permission" | "error" | "idle"
                 => StateCategory::Blocking,
             _ => StateCategory::Transient,

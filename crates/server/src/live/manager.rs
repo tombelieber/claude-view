@@ -774,8 +774,10 @@ impl LiveSessionManager {
                 //   (a) process is detected (between tool calls), OR
                 //   (b) JSONL file was active within 60s (process detection unreliable —
                 //       Claude Code runs as "node" not "claude" on many installs).
-                // Sessions with no process + no JSONL activity for >60s transition to
-                // Done via derive_status, so they never reach this MidWork check.
+                // Sessions with no process + no JSONL activity for >300s transition to
+                // Done via derive_status. Between 60-300s with no process, they may reach
+                // this MidWork check — the 60s threshold here is intentional (show NeedsYou
+                // after 60s of silence, but don't immediately classify as Done).
                 if c.reason == PauseReason::MidWork
                     && (has_running_process || seconds_since_modified <= 60)
                 {
