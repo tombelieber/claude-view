@@ -4,11 +4,13 @@ import {
   Loader2,
   Pause,
   Check,
+  Bell,
   Minimize2,
   X,
   GitBranch,
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
+import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
 
 // --- Helpers (shared logic with MonitorPane) ---
@@ -37,25 +39,26 @@ function contextColor(pct: number): string {
   return 'text-green-400'
 }
 
-function statusDotColor(status: LiveSession['status']): string {
-  switch (status) {
-    case 'working':
+function groupDotColor(group: AgentStateGroup): string {
+  switch (group) {
+    case 'autonomous':
       return 'bg-green-500'
-    case 'paused':
+    case 'needs_you':
       return 'bg-amber-500'
-    case 'done':
+    case 'delivered':
+      return 'bg-blue-500'
     default:
       return 'bg-zinc-500'
   }
 }
 
-function StatusIcon({ status, className }: { status: LiveSession['status']; className?: string }) {
-  switch (status) {
-    case 'working':
+function GroupIcon({ group, className }: { group: AgentStateGroup; className?: string }) {
+  switch (group) {
+    case 'autonomous':
       return <Loader2 className={cn('animate-spin', className)} />
-    case 'paused':
-      return <Pause className={className} />
-    case 'done':
+    case 'needs_you':
+      return <Bell className={className} />
+    case 'delivered':
       return <Check className={className} />
     default:
       return <Pause className={className} />
@@ -135,10 +138,10 @@ export function ExpandedPaneOverlay({
           <span
             className={cn(
               'inline-block h-2.5 w-2.5 rounded-full flex-shrink-0',
-              statusDotColor(session.status),
-              session.status === 'working' && 'animate-pulse'
+              groupDotColor(session.agentState.group),
+              session.agentState.group === 'autonomous' && 'animate-pulse'
             )}
-            title={session.status}
+            title={session.agentState.label}
           />
 
           {/* Project name */}
@@ -171,7 +174,7 @@ export function ExpandedPaneOverlay({
           </span>
 
           {/* Status icon */}
-          <StatusIcon status={session.status} className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <GroupIcon group={session.agentState.group} className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
 
           {/* Mode label */}
           <span className="text-[10px] text-gray-600 flex-shrink-0 uppercase tracking-wide">
