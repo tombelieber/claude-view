@@ -99,8 +99,8 @@ impl SessionAccumulator {
 fn pause_classification_to_agent_state(c: &PauseClassification) -> AgentState {
     let (group, state) = match c.reason {
         PauseReason::NeedsInput => (AgentStateGroup::NeedsYou, "awaiting_input"),
-        PauseReason::TaskComplete => (AgentStateGroup::Delivered, "task_complete"),
-        PauseReason::WorkDelivered => (AgentStateGroup::Delivered, "work_delivered"),
+        PauseReason::TaskComplete => (AgentStateGroup::NeedsYou, "task_complete"),
+        PauseReason::WorkDelivered => (AgentStateGroup::NeedsYou, "work_delivered"),
         PauseReason::MidWork => (AgentStateGroup::NeedsYou, "idle"),
         PauseReason::Error => (AgentStateGroup::NeedsYou, "error"),
     };
@@ -808,7 +808,7 @@ impl LiveSessionManager {
         // Track Done timestamp for cleanup + set delivered state
         if new_status == SessionStatus::Done && acc.completed_at.is_none() {
             acc.agent_state = AgentState {
-                group: AgentStateGroup::Delivered,
+                group: AgentStateGroup::NeedsYou,
                 state: "session_ended".into(),
                 label: "Session ended".into(),
                 confidence: 0.9,
