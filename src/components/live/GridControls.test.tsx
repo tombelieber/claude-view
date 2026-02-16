@@ -6,10 +6,12 @@ function renderGridControls(overrides: Partial<GridControlsProps> = {}) {
   const defaultProps: GridControlsProps = {
     gridOverride: { cols: 2, rows: 2 },
     compactHeaders: false,
+    verboseMode: false,
     sessionCount: 6,
     visibleCount: 6,
     onGridOverrideChange: vi.fn(),
     onCompactHeadersChange: vi.fn(),
+    onVerboseModeChange: vi.fn(),
   }
 
   const props = { ...defaultProps, ...overrides }
@@ -194,6 +196,44 @@ describe('GridControls', () => {
 
       const compactBtn = screen.getByText('Compact').closest('button')!
       expect(compactBtn.getAttribute('aria-pressed')).toBe('false')
+    })
+  })
+
+  describe('Verbose toggle', () => {
+    it('renders "Chat" label when verboseMode is off', () => {
+      renderGridControls({ verboseMode: false })
+
+      expect(screen.getByText('Chat')).toBeInTheDocument()
+    })
+
+    it('renders "Verbose" label when verboseMode is on', () => {
+      renderGridControls({ verboseMode: true })
+
+      expect(screen.getByText('Verbose')).toBeInTheDocument()
+    })
+
+    it('shows verbose button as active when verboseMode is true', () => {
+      renderGridControls({ verboseMode: true })
+
+      const verboseBtn = screen.getByText('Verbose').closest('button')!
+      expect(verboseBtn.getAttribute('aria-pressed')).toBe('true')
+    })
+
+    it('shows verbose button as inactive when verboseMode is false', () => {
+      renderGridControls({ verboseMode: false })
+
+      const verboseBtn = screen.getByText('Chat').closest('button')!
+      expect(verboseBtn.getAttribute('aria-pressed')).toBe('false')
+    })
+
+    it('calls onVerboseModeChange when clicked', () => {
+      const onVerboseModeChange = vi.fn()
+      renderGridControls({ verboseMode: false, onVerboseModeChange })
+
+      const chatBtn = screen.getByText('Chat')
+      fireEvent.click(chatBtn)
+
+      expect(onVerboseModeChange).toHaveBeenCalledOnce()
     })
   })
 })
