@@ -11,6 +11,7 @@ import {
 import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
+import { SubAgentPills } from './SubAgentPills'
 
 // --- Helpers ---
 
@@ -160,7 +161,7 @@ export function MonitorPane({
       </div>
 
       {/* Footer */}
-      <Footer session={session} />
+      <Footer session={session} onExpand={onExpand} />
     </div>
   )
 }
@@ -340,7 +341,7 @@ function CompactHeader({
 
 // --- Footer ---
 
-function Footer({ session }: { session: LiveSession }) {
+function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => void }) {
   const activity = session.currentActivity || session.lastUserMessage || ''
   const truncatedActivity = activity.length > 40 ? activity.slice(0, 37) + '...' : activity
 
@@ -356,10 +357,13 @@ function Footer({ session }: { session: LiveSession }) {
         Turn {session.turnCount}
       </span>
 
-      {/* Sub-agent placeholder (Phase D) */}
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-600 text-[9px] flex-shrink-0">
-        sub-agents
-      </span>
+      {/* Sub-agent pills */}
+      {session.subAgents && session.subAgents.length > 0 && (
+        <SubAgentPills
+          subAgents={session.subAgents}
+          onExpand={onExpand}
+        />
+      )}
     </div>
   )
 }
