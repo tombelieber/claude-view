@@ -7,6 +7,7 @@ import {
 import type { LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
+import { CacheCountdownRing } from './CacheCountdownRing'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { cn } from '../../lib/utils'
@@ -84,6 +85,9 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
           )}
           title={statusConfig.label}
         />
+        {session.agentState.group === 'needs_you' && (
+          <CacheCountdownRing lastActivityAt={session.lastActivityAt} />
+        )}
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           <span
             className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
