@@ -12,6 +12,7 @@ import { CostTooltip } from './CostTooltip'
 import { cn } from '../../lib/utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SessionSpinner, pickVerb } from '../spinner'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
@@ -46,18 +47,20 @@ export { StateBadge }
 
 interface SessionCardProps {
   session: LiveSession
+  stalledSessions?: Set<string>
+  currentTime: number
 }
 
 const GROUP_CONFIG = {
   needs_you: { color: 'bg-amber-500', label: 'Needs You', pulse: false },
-  autonomous: { color: 'bg-green-500', label: 'Working', pulse: true },
-  delivered: { color: 'bg-zinc-700', label: 'Done', pulse: false },
+  autonomous: { color: 'bg-green-500', label: 'Running', pulse: true },
+  delivered: { color: 'bg-blue-500', label: 'Done', pulse: false },
 } as const
 
-export function SessionCard({ session }: SessionCardProps) {
+export function SessionCard({ session, stalledSessions, currentTime }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const statusConfig = GROUP_CONFIG[session.agentState.group] || GROUP_CONFIG.autonomous
-  const duration = formatDuration(session.startedAt, session.lastActivityAt)
+  const elapsedSeconds = currentTime - (session.startedAt ?? currentTime)
 
   // Title: first user message (cleaned) > project display name > project id
   const rawTitle = session.title || ''
@@ -118,20 +121,19 @@ export function SessionCard({ session }: SessionCardProps) {
         </p>
       )}
 
-      {/* State badge */}
-      {session.agentState.group === 'needs_you' ? (
-        <div className="mb-2">
-          <StateBadge agentState={session.agentState} />
-        </div>
-      ) : session.currentActivity ? (
-        <div className="text-xs text-green-600 dark:text-green-400 truncate mb-2">
-          {session.currentActivity}
-        </div>
-      ) : session.agentState.group === 'delivered' ? (
-        <div className="mb-2">
-          <StateBadge agentState={session.agentState} />
-        </div>
-      ) : null}
+      {/* Spinner row */}
+      <div className="mb-2">
+        <SessionSpinner
+          mode="live"
+          durationSeconds={elapsedSeconds}
+          inputTokens={session.tokens.inputTokens}
+          outputTokens={session.tokens.outputTokens}
+          model={session.model}
+          isStalled={stalledSessions?.has(session.id)}
+          agentStateGroup={session.agentState.group}
+          spinnerVerb={pickVerb(session.id)}
+        />
+      </div>
 
       {/* Context gauge */}
       <ContextGauge
@@ -140,26 +142,11 @@ export function SessionCard({ session }: SessionCardProps) {
         group={session.agentState.group}
       />
 
-      {/* Footer: turns, duration, cost savings */}
+      {/* Footer: turns */}
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
-        {duration && <span>{duration}</span>}
       </div>
     </Link>
   )
 }
 
-function formatDuration(startedAt: number | null, lastActivityAt: number): string {
-  if (!startedAt || startedAt <= 0) return ''
-  const seconds = lastActivityAt - startedAt
-  if (seconds < 0) return ''
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-  const days = Math.floor(hours / 24)
-  const remainingHours = hours % 24
-  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`
-}

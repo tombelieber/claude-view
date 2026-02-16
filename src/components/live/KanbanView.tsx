@@ -8,6 +8,8 @@ interface KanbanViewProps {
   sessions: LiveSession[]
   selectedId: string | null
   onSelect: (id: string) => void
+  stalledSessions?: Set<string>
+  currentTime: number
 }
 
 const COLUMNS: {
@@ -48,7 +50,7 @@ export function needsYouSortKey(session: LiveSession): number {
   }
 }
 
-export function KanbanView({ sessions, selectedId, onSelect }: KanbanViewProps) {
+export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, currentTime }: KanbanViewProps) {
   const grouped = useMemo(() => {
     const groups: Record<AgentStateGroup, LiveSession[]> = {
       needs_you: [],
@@ -94,6 +96,8 @@ export function KanbanView({ sessions, selectedId, onSelect }: KanbanViewProps) 
           selectedId={selectedId}
           onSelect={onSelect}
           emptyMessage={col.emptyMessage}
+          stalledSessions={stalledSessions}
+          currentTime={currentTime}
         />
       ))}
     </div>
