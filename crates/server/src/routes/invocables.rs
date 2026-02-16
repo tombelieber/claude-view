@@ -226,6 +226,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
