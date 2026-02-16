@@ -9,6 +9,7 @@ use crate::jobs::JobRunner;
 use crate::live::manager::LiveSessionMap;
 use crate::live::state::SessionEvent;
 use crate::live::state_resolver::StateResolver;
+use crate::terminal_state::TerminalConnectionManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -55,6 +56,8 @@ pub struct AppState {
     pub state_resolver: StateResolver,
     /// Directory where coaching rule files are stored (~/.claude/rules).
     pub rules_dir: PathBuf,
+    /// WebSocket connection manager for live terminal monitoring.
+    pub terminal_connections: Arc<TerminalConnectionManager>,
 }
 
 impl AppState {
@@ -79,6 +82,7 @@ impl AppState {
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
         })
     }
 
@@ -102,6 +106,7 @@ impl AppState {
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
         })
     }
 
@@ -128,6 +133,7 @@ impl AppState {
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
         })
     }
 

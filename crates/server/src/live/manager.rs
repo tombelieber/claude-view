@@ -27,6 +27,7 @@ use super::state::{
     AgentState, AgentStateGroup, SignalSource,
     LiveSession, SessionEvent, SessionStatus, derive_activity, derive_status,
 };
+use super::state_resolver::StateResolver;
 use super::watcher::{FileEvent, initial_scan, start_watcher};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
@@ -99,6 +100,7 @@ fn pause_classification_to_agent_state(c: &PauseClassification) -> AgentState {
     let (group, state) = match c.reason {
         PauseReason::NeedsInput => (AgentStateGroup::NeedsYou, "awaiting_input"),
         PauseReason::TaskComplete => (AgentStateGroup::Delivered, "task_complete"),
+        PauseReason::WorkDelivered => (AgentStateGroup::Delivered, "work_delivered"),
         PauseReason::MidWork => (AgentStateGroup::NeedsYou, "idle"),
         PauseReason::Error => (AgentStateGroup::NeedsYou, "error"),
     };
@@ -129,6 +131,8 @@ pub struct LiveSessionManager {
     pricing: Arc<HashMap<String, cost::ModelPricing>>,
     /// Session state classifier for intelligent pause classification.
     classifier: Arc<SessionStateClassifier>,
+    /// Resolves agent state by merging hook and JSONL signals (hook wins if fresh).
+    state_resolver: StateResolver,
 }
 
 impl LiveSessionManager {
@@ -138,6 +142,7 @@ impl LiveSessionManager {
     /// broadcast sender for SSE event streaming.
     pub fn start(
         pricing: HashMap<String, ModelPricing>,
+        state_resolver: StateResolver,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let classifier = Arc::new(SessionStateClassifier::new());
         let (tx, _rx) = broadcast::channel(256);
@@ -167,6 +172,7 @@ impl LiveSessionManager {
             processes: Arc::new(RwLock::new(HashMap::new())),
             pricing: Arc::new(core_pricing),
             classifier,
+            state_resolver,
         });
 
         // Spawn background tasks
@@ -280,6 +286,11 @@ impl LiveSessionManager {
     ///
     /// Every 5 seconds, scans the process table for running Claude instances
     /// and updates the shared process map. Re-derives status for affected sessions.
+    ///
+    /// Uses a 3-phase pattern to avoid deadlocks and TOCTOU races:
+    /// - Phase 1 (under sessions+accumulators locks): Collect JSONL-derived state changes.
+    /// - Phase 2 (no locks): Feed JSONL states into the resolver.
+    /// - Phase 3 (under sessions lock only): Call resolve() and apply final state.
     fn spawn_process_detector(self: &Arc<Self>) {
         let manager = self.clone();
 
@@ -297,30 +308,66 @@ impl LiveSessionManager {
                     *processes = new_processes;
                 }
 
-                // Re-derive status for all sessions with the updated process info
-                let processes = manager.processes.read().await;
-                let mut sessions = manager.sessions.write().await;
-                let mut accumulators = manager.accumulators.write().await;
+                // Phase 1: Collect changes under locks, then drop locks.
+                // Sync work ONLY — no .await while holding both guards.
+                let mut pending_updates: Vec<(String, SessionStatus, Option<u32>, AgentState)> =
+                    Vec::new();
 
-                for (session_id, session) in sessions.iter_mut() {
-                    if let Some(acc) = accumulators.get_mut(session_id) {
-                        let seconds_since = seconds_since_modified_from_timestamp(
-                            session.last_activity_at,
-                        );
-                        let (running, pid) =
-                            has_running_process(&processes, &session.project_path);
-                        let new_status =
-                            derive_status(acc.last_line.as_ref(), seconds_since, running);
+                {
+                    let processes = manager.processes.read().await;
+                    let mut sessions = manager.sessions.write().await;
+                    let mut accumulators = manager.accumulators.write().await;
 
-                        if session.status != new_status || session.pid != pid {
-                            // Trigger transition detection + classification (sync)
-                            manager.handle_status_change(
-                                session_id, new_status.clone(), acc, running, seconds_since,
+                    for (session_id, session) in sessions.iter_mut() {
+                        if let Some(acc) = accumulators.get_mut(session_id) {
+                            let seconds_since = seconds_since_modified_from_timestamp(
+                                session.last_activity_at,
                             );
+                            let (running, pid) =
+                                has_running_process(&processes, &session.project_path);
+                            let new_status =
+                                derive_status(acc.last_line.as_ref(), seconds_since, running);
 
+                            if session.status != new_status || session.pid != pid {
+                                // JSONL-based classification (sync, no .await)
+                                manager.handle_status_change(
+                                    session_id, new_status.clone(), acc, running, seconds_since,
+                                );
+
+                                // Collect: (session_id, new_status, pid, jsonl_derived_state)
+                                pending_updates.push((
+                                    session_id.clone(),
+                                    new_status,
+                                    pid,
+                                    acc.agent_state.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                // All locks dropped here.
+
+                // Phase 2: Feed JSONL states into resolver (async, no external locks held).
+                // update_from_jsonl() only needs StateResolver's internal lock.
+                for (session_id, _, _, ref jsonl_state) in &pending_updates {
+                    manager.state_resolver.update_from_jsonl(session_id, jsonl_state.clone()).await;
+                }
+
+                // Phase 3: Resolve and apply under sessions lock.
+                // CRITICAL: resolve() is called HERE (not Phase 2) to prevent TOCTOU race.
+                // If a hook arrives between Phase 2 and Phase 3, resolving in Phase 2 would
+                // produce a stale result that Phase 3 would overwrite the hook's fresh state with.
+                // Calling resolve() under sessions.write() guarantees we see the latest hook signal.
+                // Safe from deadlock: hook handler releases hook_states.write() BEFORE
+                // acquiring sessions.write(), so no circular lock dependency exists.
+                if !pending_updates.is_empty() {
+                    let mut sessions = manager.sessions.write().await;
+                    for (session_id, new_status, pid, _) in pending_updates {
+                        if let Some(session) = sessions.get_mut(&session_id) {
+                            let resolved = manager.state_resolver.resolve(&session_id).await;
                             session.status = new_status;
                             session.pid = pid;
-                            session.agent_state = acc.agent_state.clone();
+                            session.agent_state = resolved;
                             let _ = manager.tx.send(SessionEvent::SessionUpdated {
                                 session: session.clone(),
                             });
@@ -379,6 +426,9 @@ impl LiveSessionManager {
                     }
                     info!("Cleaned up {} done sessions", to_remove.len());
                 }
+
+                // Clean up stale hook states (entries older than 10 minutes)
+                manager.state_resolver.cleanup_stale(Duration::from_secs(600)).await;
             }
         });
     }
@@ -577,14 +627,16 @@ impl LiveSessionManager {
             .unwrap_or("")
             .to_string();
 
-        let live_session = LiveSession {
+        // Build LiveSession while accumulators lock is still held (reads ~15 fields from acc).
+        // Made `mut` so we can overwrite agent_state with the resolved value after dropping locks.
+        let mut live_session = LiveSession {
             id: session_id.clone(),
             project: project.clone(),
             project_display_name,
             project_path,
             file_path: file_path_str,
             status,
-            agent_state: acc.agent_state.clone(),
+            agent_state: acc.agent_state.clone(),  // Temporarily uses JSONL-derived state
             git_branch: acc.git_branch.clone(),
             pid,
             title: acc.first_user_message.clone(),
@@ -603,6 +655,12 @@ impl LiveSessionManager {
         // Drop the accumulators lock before acquiring sessions lock
         drop(processes);
         drop(accumulators);
+
+        // Feed JSONL state to resolver, then resolve (hook wins if fresh).
+        // These calls only acquire StateResolver's internal locks, safe without external locks.
+        self.state_resolver.update_from_jsonl(&session_id, live_session.agent_state.clone()).await;
+        let resolved_state = self.state_resolver.resolve(&session_id).await;
+        live_session.agent_state = resolved_state;  // Overwrite with resolved state
 
         // Update the shared session map
         let mut sessions = self.sessions.write().await;

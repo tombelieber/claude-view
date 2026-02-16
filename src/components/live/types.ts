@@ -33,6 +33,7 @@ export const KNOWN_STATES: Record<string, { icon: string; color: string }> = {
   // Delivered
   task_complete: { icon: 'CheckCircle', color: 'blue' },
   session_ended: { icon: 'Power', color: 'gray' },
+  work_delivered: { icon: 'CheckCircle', color: 'blue' },
 }
 
 // Unknown states get a generic icon/color for their group

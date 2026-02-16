@@ -71,3 +71,5 @@ tokio-test = { workspace = true }
 axum-test = { workspace = true }
 assert-json-diff = { workspace = true }
 pretty_assertions = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
