@@ -123,9 +123,9 @@ export function TimelineView({
   const durationSec = sessionDurationMs / 1000
 
   return (
-    <div className="flex flex-col gap-3 bg-gray-950 border border-gray-800 rounded-lg p-4 font-mono">
+    <div className="flex flex-col gap-3 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-4 font-mono">
       {/* Time axis */}
-      <div className="relative h-8 border-b border-gray-700">
+      <div className="relative h-8 border-b border-gray-300 dark:border-gray-700">
         <div className="absolute inset-0 flex items-end">
           {timeIntervals.map((timeSec) => {
             const positionPct = (timeSec / durationSec) * 100
@@ -136,7 +136,7 @@ export function TimelineView({
                 style={{ left: `${positionPct}%` }}
               >
                 {/* Tick mark */}
-                <div className="w-px h-2 bg-gray-600" />
+                <div className="w-px h-2 bg-gray-400 dark:bg-gray-600" />
                 {/* Time label */}
                 <span className="text-xs text-gray-500 mt-1 -translate-x-1/2 whitespace-nowrap">
                   {formatTimeLabel(timeSec)}
@@ -182,9 +182,9 @@ export function TimelineView({
           // Tooltip content
           const tooltipContent = (
             <div className="flex flex-col gap-1 text-xs">
-              <div className="font-semibold text-white">{agent.agentType}</div>
-              <div className="text-gray-300">{agent.description}</div>
-              <div className="flex gap-3 text-gray-400 mt-1">
+              <div className="font-semibold text-gray-900 dark:text-white">{agent.agentType}</div>
+              <div className="text-gray-600 dark:text-gray-300">{agent.description}</div>
+              <div className="flex gap-3 text-gray-500 dark:text-gray-400 mt-1">
                 {agent.durationMs != null && (
                   <span>{formatDurationSeconds(agent.durationMs)}</span>
                 )}
@@ -194,10 +194,10 @@ export function TimelineView({
                 )}
               </div>
               {agent.status === 'running' && (
-                <div className="text-green-400 mt-1">Running...</div>
+                <div className="text-green-600 dark:text-green-400 mt-1">Running...</div>
               )}
               {agent.status === 'error' && (
-                <div className="text-red-400 mt-1">Error</div>
+                <div className="text-red-500 dark:text-red-400 mt-1">Error</div>
               )}
             </div>
           )
@@ -213,12 +213,12 @@ export function TimelineView({
                     aria-label={`${agent.agentType} agent: ${agent.description}`}
                   >
                     {/* Agent type label */}
-                    <span className="text-xs text-gray-400 w-20 truncate flex-shrink-0">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20 truncate flex-shrink-0">
                       {agent.agentType}
                     </span>
 
                     {/* Timeline bar container */}
-                    <div className="relative flex-1 h-4 bg-gray-900 rounded">
+                    <div className="relative flex-1 h-4 bg-gray-100 dark:bg-gray-900 rounded">
                       {/* The actual bar */}
                       <div
                         className={cn(
@@ -236,11 +236,11 @@ export function TimelineView({
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
                   <Tooltip.Content
-                    className="bg-gray-900 border border-gray-700 rounded px-3 py-2 shadow-lg z-50 max-w-sm"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 shadow-lg z-50 max-w-sm"
                     sideOffset={5}
                   >
                     {tooltipContent}
-                    <Tooltip.Arrow className="fill-gray-700" />
+                    <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
                   </Tooltip.Content>
                 </Tooltip.Portal>
               </Tooltip.Root>
