@@ -1124,4 +1124,41 @@ mod tests {
         let line = parse_single_line(raw, &finders);
         assert!(line.sub_agent_progress.is_none()); // agentId required
     }
+
+    #[test]
+    fn test_progress_event_multiple_tool_uses() {
+        // Progress event with multiple tool_use blocks — should pick the LAST one
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","data":{"type":"agent_progress","agentId":"a951849","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{}},{"type":"text","text":"..."},{"type":"tool_use","name":"Grep","input":{}}]}}}"#;
+        let line = parse_single_line(raw, &finders);
+        let progress = line.sub_agent_progress.unwrap();
+        assert_eq!(progress.current_tool, Some("Grep".to_string())); // Last tool_use
+    }
+
+    #[test]
+    fn test_simd_prefilter_skips_non_progress() {
+        // A regular assistant line should not trigger progress extraction
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here is the result."}]},"timestamp":"2026-02-16T08:34:13.134Z"}"#;
+        let line = parse_single_line(raw, &finders);
+        assert!(line.sub_agent_progress.is_none());
+    }
+
+    #[test]
+    fn test_spawn_and_progress_same_agent() {
+        // Spawn detection and progress detection produce different fields
+        let finders = TailFinders::new();
+
+        // Spawn line
+        let spawn_raw = br#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01ABC","name":"Task","input":{"description":"Search auth","subagent_type":"Explore"}}]},"timestamp":"2026-02-16T08:34:00.000Z"}"#;
+        let spawn_line = parse_single_line(spawn_raw, &finders);
+        assert_eq!(spawn_line.sub_agent_spawns.len(), 1);
+        assert!(spawn_line.sub_agent_progress.is_none());
+
+        // Progress line
+        let progress_raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","data":{"type":"agent_progress","agentId":"a951849","message":{"role":"assistant","content":[{"type":"tool_use","name":"Grep","input":{}}]}}}"#;
+        let progress_line = parse_single_line(progress_raw, &finders);
+        assert!(progress_line.sub_agent_spawns.is_empty());
+        assert!(progress_line.sub_agent_progress.is_some());
+    }
 }
