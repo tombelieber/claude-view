@@ -13,6 +13,8 @@ interface KanbanColumnProps {
   emptyMessage: string
   stalledSessions?: Set<string>
   currentTime: number
+  /** When provided, cards render as div instead of Link */
+  onCardClick?: (sessionId: string) => void
 }
 
 function NeedsYouSubCount({ sessions }: { sessions: LiveSession[] }) {
@@ -37,6 +39,7 @@ export function KanbanColumn({
   emptyMessage,
   stalledSessions,
   currentTime,
+  onCardClick,
 }: KanbanColumnProps) {
   return (
     <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1">
@@ -69,7 +72,7 @@ export function KanbanColumn({
                   group === 'needs_you' && session.cacheStatus !== 'warm' && 'opacity-70'
                 )}
               >
-                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} />
+                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} onClickOverride={onCardClick ? () => onCardClick(session.id) : undefined} />
               </div>
             ))
           )}
