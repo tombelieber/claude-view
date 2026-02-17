@@ -129,6 +129,7 @@ pub enum SessionEvent {
     },
     /// A session has been cleaned up (Complete for >10 min).
     SessionCompleted {
+        #[serde(rename = "sessionId")]
         session_id: String,
     },
     /// Periodic aggregate summary of all live sessions.
