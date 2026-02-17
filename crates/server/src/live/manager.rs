@@ -668,6 +668,7 @@ impl LiveSessionManager {
                     duration_ms: None,
                     tool_use_count: None,
                     cost_usd: None,
+                    current_activity: None,
                 });
             }
 
