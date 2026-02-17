@@ -29,6 +29,8 @@
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tracing::{error, warn};
@@ -59,14 +61,18 @@ pub enum FileEvent {
 /// - Tool results: `{project}/{sessionId}/tool-results/*.txt` (depth 4+) ❌
 ///
 /// This is systematic and robust — no string matching, just structural validation.
-pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedWatcher> {
+pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(RecommendedWatcher, Arc<AtomicU64>)> {
     let projects_dir = match dirs::home_dir() {
         Some(home) => home.join(".claude").join("projects"),
         None => {
             warn!("Could not determine home directory; file watcher disabled");
-            return notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {});
+            let w = notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {})?;
+            return Ok((w, Arc::new(AtomicU64::new(0))));
         }
     };
+
+    let dropped_events = Arc::new(AtomicU64::new(0));
+    let dropped_counter = dropped_events.clone();
 
     // Clone projects_dir for use in closure (must be moved)
     let projects_dir_for_filter = projects_dir.clone();
@@ -109,9 +115,14 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
                         }
                         _ => continue,
                     };
-                    // Best-effort send; if the receiver is full/closed, drop
                     if tx.try_send(file_event).is_err() {
-                        // Channel full or closed — not fatal
+                        let count = dropped_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                        if count == 1 || count % 100 == 0 {
+                            warn!(
+                                dropped_total = count,
+                                "File watcher channel full — event dropped (process detector will catch up)"
+                            );
+                        }
                     }
                 }
             }
@@ -131,7 +142,7 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<RecommendedW
         );
     }
 
-    Ok(watcher)
+    Ok((watcher, dropped_events))
 }
 
 /// Scan the projects directory for existing JSONL files modified in the last 24 hours.
