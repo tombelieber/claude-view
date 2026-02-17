@@ -135,6 +135,11 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
               ) : (
                 <ProgressBar />
               )}
+              {!agent.agentId && onDrillDown && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+                  awaiting agent ID...
+                </span>
+              )}
             </div>
           )}
 
