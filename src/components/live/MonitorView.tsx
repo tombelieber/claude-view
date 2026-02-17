@@ -1,28 +1,26 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import type { LiveSession } from './use-live-sessions'
 import { useMonitorStore } from '../../store/monitor-store'
 import { MonitorGrid } from './MonitorGrid'
 import { GridControls } from './GridControls'
 import { MonitorPane } from './MonitorPane'
 import { RichTerminalPane } from './RichTerminalPane'
-import { ExpandedPaneOverlay } from './ExpandedPaneOverlay'
 import { PaneContextMenu } from './PaneContextMenu'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 import { useAutoFill } from './useAutoFill'
-import { SwimLanes } from './SwimLanes'
-import { SubAgentDrillDown } from './SubAgentDrillDown'
 
 interface MonitorViewProps {
   sessions: LiveSession[]
+  onSelectSession?: (id: string) => void
 }
 
 /**
  * MonitorView — orchestrates the full Monitor Mode experience.
  *
  * Wires together: MonitorGrid, GridControls, MonitorPane, RichPane,
- * ExpandedPaneOverlay, PaneContextMenu, keyboard shortcuts, and auto-fill.
+ * PaneContextMenu, keyboard shortcuts, and auto-fill.
  */
-export function MonitorView({ sessions }: MonitorViewProps) {
+export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
   // Store state
   const gridOverride = useMonitorStore((s) => s.gridOverride)
   const compactHeaders = useMonitorStore((s) => s.compactHeaders)
@@ -51,18 +49,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
     y: number
     sessionId: string
   } | null>(null)
-
-  // Sub-agent drill-down state (within expanded overlay)
-  const [drillDownAgent, setDrillDownAgent] = useState<{
-    agentId: string
-    agentType: string
-    description: string
-  } | null>(null)
-
-  // Reset drill-down when expanded session changes
-  useEffect(() => {
-    setDrillDownAgent(null)
-  }, [expandedPaneId])
 
   // Custom session ordering for "Move to front"
   const [sessionOrder, setSessionOrder] = useState<string[]>([])
@@ -129,9 +115,13 @@ export function MonitorView({ sessions }: MonitorViewProps) {
 
   const handleExpand = useCallback(
     (id: string) => {
-      expandPane(expandedPaneId === id ? null : id)
+      if (onSelectSession) {
+        onSelectSession(id)
+      } else {
+        expandPane(expandedPaneId === id ? null : id)
+      }
     },
-    [expandPane, expandedPaneId]
+    [onSelectSession, expandPane, expandedPaneId]
   )
 
   const handlePin = useCallback(
@@ -156,11 +146,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
   const handleCloseContextMenu = useCallback(() => {
     setContextMenu(null)
   }, [])
-
-  // Expanded session
-  const expandedSession = expandedPaneId
-    ? sessions.find((s) => s.id === expandedPaneId) ?? null
-    : null
 
   // Context menu session
   const contextMenuSession = contextMenu
@@ -193,10 +178,7 @@ export function MonitorView({ sessions }: MonitorViewProps) {
             const isPinned = pinnedPaneIds.has(session.id)
             // Default to visible when observer hasn't fired yet (size === 0) since we've
             // already limited the number of panes to gridCapacity above.
-            // When a pane is expanded in the overlay, disconnect the grid pane's WebSocket
-            // to avoid doubling connections (overlay creates its own RichTerminalPane).
             const isPaneVisible =
-              expandedPaneId !== session.id &&
               (visiblePanes.size === 0 || visiblePanes.has(session.id))
 
             return (
@@ -229,46 +211,6 @@ export function MonitorView({ sessions }: MonitorViewProps) {
         </MonitorGrid>
       </div>
 
-      {/* Expanded pane overlay */}
-      {expandedSession && (
-        <ExpandedPaneOverlay
-          session={expandedSession}
-          onClose={() => expandPane(null)}
-        >
-          {drillDownAgent ? (
-            <SubAgentDrillDown
-              key={drillDownAgent.agentId}
-              sessionId={expandedSession.id}
-              agentId={drillDownAgent.agentId}
-              agentType={drillDownAgent.agentType}
-              description={drillDownAgent.description}
-              onClose={() => setDrillDownAgent(null)}
-            />
-          ) : (
-            <div className="flex flex-col h-full gap-3">
-              {/* Sub-agent swim lanes */}
-              {expandedSession.subAgents && expandedSession.subAgents.length > 0 && (
-                <SwimLanes
-                  subAgents={expandedSession.subAgents}
-                  sessionActive={expandedSession.status === 'working'}
-                  onDrillDown={(agentId, agentType, description) =>
-                    setDrillDownAgent({ agentId, agentType, description })
-                  }
-                />
-              )}
-              {/* Terminal stream */}
-              <div className="flex-1 min-h-0">
-                <RichTerminalPane
-                  sessionId={expandedSession.id}
-                  isVisible={true}
-                  verboseMode={verboseMode}
-                />
-              </div>
-            </div>
-          )}
-        </ExpandedPaneOverlay>
-      )}
-
       {/* Context menu */}
       {contextMenu && contextMenuSession && (
         <PaneContextMenu
@@ -296,7 +238,11 @@ export function MonitorView({ sessions }: MonitorViewProps) {
             handleCloseContextMenu()
           }}
           onExpand={() => {
-            expandPane(contextMenu.sessionId)
+            if (onSelectSession) {
+              onSelectSession(contextMenu.sessionId)
+            } else {
+              expandPane(contextMenu.sessionId)
+            }
             handleCloseContextMenu()
           }}
         />
