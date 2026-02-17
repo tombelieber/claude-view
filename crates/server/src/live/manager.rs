@@ -459,7 +459,7 @@ impl LiveSessionManager {
 
     /// Spawn the process detector background task.
     ///
-    /// Every 5 seconds, scans the process table for running Claude instances
+    /// Every 2 seconds, scans the process table for running Claude instances
     /// and updates the shared process map. Re-derives status AND agent state
     /// for all sessions (agent state derivation is not transition-gated).
     ///
@@ -471,7 +471,7 @@ impl LiveSessionManager {
         let manager = self.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
             loop {
                 interval.tick().await;
 
