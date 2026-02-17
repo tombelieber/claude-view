@@ -119,14 +119,13 @@ export function useLiveSessions(): UseLiveSessionsResult {
       es.addEventListener('session_completed', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          const sessionId = data.session_id ?? data.sessionId
-          if (sessionId) {
+          if (data.sessionId) {
             setSessions(prev => {
               const next = new Map(prev)
-              next.delete(sessionId)
+              next.delete(data.sessionId)
               return next
             })
-            lastEventTimes.current.delete(sessionId)
+            lastEventTimes.current.delete(data.sessionId)
             setLastUpdate(new Date())
           }
         } catch { /* ignore */ }
