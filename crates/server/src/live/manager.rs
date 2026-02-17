@@ -124,6 +124,137 @@ fn pause_classification_to_agent_state(c: &PauseClassification) -> AgentState {
     }
 }
 
+/// Pure function: derive agent state from current evidence.
+///
+/// Called on EVERY update — not gated by status transitions. This eliminates
+/// the race condition where a tool_result line steals the Working→Paused
+/// transition from the real end_turn line.
+///
+/// The 120s MidWork timeout (previously Phase 4 in spawn_process_detector)
+/// is incorporated here for instant reactivity.
+fn derive_agent_state(
+    status: &SessionStatus,
+    last_line: Option<&LiveLine>,
+    recent_messages: &VecDeque<MessageSummary>,
+    classifier: &SessionStateClassifier,
+    has_running_process: bool,
+    seconds_since_modified: u64,
+    turn_count: u32,
+    is_first_poll: bool,
+) -> AgentState {
+    match status {
+        SessionStatus::Working => AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "acting".into(),
+            label: "Working...".into(),
+            confidence: 0.7,
+            source: SignalSource::Jsonl,
+            context: None,
+        },
+        SessionStatus::Done => AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "session_ended".into(),
+            label: "Session ended".into(),
+            confidence: 0.9,
+            source: SignalSource::Jsonl,
+            context: None,
+        },
+        SessionStatus::Paused => {
+            let ctx = SessionStateContext {
+                recent_messages: recent_messages.iter().cloned().collect(),
+                last_stop_reason: last_line.and_then(|l| l.stop_reason.clone()),
+                last_tool: last_line.and_then(|l| l.tool_names.last().cloned()),
+                has_running_process,
+                seconds_since_modified,
+                turn_count,
+            };
+
+            // Tier 1: structural classification (instant)
+            if let Some(c) = classifier.structural_classify(&ctx) {
+                return pause_classification_to_agent_state(&c);
+            }
+
+            // Fallback classification
+            let c = classifier.fallback_classify(&ctx);
+
+            // MidWork = ambiguous pause. Keep Autonomous if ALL of:
+            //   (a) fallback says MidWork (no end_turn detected), AND
+            //   (b) process detected OR file active within 60s, AND
+            //   (c) not stale (≤120s) — absorbs former Phase 4, AND
+            //   (d) not first poll without process evidence
+            let keep_autonomous = c.reason == PauseReason::MidWork && if is_first_poll {
+                has_running_process
+            } else {
+                (has_running_process || seconds_since_modified <= 60)
+                    && seconds_since_modified <= 120
+            };
+
+            if keep_autonomous {
+                AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "thinking".into(),
+                    label: "Between steps...".into(),
+                    confidence: if has_running_process { 0.5 } else { 0.4 },
+                    source: SignalSource::Jsonl,
+                    context: None,
+                }
+            } else {
+                pause_classification_to_agent_state(&c)
+            }
+        }
+    }
+}
+
+/// Handle side effects of status transitions.
+///
+/// This is NOT classification — classification is done by `derive_agent_state()`.
+/// This function only handles:
+/// - Task time computation on Working→Paused
+/// - Task time clearing on →Working
+/// - Completion tracking + sub-agent cleanup on →Done
+fn handle_transitions(
+    new_status: &SessionStatus,
+    acc: &mut SessionAccumulator,
+    last_activity_at: i64,
+) {
+    let old_status = acc.last_status.clone();
+
+    // Working→Paused (or first-discovery-as-Paused): compute task time
+    let is_working_to_paused = *new_status == SessionStatus::Paused
+        && (old_status == Some(SessionStatus::Working) || old_status.is_none());
+    if is_working_to_paused {
+        if let Some(turn_start) = acc.current_turn_started_at {
+            let elapsed = (last_activity_at - turn_start).max(0) as u32;
+            acc.last_turn_task_seconds = Some(elapsed);
+        }
+    }
+
+    // →Working: clear frozen task time
+    if *new_status == SessionStatus::Working {
+        acc.last_turn_task_seconds = None;
+    }
+
+    // →Done: track completion time + orphaned sub-agent cleanup
+    if *new_status == SessionStatus::Done && acc.completed_at.is_none() {
+        let completed_at_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        acc.completed_at = Some(completed_at_secs);
+        for agent in &mut acc.sub_agents {
+            if agent.status == SubAgentStatus::Running {
+                agent.status = SubAgentStatus::Error;
+                agent.completed_at = Some(completed_at_secs as i64);
+                agent.current_activity = None;
+            }
+        }
+    } else if *new_status != SessionStatus::Done {
+        acc.completed_at = None;
+    }
+
+    acc.last_status = Some(new_status.clone());
+}
+
 /// Central manager that orchestrates file watching, process detection,
 /// JSONL parsing, and session state management.
 pub struct LiveSessionManager {
@@ -295,10 +426,11 @@ impl LiveSessionManager {
     /// Spawn the process detector background task.
     ///
     /// Every 5 seconds, scans the process table for running Claude instances
-    /// and updates the shared process map. Re-derives status for affected sessions.
+    /// and updates the shared process map. Re-derives status AND agent state
+    /// for all sessions (agent state derivation is not transition-gated).
     ///
     /// Uses a 3-phase pattern to avoid deadlocks and TOCTOU races:
-    /// - Phase 1 (under sessions+accumulators locks): Collect JSONL-derived state changes.
+    /// - Phase 1 (under sessions+accumulators locks): Derive status + agent state.
     /// - Phase 2 (no locks): Feed JSONL states into the resolver.
     /// - Phase 3 (under sessions lock only): Call resolve() and apply final state.
     fn spawn_process_detector(self: &Arc<Self>) {
@@ -338,20 +470,61 @@ impl LiveSessionManager {
                             let new_status =
                                 derive_status(acc.last_line.as_ref(), seconds_since, running);
 
-                            if session.status != new_status || session.pid != pid {
-                                // JSONL-based classification (sync, no .await)
-                                manager.handle_status_change(
-                                    session_id, new_status.clone(), acc, running, seconds_since,
-                                    session.last_activity_at,
-                                );
+                            let status_or_pid_changed =
+                                session.status != new_status || session.pid != pid;
 
-                                // Collect: (session_id, new_status, pid, jsonl_derived_state)
+                            if status_or_pid_changed {
+                                // Status/pid changed — must re-derive and handle transitions
+                                let is_first_poll = acc.last_status.is_none();
+                                let new_agent_state = derive_agent_state(
+                                    &new_status,
+                                    acc.last_line.as_ref(),
+                                    &acc.recent_messages,
+                                    &manager.classifier,
+                                    running,
+                                    seconds_since,
+                                    acc.user_turn_count,
+                                    is_first_poll,
+                                );
+                                handle_transitions(
+                                    &new_status, acc, session.last_activity_at,
+                                );
+                                acc.agent_state = new_agent_state;
+
                                 pending_updates.push((
                                     session_id.clone(),
                                     new_status,
                                     pid,
                                     acc.agent_state.clone(),
                                 ));
+                            } else {
+                                // Status unchanged — check if agent state group changed
+                                // (time-based transitions like MidWork→NeedsYou at 120s).
+                                // Skip hook-sourced states: long subagent runs are
+                                // legitimately autonomous, don't override with JSONL derivation.
+                                if matches!(session.agent_state.source, SignalSource::Hook) {
+                                    continue;
+                                }
+                                let is_first_poll = acc.last_status.is_none();
+                                let new_agent_state = derive_agent_state(
+                                    &new_status,
+                                    acc.last_line.as_ref(),
+                                    &acc.recent_messages,
+                                    &manager.classifier,
+                                    running,
+                                    seconds_since,
+                                    acc.user_turn_count,
+                                    is_first_poll,
+                                );
+                                if session.agent_state.group != new_agent_state.group {
+                                    acc.agent_state = new_agent_state;
+                                    pending_updates.push((
+                                        session_id.clone(),
+                                        new_status,
+                                        pid,
+                                        acc.agent_state.clone(),
+                                    ));
+                                }
                             }
                         }
                     }
@@ -370,11 +543,6 @@ impl LiveSessionManager {
 
                 // Phase 3: Resolve and apply under sessions lock.
                 // CRITICAL: resolve() is called HERE (not Phase 2) to prevent TOCTOU race.
-                // If a hook arrives between Phase 2 and Phase 3, resolving in Phase 2 would
-                // produce a stale result that Phase 3 would overwrite the hook's fresh state with.
-                // Calling resolve() under sessions.write() guarantees we see the latest hook signal.
-                // Safe from deadlock: hook handler releases hook_states.write() BEFORE
-                // acquiring sessions.write(), so no circular lock dependency exists.
                 if !pending_updates.is_empty() {
                     let mut sessions = manager.sessions.write().await;
                     for (session_id, new_status, pid, _) in pending_updates {
@@ -384,8 +552,6 @@ impl LiveSessionManager {
                             session.pid = pid;
                             session.agent_state = resolved;
                             // Clear stale activity when session is no longer Working.
-                            // Without this, Done sessions keep showing "Generating response..."
-                            // from the last Working state.
                             if new_status != SessionStatus::Working {
                                 session.current_activity = String::new();
                             }
@@ -393,56 +559,6 @@ impl LiveSessionManager {
                                 session: session.clone(),
                             });
                         }
-                    }
-                }
-
-                // Phase 4: Stale-Autonomous re-evaluation.
-                // Catch sessions that are Paused + Autonomous for >2 minutes (no JSONL
-                // activity) but still have a running process. These are sessions where
-                // Claude finished a turn without matching a structural pattern. Re-classify
-                // as NeedsYou so the user sees that the session needs attention.
-                // Skip sessions whose state was set by a hook — those are intentional.
-                {
-                    let processes = manager.processes.read().await;
-                    let mut sessions = manager.sessions.write().await;
-
-                    for (_session_id, session) in sessions.iter_mut() {
-                        if session.status != SessionStatus::Paused {
-                            continue;
-                        }
-                        if session.agent_state.group != AgentStateGroup::Autonomous {
-                            continue;
-                        }
-                        // Don't override hook-sourced states (e.g. SubagentStart set
-                        // delegating — long subagent runs are legitimately autonomous).
-                        if matches!(session.agent_state.source, SignalSource::Hook) {
-                            continue;
-                        }
-                        let seconds_since = seconds_since_modified_from_timestamp(
-                            session.last_activity_at,
-                        );
-                        if seconds_since <= 120 {
-                            continue;
-                        }
-                        let (running, _) =
-                            has_running_process(&processes, &session.project_path);
-                        if !running {
-                            // No process + >120s → derive_status should return Done on next cycle
-                            continue;
-                        }
-                        // Process is running but no JSONL activity for 2+ minutes.
-                        // Claude is genuinely waiting for user input.
-                        session.agent_state = AgentState {
-                            group: AgentStateGroup::NeedsYou,
-                            state: "idle".into(),
-                            label: "Waiting for your next message".into(),
-                            confidence: 0.6,
-                            source: SignalSource::Jsonl,
-                            context: None,
-                        };
-                        let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                            session: session.clone(),
-                        });
                     }
                 }
             }
@@ -754,8 +870,23 @@ impl LiveSessionManager {
         let (running, pid) = has_running_process(&processes, &project_path);
         let status = derive_status(acc.last_line.as_ref(), seconds_since, running);
 
-        // Detect transitions and trigger classification
-        self.handle_status_change(&session_id, status.clone(), acc, running, seconds_since, last_activity_at);
+        // Capture before handle_transitions mutates it
+        let is_first_poll = acc.last_status.is_none();
+
+        // Side effects only (task time, completion, sub-agent cleanup)
+        handle_transitions(&status, acc, last_activity_at);
+
+        // Derive agent state from current evidence (always runs, no transition gating)
+        acc.agent_state = derive_agent_state(
+            &status,
+            acc.last_line.as_ref(),
+            &acc.recent_messages,
+            &self.classifier,
+            running,
+            seconds_since,
+            acc.user_turn_count,
+            is_first_poll,
+        );
 
         // Derive activity
         let tool_names = acc
@@ -835,136 +966,6 @@ impl LiveSessionManager {
         // Update the shared session map
         let mut sessions = self.sessions.write().await;
         sessions.insert(session_id, live_session);
-    }
-
-    /// Handle a status change for a session. Detects transitions, triggers
-    /// structural classification on Working->Paused, clears classification on ->Working.
-    /// Called from both `process_jsonl_update()` and the process detector loop.
-    fn handle_status_change(
-        &self,
-        _session_id: &str,
-        new_status: SessionStatus,
-        acc: &mut SessionAccumulator,
-        has_running_process: bool,
-        seconds_since_modified: u64,
-        last_activity_at: i64,
-    ) {
-        let old_status = acc.last_status.clone();
-
-        // Paused: trigger structural classification.
-        // Fires on Working->Paused transitions AND first-discovery-as-Paused.
-        // Structural classification is instant (Tier 1, no AI call) — safe for
-        // all sessions on startup.
-        let is_first_discovery = old_status.is_none();
-        let should_classify = new_status == SessionStatus::Paused
-            && (old_status == Some(SessionStatus::Working) || is_first_discovery);
-        if should_classify {
-            let ctx = SessionStateContext {
-                recent_messages: acc.recent_messages.iter().cloned().collect(),
-                last_stop_reason: acc.last_line.as_ref().and_then(|l| l.stop_reason.clone()),
-                last_tool: acc.last_line.as_ref().and_then(|l| l.tool_names.last().cloned()),
-                has_running_process,
-                seconds_since_modified,
-                turn_count: acc.user_turn_count,
-            };
-
-            // Tier 1: structural classification (instant)
-            let classification = self.classifier.structural_classify(&ctx);
-
-            if let Some(c) = classification {
-                acc.agent_state = pause_classification_to_agent_state(&c);
-            } else {
-                // No structural match -- use fallback.
-                let c = self.classifier.fallback_classify(&ctx);
-                // MidWork = ambiguous pause. Keep Autonomous if EITHER:
-                //   (a) process is detected (between tool calls), OR
-                //   (b) JSONL file was active within 60s (process detection unreliable —
-                //       Claude Code runs as "node" not "claude" on many installs).
-                //
-                // EXCEPTION: On first discovery, process detection hasn't run yet
-                // (5s interval), so has_running_process is always false. Don't let
-                // seconds_since_modified alone keep a session Autonomous — we have
-                // no evidence it's actually working. Classify it as NeedsYou and
-                // let the process detector correct it to Autonomous on its next cycle
-                // if a process IS found.
-                let keep_autonomous = if is_first_discovery {
-                    // First discovery: only keep Autonomous if we have CONFIRMED
-                    // process evidence (which we won't on first call, but the
-                    // process detector may have run for re-discovered sessions).
-                    c.reason == PauseReason::MidWork && has_running_process
-                } else {
-                    // Ongoing transition: trust both process and recency signals.
-                    c.reason == PauseReason::MidWork
-                        && (has_running_process || seconds_since_modified <= 60)
-                };
-
-                if keep_autonomous {
-                    acc.agent_state = AgentState {
-                        group: AgentStateGroup::Autonomous,
-                        state: "thinking".into(),
-                        label: "Between steps...".into(),
-                        confidence: if has_running_process { 0.5 } else { 0.4 },
-                        source: SignalSource::Jsonl,
-                        context: None,
-                    };
-                } else {
-                    acc.agent_state = pause_classification_to_agent_state(&c);
-                }
-            }
-
-            // Compute last_turn_task_seconds: how long the agent worked on this turn.
-            // last_activity_at is when the JSONL file was last written (agent's last action).
-            // current_turn_started_at is when the user prompt that started this turn was sent.
-            if let Some(turn_start) = acc.current_turn_started_at {
-                let elapsed = (last_activity_at - turn_start).max(0) as u32;
-                acc.last_turn_task_seconds = Some(elapsed);
-            }
-        }
-
-        // -> Working: set autonomous state and reset turn tracking
-        if new_status == SessionStatus::Working {
-            // Clear last_turn_task_seconds — agent is active again, no frozen time to show.
-            acc.last_turn_task_seconds = None;
-            acc.agent_state = AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working...".into(),
-                confidence: 0.7,
-                source: SignalSource::Jsonl,
-                context: None,
-            };
-        }
-
-        // Track Done timestamp for cleanup + set session-ended state
-        if new_status == SessionStatus::Done && acc.completed_at.is_none() {
-            acc.agent_state = AgentState {
-                group: AgentStateGroup::NeedsYou,
-                state: "session_ended".into(),
-                label: "Session ended".into(),
-                confidence: 0.9,
-                source: SignalSource::Jsonl,
-                context: None,
-            };
-            let completed_at_secs = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            acc.completed_at = Some(completed_at_secs);
-
-            // Orphaned sub-agent cleanup: mark any still-running sub-agents as Error
-            for agent in &mut acc.sub_agents {
-                if agent.status == SubAgentStatus::Running {
-                    agent.status = SubAgentStatus::Error;
-                    agent.completed_at = Some(completed_at_secs as i64);
-                    agent.current_activity = None;
-                }
-            }
-        } else if new_status != SessionStatus::Done {
-            acc.completed_at = None;
-        }
-
-        // Update last_status for next transition check
-        acc.last_status = Some(new_status);
     }
 
     // NOTE: Tier 2 AI classification (spawn_ai_classification) was removed.
@@ -1114,5 +1115,297 @@ mod tests {
         // Future timestamp should return 0
         let seconds = seconds_since_modified_from_timestamp(now + 1000);
         assert_eq!(seconds, 0);
+    }
+
+    // =========================================================================
+    // derive_agent_state tests
+    // =========================================================================
+
+    /// Helper to create a LiveLine for agent state derivation tests.
+    fn make_test_line(
+        line_type: LineType,
+        tool_names: Vec<String>,
+        stop_reason: Option<&str>,
+        is_tool_result: bool,
+    ) -> LiveLine {
+        LiveLine {
+            line_type,
+            role: None,
+            content_preview: String::new(),
+            tool_names,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            timestamp: None,
+            stop_reason: stop_reason.map(String::from),
+            git_branch: None,
+            is_meta: false,
+            is_tool_result_continuation: is_tool_result,
+            has_system_prefix: false,
+            sub_agent_spawns: Vec::new(),
+            sub_agent_result: None,
+            sub_agent_progress: None,
+        }
+    }
+
+    #[test]
+    fn test_derive_agent_state_working_is_autonomous() {
+        let classifier = SessionStateClassifier::new();
+        let state = derive_agent_state(
+            &SessionStatus::Working,
+            None,
+            &VecDeque::new(),
+            &classifier,
+            true, 5, 3, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::Autonomous);
+        assert_eq!(state.state, "acting");
+    }
+
+    #[test]
+    fn test_derive_agent_state_done_is_needs_you() {
+        let classifier = SessionStateClassifier::new();
+        let state = derive_agent_state(
+            &SessionStatus::Done,
+            None,
+            &VecDeque::new(),
+            &classifier,
+            false, 400, 3, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "session_ended");
+    }
+
+    #[test]
+    fn test_derive_agent_state_paused_end_turn_is_needs_you() {
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &VecDeque::new(),
+            &classifier,
+            true, 5, 5, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou,
+            "end_turn assistant line should always produce NeedsYou");
+    }
+
+    #[test]
+    fn test_derive_agent_state_tool_result_midwork_autonomous() {
+        // tool_result with process running = between steps = Autonomous (correct for intermediate state)
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(LineType::User, vec![], None, true);
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &VecDeque::new(),
+            &classifier,
+            true, 5, 5, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::Autonomous,
+            "tool_result with process running should be Autonomous (between steps)");
+    }
+
+    #[test]
+    fn test_derive_agent_state_midwork_stale_120s_is_needs_you() {
+        // MidWork + process running but >120s idle = stale, should be NeedsYou
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(LineType::User, vec![], None, true);
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &VecDeque::new(),
+            &classifier,
+            true, 130, 5, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou,
+            "MidWork >120s should force NeedsYou even with process running");
+    }
+
+    /// THE critical regression test: simulates the race condition.
+    /// tool_result arrives first (Autonomous), then end_turn (should flip to NeedsYou).
+    #[test]
+    fn test_derive_agent_state_race_condition_tool_result_then_end_turn() {
+        let classifier = SessionStateClassifier::new();
+
+        // Step 1: tool_result line → should be Autonomous (between steps)
+        let tool_result_line = make_test_line(LineType::User, vec![], None, true);
+        let state1 = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&tool_result_line),
+            &VecDeque::new(),
+            &classifier,
+            true, 5, 5, false,
+        );
+        assert_eq!(state1.group, AgentStateGroup::Autonomous,
+            "Intermediate: tool_result with process should be Autonomous");
+
+        // Step 2: end_turn line → MUST be NeedsYou (the fix!)
+        let end_turn_line = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
+        let state2 = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&end_turn_line),
+            &VecDeque::new(),
+            &classifier,
+            true, 5, 5, false,
+        );
+        assert_eq!(state2.group, AgentStateGroup::NeedsYou,
+            "REGRESSION: end_turn must produce NeedsYou regardless of previous state");
+    }
+
+    #[test]
+    fn test_derive_agent_state_first_poll_no_process_is_needs_you() {
+        // On first discovery, MidWork without confirmed process → NeedsYou
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(LineType::User, vec![], None, true);
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &VecDeque::new(),
+            &classifier,
+            false, 5, 5, true, // is_first_poll = true, no process
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou,
+            "First poll without process should not keep Autonomous");
+    }
+
+    #[test]
+    fn test_derive_agent_state_ask_user_question_is_needs_you() {
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(
+            LineType::Assistant,
+            vec!["AskUserQuestion".to_string()],
+            Some("end_turn"),
+            false,
+        );
+        let mut recent = VecDeque::new();
+        recent.push_back(MessageSummary {
+            role: "assistant".to_string(),
+            content_preview: "Which option?".to_string(),
+            tool_names: vec!["AskUserQuestion".to_string()],
+        });
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &recent,
+            &classifier,
+            true, 5, 5, false,
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "awaiting_input");
+    }
+
+    #[test]
+    fn test_derive_agent_state_single_turn_end_turn_is_task_complete() {
+        // Structural classifier single-turn Q&A path: turn_count ≤ 2 + end_turn + assistant message
+        let classifier = SessionStateClassifier::new();
+        let last = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
+        let mut recent = VecDeque::new();
+        recent.push_back(MessageSummary {
+            role: "assistant".to_string(),
+            content_preview: "The answer is 42.".to_string(),
+            tool_names: vec![],
+        });
+        let state = derive_agent_state(
+            &SessionStatus::Paused,
+            Some(&last),
+            &recent,
+            &classifier,
+            true, 5, 1, false, // turn_count = 1 → triggers single-turn Q&A structural match
+        );
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "task_complete",
+            "Single-turn Q&A with end_turn should hit structural classifier → task_complete");
+    }
+
+    // =========================================================================
+    // handle_transitions tests
+    // =========================================================================
+
+    #[test]
+    fn test_handle_transitions_working_to_paused_computes_task_time() {
+        let mut acc = SessionAccumulator::new();
+        acc.last_status = Some(SessionStatus::Working);
+        acc.current_turn_started_at = Some(1000);
+
+        handle_transitions(&SessionStatus::Paused, &mut acc, 1033);
+
+        assert_eq!(acc.last_turn_task_seconds, Some(33),
+            "Working→Paused should compute task time as last_activity_at - turn_start");
+        assert_eq!(acc.last_status, Some(SessionStatus::Paused));
+    }
+
+    #[test]
+    fn test_handle_transitions_to_working_clears_task_time() {
+        let mut acc = SessionAccumulator::new();
+        acc.last_turn_task_seconds = Some(42);
+
+        handle_transitions(&SessionStatus::Working, &mut acc, 0);
+
+        assert_eq!(acc.last_turn_task_seconds, None,
+            "Entering Working should clear task time");
+    }
+
+    #[test]
+    fn test_handle_transitions_to_done_sets_completed_at() {
+        let mut acc = SessionAccumulator::new();
+        acc.last_status = Some(SessionStatus::Paused);
+
+        handle_transitions(&SessionStatus::Done, &mut acc, 0);
+
+        assert!(acc.completed_at.is_some());
+        assert_eq!(acc.last_status, Some(SessionStatus::Done));
+    }
+
+    #[test]
+    fn test_handle_transitions_done_cleans_up_running_subagents() {
+        let mut acc = SessionAccumulator::new();
+        acc.sub_agents.push(SubAgentInfo {
+            tool_use_id: "toolu_1".into(),
+            agent_id: None,
+            agent_type: "Explore".into(),
+            description: "test".into(),
+            status: SubAgentStatus::Running,
+            started_at: 1000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            cost_usd: None,
+            current_activity: None,
+        });
+
+        handle_transitions(&SessionStatus::Done, &mut acc, 0);
+
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error,
+            "Running sub-agents should be marked Error on session Done");
+    }
+
+    #[test]
+    fn test_handle_transitions_paused_to_paused_no_task_time_change() {
+        let mut acc = SessionAccumulator::new();
+        acc.last_status = Some(SessionStatus::Paused);
+        acc.last_turn_task_seconds = Some(33);
+
+        handle_transitions(&SessionStatus::Paused, &mut acc, 2000);
+
+        assert_eq!(acc.last_turn_task_seconds, Some(33),
+            "Paused→Paused should NOT recompute task time");
+    }
+
+    #[test]
+    fn test_handle_transitions_first_discovery_as_paused_computes_task_time() {
+        // First discovery (last_status = None) as Paused should still compute task time
+        let mut acc = SessionAccumulator::new();
+        // last_status is None (first discovery)
+        acc.current_turn_started_at = Some(500);
+
+        handle_transitions(&SessionStatus::Paused, &mut acc, 555);
+
+        assert_eq!(acc.last_turn_task_seconds, Some(55),
+            "First discovery as Paused (old_status.is_none()) should compute task time");
+        assert_eq!(acc.last_status, Some(SessionStatus::Paused));
     }
 }
