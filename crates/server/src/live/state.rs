@@ -280,6 +280,7 @@ mod tests {
             has_system_prefix: false,
             sub_agent_spawns: Vec::new(),
             sub_agent_result: None,
+            sub_agent_progress: None,
         }
     }
 
