@@ -687,6 +687,7 @@ impl LiveSessionManager {
                         .and_then(parse_timestamp_to_unix);
                     agent.duration_ms = result.total_duration_ms;
                     agent.tool_use_count = result.total_tool_use_count;
+                    agent.current_activity = None; // No longer running, clear activity
                     // Compute cost from token usage via pricing table
                     if let Some(model) = acc.model.as_deref() {
                         let sub_tokens = TokenUsage {
@@ -703,6 +704,22 @@ impl LiveSessionManager {
                     }
                 }
                 // If no matching spawn found, ignore gracefully (orphaned tool_result)
+            }
+
+            // --- Sub-agent progress tracking (early agentId + current activity) ---
+            if let Some(ref progress) = line.sub_agent_progress {
+                if let Some(agent) = acc.sub_agents.iter_mut()
+                    .find(|a| a.tool_use_id == progress.parent_tool_use_id)
+                {
+                    // Populate agent_id from progress event (available before completion!)
+                    if agent.agent_id.is_none() {
+                        agent.agent_id = Some(progress.agent_id.clone());
+                    }
+                    // Update current activity (only while still running)
+                    if agent.status == SubAgentStatus::Running {
+                        agent.current_activity = progress.current_tool.clone();
+                    }
+                }
             }
         }
 
@@ -939,6 +956,7 @@ impl LiveSessionManager {
                 if agent.status == SubAgentStatus::Running {
                     agent.status = SubAgentStatus::Error;
                     agent.completed_at = Some(completed_at_secs as i64);
+                    agent.current_activity = None;
                 }
             }
         } else if new_status != SessionStatus::Done {
