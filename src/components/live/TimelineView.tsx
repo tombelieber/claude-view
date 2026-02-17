@@ -100,7 +100,9 @@ export function TimelineView({
 
   // Sort agents by startedAt (chronological order)
   const sortedAgents = useMemo(() => {
-    return [...subAgents].sort((a, b) => a.startedAt - b.startedAt)
+    return [...subAgents]
+      .filter((a) => a.startedAt > 0) // Exclude epoch-zero (data bug)
+      .sort((a, b) => a.startedAt - b.startedAt)
   }, [subAgents])
 
   // Force re-render every 2 seconds when any agent is running
