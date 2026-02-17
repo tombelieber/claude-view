@@ -115,14 +115,21 @@ pub async fn live_stream(
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!(
-                                "SSE client lagged by {} events, sending fresh summary",
+                                "SSE client lagged by {} events, re-sending all sessions",
                                 n
                             );
+                            // Re-send full state (same as initial connect) so the
+                            // client recovers from any missed discover/complete events.
                             let map = sessions.read().await;
                             let summary = build_summary(&map);
                             yield Ok(Event::default().event("summary").data(
                                 serde_json::to_string(&summary).unwrap_or_default()
                             ));
+                            for session in map.values() {
+                                yield Ok(Event::default().event("session_discovered").data(
+                                    serde_json::to_string(session).unwrap_or_default()
+                                ));
+                            }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
