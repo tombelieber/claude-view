@@ -56,4 +56,10 @@ toolUseCount?: number | null,
  * Computed from `toolUseResult.usage` token counts via the pricing table.
  * None while status is Running or if pricing data unavailable.
  */
-costUsd?: number | null, };
+costUsd?: number | null, 
+/**
+ * Current tool the sub-agent is using (e.g., "Read", "Grep", "Edit").
+ * Populated from progress events while status is Running.
+ * Cleared to None when status transitions to Complete/Error.
+ */
+currentActivity?: string | null, };
