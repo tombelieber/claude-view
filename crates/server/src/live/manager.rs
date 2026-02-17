@@ -373,16 +373,50 @@ impl LiveSessionManager {
 
             // Start the file system watcher
             let (file_tx, mut file_rx) = mpsc::channel::<FileEvent>(512);
-            let _watcher = match start_watcher(file_tx) {
-                Ok(w) => w,
+            let (_watcher, dropped_events) = match start_watcher(file_tx) {
+                Ok((w, d)) => (w, d),
                 Err(e) => {
                     error!("Failed to start file watcher: {}", e);
                     return;
                 }
             };
 
+            // Track last catch-up scan time
+            let mut last_catchup_count = 0u64;
+
             // Process file events forever
             while let Some(event) = file_rx.recv().await {
+                // Check if drops occurred since last check — trigger catch-up scan
+                let current_drops = dropped_events.load(std::sync::atomic::Ordering::Relaxed);
+                if current_drops > last_catchup_count {
+                    last_catchup_count = current_drops;
+                    info!(
+                        dropped_total = current_drops,
+                        "Detected dropped watcher events — triggering catch-up scan"
+                    );
+                    let catchup_paths = {
+                        let dir = projects_dir.clone();
+                        tokio::task::spawn_blocking(move || initial_scan(&dir))
+                            .await
+                            .unwrap_or_default()
+                    };
+                    for path in &catchup_paths {
+                        let sid = extract_session_id(path);
+                        let is_new = {
+                            let sessions = manager.sessions.read().await;
+                            !sessions.contains_key(&sid)
+                        };
+                        manager.process_jsonl_update(path).await;
+                        if is_new {
+                            let sessions = manager.sessions.read().await;
+                            if let Some(session) = sessions.get(&sid) {
+                                let _ = manager.tx.send(SessionEvent::SessionDiscovered {
+                                    session: session.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
                 match event {
                     FileEvent::Modified(path) => {
                         let session_id = extract_session_id(&path);
@@ -772,7 +806,7 @@ impl LiveSessionManager {
                 // Parse timestamp from the JSONL line to get started_at
                 let started_at = line.timestamp.as_deref()
                     .and_then(parse_timestamp_to_unix)
-                    .unwrap_or(0);
+                    .unwrap_or(last_activity_at); // fallback to file mtime, never epoch-zero
                 acc.sub_agents.push(SubAgentInfo {
                     tool_use_id: spawn.tool_use_id.clone(),
                     agent_id: None, // populated on completion from toolUseResult.agentId
