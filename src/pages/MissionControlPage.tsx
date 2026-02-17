@@ -13,6 +13,8 @@ import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { MobileTabBar } from '../components/live/MobileTabBar'
+import { KanbanSidePanel } from '../components/live/KanbanSidePanel'
+import { cn } from '../lib/utils'
 import type { LiveSummary } from '../components/live/use-live-sessions'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
@@ -193,7 +195,34 @@ export function MissionControlPage() {
         )}
 
         {viewMode === 'kanban' && (
-          <KanbanView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} stalledSessions={stalledSessions} currentTime={currentTime} />
+          <div className="flex gap-4">
+            <div className={cn(
+              'transition-all duration-200',
+              selectedId ? 'w-2/5 min-w-[300px]' : 'w-full',
+            )}>
+              <KanbanView
+                sessions={filteredSessions}
+                selectedId={selectedId}
+                onSelect={handleSelectSession}
+                onCardClick={handleSelectSession}
+                stalledSessions={stalledSessions}
+                currentTime={currentTime}
+              />
+            </div>
+            {selectedId && (() => {
+              const session = filteredSessions.find(s => s.id === selectedId)
+              if (!session) return null
+              return (
+                <div className="w-3/5 min-w-[400px] h-[calc(100vh-220px)]">
+                  <KanbanSidePanel
+                    key={session.id}
+                    session={session}
+                    onClose={() => setSelectedId(null)}
+                  />
+                </div>
+              )
+            })()}
+          </div>
         )}
 
         {viewMode === 'monitor' && <MonitorView sessions={filteredSessions} />}
