@@ -70,6 +70,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
   const lastEventTimes = useRef<Map<string, number>>(new Map())
   const [stalledSessions, setStalledSessions] = useState<Set<string>>(new Set())
   const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
+  const resyncRef = useRef<{ ids: Set<string>; timer: ReturnType<typeof setTimeout> | null } | null>(null)
 
   useEffect(() => {
     let es: EventSource | null = null
@@ -97,6 +98,8 @@ export function useLiveSessions(): UseLiveSessionsResult {
             setSessions(prev => new Map(prev).set(session.id, session))
             setLastUpdate(new Date())
             lastEventTimes.current.set(session.id, Date.now())
+            // Track for resync window
+            if (resyncRef.current) resyncRef.current.ids.add(session.id)
           }
         } catch { /* ignore malformed */ }
       })
@@ -132,10 +135,29 @@ export function useLiveSessions(): UseLiveSessionsResult {
       es.addEventListener('summary', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          // CRITICAL: detect summary by new field name
-          const s = data.needsYouCount !== undefined ? data : data.summary ?? data
-          setSummary(s)
+          // Backend always sends summary fields at top level (needsYouCount, etc.)
+          setSummary(data)
           setLastUpdate(new Date())
+
+          // After a lag recovery, the server re-sends all active sessions
+          // as session_discovered events. Track which IDs arrive in the
+          // next batch so we can prune sessions that no longer exist.
+          resyncRef.current = { ids: new Set<string>(), timer: null }
+          resyncRef.current.timer = window.setTimeout(() => {
+            if (resyncRef.current) {
+              const validIds = resyncRef.current.ids
+              if (validIds.size > 0) {
+                setSessions(prev => {
+                  const next = new Map<string, LiveSession>()
+                  for (const [id, session] of prev) {
+                    if (validIds.has(id)) next.set(id, session)
+                  }
+                  return next
+                })
+              }
+              resyncRef.current = null
+            }
+          }, 500) // 500ms window for all session_discovered to arrive
         } catch { /* ignore */ }
       })
 
