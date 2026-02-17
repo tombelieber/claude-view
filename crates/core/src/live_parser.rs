@@ -160,7 +160,18 @@ pub fn parse_tail(
     let metadata = file.metadata()?;
     let file_len = metadata.len();
 
-    if offset >= file_len {
+    if offset > file_len {
+        // File was replaced (new file smaller than stored offset).
+        // Reset to start and read the entire new file.
+        tracing::warn!(
+            path = %path.display(),
+            old_offset = offset,
+            new_file_len = file_len,
+            "File replaced (offset > size) — resetting to start"
+        );
+        return parse_tail(path, 0, finders);
+    }
+    if offset == file_len {
         return Ok((Vec::new(), offset));
     }
 
@@ -616,6 +627,35 @@ mod tests {
         let (lines, offset) = parse_tail(&path, 0, &finders).unwrap();
         assert!(lines.is_empty());
         assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_parse_tail_resets_on_file_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+
+        // Write initial content
+        {
+            let mut f = File::create(&path).unwrap();
+            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#).unwrap();
+            writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"hi"}}]}}}}"#).unwrap();
+        }
+
+        let finders = TailFinders::new();
+        let (lines, offset) = parse_tail(&path, 0, &finders).unwrap();
+        assert!(!lines.is_empty());
+        assert!(offset > 0);
+
+        // "Replace" the file with smaller content (simulates log rotation)
+        {
+            let mut f = File::create(&path).unwrap();
+            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"new session"}}}}"#).unwrap();
+        }
+
+        // Old offset is larger than new file — should reset and read from start
+        let (lines2, offset2) = parse_tail(&path, offset, &finders).unwrap();
+        assert!(!lines2.is_empty(), "Should read new content after file replacement");
+        assert!(offset2 > 0);
     }
 
     #[test]
