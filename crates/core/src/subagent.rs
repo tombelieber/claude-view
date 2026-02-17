@@ -66,4 +66,53 @@ pub struct SubAgentInfo {
     /// None while status is Running or if pricing data unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_usd: Option<f64>,
+
+    /// Current tool the sub-agent is using (e.g., "Read", "Grep", "Edit").
+    /// Populated from progress events while status is Running.
+    /// Cleared to None when status transitions to Complete/Error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_activity: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subagent_info_serialization_with_activity() {
+        let info = SubAgentInfo {
+            tool_use_id: "toolu_01ABC".to_string(),
+            agent_id: Some("a951849".to_string()),
+            agent_type: "Explore".to_string(),
+            description: "Search codebase".to_string(),
+            status: SubAgentStatus::Running,
+            started_at: 1739700000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            cost_usd: None,
+            current_activity: Some("Read".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"currentActivity\":\"Read\""));
+    }
+
+    #[test]
+    fn test_subagent_info_skips_none_activity() {
+        let info = SubAgentInfo {
+            tool_use_id: "toolu_01ABC".to_string(),
+            agent_id: None,
+            agent_type: "Explore".to_string(),
+            description: "Search".to_string(),
+            status: SubAgentStatus::Running,
+            started_at: 1739700000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            cost_usd: None,
+            current_activity: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(!json.contains("currentActivity"));
+    }
 }
