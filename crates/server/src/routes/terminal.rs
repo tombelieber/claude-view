@@ -45,8 +45,14 @@ impl Drop for ConnectionGuard {
 ///
 /// Routes:
 /// - `WS /sessions/:id/terminal` - WebSocket stream of JSONL lines
+/// - `WS /sessions/:id/subagents/:agent_id/terminal` - WebSocket stream of sub-agent JSONL lines
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/sessions/{id}/terminal", get(ws_terminal_handler))
+    Router::new()
+        .route("/sessions/{id}/terminal", get(ws_terminal_handler))
+        .route(
+            "/sessions/{id}/subagents/{agent_id}/terminal",
+            get(ws_subagent_terminal_handler),
+        )
 }
 
 /// HTTP upgrade handler -- validates session, checks connection limits,
@@ -119,6 +125,126 @@ async fn ws_terminal_handler(
 
         handle_terminal_ws(socket, sid.clone(), file_path, terminal_connections.clone()).await;
         // _guard dropped here (or on panic/cancel), calling disconnect()
+    })
+}
+
+/// HTTP upgrade handler for sub-agent terminal WebSocket.
+///
+/// Validates agent_id, resolves the sub-agent JSONL path from the parent
+/// session, then delegates to `handle_terminal_ws` for actual streaming.
+async fn ws_subagent_terminal_handler(
+    State(state): State<Arc<AppState>>,
+    Path((session_id, agent_id)): Path<(String, String)>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    // SECURITY: Validate agent_id is alphanumeric (prevents path traversal)
+    if agent_id.is_empty()
+        || !agent_id.chars().all(|c| c.is_ascii_alphanumeric())
+        || agent_id.len() > 16
+    {
+        return ws.on_upgrade(move |mut socket| async move {
+            let err_msg = serde_json::json!({
+                "type": "error",
+                "message": format!("Invalid agent ID: '{}'", agent_id),
+            });
+            let _ = socket
+                .send(Message::Text(err_msg.to_string().into()))
+                .await;
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4004,
+                    reason: "Invalid agent ID".into(),
+                })))
+                .await;
+        });
+    }
+
+    // Look up parent session to get its JSONL file path
+    let parent_file_path = {
+        let map = state.live_sessions.read().await;
+        map.get(&session_id).map(|s| s.file_path.clone())
+    };
+
+    let parent_file_path = match parent_file_path {
+        Some(fp) if !fp.is_empty() => PathBuf::from(fp),
+        _ => {
+            return ws.on_upgrade(move |mut socket| async move {
+                let err_msg = serde_json::json!({
+                    "type": "error",
+                    "message": format!("Parent session '{}' not found", session_id),
+                });
+                let _ = socket
+                    .send(Message::Text(err_msg.to_string().into()))
+                    .await;
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4004,
+                        reason: "Session not found".into(),
+                    })))
+                    .await;
+            });
+        }
+    };
+
+    // Resolve sub-agent JSONL path
+    let subagent_path =
+        crate::live::subagent_file::resolve_subagent_path(&parent_file_path, &agent_id);
+
+    if !subagent_path.exists() {
+        return ws.on_upgrade(move |mut socket| async move {
+            let err_msg = serde_json::json!({
+                "type": "error",
+                "message": format!(
+                    "Sub-agent '{}' JSONL file not found for session '{}'",
+                    agent_id, session_id
+                ),
+            });
+            let _ = socket
+                .send(Message::Text(err_msg.to_string().into()))
+                .await;
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4004,
+                    reason: "Sub-agent file not found".into(),
+                })))
+                .await;
+        });
+    }
+
+    // Namespaced connection key to avoid collision with parent
+    let connection_key = format!("{}::{}", session_id, agent_id);
+    let terminal_connections = state.terminal_connections.clone();
+
+    ws.on_upgrade(move |mut socket| async move {
+        if let Err(e) = terminal_connections.connect(&connection_key) {
+            let err_msg = serde_json::json!({
+                "type": "error",
+                "message": e.to_string(),
+            });
+            let _ = socket
+                .send(Message::Text(err_msg.to_string().into()))
+                .await;
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4004,
+                    reason: "Connection limit exceeded".into(),
+                })))
+                .await;
+            return;
+        }
+
+        let _guard = ConnectionGuard {
+            session_id: connection_key.clone(),
+            manager: terminal_connections.clone(),
+        };
+
+        handle_terminal_ws(
+            socket,
+            connection_key,
+            subagent_path,
+            terminal_connections.clone(),
+        )
+        .await;
     })
 }
 
