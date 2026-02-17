@@ -16,7 +16,8 @@ feature: mission-control
 | B | Views & Layout | `done` | List/Kanban views, view switcher, keyboard shortcuts, mobile responsive |
 | B2 | Intelligent Session States | `superseded` | Superseded by `2026-02-15-agent-state-hooks-design.md`. Original: 3-state model, pause classification, module scoping |
 | C | Monitor Mode | `done` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
-| D | Sub-Agent Visualization | `in-progress` | Swim lanes, sub-agent extraction, compact pills, timeline view |
+| D | Sub-Agent Visualization | `done` | Swim lanes, sub-agent extraction, compact pills, timeline view |
+| D.2 | Sub-Agent Deep Dive | `done` | Real-time progress, drill-down conversations, sub-agent WebSocket streaming |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
 | F | Interactive Control | `pending` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
 | G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
@@ -62,7 +63,8 @@ Phase A ──► Phase G ──► Phase H ──┐
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
 | [`phase-b2-intelligent-states.md`](phase-b2-intelligent-states.md) | B2 | `superseded` |
 | [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `in-progress` |
-| [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `in-progress` |
+| [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `done` |
+| [`phase-d2-subagent-drilldown.md`](phase-d2-subagent-drilldown.md) | D.2 | `done` |
 | [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
 | [`phase-f-interactive.md`](phase-f-interactive.md) | F | `pending` |
 | [`phase-g-codex-foundation.md`](phase-g-codex-foundation.md) | G | `pending` |
@@ -215,6 +217,25 @@ cargo test -p vibe-recall-core -- subagent
 2. **Task 6:** Verify frontend test coverage, add integration tests if needed
 3. **Task 7:** Run full verification suite, test end-to-end with real sessions
 4. **Optional:** Add TimelineView to MonitorView for completed sessions (marked optional in spec)
+
+## Phase D.2: Sub-Agent Deep Dive — Implementation Progress
+
+**Status:** `done` (12 of 12 tasks complete, 2026-02-17)
+
+| # | Task | Status | Commit |
+|---|------|--------|--------|
+| 1 | Progress Event SIMD Finder + LiveLine Extension | ✅ Done | `f2b0261` |
+| 2 | SubAgentInfo Type Extension (current_activity) | ✅ Done | `9ad7c7d` |
+| 3 | Manager Progress Event Processing | ✅ Done | `f36ad2e` |
+| 4 | Sub-Agent Activity Display in SwimLanes | ✅ Done | `4726f04` |
+| 5 | Sub-Agent File Resolution Utility | ✅ Done | `b7f81ec` |
+| 6 | Sub-Agent Terminal WebSocket Endpoint | ✅ Done | `24428a8` |
+| 7 | Sub-Agent Drill-Down Hook (Frontend) | ✅ Done | `66dbdb5` |
+| 8 | Sub-Agent Drill-Down Panel Component | ✅ Done | `3284366` |
+| 9 | SwimLanes Click-to-Expand Integration | ✅ Done | `6a0cdd5` |
+| 10 | Backend Tests — Progress Events | ✅ Done | `0573d3e` |
+| 11 | Frontend Tests — Drill-Down Integration | ✅ Done | `315aa64` |
+| 12 | Verification & End-to-End | ✅ Done | — |
 
 ## Research Artifacts
 
