@@ -108,10 +108,17 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
             )}
           </div>
 
-          {/* Running: progress bar */}
+          {/* Running: activity text or progress bar */}
           {agent.status === 'running' && (
-            <div className="pl-4">
-              <ProgressBar />
+            <div className="pl-4 flex items-center gap-2">
+              {agent.currentActivity ? (
+                <span className="text-xs font-mono text-blue-400 flex items-center gap-1.5">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  {agent.currentActivity}
+                </span>
+              ) : (
+                <ProgressBar />
+              )}
             </div>
           )}
 
