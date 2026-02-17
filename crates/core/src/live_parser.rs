@@ -93,6 +93,7 @@ pub enum LineType {
     System,
     Progress,
     Summary,
+    Result,
     Other,
 }
 
@@ -104,6 +105,7 @@ pub struct TailFinders {
     pub type_system: memmem::Finder<'static>,
     pub type_progress: memmem::Finder<'static>,
     pub type_summary: memmem::Finder<'static>,
+    pub type_result: memmem::Finder<'static>,
     pub content_key: memmem::Finder<'static>,
     pub model_key: memmem::Finder<'static>,
     pub usage_key: memmem::Finder<'static>,
@@ -124,6 +126,7 @@ impl TailFinders {
             type_system: memmem::Finder::new(b"\"system\""),
             type_progress: memmem::Finder::new(b"\"progress\""),
             type_summary: memmem::Finder::new(b"\"summary\""),
+            type_result: memmem::Finder::new(b"\"result\""),
             content_key: memmem::Finder::new(b"\"content\""),
             model_key: memmem::Finder::new(b"\"model\""),
             usage_key: memmem::Finder::new(b"\"usage\""),
@@ -201,9 +204,21 @@ pub fn parse_tail(
 fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // Fast classification via SIMD substring search (avoids JSON parse for
     // lines that don't contain the keys we care about).
-    // Check progress and summary BEFORE user/assistant because progress lines
-    // contain nested "role":"assistant" which would match the assistant finder.
-    let line_type = if finders.type_progress.find(raw).is_some() {
+    // Check result/progress/summary BEFORE user/assistant because these lines
+    // may contain nested "role":"assistant" which would match the assistant finder.
+    let line_type = if finders.type_result.find(raw).is_some()
+        && finders.type_progress.find(raw).is_none()
+    {
+        // "result" appears in result lines AND in toolUseResult lines.
+        // Disambiguate: if line has "result" but NOT "user", it's a
+        // top-level result line. If it has both "result" and "user", it's
+        // a toolUseResult on a user line → classify as User below.
+        if finders.type_user.find(raw).is_none() {
+            LineType::Result
+        } else {
+            LineType::User
+        }
+    } else if finders.type_progress.find(raw).is_some() {
         LineType::Progress
     } else if finders.type_summary.find(raw).is_some() {
         LineType::Summary
@@ -1153,6 +1168,32 @@ mod tests {
             line.line_type,
             LineType::Progress,
             "Progress lines must be classified as Progress, not Assistant"
+        );
+    }
+
+    #[test]
+    fn test_result_line_classified_as_result() {
+        let finders = TailFinders::new();
+        // Claude Code writes this as the final session line
+        let raw = br#"{"type":"result","subtype":"success","duration_ms":12345,"duration_api_ms":10234,"is_error":false,"num_turns":5,"session_id":"abc123"}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(
+            line.line_type,
+            LineType::Result,
+            "Result lines must be classified as Result"
+        );
+    }
+
+    #[test]
+    fn test_tool_use_result_not_classified_as_result() {
+        let finders = TailFinders::new();
+        // toolUseResult is on a user line, should be User not Result
+        let raw = br#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01ABC","content":"done"}]},"toolUseResult":{"status":"completed"}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(
+            line.line_type,
+            LineType::User,
+            "toolUseResult lines must remain User, not Result"
         );
     }
 

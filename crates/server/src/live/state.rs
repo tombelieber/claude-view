@@ -152,6 +152,7 @@ pub enum SessionEvent {
 ///
 /// 3-state derivation (first match wins):
 /// 1. No data at all -> Paused
+/// 1b. Result line -> Done (instant, file-watcher-driven)
 /// 2. No running process AND file stale >300s -> Done
 /// 3. Activity within 30s:
 ///    - Assistant with tools -> Working
@@ -170,6 +171,12 @@ pub fn derive_status(
         Some(ll) => ll,
         None => return SessionStatus::Paused,
     };
+
+    // Result line = session definitively over. No need to wait for process
+    // exit or 300s stale threshold.
+    if last_line.line_type == LineType::Result {
+        return SessionStatus::Done;
+    }
 
     // Done: process exited AND file stale >300s
     if !has_running_process && seconds_since_modified > 300 {
@@ -313,6 +320,15 @@ mod tests {
         let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
         let status = derive_status(Some(&last), 10, true);
         assert_eq!(status, SessionStatus::Paused);
+    }
+
+    #[test]
+    fn test_status_done_on_result_line_immediately() {
+        let last = make_live_line(LineType::Result, vec![], None);
+        // Even with running process and fresh file, result = Done
+        let status = derive_status(Some(&last), 0, true);
+        assert_eq!(status, SessionStatus::Done,
+            "Result line should immediately produce Done regardless of process/staleness");
     }
 
     #[test]
