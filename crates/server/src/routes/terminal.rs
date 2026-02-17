@@ -267,6 +267,10 @@ fn default_scrollback() -> usize {
     100
 }
 
+/// Maximum scrollback lines the server will send, regardless of client request.
+/// Protects against OOM from malicious/misconfigured clients requesting huge scrollbacks.
+const MAX_SCROLLBACK: usize = 5_000;
+
 /// Client-to-server message types.
 #[derive(Debug, serde::Deserialize)]
 struct ClientMessage {
@@ -611,8 +615,8 @@ async fn handle_terminal_ws(
         return;
     }
 
-    // 3. Send scrollback buffer using tail_lines (no cap — send all requested lines)
-    let scrollback_count = handshake.scrollback;
+    // 3. Send scrollback buffer using tail_lines (capped to MAX_SCROLLBACK)
+    let scrollback_count = handshake.scrollback.min(MAX_SCROLLBACK);
     match vibe_recall_core::tail::tail_lines(&file_path, scrollback_count).await {
         Ok(lines) => {
             for line in &lines {
