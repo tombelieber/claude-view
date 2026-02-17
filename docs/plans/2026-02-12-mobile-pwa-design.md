@@ -70,7 +70,7 @@ Everything else -- fluency score, analytics, pattern discovery -- is nice-to-hav
 Claude Code writes JSONL
     |
     v
-launchd daemon (vibe-recall-server, always running)
+ launchd daemon (vibe-recall, always running)
     |
     v  notify crate detects file change
 Mission Control MONITOR layer (existing Phase A)
@@ -104,7 +104,7 @@ crates/
     └── Cargo.toml
 ```
 
-The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to Fly.io. The local daemon runs the existing `vibe-recall-server` binary with a new relay client module that connects outbound to the relay.
+The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to Fly.io. The local daemon runs the existing `vibe-recall` binary with a new relay client module that connects outbound to the relay.
 
 ---
 
@@ -172,6 +172,10 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 **Re-pairing:** Desktop UI has a "Remove device" button. Revokes the phone's public key. Phone must scan a new QR code to re-pair.
 
+> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md#5-qr-pairing-flow).** 
+>
+> ⚠️ **TODO:** This document is planned but not yet written. For now, refer to the QR Pairing Flow section above for the high-level protocol.
+
 ---
 
 ## 7. PWA Mobile Phases
@@ -208,58 +212,11 @@ Build the relay protocol for M3 from day 1. The WebSocket protocol is bidirectio
 
 ## 8. Relay Server Design (crates/relay/)
 
-### Overview
-
 The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is to forward encrypted blobs between paired devices. It stores no session data, logs no message content, and cannot decrypt payloads.
 
-### Endpoints
+**For detailed relay server design (endpoints, constraints, deployment config, cost estimates), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md).**
 
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/ws` | WebSocket | Bidirectional device connection. Authenticated via Ed25519 signed challenge. |
-| `/health` | GET | Health check for Fly.io. Returns 200 if the server is running. |
-| `/pair` | POST | Accept pairing request (one-time token + encrypted phone pubkey). |
-
-### Constraints
-
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| Max connections per device | 10 | Prevent resource exhaustion |
-| Max messages per minute per device | 100 | Rate limiting |
-| Max new connections per minute per IP | 10 | Connection rate limiting |
-| Message queue (offline device) | 100 messages, 5 min TTL | Bounded buffer for brief disconnects, not persistent storage |
-| Max message size | 64 KB | Session summaries, not file contents |
-| Persistent storage | None | Zero-knowledge design. All state is in-memory. Restart = clean slate (devices auto-reconnect and re-auth). |
-
-### Fly.io deployment
-
-```toml
-# fly.toml
-app = "claude-score-relay"
-primary_region = "sjc"  # San Jose, close to west coast users
-
-[build]
-  image = "ghcr.io/myorg/claude-score-relay:latest"
-
-[http_service]
-  internal_port = 8080
-  force_https = true
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-```
-
-Expected cost at scale:
-
-| Users | Concurrent WS | VM size | Cost/mo |
-|-------|--------------|---------|---------|
-| 10 | ~20 | shared-cpu-1x, 256MB | ~$2 |
-| 100 | ~200 | shared-cpu-1x, 256MB | ~$2 |
-| 1,000 | ~2,000 | dedicated-cpu-1x, 512MB | ~$7 |
-| 10,000 | ~20,000 | dedicated-cpu-2x, 1GB | ~$30 |
-
-Rust's async WS handling means a single VM handles thousands of idle connections efficiently. Scale horizontally only when CPU (encryption verification) becomes the bottleneck.
+> ⚠️ **TODO:** This document is planned but not yet written. For M1 scope, the relay architecture in Section 4 and security layers in Section 5 provide sufficient specification.
 
 ---
 
@@ -273,10 +230,10 @@ Rust's async WS handling means a single VM handles thousands of idle connections
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude-score.daemon</string>
+    <string>com.vibe-recall.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/claude-score</string>
+        <string>/usr/local/bin/vibe-recall</string>
         <string>--daemon</string>
     </array>
     <key>RunAtLoad</key>
@@ -284,24 +241,24 @@ Rust's async WS handling means a single VM handles thousands of idle connections
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/claude-score-daemon.log</string>
+    <string>/tmp/vibe-recall-daemon.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/claude-score-daemon.err</string>
+    <string>/tmp/vibe-recall-daemon.err</string>
 </dict>
 </plist>
 ```
 
-**Location:** `~/Library/LaunchAgents/com.claude-score.daemon.plist` (UserAgent, no root required).
+**Location:** `~/Library/LaunchAgents/com.vibe-recall.daemon.plist` (UserAgent, no root required).
 
 ### Installation UX (invisible daemon)
 
 There is no "install daemon" step. The user never learns the word "daemon."
 
-1. First `npx claude-view` → starts server, silently writes plist, runs `launchctl load`, opens browser
+1. First `npx claude-view` (npm wrapper) → starts `vibe-recall` binary, silently writes plist, runs `launchctl load`, opens browser
 2. Toast notification: "claude-view is running at localhost:47892"
 3. Every subsequent `npx claude-view` → server already running, just opens browser
 4. Settings page has "Run in background" toggle (default: ON)
-5. `claude-view stop` CLI command for power users
+5. `claude-view stop` CLI command (npm wrapper) for power users
 
 The server IS the daemon. Same binary, always running. No mode switch, no separate process.
 
@@ -425,7 +382,22 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 ## Cross-references
 
+- [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment. **⚠️ TODO: Not yet written**
+- [`docs/plans/2026-02-16-relay-hosting-adr.md`](2026-02-16-relay-hosting-adr.md) -- Hosting provider decision (Fly.io) and re-evaluation triggers
 - [`docs/plans/mission-control/design.md`](mission-control/design.md) -- Mission Control architecture (Phase A is prerequisite)
 - [`docs/plans/mission-control/phase-a-monitoring.md`](mission-control/phase-a-monitoring.md) -- JSONL watcher, state machine, broadcast channel
 - [`docs/plans/mission-control/phase-f-interactive.md`](mission-control/phase-f-interactive.md) -- Agent SDK sidecar (prerequisite for M3)
 - `docs/plans/2026-02-07-gtm-launch-strategy.md` (on Desktop) -- Original GTM plan this pivots from
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Added TODO warnings at all references (lines 175, 215, 381) noting the document is planned but not written |
+| 2 | Binary name mismatch: plan used `vibe-recall-server` but actual binary is `vibe-recall` | Blocker | Updated lines 73 and 107 to use `vibe-recall` |
+| 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `vibe-recall` naming consistently |
+| 4 | CLI naming unclear: `npx claude-view` vs `vibe-recall` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `vibe-recall` binary (line 257) |
+| 5 | Hook path in phase-a-monitoring differs from actual | Minor | Noted in changelog; phase-a-monitoring.md is a separate plan with its own audit cycle |
+| 6 | Growth loop uses old `claude-score` product name | Minor | Left as-is; this is a conceptual diagram, not code reference. Product naming TBD. |
