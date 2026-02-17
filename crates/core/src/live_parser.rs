@@ -24,6 +24,18 @@ pub struct SubAgentSpawn {
     pub description: String,
 }
 
+/// Extracted from a `type: "progress"` line with `data.type: "agent_progress"`.
+#[derive(Debug, Clone)]
+pub struct SubAgentProgress {
+    /// Links back to the Task spawn's `tool_use_id`.
+    pub parent_tool_use_id: String,
+    /// 7-char agent ID (available before completion!).
+    pub agent_id: String,
+    /// Current tool the sub-agent is using (e.g., "Read", "Grep", "Edit").
+    /// Extracted from the latest `tool_use` block in `data.message.content`.
+    pub current_tool: Option<String>,
+}
+
 /// Extracted from a toolUseResult on a user line (Task completion).
 #[derive(Debug, Clone)]
 pub struct SubAgentResult {
@@ -69,6 +81,8 @@ pub struct LiveLine {
     pub sub_agent_spawns: Vec<SubAgentSpawn>,
     /// If this user line has a `toolUseResult` (Task completion), the result info.
     pub sub_agent_result: Option<SubAgentResult>,
+    /// If this is a progress line with agent_progress data.
+    pub sub_agent_progress: Option<SubAgentProgress>,
 }
 
 /// Broad classification of a JSONL line.
@@ -98,6 +112,7 @@ pub struct TailFinders {
     pub stop_reason_key: memmem::Finder<'static>,
     pub task_name_key: memmem::Finder<'static>,
     pub tool_use_result_key: memmem::Finder<'static>,
+    pub agent_progress_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -117,6 +132,7 @@ impl TailFinders {
             stop_reason_key: memmem::Finder::new(b"\"stop_reason\""),
             task_name_key: memmem::Finder::new(b"\"name\":\"Task\""),
             tool_use_result_key: memmem::Finder::new(b"\"toolUseResult\""),
+            agent_progress_key: memmem::Finder::new(b"\"agent_progress\""),
         }
     }
 }
@@ -221,6 +237,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 has_system_prefix: false,
                 sub_agent_spawns: Vec::new(),
                 sub_agent_result: None,
+                sub_agent_progress: None,
             };
         }
     };
@@ -397,6 +414,47 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         None
     };
 
+    // --- Sub-agent progress detection (progress lines with agent_progress) ---
+    // NOTE: Cannot use `line_type == LineType::Progress` here because the SIMD
+    // classifier checks for "user"/"assistant" first, and progress lines with
+    // nested `message.role: "assistant"` get misclassified. Instead, SIMD
+    // pre-filter on "agent_progress" then verify the parsed JSON `type` field.
+    let sub_agent_progress = if finders.agent_progress_key.find(raw).is_some()
+        && parsed.get("type").and_then(|t| t.as_str()) == Some("progress")
+    {
+        parsed.get("data").and_then(|data| {
+            if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
+                return None;
+            }
+            let parent_tool_use_id = parsed.get("parentToolUseID")
+                .and_then(|v| v.as_str())
+                .map(String::from)?;
+            let agent_id = data.get("agentId")
+                .and_then(|v| v.as_str())
+                .map(String::from)?;
+            // Extract current tool from the latest tool_use block in message.content
+            let current_tool = data.get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|blocks| {
+                    blocks.iter().rev().find_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                            b.get("name").and_then(|n| n.as_str()).map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                });
+            Some(SubAgentProgress {
+                parent_tool_use_id,
+                agent_id,
+                current_tool,
+            })
+        })
+    } else {
+        None
+    };
+
     LiveLine {
         line_type,
         role,
@@ -415,6 +473,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         has_system_prefix,
         sub_agent_spawns,
         sub_agent_result,
+        sub_agent_progress,
     }
 }
 
@@ -1020,5 +1079,49 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(!lines[0].is_tool_result_continuation);
         assert!(!lines[0].has_system_prefix);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sub-agent progress detection
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_progress_event_agent_activity() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","toolUseID":"agent_msg_01","data":{"type":"agent_progress","agentId":"a951849","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/path/to/file.rs"}}]}},"timestamp":"2026-02-16T08:34:13.134Z"}"#;
+        let line = parse_single_line(raw, &finders);
+
+        assert!(line.sub_agent_progress.is_some());
+        let progress = line.sub_agent_progress.unwrap();
+        assert_eq!(progress.parent_tool_use_id, "toolu_01ABC");
+        assert_eq!(progress.agent_id, "a951849");
+        assert_eq!(progress.current_tool, Some("Read".to_string()));
+    }
+
+    #[test]
+    fn test_progress_event_no_tool_use() {
+        let finders = TailFinders::new();
+        // Progress event where the assistant is just thinking (no tool_use block)
+        let raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","data":{"type":"agent_progress","agentId":"a951849","message":{"role":"assistant","content":[{"type":"text","text":"Let me think..."}]}}}"#;
+        let line = parse_single_line(raw, &finders);
+        let progress = line.sub_agent_progress.unwrap();
+        assert_eq!(progress.current_tool, None);
+    }
+
+    #[test]
+    fn test_progress_event_non_agent_type() {
+        let finders = TailFinders::new();
+        // Progress event that isn't agent_progress (should be ignored)
+        let raw = br#"{"type":"progress","data":{"type":"tool_progress","tool":"Bash"}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert!(line.sub_agent_progress.is_none());
+    }
+
+    #[test]
+    fn test_progress_event_missing_agent_id() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","data":{"type":"agent_progress","message":{"role":"assistant","content":[]}}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert!(line.sub_agent_progress.is_none()); // agentId required
     }
 }
