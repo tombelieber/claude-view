@@ -28,7 +28,7 @@ function formatDuration(ms: number): string {
 function StatusDot({ status }: { status: SubAgentInfo['status'] }) {
   const colorClass = {
     running: 'bg-green-500',
-    complete: 'bg-gray-500',
+    complete: 'bg-gray-400 dark:bg-gray-500',
     error: 'bg-red-500',
   }[status]
 
@@ -38,7 +38,7 @@ function StatusDot({ status }: { status: SubAgentInfo['status'] }) {
 /** Animated indeterminate progress bar for running agents */
 function ProgressBar() {
   return (
-    <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+    <div className="w-full h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
       <div
         className="h-full bg-blue-500 rounded-full"
         style={{
@@ -85,7 +85,7 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
   return (
     <div
       className={cn(
-        'flex flex-col gap-2 bg-gray-950 border border-gray-800 rounded-lg p-3',
+        'flex flex-col gap-2 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-3',
         // Max height with scroll if > 5 agents (each lane ~48px + gap)
         subAgents.length > 5 && 'max-h-[280px] overflow-y-auto'
       )}
@@ -105,22 +105,22 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
             }
           } : undefined}
           className={cn(
-            'flex flex-col gap-1.5 border-b border-gray-800 last:border-b-0 pb-2 last:pb-0',
-            canDrillDown && 'cursor-pointer hover:bg-gray-900/50 rounded-md transition-colors -mx-1 px-1',
+            'flex flex-col gap-1.5 border-b border-gray-100 dark:border-gray-800 last:border-b-0 pb-2 last:pb-0',
+            canDrillDown && 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 rounded-md transition-colors -mx-1 px-1',
           )}
         >
           {/* Header row: status + type + description */}
           <div className="flex items-center gap-2">
             <StatusDot status={agent.status} />
-            <span className="text-xs font-mono text-gray-400 uppercase tracking-wide min-w-[80px]">
+            <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wide min-w-[80px]">
               {agent.agentType}
             </span>
-            <span className="text-sm text-gray-300 flex-1 truncate">
+            <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">
               {agent.description}
             </span>
             {/* Error indicator */}
             {agent.status === 'error' && (
-              <span className="text-xs text-red-400 font-medium">ERROR</span>
+              <span className="text-xs text-red-500 dark:text-red-400 font-medium">ERROR</span>
             )}
           </div>
 
@@ -128,8 +128,8 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
           {agent.status === 'running' && (
             <div className="pl-4 flex items-center gap-2">
               {agent.currentActivity ? (
-                <span className="text-xs font-mono text-blue-400 flex items-center gap-1.5">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-xs font-mono text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse" />
                   {agent.currentActivity}
                 </span>
               ) : (
@@ -140,7 +140,7 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
 
           {/* Complete/Error: metrics row */}
           {agent.status !== 'running' && (
-            <div className="flex items-center gap-4 pl-4 text-xs font-mono text-gray-400">
+            <div className="flex items-center gap-4 pl-4 text-xs font-mono text-gray-500 dark:text-gray-400">
               {agent.costUsd != null && (
                 <span>{formatCost(agent.costUsd)}</span>
               )}
@@ -151,7 +151,7 @@ export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesPr
                 <span>{agent.toolUseCount} tool call{agent.toolUseCount !== 1 ? 's' : ''}</span>
               )}
               {agent.agentId && (
-                <span className="text-gray-500">id:{agent.agentId}</span>
+                <span className="text-gray-400 dark:text-gray-500">id:{agent.agentId}</span>
               )}
             </div>
           )}

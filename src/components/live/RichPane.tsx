@@ -53,6 +53,16 @@ function stripCommandTags(content: string): string {
     .trim()
 }
 
+/** Convert a timestamp value (ISO string or number) to Unix seconds, or undefined. */
+function parseTimestamp(ts: unknown): number | undefined {
+  if (typeof ts === 'number' && isFinite(ts) && ts > 0) return ts
+  if (typeof ts === 'string') {
+    const ms = Date.parse(ts)
+    if (!isNaN(ms)) return ms / 1000
+  }
+  return undefined
+}
+
 /**
  * Parse a raw WebSocket/SSE message string into a structured RichMessage.
  * Returns null for messages that don't map to a displayable type.
@@ -66,7 +76,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: msg.role === 'user' ? 'user' : 'assistant',
         content,
-        ts: msg.ts,
+        ts: parseTimestamp(msg.ts),
       }
     }
     if (msg.type === 'tool_use') {
@@ -75,7 +85,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         content: '',
         name: msg.name,
         input: msg.input ? JSON.stringify(msg.input) : undefined,
-        ts: msg.ts,
+        ts: parseTimestamp(msg.ts),
       }
     }
     if (msg.type === 'tool_result') {
@@ -84,7 +94,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: 'tool_result',
         content,
-        ts: msg.ts,
+        ts: parseTimestamp(msg.ts),
       }
     }
     if (msg.type === 'thinking') {
@@ -93,7 +103,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: 'thinking',
         content,
-        ts: msg.ts,
+        ts: parseTimestamp(msg.ts),
       }
     }
     if (msg.type === 'error') {
@@ -118,16 +128,27 @@ export function parseRichMessage(raw: string): RichMessage | null {
 
 // --- Helpers ---
 
-/** Format a timestamp as relative time (e.g. "2s ago", "5m ago"). Guards against epoch-zero. */
-function formatRelativeTime(ts: number | undefined): string | null {
+/** Format a timestamp as a static time label (chat-app style). Guards against epoch-zero. */
+function formatTimestamp(ts: number | undefined): string | null {
   if (!ts || ts <= 0) return null
-  const now = Date.now() / 1000
-  const delta = Math.max(0, Math.floor(now - ts))
-  if (delta < 5) return 'just now'
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  return `${Math.floor(delta / 86400)}d ago`
+  const date = new Date(ts * 1000)
+  if (isNaN(date.getTime())) return null
+  const now = new Date()
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  // Today: "10:30 AM"
+  if (date.toDateString() === now.toDateString()) return time
+  // Yesterday: "Yesterday 10:30 AM"
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`
+  // This year: "Jan 15, 10:30 AM"
+  if (date.getFullYear() === now.getFullYear()) {
+    const month = date.toLocaleString(undefined, { month: 'short' })
+    return `${month} ${date.getDate()}, ${time}`
+  }
+  // Older: "Jan 15 '25, 10:30 AM"
+  const month = date.toLocaleString(undefined, { month: 'short' })
+  return `${month} ${date.getDate()} '${String(date.getFullYear()).slice(-2)}, ${time}`
 }
 
 // --- Message Card Components ---
@@ -136,9 +157,9 @@ function UserMessage({ message }: { message: RichMessage }) {
   return (
     <div className="border-l-2 border-blue-500 pl-2 py-1">
       <div className="flex items-start gap-1.5">
-        <User className="w-3 h-3 text-blue-400 flex-shrink-0 mt-0.5" />
+        <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-gray-200 leading-relaxed prose prose-invert prose-sm max-w-none">
+          <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
             <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
           </div>
         </div>
@@ -152,9 +173,9 @@ function AssistantMessage({ message }: { message: RichMessage }) {
   return (
     <div className="pl-2 py-1">
       <div className="flex items-start gap-1.5">
-        <Bot className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
+        <Bot className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none">
+          <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
             <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
           </div>
         </div>
@@ -171,11 +192,11 @@ function ToolUseMessage({ message }: { message: RichMessage }) {
   return (
     <div className="py-0.5">
       <div className="flex items-start gap-1.5">
-        <Wrench className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
-        <span className="inline-flex items-start gap-1 px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 text-[10px] font-mono break-all">
+        <Wrench className="w-3 h-3 text-orange-500 dark:text-orange-400 flex-shrink-0 mt-0.5" />
+        <span className="inline-flex items-start gap-1 px-2 py-0.5 rounded bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 text-[10px] font-mono break-all">
           {label}
           {summary && (
-            <span className="text-orange-400/70 break-all">{summary}</span>
+            <span className="text-orange-500/70 dark:text-orange-400/70 break-all">{summary}</span>
           )}
         </span>
         <div className="flex-1" />
@@ -191,12 +212,12 @@ function ToolResultMessage({ message }: { message: RichMessage }) {
   return (
     <div className="py-0.5 pl-5">
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-gray-600 font-mono">result</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">result</span>
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
       {hasContent && (
-        <div className="text-[10px] text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose prose-invert prose-sm max-w-none">
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
           <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
         </div>
       )}
@@ -208,12 +229,12 @@ function ThinkingMessage({ message }: { message: RichMessage }) {
   return (
     <div className="py-0.5">
       <div className="flex items-center gap-1.5">
-        <Brain className="w-3 h-3 text-purple-400/50 flex-shrink-0" />
-        <span className="text-[10px] text-gray-600 italic">thinking...</span>
+        <Brain className="w-3 h-3 text-purple-500/50 dark:text-purple-400/50 flex-shrink-0" />
+        <span className="text-[10px] text-gray-500 dark:text-gray-600 italic">thinking...</span>
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
-      <div className="text-[10px] text-gray-600 italic mt-0.5 pl-5 leading-relaxed prose prose-invert prose-sm max-w-none">
+      <div className="text-[10px] text-gray-500 dark:text-gray-600 italic mt-0.5 pl-5 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
         <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
       </div>
     </div>
@@ -224,8 +245,8 @@ function ErrorMessage({ message }: { message: RichMessage }) {
   return (
     <div className="border-l-2 border-red-500 pl-2 py-1">
       <div className="flex items-start gap-1.5">
-        <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
-        <pre className="text-xs text-red-300 whitespace-pre-wrap break-words font-sans leading-relaxed flex-1 min-w-0">
+        <AlertTriangle className="w-3 h-3 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+        <pre className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap break-words font-sans leading-relaxed flex-1 min-w-0">
           {message.content}
         </pre>
         <Timestamp ts={message.ts} />
@@ -235,11 +256,11 @@ function ErrorMessage({ message }: { message: RichMessage }) {
 }
 
 function Timestamp({ ts }: { ts?: number }) {
-  const relative = formatRelativeTime(ts)
-  if (!relative) return null
+  const label = formatTimestamp(ts)
+  if (!label) return null
   return (
-    <span className="text-[9px] text-gray-600 tabular-nums flex-shrink-0 whitespace-nowrap">
-      {relative}
+    <span className="text-[9px] text-gray-400 dark:text-gray-600 tabular-nums flex-shrink-0 whitespace-nowrap">
+      {label}
     </span>
   )
 }
@@ -324,7 +345,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   if (displayMessages.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-xs text-gray-600">
+      <div className="flex items-center justify-center h-full text-xs text-gray-500 dark:text-gray-600">
         No messages yet
       </div>
     )

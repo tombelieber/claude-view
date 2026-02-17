@@ -14,8 +14,8 @@ export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
     <div className="space-y-4 p-4">
       {/* Total */}
       <div className="flex items-baseline justify-between">
-        <span className="text-sm text-gray-400">Total Cost</span>
-        <span className="text-2xl font-mono font-semibold text-gray-100">${cost.totalUsd.toFixed(2)}</span>
+        <span className="text-sm text-gray-500 dark:text-gray-400">Total Cost</span>
+        <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">${cost.totalUsd.toFixed(2)}</span>
       </div>
 
       {/* Breakdown table */}
@@ -25,13 +25,13 @@ export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
         {cost.cacheReadCostUsd > 0 && <CostRow label="Cache reads" value={cost.cacheReadCostUsd} />}
         {cost.cacheCreationCostUsd > 0 && <CostRow label="Cache creation" value={cost.cacheCreationCostUsd} />}
         {cost.cacheSavingsUsd > 0 && (
-          <CostRow label="Cache savings" value={-cost.cacheSavingsUsd} className="text-green-400" />
+          <CostRow label="Cache savings" value={-cost.cacheSavingsUsd} className="text-green-600 dark:text-green-400" />
         )}
       </div>
 
       {/* Sub-agent breakdown */}
       {subAgents && subAgents.length > 0 && (
-        <div className="border-t border-gray-800 pt-3 space-y-2">
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
           <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sub-Agent Costs</h4>
           <CostRow label="Main agent" value={mainAgentCost} />
           {subAgents
@@ -49,7 +49,7 @@ function CostRow({ label, value, className }: { label: string; value: number; cl
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-500 truncate mr-4">{label}</span>
-      <span className={`font-mono tabular-nums ${className ?? 'text-gray-300'}`}>
+      <span className={`font-mono tabular-nums ${className ?? 'text-gray-700 dark:text-gray-300'}`}>
         ${Math.abs(value).toFixed(2)}
       </span>
     </div>
