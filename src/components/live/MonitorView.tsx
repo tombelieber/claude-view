@@ -4,49 +4,16 @@ import { useMonitorStore } from '../../store/monitor-store'
 import { MonitorGrid } from './MonitorGrid'
 import { GridControls } from './GridControls'
 import { MonitorPane } from './MonitorPane'
-import { RichPane, parseRichMessage, type RichMessage } from './RichPane'
+import { RichTerminalPane } from './RichTerminalPane'
 import { ExpandedPaneOverlay } from './ExpandedPaneOverlay'
 import { PaneContextMenu } from './PaneContextMenu'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 import { useAutoFill } from './useAutoFill'
-import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
 import { SwimLanes } from './SwimLanes'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
 
 interface MonitorViewProps {
   sessions: LiveSession[]
-}
-
-/**
- * RichTerminalPane — wraps useTerminalSocket + RichPane for rich mode.
- * Manages its own WebSocket connection and parses messages into RichMessage[].
- */
-function RichTerminalPane({ sessionId, isVisible, verboseMode }: { sessionId: string; isVisible: boolean; verboseMode: boolean }) {
-  const [messages, setMessages] = useState<RichMessage[]>([])
-  const [bufferDone, setBufferDone] = useState(false)
-
-  const handleMessage = useCallback((data: string) => {
-    const parsed = parseRichMessage(data)
-    if (parsed) {
-      setMessages((prev) => [...prev, parsed])
-    }
-  }, [])
-
-  const handleConnectionChange = useCallback((state: ConnectionState) => {
-    if (state === 'connected') {
-      setBufferDone(true)
-    }
-  }, [])
-
-  useTerminalSocket({
-    sessionId,
-    mode: 'rich',
-    enabled: isVisible,
-    onMessage: handleMessage,
-    onConnectionChange: handleConnectionChange,
-  })
-
-  return <RichPane messages={messages} isVisible={isVisible} verboseMode={verboseMode} bufferDone={bufferDone} />
 }
 
 /**
