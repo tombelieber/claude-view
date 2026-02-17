@@ -9,6 +9,7 @@ import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
+import { SubAgentPills } from './SubAgentPills'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
@@ -48,9 +49,11 @@ interface SessionCardProps {
   session: LiveSession
   stalledSessions?: Set<string>
   currentTime: number
+  /** When provided, renders as a div instead of Link. Used by Kanban for side panel. */
+  onClickOverride?: () => void
 }
 
-export function SessionCard({ session, stalledSessions, currentTime }: SessionCardProps) {
+export function SessionCard({ session, stalledSessions, currentTime, onClickOverride }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
@@ -66,15 +69,20 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
   const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
 
-  return (
-    <Link
-      to={buildSessionUrl(session.id, searchParams)}
-      className="group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer hover:cursor-pointer transition-colors"
-      style={{ cursor: 'pointer' }}
-    >
+  const cardClassName = "group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors"
+
+  const cardContent = (
+    <>
       {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+          {session.agentState.group === 'autonomous' && (
+            <span
+              data-testid="pulse-dot"
+              className="inline-block w-2 h-2 rounded-full bg-green-500 flex-shrink-0 motion-safe:animate-pulse"
+              aria-hidden="true"
+            />
+          )}
           <span
             className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
             title={session.projectPath || session.projectDisplayName || session.project}
@@ -97,11 +105,6 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
               ${session.cost.totalUsd.toFixed(2)}
             </span>
           </CostTooltip>
-          {session.subAgents && session.subAgents.length > 0 && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              ({session.subAgents.length} sub-agent{session.subAgents.length !== 1 ? 's' : ''})
-            </span>
-          )}
         </div>
       </div>
 
@@ -133,6 +136,13 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
         />
       </div>
 
+      {/* Sub-agent pills */}
+      {session.subAgents && session.subAgents.length > 0 && (
+        <div className="mb-2 -mx-1">
+          <SubAgentPills subAgents={session.subAgents} />
+        </div>
+      )}
+
       {/* Context gauge */}
       <ContextGauge
         contextWindowTokens={session.contextWindowTokens}
@@ -144,6 +154,26 @@ export function SessionCard({ session, stalledSessions, currentTime }: SessionCa
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
       </div>
+    </>
+  )
+
+  if (onClickOverride) {
+    return (
+      <div
+        onClick={(e) => { e.stopPropagation(); onClickOverride() }}
+        className={cardClassName}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickOverride() } }}
+      >
+        {cardContent}
+      </div>
+    )
+  }
+
+  return (
+    <Link to={buildSessionUrl(session.id, searchParams)} className={cardClassName} style={{ cursor: 'pointer' }}>
+      {cardContent}
     </Link>
   )
 }
