@@ -201,16 +201,18 @@ pub fn parse_tail(
 fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // Fast classification via SIMD substring search (avoids JSON parse for
     // lines that don't contain the keys we care about).
-    let line_type = if finders.type_user.find(raw).is_some() {
+    // Check progress and summary BEFORE user/assistant because progress lines
+    // contain nested "role":"assistant" which would match the assistant finder.
+    let line_type = if finders.type_progress.find(raw).is_some() {
+        LineType::Progress
+    } else if finders.type_summary.find(raw).is_some() {
+        LineType::Summary
+    } else if finders.type_user.find(raw).is_some() {
         LineType::User
     } else if finders.type_assistant.find(raw).is_some() {
         LineType::Assistant
     } else if finders.type_system.find(raw).is_some() {
         LineType::System
-    } else if finders.type_progress.find(raw).is_some() {
-        LineType::Progress
-    } else if finders.type_summary.find(raw).is_some() {
-        LineType::Summary
     } else {
         LineType::Other
     };
@@ -415,10 +417,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     };
 
     // --- Sub-agent progress detection (progress lines with agent_progress) ---
-    // NOTE: Cannot use `line_type == LineType::Progress` here because the SIMD
-    // classifier checks for "user"/"assistant" first, and progress lines with
-    // nested `message.role: "assistant"` get misclassified. Instead, SIMD
-    // pre-filter on "agent_progress" then verify the parsed JSON `type` field.
+    // SIMD pre-filter on "agent_progress" then verify the parsed JSON `type` field
+    // for an extra safety check (belt-and-suspenders with the line_type classification).
     let sub_agent_progress = if finders.agent_progress_key.find(raw).is_some()
         && parsed.get("type").and_then(|t| t.as_str()) == Some("progress")
     {
@@ -1142,6 +1142,18 @@ mod tests {
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here is the result."}]},"timestamp":"2026-02-16T08:34:13.134Z"}"#;
         let line = parse_single_line(raw, &finders);
         assert!(line.sub_agent_progress.is_none());
+    }
+
+    #[test]
+    fn test_progress_line_classified_as_progress_not_assistant() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"progress","parentToolUseID":"toolu_01ABC","data":{"type":"agent_progress","agentId":"a951849","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/path/to/file.rs"}}]}},"timestamp":"2026-02-16T08:34:13.134Z"}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(
+            line.line_type,
+            LineType::Progress,
+            "Progress lines must be classified as Progress, not Assistant"
+        );
     }
 
     #[test]
