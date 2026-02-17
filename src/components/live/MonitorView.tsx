@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import type { LiveSession } from './use-live-sessions'
 import { useMonitorStore } from '../../store/monitor-store'
 import { MonitorGrid } from './MonitorGrid'
@@ -11,6 +11,7 @@ import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 import { useAutoFill } from './useAutoFill'
 import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
 import { SwimLanes } from './SwimLanes'
+import { SubAgentDrillDown } from './SubAgentDrillDown'
 
 interface MonitorViewProps {
   sessions: LiveSession[]
@@ -83,6 +84,18 @@ export function MonitorView({ sessions }: MonitorViewProps) {
     y: number
     sessionId: string
   } | null>(null)
+
+  // Sub-agent drill-down state (within expanded overlay)
+  const [drillDownAgent, setDrillDownAgent] = useState<{
+    agentId: string
+    agentType: string
+    description: string
+  } | null>(null)
+
+  // Reset drill-down when expanded session changes
+  useEffect(() => {
+    setDrillDownAgent(null)
+  }, [expandedPaneId])
 
   // Custom session ordering for "Move to front"
   const [sessionOrder, setSessionOrder] = useState<string[]>([])
@@ -255,23 +268,37 @@ export function MonitorView({ sessions }: MonitorViewProps) {
           session={expandedSession}
           onClose={() => expandPane(null)}
         >
-          <div className="flex flex-col h-full gap-3">
-            {/* Sub-agent swim lanes */}
-            {expandedSession.subAgents && expandedSession.subAgents.length > 0 && (
-              <SwimLanes
-                subAgents={expandedSession.subAgents}
-                sessionActive={expandedSession.status === 'working'}
-              />
-            )}
-            {/* Terminal stream */}
-            <div className="flex-1 min-h-0">
-              <RichTerminalPane
-                sessionId={expandedSession.id}
-                isVisible={true}
-                verboseMode={verboseMode}
-              />
+          {drillDownAgent ? (
+            <SubAgentDrillDown
+              key={drillDownAgent.agentId}
+              sessionId={expandedSession.id}
+              agentId={drillDownAgent.agentId}
+              agentType={drillDownAgent.agentType}
+              description={drillDownAgent.description}
+              onClose={() => setDrillDownAgent(null)}
+            />
+          ) : (
+            <div className="flex flex-col h-full gap-3">
+              {/* Sub-agent swim lanes */}
+              {expandedSession.subAgents && expandedSession.subAgents.length > 0 && (
+                <SwimLanes
+                  subAgents={expandedSession.subAgents}
+                  sessionActive={expandedSession.status === 'working'}
+                  onDrillDown={(agentId, agentType, description) =>
+                    setDrillDownAgent({ agentId, agentType, description })
+                  }
+                />
+              )}
+              {/* Terminal stream */}
+              <div className="flex-1 min-h-0">
+                <RichTerminalPane
+                  sessionId={expandedSession.id}
+                  isVisible={true}
+                  verboseMode={verboseMode}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </ExpandedPaneOverlay>
       )}
 
