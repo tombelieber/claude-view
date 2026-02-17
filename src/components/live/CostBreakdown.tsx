@@ -8,14 +8,19 @@ interface CostBreakdownProps {
 
 export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
   const subAgentTotal = subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
-  const mainAgentCost = cost.totalUsd - subAgentTotal
+  // cost.totalUsd is the PARENT session's cost only (sub-agent tokens are
+  // separate API calls, not in the parent's cumulative token accumulation).
+  // True total = parent + all sub-agents.
+  const grandTotal = cost.totalUsd + subAgentTotal
 
   return (
     <div className="space-y-4 p-4">
       {/* Total */}
       <div className="flex items-baseline justify-between">
         <span className="text-sm text-gray-500 dark:text-gray-400">Total Cost</span>
-        <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">${cost.totalUsd.toFixed(2)}</span>
+        <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">
+          ${grandTotal.toFixed(2)}
+        </span>
       </div>
 
       {/* Breakdown table */}
@@ -32,8 +37,8 @@ export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
       {/* Sub-agent breakdown */}
       {subAgents && subAgents.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
-          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sub-Agent Costs</h4>
-          <CostRow label="Main agent" value={mainAgentCost} />
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Cost by Agent</h4>
+          <CostRow label="Main agent" value={cost.totalUsd} />
           {subAgents
             .filter((a) => a.costUsd != null && a.costUsd > 0)
             .map((a) => (
