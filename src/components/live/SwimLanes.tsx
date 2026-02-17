@@ -6,6 +6,8 @@ interface SwimLanesProps {
   subAgents: SubAgentInfo[]
   /** Whether the parent session is still active */
   sessionActive: boolean
+  /** Called when a sub-agent row is clicked to drill down into its conversation */
+  onDrillDown?: (agentId: string, agentType: string, description: string) => void
 }
 
 /** Format cost as $X.XX */
@@ -63,7 +65,7 @@ function ProgressBar() {
  * When sessionActive is false, all sub-agents should have status 'complete' or 'error'
  * (this is enforced by the backend state machine).
  */
-export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
+export function SwimLanes({ subAgents, sessionActive, onDrillDown }: SwimLanesProps) {
   // Sort: Running first (by startedAt asc), then Complete/Error (by completedAt desc)
   const sortedAgents = useMemo(() => {
     const running = subAgents
@@ -88,10 +90,24 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
         subAgents.length > 5 && 'max-h-[280px] overflow-y-auto'
       )}
     >
-      {sortedAgents.map((agent) => (
+      {sortedAgents.map((agent) => {
+        const canDrillDown = !!agent.agentId && !!onDrillDown
+        return (
         <div
           key={agent.toolUseId}
-          className="flex flex-col gap-1.5 border-b border-gray-800 last:border-b-0 pb-2 last:pb-0"
+          role={canDrillDown ? 'button' : undefined}
+          tabIndex={canDrillDown ? 0 : undefined}
+          onClick={canDrillDown ? () => onDrillDown(agent.agentId!, agent.agentType, agent.description) : undefined}
+          onKeyDown={canDrillDown ? (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onDrillDown(agent.agentId!, agent.agentType, agent.description)
+            }
+          } : undefined}
+          className={cn(
+            'flex flex-col gap-1.5 border-b border-gray-800 last:border-b-0 pb-2 last:pb-0',
+            canDrillDown && 'cursor-pointer hover:bg-gray-900/50 rounded-md transition-colors -mx-1 px-1',
+          )}
         >
           {/* Header row: status + type + description */}
           <div className="flex items-center gap-2">
@@ -140,7 +156,8 @@ export function SwimLanes({ subAgents, sessionActive }: SwimLanesProps) {
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
