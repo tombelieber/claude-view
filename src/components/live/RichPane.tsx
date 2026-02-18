@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import {
   ChevronDown,
   ChevronRight,
@@ -160,7 +161,7 @@ function UserMessage({ message }: { message: RichMessage }) {
         <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{message.content}</Markdown>
           </div>
         </div>
         <Timestamp ts={message.ts} />
@@ -176,7 +177,7 @@ function AssistantMessage({ message }: { message: RichMessage }) {
         <Bot className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{message.content}</Markdown>
           </div>
         </div>
         <Timestamp ts={message.ts} />
@@ -218,7 +219,7 @@ function ToolResultMessage({ message }: { message: RichMessage }) {
       </div>
       {hasContent && (
         <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{message.content}</Markdown>
         </div>
       )}
     </div>
@@ -235,7 +236,7 @@ function ThinkingMessage({ message }: { message: RichMessage }) {
         <Timestamp ts={message.ts} />
       </div>
       <div className="text-[10px] text-gray-500 dark:text-gray-600 italic mt-0.5 pl-5 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-        <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{message.content}</Markdown>
       </div>
     </div>
   )
