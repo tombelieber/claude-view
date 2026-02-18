@@ -12,6 +12,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import {
   User, Copy, Check, MessageSquare, Wrench, CheckCircle,
   AlertCircle, Zap, BookOpen
@@ -387,6 +388,7 @@ export function MessageTyped({
                   <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
                       components={{
                         code: (() => {
                           let blockCounter = 0
