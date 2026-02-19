@@ -127,11 +127,11 @@ export function StorageOverview() {
     ? Number(stats.sqliteBytes) + Number(stats.indexBytes)
     : 0
 
-  // Build donut chart data with source attribution
+  // Build donut chart data with source attribution and paths
   const chartData = stats ? [
-    { label: 'JSONL Sessions', source: 'Claude Code', bytes: Number(stats.jsonlBytes), formattedBytes: formatBytes(stats.jsonlBytes) },
-    { label: 'SQLite Database', source: 'This app', bytes: Number(stats.sqliteBytes), formattedBytes: formatBytes(stats.sqliteBytes) },
-    { label: 'Search Index', source: 'This app', bytes: Number(stats.indexBytes), formattedBytes: formatBytes(stats.indexBytes) },
+    { label: 'JSONL Sessions', source: 'Claude Code', bytes: Number(stats.jsonlBytes), formattedBytes: formatBytes(stats.jsonlBytes), path: stats.jsonlPath },
+    { label: 'SQLite Database', source: 'This app', bytes: Number(stats.sqliteBytes), formattedBytes: formatBytes(stats.sqliteBytes), path: stats.sqlitePath },
+    { label: 'Search Index', source: 'This app', bytes: Number(stats.indexBytes), formattedBytes: formatBytes(stats.indexBytes), path: stats.indexPath },
   ] : []
 
   // Calculate throughput for index performance
@@ -299,17 +299,27 @@ export function StorageOverview() {
                   <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                     {item.formattedBytes} · {pct}%
                   </span>
+                  {item.path && (
+                    <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">
+                      {item.path}
+                    </code>
+                  )}
                 </div>
               </div>
             )
           })}
 
           {/* App footprint callout */}
-          <div className="mt-1 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="mt-1 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               App footprint: <span className="font-medium text-gray-700 dark:text-gray-300">{formatBytes(appBytes)}</span>
               <span className="text-gray-400 dark:text-gray-500"> — JSONL data is read-only from <code className="text-[11px]">~/.claude/</code></span>
             </p>
+            {stats?.appDataPath && (
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                App data: <code className="font-mono">{stats.appDataPath}</code> — safe to delete, rebuilt on next launch
+              </p>
+            )}
           </div>
         </div>
       </div>

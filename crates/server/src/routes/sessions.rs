@@ -34,10 +34,12 @@ pub struct SessionsListQuery {
     pub filter: Option<String>,
     /// Sort: recent (default), tokens, prompts, files_edited, duration
     pub sort: Option<String>,
-    /// Pagination limit (default 50)
+    /// Pagination limit (default 30)
     pub limit: Option<i64>,
     /// Pagination offset (default 0)
     pub offset: Option<i64>,
+    /// Text search across preview, last_message, project name
+    pub q: Option<String>,
     // New multi-facet filters
     /// Comma-separated list of branches to filter by
     pub branches: Option<String>,
@@ -68,8 +70,17 @@ pub struct SessionsListQuery {
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
     pub total: usize,
+    pub has_more: bool,
     pub filter: String,
     pub sort: String,
+}
+
+/// Response for GET /api/sessions/activity
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActivityResponse {
+    pub activity: Vec<vibe_recall_db::ActivityPoint>,
+    pub bucket: String,
 }
 
 // ============================================================================
@@ -192,10 +203,10 @@ pub async fn list_sessions(
 ) -> ApiResult<Json<SessionsListResponse>> {
     let filter = query.filter.unwrap_or_else(|| "all".to_string());
     let sort = query.sort.unwrap_or_else(|| "recent".to_string());
-    let limit = query.limit.unwrap_or(50);
+    let limit = query.limit.unwrap_or(30);
     let offset = query.offset.unwrap_or(0);
 
-    // Validate filter
+    // Validate filter (kept for backward compat — legacy single-value filter)
     if !VALID_FILTERS.contains(&filter.as_str()) {
         return Err(ApiError::BadRequest(format!(
             "Invalid filter '{}'. Valid options: {}",
@@ -213,139 +224,47 @@ pub async fn list_sessions(
         )));
     }
 
-    // Fetch all projects with sessions
-    let projects = state.db.list_projects().await?;
-
-    // Flatten sessions from all projects
-    let mut all_sessions: Vec<SessionInfo> = projects
-        .into_iter()
-        .flat_map(|p| p.sessions)
-        .collect();
-
-    // Apply legacy filter (kept for backward compat)
-    all_sessions = match filter.as_str() {
-        "has_commits" => all_sessions
-            .into_iter()
-            .filter(|s| s.commit_count > 0)
-            .collect(),
-        "high_reedit" => all_sessions
-            .into_iter()
-            .filter(|s| {
-                s.reedit_rate().map(|r| r > 0.2).unwrap_or(false)
-            })
-            .collect(),
-        "long_session" => all_sessions
-            .into_iter()
-            .filter(|s| s.duration_seconds > 1800)
-            .collect(),
-        _ => all_sessions, // "all" - no filter
+    // Map legacy filter param to the new structured params
+    let has_commits = match (query.has_commits, filter.as_str()) {
+        (Some(v), _) => Some(v),
+        (None, "has_commits") => Some(true),
+        _ => None,
+    };
+    let high_reedit = match (query.high_reedit, filter.as_str()) {
+        (Some(v), _) => Some(v),
+        (None, "high_reedit") => Some(true),
+        _ => None,
+    };
+    let min_duration = match (query.min_duration, filter.as_str()) {
+        (Some(v), _) => Some(v),
+        (None, "long_session") => Some(1800),
+        _ => None,
     };
 
-    // Apply new multi-facet filters
-    // Filter by branches (comma-separated)
-    if let Some(branches_str) = &query.branches {
-        let branches: Vec<&str> = branches_str.split(',').map(|s| s.trim()).collect();
-        all_sessions.retain(|s| {
-            s.git_branch
-                .as_ref()
-                .map(|b| branches.contains(&b.as_str()))
-                .unwrap_or(false)
-        });
-    }
+    let params = vibe_recall_db::SessionFilterParams {
+        q: query.q,
+        branches: query.branches.map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
+        models: query.models.map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
+        has_commits,
+        has_skills: query.has_skills,
+        min_duration,
+        min_files: query.min_files,
+        min_tokens: query.min_tokens,
+        high_reedit,
+        time_after: query.time_after,
+        time_before: query.time_before,
+        sort: sort.clone(),
+        limit,
+        offset,
+    };
 
-    // Filter by models (comma-separated, exact match)
-    if let Some(models_str) = &query.models {
-        let models: Vec<&str> = models_str.split(',').map(|s| s.trim()).collect();
-        all_sessions.retain(|s| {
-            s.primary_model
-                .as_ref()
-                .map(|m| models.iter().any(|&filter| m == filter))
-                .unwrap_or(false)
-        });
-    }
-
-    // Filter by has_commits
-    if let Some(has_commits) = query.has_commits {
-        all_sessions.retain(|s| (s.commit_count > 0) == has_commits);
-    }
-
-    // Filter by has_skills
-    if let Some(has_skills) = query.has_skills {
-        all_sessions.retain(|s| s.skills_used.is_empty() != has_skills);
-    }
-
-    // Filter by min_duration
-    if let Some(min_duration) = query.min_duration {
-        all_sessions.retain(|s| s.duration_seconds >= min_duration as u32);
-    }
-
-    // Filter by min_files
-    if let Some(min_files) = query.min_files {
-        all_sessions.retain(|s| s.files_edited_count >= min_files as u32);
-    }
-
-    // Filter by min_tokens
-    if let Some(min_tokens) = query.min_tokens {
-        all_sessions.retain(|s| {
-            let total = s.total_input_tokens.unwrap_or(0) + s.total_output_tokens.unwrap_or(0);
-            total >= min_tokens as u64
-        });
-    }
-
-    // Filter by high_reedit
-    if let Some(high_reedit) = query.high_reedit {
-        all_sessions.retain(|s| {
-            let has_high_reedit = s.reedit_rate().map(|r| r > 0.2).unwrap_or(false);
-            has_high_reedit == high_reedit
-        });
-    }
-
-    // Filter by time_after
-    if let Some(time_after) = query.time_after {
-        all_sessions.retain(|s| s.modified_at >= time_after);
-    }
-
-    // Filter by time_before
-    if let Some(time_before) = query.time_before {
-        all_sessions.retain(|s| s.modified_at <= time_before);
-    }
-
-    // Apply sort
-    match sort.as_str() {
-        "tokens" => {
-            all_sessions.sort_by(|a, b| {
-                let a_tokens = a.total_input_tokens.unwrap_or(0) + a.total_output_tokens.unwrap_or(0);
-                let b_tokens = b.total_input_tokens.unwrap_or(0) + b.total_output_tokens.unwrap_or(0);
-                b_tokens.cmp(&a_tokens)
-            });
-        }
-        "prompts" => {
-            all_sessions.sort_by(|a, b| b.user_prompt_count.cmp(&a.user_prompt_count));
-        }
-        "files_edited" => {
-            all_sessions.sort_by(|a, b| b.files_edited_count.cmp(&a.files_edited_count));
-        }
-        "duration" => {
-            all_sessions.sort_by(|a, b| b.duration_seconds.cmp(&a.duration_seconds));
-        }
-        _ => {
-            // "recent" - sort by modified_at DESC (already sorted from DB, but ensure)
-            all_sessions.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
-        }
-    }
-
-    let total = all_sessions.len();
-
-    // Apply pagination
-    let sessions: Vec<SessionInfo> = all_sessions
-        .into_iter()
-        .skip(offset as usize)
-        .take(limit as usize)
-        .collect();
+    let (sessions, total) = state.db.query_sessions_filtered(&params).await?;
+    let has_more = (offset + limit) < total as i64;
 
     Ok(Json(SessionsListResponse {
         sessions,
         total,
+        has_more,
         filter,
         sort,
     }))
@@ -510,11 +429,20 @@ pub async fn list_branches(
     Ok(Json(branches))
 }
 
+/// GET /api/sessions/activity — Activity histogram for sparkline chart.
+pub async fn session_activity(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<SessionActivityResponse>> {
+    let (activity, bucket) = state.db.session_activity_histogram().await?;
+    Ok(Json(SessionActivityResponse { activity, bucket }))
+}
+
 /// Create the sessions routes router.
 #[allow(deprecated)] // Legacy /session/ routes kept for backward compat until v0.6
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
+        .route("/sessions/activity", get(session_activity))
         .route("/sessions/{id}", get(get_session_detail))
         .route("/sessions/{id}/parsed", get(get_session_parsed))
         .route("/sessions/{id}/messages", get(get_session_messages_by_id))
@@ -1382,5 +1310,28 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         let messages = json["messages"].as_array().expect("should contain messages");
         assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
+    }
+
+    // ========================================================================
+    // GET /api/sessions/activity tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_session_activity() {
+        let db = test_db().await;
+        let session = make_session("sess-activity", "project-a", 1700000000);
+        db.insert_session(&session, "project-a", "Project A").await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/activity").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let resp: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(resp["activity"].is_array());
+        assert!(resp["bucket"].is_string());
+        let activity = resp["activity"].as_array().unwrap();
+        assert!(!activity.is_empty());
+        assert!(activity[0]["date"].is_string());
+        assert!(activity[0]["count"].is_number());
     }
 }
