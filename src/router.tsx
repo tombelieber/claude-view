@@ -4,7 +4,7 @@ import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
-import { MissionControlPage } from './pages/MissionControlPage'
+import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
@@ -46,7 +46,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: <App />,
     children: [
-      { index: true, element: <MissionControlPage /> },
+      { index: true, element: <LiveMonitorPage /> },
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'analytics', element: <AnalyticsPage /> },
