@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
+import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
 import { type LiveSession } from './use-live-sessions'
 import type { SessionPanelData } from './session-panel-data'
 import { liveSessionToPanelData } from './session-panel-data'
@@ -19,7 +19,6 @@ import { ContextGauge } from './ContextGauge'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
-import { formatTokenCount } from '../../lib/format-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 
 // ---------------------------------------------------------------------------
@@ -338,11 +337,26 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
 
         {/* ---- Overview tab ---- */}
         {activeTab === 'overview' && (
-          <div className="p-4 overflow-y-auto h-full">
-            {/* Smart grid: small cards auto-pair at wider widths, wide cards always span full */}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+          <div className="p-4 overflow-y-auto h-full space-y-3">
 
-              {/* ── Cost card (clickable -> Cost tab) ── */}
+            {/* ── Quick status (lightweight metadata → inline strip, not card-worthy) ── */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className={cn('inline-flex items-center gap-1.5 font-medium', statusColor)}>
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                  data.status === 'working' && 'bg-green-500 animate-pulse',
+                  data.status === 'paused' && 'bg-amber-500',
+                  data.status !== 'working' && data.status !== 'paused' && 'bg-gray-400 dark:bg-gray-500',
+                )} />
+                {statusLabel}
+              </span>
+              <span className="text-gray-300 dark:text-gray-600 select-none" aria-hidden>·</span>
+              <span className="font-mono text-gray-600 dark:text-gray-400">{formatModel(data.model)}</span>
+            </div>
+
+            {/* ── Cost + Cache (similar density — pair at wider widths, stack at narrow) ── */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
+              {/* Cost card (clickable → Cost tab) */}
               <button
                 onClick={() => setActiveTab('cost')}
                 className="text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
@@ -365,33 +379,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
                 )}
               </button>
 
-              {/* ── Session info card ── */}
-              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Cpu className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Session</span>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 dark:text-gray-500">Status</span>
-                    <span className={cn('text-xs font-medium', statusColor)}>{statusLabel}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 dark:text-gray-500">Model</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{formatModel(data.model)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 dark:text-gray-500">Turns</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{data.turnCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 dark:text-gray-500">Tokens</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{formatTokenCount(data.tokens.totalTokens)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Cache countdown (live-only) ── */}
+              {/* Cache countdown (live-only — similar weight to cost, pairs well) */}
               {isLive && (data.lastCacheHitAt || data.cacheStatus !== 'unknown') && (
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -404,112 +392,108 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
                   />
                 </div>
               )}
+            </div>
 
-              {/* ── Context gauge ── */}
+            {/* ── Context window (dense content — always full width) ── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Zap className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Context Window</span>
+              </div>
+              <ContextGauge
+                contextWindowTokens={data.contextWindowTokens}
+                model={data.model}
+                group={data.agentState?.group ?? 'needs_you'}
+                tokens={data.tokens}
+                turnCount={data.turnCount}
+                expanded
+              />
+            </div>
+
+            {/* ── Session metrics (history-only) ── */}
+            {data.historyExtras?.sessionInfo && data.historyExtras.sessionInfo.userPromptCount > 0 && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Zap className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Context Window</span>
-                </div>
-                <ContextGauge
-                  contextWindowTokens={data.contextWindowTokens}
-                  model={data.model}
-                  group={data.agentState?.group ?? 'needs_you'}
-                  tokens={data.tokens}
-                  turnCount={data.turnCount}
-                  expanded
+                <SessionMetricsBar
+                  prompts={data.historyExtras.sessionInfo.userPromptCount}
+                  tokens={
+                    data.historyExtras.sessionInfo.totalInputTokens != null && data.historyExtras.sessionInfo.totalOutputTokens != null
+                      ? BigInt(data.historyExtras.sessionInfo.totalInputTokens) + BigInt(data.historyExtras.sessionInfo.totalOutputTokens)
+                      : null
+                  }
+                  filesRead={data.historyExtras.sessionInfo.filesReadCount}
+                  filesEdited={data.historyExtras.sessionInfo.filesEditedCount}
+                  reeditRate={
+                    data.historyExtras.sessionInfo.filesEditedCount > 0
+                      ? data.historyExtras.sessionInfo.reeditedFilesCount / data.historyExtras.sessionInfo.filesEditedCount
+                      : null
+                  }
+                  commits={data.historyExtras.sessionInfo.commitCount}
+                  variant="vertical"
                 />
               </div>
+            )}
 
-              {/* ── History-only: Session Metrics ── */}
-              {data.historyExtras?.sessionInfo && data.historyExtras.sessionInfo.userPromptCount > 0 && (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                  <SessionMetricsBar
-                    prompts={data.historyExtras.sessionInfo.userPromptCount}
-                    tokens={
-                      data.historyExtras.sessionInfo.totalInputTokens != null && data.historyExtras.sessionInfo.totalOutputTokens != null
-                        ? BigInt(data.historyExtras.sessionInfo.totalInputTokens) + BigInt(data.historyExtras.sessionInfo.totalOutputTokens)
-                        : null
-                    }
-                    filesRead={data.historyExtras.sessionInfo.filesReadCount}
-                    filesEdited={data.historyExtras.sessionInfo.filesEditedCount}
-                    reeditRate={
-                      data.historyExtras.sessionInfo.filesEditedCount > 0
-                        ? data.historyExtras.sessionInfo.reeditedFilesCount / data.historyExtras.sessionInfo.filesEditedCount
-                        : null
-                    }
-                    commits={data.historyExtras.sessionInfo.commitCount}
-                    variant="vertical"
-                  />
+            {/* ── Sub-agents (clickable → Sub-Agents tab) ── */}
+            {hasSubAgents && (
+              <button
+                onClick={() => setActiveTab('sub-agents')}
+                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                    Sub-Agents ({data.subAgents!.length})
+                  </span>
                 </div>
-              )}
+                <SubAgentPills subAgents={data.subAgents!} />
+              </button>
+            )}
 
-              {/* ── Sub-agents (full span — content is wide) ── */}
-              {hasSubAgents && (
-                <button
-                  onClick={() => setActiveTab('sub-agents')}
-                  className="col-[1/-1] text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
-                      Sub-Agents ({data.subAgents!.length})
-                    </span>
-                  </div>
-                  <SubAgentPills subAgents={data.subAgents!} />
-                </button>
-              )}
-
-              {/* ── Mini timeline (full span) ── */}
-              {hasSubAgents && data.startedAt && (
-                <button
-                  onClick={() => setActiveTab('sub-agents')}
-                  className="col-[1/-1] text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Clock className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Timeline</span>
-                  </div>
-                  <TimelineView
-                    subAgents={data.subAgents!}
-                    sessionStartedAt={data.startedAt}
-                    sessionDurationMs={
-                      data.status === 'done'
-                        ? ((data.lastActivityAt ?? 0) - data.startedAt) * 1000
-                        : Date.now() - data.startedAt * 1000
-                    }
-                  />
-                </button>
-              )}
-
-              {/* ── Last user message (full span) ── */}
-              {data.lastUserMessage && (
-                <div className="col-[1/-1] rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Last Prompt</span>
-                  <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(data.lastUserMessage)}</p>
+            {/* ── Mini timeline (clickable → Sub-Agents tab) ── */}
+            {hasSubAgents && data.startedAt && (
+              <button
+                onClick={() => setActiveTab('sub-agents')}
+                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Clock className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Timeline</span>
                 </div>
-              )}
+                <TimelineView
+                  subAgents={data.subAgents!}
+                  sessionStartedAt={data.startedAt}
+                  sessionDurationMs={
+                    data.status === 'done'
+                      ? ((data.lastActivityAt ?? 0) - data.startedAt) * 1000
+                      : Date.now() - data.startedAt * 1000
+                  }
+                />
+              </button>
+            )}
 
-              {/* ── History-only: Files Touched (full span) ── */}
-              {data.historyExtras?.sessionDetail && (
-                <div className="col-[1/-1]">
-                  <FilesTouchedPanel
-                    files={buildFilesTouched(
-                      data.historyExtras.sessionDetail.filesRead ?? [],
-                      data.historyExtras.sessionDetail.filesEdited ?? []
-                    )}
-                  />
-                </div>
-              )}
+            {/* ── Last user message ── */}
+            {data.lastUserMessage && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Last Prompt</span>
+                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(data.lastUserMessage)}</p>
+              </div>
+            )}
 
-              {/* ── History-only: Linked Commits (full span) ── */}
-              {data.historyExtras?.sessionDetail && (
-                <div className="col-[1/-1]">
-                  <CommitsPanel commits={data.historyExtras.sessionDetail.commits ?? []} />
-                </div>
-              )}
+            {/* ── Files Touched (history-only) ── */}
+            {data.historyExtras?.sessionDetail && (
+              <FilesTouchedPanel
+                files={buildFilesTouched(
+                  data.historyExtras.sessionDetail.filesRead ?? [],
+                  data.historyExtras.sessionDetail.filesEdited ?? []
+                )}
+              />
+            )}
 
-            </div>
+            {/* ── Commits (history-only) ── */}
+            {data.historyExtras?.sessionDetail && (
+              <CommitsPanel commits={data.historyExtras.sessionDetail.commits ?? []} />
+            )}
+
           </div>
         )}
 

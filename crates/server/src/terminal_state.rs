@@ -36,6 +36,12 @@ pub struct TerminalConnectionManager {
     active: RwLock<HashMap<String, usize>>,
 }
 
+impl Default for TerminalConnectionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalConnectionManager {
     /// Create a new connection manager with no active connections.
     pub fn new() -> Self {
