@@ -380,7 +380,7 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
   const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
   const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
 
-  if (isAskUserQuestion && verboseMode) {
+  if (isAskUserQuestion) {
     return (
       <div className="py-0.5 border-l-2 border-purple-500/30 dark:border-purple-500/20 pl-1">
         <div className="flex items-start gap-1.5">
@@ -584,6 +584,8 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
         if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
         return true
       }
+      // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
+      if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
       return false
     })
   }, [messages, verboseMode])
