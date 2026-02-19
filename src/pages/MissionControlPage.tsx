@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useLiveSessions } from '../components/live/use-live-sessions'
+import { useSearchParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
 import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
 import { filterLiveSessions } from '../components/live/live-filter'
@@ -14,7 +13,8 @@ import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { MobileTabBar } from '../components/live/MobileTabBar'
 import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
-import type { LiveSummary } from '../components/live/use-live-sessions'
+import { TerminalOverlay } from '../components/live/TerminalOverlay'
+import type { LiveSummary, UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 
@@ -31,11 +31,13 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 }
 
 export function MissionControlPage() {
-  const { sessions, summary: serverSummary, isConnected, lastUpdate, stalledSessions, currentTime } = useLiveSessions()
+  const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
+  const { sessions, summary: serverSummary, isConnected, lastUpdate, stalledSessions, currentTime } = liveSessions
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [monitorOverlayId, setMonitorOverlayId] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -84,9 +86,11 @@ export function MissionControlPage() {
     return Array.from(set).sort()
   }, [sessions])
 
-  // View mode change
+  // View mode change — clear overlays when switching views
   const handleViewModeChange = useCallback((mode: LiveViewMode) => {
     setViewMode(mode)
+    setSelectedId(null)
+    setMonitorOverlayId(null)
     localStorage.setItem(LIVE_VIEW_STORAGE_KEY, mode)
     const params = new URLSearchParams(searchParams)
     params.set('view', mode)
@@ -102,6 +106,11 @@ export function MissionControlPage() {
   const handleExpandSession = useCallback((id: string) => {
     navigate(`/sessions/${id}`)
   }, [navigate])
+
+  // Monitor view: open large terminal overlay instead of side panel
+  const handleMonitorExpand = useCallback((id: string) => {
+    setMonitorOverlayId(prev => prev === id ? null : id)
+  }, [])
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -132,110 +141,135 @@ export function MissionControlPage() {
   }, [handleCmdK])
 
   return (
-    <div className="h-full overflow-y-auto p-6 pb-20 sm:pb-6">
-      <div className="max-w-7xl mx-auto space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Mission Control
-            </h1>
-            <ViewModeSwitcher mode={viewMode} onChange={handleViewModeChange} />
+    <div className="h-full flex flex-col">
+      {/* Pinned header — never scrolls */}
+      <div className="flex-shrink-0 px-6 pt-6 space-y-4">
+        <div className="max-w-7xl mx-auto space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Mission Control
+              </h1>
+              <ViewModeSwitcher mode={viewMode} onChange={handleViewModeChange} />
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+              />
+              {isConnected ? 'Live' : 'Reconnecting...'}
+              {lastUpdate && (
+                <span className="ml-2">
+                  Updated {formatRelativeTime(lastUpdate)}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-            />
-            {isConnected ? 'Live' : 'Reconnecting...'}
-            {lastUpdate && (
-              <span className="ml-2">
-                Updated {formatRelativeTime(lastUpdate)}
-              </span>
-            )}
-          </div>
-        </div>
 
-        {/* Summary bar */}
-        <SummaryBar summary={summary} filteredCount={filteredSessions.length} totalCount={sessions.length} />
+          {/* Summary bar */}
+          <SummaryBar summary={summary} filteredCount={filteredSessions.length} totalCount={sessions.length} />
 
-        {/* Filter bar */}
-        <LiveFilterBar
-          filters={filters}
-          onStatusChange={filterActions.setStatus}
-          onProjectChange={filterActions.setProjects}
-          onBranchChange={filterActions.setBranches}
-          onSearchChange={filterActions.setSearch}
-          onClear={filterActions.clearAll}
-          activeCount={filterActions.activeCount}
-          availableStatuses={availableStatuses}
-          availableProjects={availableProjects}
-          availableBranches={availableBranches}
-          searchInputRef={searchInputRef}
-        />
-
-        {/* View content */}
-        {viewMode === 'grid' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredSessions.map(session => (
-              <div
-                key={session.id}
-                data-session-id={session.id}
-                onClick={() => handleSelectSession(session.id)}
-                className={selectedId === session.id ? 'ring-2 ring-indigo-500 rounded-lg' : ''}
-              >
-                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {viewMode === 'list' && (
-          <ListView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
-        )}
-
-        {viewMode === 'kanban' && (
-          <KanbanView
-            sessions={filteredSessions}
-            selectedId={selectedId}
-            onSelect={handleSelectSession}
-            onCardClick={handleSelectSession}
-            stalledSessions={stalledSessions}
-            currentTime={currentTime}
+          {/* Filter bar */}
+          <LiveFilterBar
+            filters={filters}
+            onStatusChange={filterActions.setStatus}
+            onProjectChange={filterActions.setProjects}
+            onBranchChange={filterActions.setBranches}
+            onSearchChange={filterActions.setSearch}
+            onClear={filterActions.clearAll}
+            activeCount={filterActions.activeCount}
+            availableStatuses={availableStatuses}
+            availableProjects={availableProjects}
+            availableBranches={availableBranches}
+            searchInputRef={searchInputRef}
           />
-        )}
-
-        {viewMode === 'monitor' && (
-          <MonitorView sessions={filteredSessions} onSelectSession={handleSelectSession} />
-        )}
-
-        {/* Empty state */}
-        {filteredSessions.length === 0 && isConnected && viewMode !== 'monitor' && (
-          <div className="text-center text-gray-400 dark:text-gray-500 py-16">
-            <div className="text-4xl mb-4">~</div>
-            {sessions.length === 0 ? (
-              <>
-                <div className="text-sm">No active Claude Code sessions detected.</div>
-                <div className="text-xs mt-1">Start a session in your terminal and it will appear here.</div>
-              </>
-            ) : (
-              <>
-                <div className="text-sm">No sessions match your filters.</div>
-                <div className="text-xs mt-1">
-                  <button
-                    type="button"
-                    onClick={filterActions.clearAll}
-                    className="text-indigo-400 hover:text-indigo-300"
-                  >
-                    Clear filters
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* Session detail panel */}
+      {/* Scrollable content — kanban columns scroll independently, other views page-scroll */}
+      <div className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
+        <div className={`max-w-7xl mx-auto ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
+          {/* View content */}
+          {viewMode === 'grid' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredSessions.map(session => (
+                <div
+                  key={session.id}
+                  data-session-id={session.id}
+                  className={selectedId === session.id ? 'ring-2 ring-indigo-500 rounded-lg' : ''}
+                >
+                  <SessionCard
+                    session={session}
+                    stalledSessions={stalledSessions}
+                    currentTime={currentTime}
+                    onClickOverride={() => handleSelectSession(session.id)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {viewMode === 'list' && (
+            <ListView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
+          )}
+
+          {viewMode === 'kanban' && (
+            <KanbanView
+              sessions={filteredSessions}
+              selectedId={selectedId}
+              onSelect={handleSelectSession}
+              onCardClick={handleSelectSession}
+              stalledSessions={stalledSessions}
+              currentTime={currentTime}
+            />
+          )}
+
+          {viewMode === 'monitor' && (
+            <MonitorView sessions={filteredSessions} onSelectSession={handleMonitorExpand} />
+          )}
+
+          {/* Empty state */}
+          {filteredSessions.length === 0 && isConnected && (
+            <div className="text-center text-gray-400 dark:text-gray-500 py-16">
+              <div className="text-4xl mb-4">~</div>
+              {sessions.length === 0 ? (
+                serverSummary && serverSummary.processCount > 0 ? (
+                  <>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 text-green-500 text-sm font-medium mb-3">
+                      <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      {serverSummary.processCount} Claude {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
+                    </div>
+                    <div className="text-sm">Sessions appear as they report in via hooks.</div>
+                    <div className="text-xs mt-1 text-gray-500 dark:text-gray-600">
+                      Try sending a message in one of your Claude Code terminals.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm">No active Claude Code sessions detected.</div>
+                    <div className="text-xs mt-1">Start a session in your terminal and it will appear here.</div>
+                  </>
+                )
+              ) : (
+                <>
+                  <div className="text-sm">No sessions match your filters.</div>
+                  <div className="text-xs mt-1">
+                    <button
+                      type="button"
+                      onClick={filterActions.clearAll}
+                      className="text-indigo-400 hover:text-indigo-300"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Session detail panel (Grid / List / Kanban) */}
       {selectedId && (() => {
         const session = sessions.find(s => s.id === selectedId)
         if (!session) return null
@@ -244,6 +278,19 @@ export function MissionControlPage() {
             key={selectedId}
             session={session}
             onClose={() => setSelectedId(null)}
+          />
+        )
+      })()}
+
+      {/* Terminal overlay (Monitor view) */}
+      {monitorOverlayId && (() => {
+        const session = sessions.find(s => s.id === monitorOverlayId)
+        if (!session) return null
+        return (
+          <TerminalOverlay
+            key={monitorOverlayId}
+            session={session}
+            onClose={() => setMonitorOverlayId(null)}
           />
         )
       })()}
