@@ -377,7 +377,7 @@ pub async fn get_session_rich(
     }
 
     // 2. Snapshot the current pricing table (clone inside read lock, then drop lock)
-    let pricing = state.pricing.read().unwrap().clone();
+    let pricing = state.pricing.read().expect("pricing lock poisoned").clone();
 
     // 3. Parse JSONL through SessionAccumulator (blocking I/O → spawn_blocking)
     let rich_data = tokio::task::spawn_blocking(move || {
