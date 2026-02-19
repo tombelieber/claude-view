@@ -730,7 +730,7 @@ async fn handle_terminal_ws(
     // connections linger until the next failed send. WebSocket Ping frames
     // (not application-level JSON) are used because they're handled at the
     // protocol level and fail faster for broken TCP connections.
-    let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(10));
+    let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(15));
     // Skip the first immediate tick
     heartbeat_interval.tick().await;
 

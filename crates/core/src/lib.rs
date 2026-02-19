@@ -22,6 +22,7 @@ pub mod live_parser;
 pub mod tail;
 pub mod subagent;
 pub mod progress;
+pub mod paths;
 
 pub use error::*;
 pub use types::*;

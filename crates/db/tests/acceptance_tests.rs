@@ -278,6 +278,7 @@ async fn ac9_callbacks_fire_correctly() {
         &claude_dir,
         &db,
         None, // no registry holder in tests
+        None, // no search index in tests
         move |projects, sessions| {
             *p1c.lock().unwrap() = true;
             p1p.store(projects, Ordering::Relaxed);
@@ -330,7 +331,7 @@ async fn ac12_new_schema_fields_end_to_end() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
@@ -373,7 +374,7 @@ async fn ac12_json_serialization_includes_new_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
@@ -423,7 +424,7 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
