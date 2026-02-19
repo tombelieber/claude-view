@@ -1,3 +1,8 @@
+---
+status: pending
+date: 2026-02-19
+---
+
 # Notification Sound Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

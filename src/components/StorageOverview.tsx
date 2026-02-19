@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { RefreshCw, Loader2, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react'
+import { RefreshCw, Loader2, AlertCircle, CheckCircle2, Trash2, MessageSquare, FolderOpen, GitCommit, Calendar, Database, GitBranch } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts'
@@ -315,16 +315,17 @@ export function StorageOverview() {
       </div>
 
       {/* Counts Grid - Responsive: 2 cols mobile, 3 cols tablet, 6 cols desktop */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        <StatCard label="Sessions" value={formatNumber(stats?.sessionCount ?? 0)} />
-        <StatCard label="Projects" value={formatNumber(stats?.projectCount ?? 0)} />
-        <StatCard label="Commits" value={formatNumber(stats?.commitCount ?? 0)} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Sessions" value={formatNumber(stats?.sessionCount ?? 0)} icon={MessageSquare} />
+        <StatCard label="Projects" value={formatNumber(stats?.projectCount ?? 0)} icon={FolderOpen} />
+        <StatCard label="Commits" value={formatNumber(stats?.commitCount ?? 0)} icon={GitCommit} />
         <StatCard
           label="Oldest Session"
           value={formatTimestamp(stats?.oldestSessionDate ?? null)}
+          icon={Calendar}
         />
-        <StatCard label="Index Built" value={formatTimestamp(stats?.lastIndexAt ?? null)} />
-        <StatCard label="Last Git Sync" value={formatTimestamp(stats?.lastGitSyncAt ?? null)} />
+        <StatCard label="Index Built" value={formatTimestamp(stats?.lastIndexAt ?? null)} icon={Database} />
+        <StatCard label="Last Git Sync" value={formatTimestamp(stats?.lastGitSyncAt ?? null)} icon={GitBranch} />
       </div>
 
       {/* Actions */}
