@@ -3,7 +3,7 @@
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
 
 /// The universal agent state — driven by hooks.
@@ -104,6 +104,10 @@ pub struct LiveSession {
     /// Empty vec if no progress items have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    /// Unix timestamp when the last cache hit or creation occurred.
+    /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
+    /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
+    pub last_cache_hit_at: Option<i64>,
 }
 
 /// Events broadcast over the SSE channel to connected Mission Control clients.
@@ -111,13 +115,9 @@ pub struct LiveSession {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
     /// A new session JSONL file was discovered on disk.
-    SessionDiscovered {
-        session: LiveSession,
-    },
+    SessionDiscovered { session: LiveSession },
     /// An existing session was updated (new lines appended to JSONL).
-    SessionUpdated {
-        session: LiveSession,
-    },
+    SessionUpdated { session: LiveSession },
     /// A session has been cleaned up (Complete for >10 min).
     SessionCompleted {
         #[serde(rename = "sessionId")]
@@ -146,7 +146,7 @@ pub fn status_from_agent_state(agent_state: &AgentState) -> SessionStatus {
         _ => match agent_state.group {
             AgentStateGroup::Autonomous => SessionStatus::Working,
             AgentStateGroup::NeedsYou | AgentStateGroup::Delivered => SessionStatus::Paused,
-        }
+        },
     }
 }
 
