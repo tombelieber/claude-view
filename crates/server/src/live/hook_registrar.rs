@@ -45,6 +45,7 @@ fn make_hook_handler(port: u16, event: &str) -> serde_json::Value {
     let command = format!(
         "curl -s -X POST http://localhost:{}/api/live/hook \
          -H 'Content-Type: application/json' \
+         -H 'X-Claude-PID: '$PPID \
          --data-binary @- 2>/dev/null || true {}",
         port, SENTINEL
     );
@@ -257,6 +258,26 @@ mod tests {
         let arr = hooks["Stop"].as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert!(!matcher_group_has_sentinel(&arr[0]));
+    }
+
+    #[test]
+    fn test_hook_command_includes_ppid_header() {
+        let group = make_matcher_group(47892, "SessionStart");
+        let handler = &group["hooks"][0];
+        let command = handler["command"].as_str().unwrap();
+        assert!(
+            command.contains("X-Claude-PID"),
+            "Hook command must include X-Claude-PID header, got: {}",
+            command
+        );
+        // $PPID must NOT be inside single quotes (shell must expand it).
+        // The format is: -H 'X-Claude-PID: '$PPID
+        // where 'X-Claude-PID: ' is quoted and $PPID is unquoted for expansion.
+        assert!(
+            command.contains("'$PPID"),
+            "PPID must be outside quotes for shell expansion, got: {}",
+            command
+        );
     }
 
     #[test]
