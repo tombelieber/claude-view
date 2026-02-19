@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 /// Per-model pricing in USD per token.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModelPricing {
     pub input_cost_per_token: f64,
     pub output_cost_per_token: f64,
@@ -79,6 +79,47 @@ pub enum CacheStatus {
 /// Applied to input tokens only; output uses 5x this rate.
 pub const FALLBACK_INPUT_COST_PER_TOKEN: f64 = 3e-6; // $3/M (sonnet-class)
 pub const FALLBACK_OUTPUT_COST_PER_TOKEN: f64 = 15e-6; // $15/M (sonnet-class)
+
+/// Anthropic pricing structure multipliers.
+///
+/// These encode Anthropic's consistent pricing rules across all models
+/// (verified: Opus 4.6, Sonnet 4.6, Haiku 4.5 all use identical ratios).
+/// Used to derive tiering fields when litellm doesn't provide them explicitly.
+const ABOVE_200K_INPUT_MULT: f64 = 2.0;
+const ABOVE_200K_OUTPUT_MULT: f64 = 1.5;
+const ABOVE_200K_CACHE_CREATE_MULT: f64 = 2.0;
+const ABOVE_200K_CACHE_READ_MULT: f64 = 2.0;
+const CACHE_1HR_MULT: f64 = 1.6;
+
+/// Fill any `None` tiering fields by deriving from base rates using known
+/// Anthropic pricing multipliers.
+///
+/// Only fills gaps — explicit values from litellm/cache are preserved.
+/// Call this as a final pass after merging all pricing sources.
+pub fn fill_tiering_gaps(pricing: &mut HashMap<String, ModelPricing>) {
+    for mp in pricing.values_mut() {
+        if mp.input_cost_per_token_above_200k.is_none() {
+            mp.input_cost_per_token_above_200k =
+                Some(mp.input_cost_per_token * ABOVE_200K_INPUT_MULT);
+        }
+        if mp.output_cost_per_token_above_200k.is_none() {
+            mp.output_cost_per_token_above_200k =
+                Some(mp.output_cost_per_token * ABOVE_200K_OUTPUT_MULT);
+        }
+        if mp.cache_creation_cost_per_token_above_200k.is_none() {
+            mp.cache_creation_cost_per_token_above_200k =
+                Some(mp.cache_creation_cost_per_token * ABOVE_200K_CACHE_CREATE_MULT);
+        }
+        if mp.cache_read_cost_per_token_above_200k.is_none() {
+            mp.cache_read_cost_per_token_above_200k =
+                Some(mp.cache_read_cost_per_token * ABOVE_200K_CACHE_READ_MULT);
+        }
+        if mp.cache_creation_cost_per_token_1hr.is_none() {
+            mp.cache_creation_cost_per_token_1hr =
+                Some(mp.cache_creation_cost_per_token * CACHE_1HR_MULT);
+        }
+    }
+}
 
 /// Calculate cost for a token snapshot using model-specific pricing.
 ///
@@ -247,228 +288,52 @@ pub fn lookup_pricing<'a>(
     None
 }
 
-/// Complete Anthropic pricing table for offline seeding.
+/// Minimal Anthropic pricing table for cold-start fallback.
 ///
-/// These defaults are overridden at runtime by litellm fetch when network is available.
+/// Contains only 4 base rates per model — tiering fields are `None`.
+/// At runtime, `fill_tiering_gaps()` derives tiering from multipliers,
+/// and litellm fetch replaces everything with full accurate data.
+/// This table is only needed for the seconds before litellm responds
+/// on first launch with no SQLite cache.
 pub fn default_pricing() -> HashMap<String, ModelPricing> {
     let mut m = HashMap::new();
 
-    // Current generation
-    m.insert(
-        "claude-opus-4-6".into(),
-        ModelPricing {
-            input_cost_per_token: 5e-6,
-            output_cost_per_token: 25e-6,
-            cache_creation_cost_per_token: 6.25e-6,
-            cache_read_cost_per_token: 0.5e-6,
-            input_cost_per_token_above_200k: Some(10e-6),
-            output_cost_per_token_above_200k: Some(37.5e-6),
-            cache_creation_cost_per_token_above_200k: Some(12.5e-6),
-            cache_read_cost_per_token_above_200k: Some(1e-6),
-            cache_creation_cost_per_token_1hr: Some(10e-6),
-        },
-    );
+    let models: &[(&str, f64, f64, f64, f64)] = &[
+        // Current generation
+        ("claude-opus-4-6",             5e-6,    25e-6,   6.25e-6,  0.5e-6),
+        ("claude-sonnet-4-6",           3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-sonnet-4-5-20250929",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-haiku-4-5-20251001",   1e-6,     5e-6,   1.25e-6,  0.1e-6),
+        ("claude-opus-4-5-20251101",    5e-6,    25e-6,   6.25e-6,  0.5e-6),
+        // Legacy
+        ("claude-opus-4-1-20250805",   15e-6,    75e-6,  18.75e-6,  1.5e-6),
+        ("claude-opus-4-20250514",     15e-6,    75e-6,  18.75e-6,  1.5e-6),
+        ("claude-sonnet-4-20250514",    3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-3-7-sonnet-20250219",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-3-5-sonnet-20241022",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-3-5-sonnet-20240620",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-3-5-haiku-20241022",   0.8e-6,   4e-6,   1e-6,     0.08e-6),
+        ("claude-3-opus-20240229",     15e-6,    75e-6,  18.75e-6,  1.5e-6),
+        ("claude-3-sonnet-20240229",    3e-6,    15e-6,   3.75e-6,  0.3e-6),
+        ("claude-3-haiku-20240307",     0.25e-6,  1.25e-6, 0.3e-6,  0.03e-6),
+    ];
 
-    m.insert(
-        "claude-sonnet-4-6".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: Some(6e-6),
-            output_cost_per_token_above_200k: Some(22.5e-6),
-            cache_creation_cost_per_token_above_200k: Some(7.5e-6),
-            cache_read_cost_per_token_above_200k: Some(0.6e-6),
-            cache_creation_cost_per_token_1hr: Some(6e-6),
-        },
-    );
-
-    m.insert(
-        "claude-sonnet-4-5-20250929".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: Some(6e-6),
-            output_cost_per_token_above_200k: Some(22.5e-6),
-            cache_creation_cost_per_token_above_200k: Some(7.5e-6),
-            cache_read_cost_per_token_above_200k: Some(0.6e-6),
-            cache_creation_cost_per_token_1hr: Some(6e-6),
-        },
-    );
-
-    m.insert(
-        "claude-haiku-4-5-20251001".into(),
-        ModelPricing {
-            input_cost_per_token: 1e-6,
-            output_cost_per_token: 5e-6,
-            cache_creation_cost_per_token: 1.25e-6,
-            cache_read_cost_per_token: 0.1e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: Some(2e-6),
-        },
-    );
-
-    // Legacy models
-    m.insert(
-        "claude-opus-4-5-20251101".into(),
-        ModelPricing {
-            input_cost_per_token: 5e-6,
-            output_cost_per_token: 25e-6,
-            cache_creation_cost_per_token: 6.25e-6,
-            cache_read_cost_per_token: 0.5e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: Some(10e-6),
-        },
-    );
-    m.insert(
-        "claude-opus-4-1-20250805".into(),
-        ModelPricing {
-            input_cost_per_token: 15e-6,
-            output_cost_per_token: 75e-6,
-            cache_creation_cost_per_token: 18.75e-6,
-            cache_read_cost_per_token: 1.5e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-opus-4-20250514".into(),
-        ModelPricing {
-            input_cost_per_token: 15e-6,
-            output_cost_per_token: 75e-6,
-            cache_creation_cost_per_token: 18.75e-6,
-            cache_read_cost_per_token: 1.5e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-sonnet-4-20250514".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: Some(6e-6),
-            output_cost_per_token_above_200k: Some(22.5e-6),
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-7-sonnet-20250219".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-5-sonnet-20241022".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-5-sonnet-20240620".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-5-haiku-20241022".into(),
-        ModelPricing {
-            input_cost_per_token: 0.8e-6,
-            output_cost_per_token: 4e-6,
-            cache_creation_cost_per_token: 1e-6,
-            cache_read_cost_per_token: 0.08e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-opus-20240229".into(),
-        ModelPricing {
-            input_cost_per_token: 15e-6,
-            output_cost_per_token: 75e-6,
-            cache_creation_cost_per_token: 18.75e-6,
-            cache_read_cost_per_token: 1.5e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-sonnet-20240229".into(),
-        ModelPricing {
-            input_cost_per_token: 3e-6,
-            output_cost_per_token: 15e-6,
-            cache_creation_cost_per_token: 3.75e-6,
-            cache_read_cost_per_token: 0.3e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
-    m.insert(
-        "claude-3-haiku-20240307".into(),
-        ModelPricing {
-            input_cost_per_token: 0.25e-6,
-            output_cost_per_token: 1.25e-6,
-            cache_creation_cost_per_token: 0.3e-6,
-            cache_read_cost_per_token: 0.03e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        },
-    );
+    for &(id, input, output, cache_create, cache_read) in models {
+        m.insert(
+            id.into(),
+            ModelPricing {
+                input_cost_per_token: input,
+                output_cost_per_token: output,
+                cache_creation_cost_per_token: cache_create,
+                cache_read_cost_per_token: cache_read,
+                input_cost_per_token_above_200k: None,
+                output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
+            },
+        );
+    }
 
     m
 }
@@ -476,6 +341,13 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build the pricing map the way the real app does: defaults + gap filling.
+    fn test_pricing() -> HashMap<String, ModelPricing> {
+        let mut p = default_pricing();
+        fill_tiering_gaps(&mut p);
+        p
+    }
 
     #[test]
     fn test_sonnet_46_exists() {
@@ -491,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_tiered_pricing_opus_46() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let p = pricing.get("claude-opus-4-6").unwrap();
         let tokens = TokenBreakdown {
             input_tokens: 500_000,
@@ -506,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_calculate_cost_with_tiering() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             input_tokens: 500_000,
             total_tokens: 500_000,
@@ -554,7 +426,7 @@ mod tests {
 
     #[test]
     fn test_cache_savings() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_read_tokens: 1_000_000,
             total_tokens: 1_000_000,
@@ -575,7 +447,7 @@ mod tests {
 
     #[test]
     fn test_tiered_cache_read_above_200k() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_read_tokens: 500_000,
             ..Default::default()
@@ -588,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_tiered_cache_creation_above_200k() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_creation_tokens: 500_000,
             ..Default::default()
@@ -600,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_1hr_cache_tokens_use_higher_rate() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_creation_tokens: 100_000,
             cache_creation_5m_tokens: 0,
@@ -614,7 +486,7 @@ mod tests {
 
     #[test]
     fn test_mixed_5m_and_1hr_cache_tokens() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_creation_tokens: 200_000,
             cache_creation_5m_tokens: 100_000,
@@ -630,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_no_split_falls_back_to_total_with_tiering() {
-        let pricing = default_pricing();
+        let pricing = test_pricing();
         let tokens = TokenUsage {
             cache_creation_tokens: 500_000,
             cache_creation_5m_tokens: 0,
@@ -640,6 +512,66 @@ mod tests {
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         // 200k at $6.25/M + 300k at $12.50/M = $1.25 + $3.75 = $5.00
         assert!((cost.cache_creation_cost_usd - 5.0).abs() < 0.001);
+    }
+
+    /// Helper: assert Option<f64> is Some and approximately equal.
+    fn assert_approx(actual: Option<f64>, expected: f64, label: &str) {
+        let v = actual.unwrap_or_else(|| panic!("{label}: expected Some, got None"));
+        assert!(
+            (v - expected).abs() < 1e-15,
+            "{label}: expected {expected}, got {v}"
+        );
+    }
+
+    #[test]
+    fn test_fill_tiering_gaps_derives_from_base_rates() {
+        let mut pricing = HashMap::new();
+        pricing.insert(
+            "test-model".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: None,
+                output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
+            },
+        );
+
+        fill_tiering_gaps(&mut pricing);
+        let m = pricing.get("test-model").unwrap();
+        assert_approx(m.input_cost_per_token_above_200k, 10e-6, "input_above_200k");
+        assert_approx(m.output_cost_per_token_above_200k, 37.5e-6, "output_above_200k");
+        assert_approx(m.cache_creation_cost_per_token_above_200k, 12.5e-6, "cache_create_above_200k");
+        assert_approx(m.cache_read_cost_per_token_above_200k, 1e-6, "cache_read_above_200k");
+        assert_approx(m.cache_creation_cost_per_token_1hr, 10e-6, "cache_create_1hr");
+    }
+
+    #[test]
+    fn test_fill_tiering_gaps_preserves_explicit_values() {
+        let mut pricing = HashMap::new();
+        pricing.insert(
+            "test-model".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: Some(99e-6), // explicit — should NOT be overwritten
+                output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
+            },
+        );
+
+        fill_tiering_gaps(&mut pricing);
+        let m = pricing.get("test-model").unwrap();
+        assert_approx(m.input_cost_per_token_above_200k, 99e-6, "input_above_200k preserved");
+        assert_approx(m.output_cost_per_token_above_200k, 37.5e-6, "output_above_200k derived");
     }
 
 }

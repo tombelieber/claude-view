@@ -18,7 +18,7 @@ import { PatternAlert } from './components/PatternAlert'
 
 export default function App() {
   const { data: summaries, isLoading, error, refetch } = useProjectSummaries()
-  const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette } = useAppStore()
+  const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, sidebarCollapsed, toggleSidebar } = useAppStore()
   useTheme() // Apply dark class to <html>
   const indexingProgress = useIndexingProgress()
   const liveSessions = useLiveSessions()
@@ -33,10 +33,14 @@ export default function App() {
         e.preventDefault()
         openCommandPalette()
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault()
+        toggleSidebar()
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [openCommandPalette])
+  }, [openCommandPalette, toggleSidebar])
 
   // Loading state - show skeleton instead of blank screen
   if (isLoading) {
@@ -90,7 +94,7 @@ export default function App() {
       <ColdStartOverlay progress={indexingProgress} />
 
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar projects={summaries} />
+        <Sidebar projects={summaries} collapsed={sidebarCollapsed} />
 
         <main id="main" className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
           <Outlet context={{ summaries, liveSessions }} />

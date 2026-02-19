@@ -47,7 +47,7 @@ pub use vibe_recall_core::pricing::{
     FALLBACK_OUTPUT_COST_PER_TOKEN,
 };
 // Re-export DB-owned pricing refresh helpers.
-pub use pricing::{fetch_litellm_pricing, merge_pricing};
+pub use pricing::{fetch_litellm_pricing, load_pricing_cache, merge_pricing, save_pricing_cache};
 
 // Re-export snapshots types
 pub use snapshots::AggregatedContributions;
