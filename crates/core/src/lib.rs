@@ -1,4 +1,5 @@
 // crates/core/src/lib.rs
+pub mod accumulator;
 pub mod branch_filter;
 pub mod classification;
 pub mod cli;
