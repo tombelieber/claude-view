@@ -64,6 +64,8 @@ metrics-exporter-prometheus = { workspace = true }
 notify = { workspace = true }
 sysinfo = { workspace = true }
 memchr = { workspace = true }
+reqwest = { workspace = true }
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -71,3 +73,5 @@ tokio-test = { workspace = true }
 axum-test = { workspace = true }
 assert-json-diff = { workspace = true }
 pretty_assertions = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }

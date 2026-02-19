@@ -29,7 +29,6 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
     // Also stop native propagation for react-router
     e.nativeEvent.stopImmediatePropagation()
 
-    console.log('[ClassifyButton] clicked', sessionId)
     setLastError(null)
 
     const result = await classifySession(sessionId)
@@ -38,8 +37,6 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
       // won't be available synchronously, so use a generic message
       setLastError('Classification failed — check server logs')
       console.error('[ClassifyButton] classify failed for', sessionId)
-    } else {
-      console.log('[ClassifyButton] classify success', sessionId, result)
     }
   }, [sessionId, classifySession])
 
@@ -56,7 +53,7 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
         'disabled:opacity-50 disabled:cursor-wait',
         className,
       )}
-      title={hasError ? `Failed: ${lastError}. Click to retry.` : 'Classify this session with AI (~5s)'}
+      title={hasError ? `Failed: ${lastError}. Click to retry.` : 'Classify this session with AI (~5s) — experimental, may be inaccurate'}
     >
       {isClassifying ? (
         <Loader2 className="w-3 h-3 animate-spin" />

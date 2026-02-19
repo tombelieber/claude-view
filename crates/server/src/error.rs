@@ -62,6 +62,9 @@ pub enum ApiError {
 
     #[error("Conflict: {0}")]
     Conflict(String),
+
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl IntoResponse for ApiError {
@@ -159,6 +162,13 @@ impl IntoResponse for ApiError {
                 (
                     StatusCode::CONFLICT,
                     ErrorResponse::with_details("Conflict", msg.clone()),
+                )
+            }
+            ApiError::ServiceUnavailable(msg) => {
+                tracing::warn!(message = %msg, "Service unavailable");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ErrorResponse::with_details("Service unavailable", msg.clone()),
                 )
             }
         };

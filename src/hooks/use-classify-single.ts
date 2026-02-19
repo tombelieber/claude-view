@@ -29,10 +29,8 @@ export function useClassifySingle(): UseClassifySingleResult {
 
       try {
         const url = `/api/classify/single/${encodeURIComponent(sessionId)}`
-        console.log('[useClassifySingle] fetching', url)
 
         const res = await fetch(url, { method: 'POST' })
-        console.log('[useClassifySingle] response', res.status, res.statusText)
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({ error: 'Unknown error' }))
@@ -43,7 +41,6 @@ export function useClassifySingle(): UseClassifySingleResult {
         }
 
         const data: ClassifySingleResponse = await res.json()
-        console.log('[useClassifySingle] success', data)
 
         // Optimistically update session in React Query cache.
         // The server already persisted the result, so this IS the truth —

@@ -126,6 +126,19 @@ impl Message {
     }
 }
 
+/// Message content collected during JSONL parsing for full-text search indexing.
+/// Only User, Assistant, and ToolUse messages are included (ToolResult, System,
+/// Progress, Summary are excluded as noise).
+#[derive(Debug, Clone)]
+pub struct SearchableMessage {
+    /// "user", "assistant", or "tool"
+    pub role: String,
+    /// The message text content
+    pub content: String,
+    /// Unix timestamp in seconds, parsed from ISO-8601. None if timestamp missing.
+    pub timestamp: Option<i64>,
+}
+
 /// Session metadata extracted from parsing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -293,6 +306,15 @@ pub struct SessionInfo {
     pub correction_count: u32,
     #[serde(default)]
     pub same_file_edit_count: u32,
+    // Wall-clock task time metrics
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub total_task_time_seconds: Option<u32>,    // sum of all turn wall-clock durations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub longest_task_seconds: Option<u32>,       // single longest turn (wall clock)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub longest_task_preview: Option<String>,    // first 60 chars of the prompt that started it
 }
 
 impl SessionInfo {
@@ -1056,6 +1078,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1179,6 +1204,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         }
     }
 

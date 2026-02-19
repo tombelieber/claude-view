@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 vibe-recall-core = { workspace = true }
+vibe-recall-search = { workspace = true }
 sqlx = { workspace = true }
 rusqlite = { workspace = true }
 tokio = { workspace = true }
@@ -19,6 +20,7 @@ chrono = { workspace = true }
 memmap2 = { workspace = true }
 memchr = { workspace = true }
 ts-rs = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

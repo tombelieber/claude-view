@@ -7,31 +7,33 @@
 pub mod classify_state;
 pub mod error;
 pub mod facet_ingest;
+pub mod file_tracker;
 pub mod git_sync_state;
 pub mod indexing_state;
+pub mod insights;
 pub mod jobs;
 pub mod live;
-pub mod insights;
 pub mod metrics;
 pub mod routes;
 pub mod state;
+pub mod terminal_state;
 
 pub use error::*;
 pub use facet_ingest::{FacetIngestState, IngestStatus};
 pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
-pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
-use live::state_resolver::StateResolver;
+pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::Router;
 use axum::http::HeaderValue;
+use axum::Router;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
@@ -58,7 +60,7 @@ fn cors_layer() -> CorsLayer {
         .allow_methods(Any)
         .allow_headers(Any)
 }
-use vibe_recall_db::Database;
+use vibe_recall_db::{Database, ModelPricing};
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
@@ -107,14 +109,20 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: vibe_recall_db::default_pricing(),
+        pricing: Arc::new(std::sync::RwLock::new({
+            let mut p = vibe_recall_db::default_pricing();
+            vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+            p
+        })),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
-        state_resolver: StateResolver::new(),
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
+        terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
+        live_manager: None,
+        search_index: None,
     });
     api_routes(state)
 }
@@ -123,17 +131,28 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
 /// registry holder, and optional static file serving.
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
-/// delegate to this one. Starts the `LiveSessionManager` for Mission Control.
+/// delegate to this one. Starts the `LiveSessionManager` for Live Monitor.
 pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
+    search_index: Option<Arc<vibe_recall_search::SearchIndex>>,
     static_dir: Option<PathBuf>,
 ) -> Router {
-    // Start live session monitoring (file watcher, process detector, cleanup)
-    let pricing = vibe_recall_db::default_pricing();
-    let (_manager, live_sessions, live_tx) =
+    // Start live session monitoring (file watcher, process detector, cleanup).
+    let mut initial_pricing = vibe_recall_db::default_pricing();
+    vibe_recall_core::pricing::fill_tiering_gaps(&mut initial_pricing);
+    let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
+    let (manager, live_sessions, live_tx) =
         live::manager::LiveSessionManager::start(pricing.clone());
+
+    // Register hooks AFTER manager starts, BEFORE building AppState
+    live::hook_registrar::register(
+        std::env::var("CLAUDE_VIEW_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(47892),
+    );
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
@@ -147,12 +166,29 @@ pub fn create_app_full(
         pricing,
         live_sessions,
         live_tx,
-        state_resolver: StateResolver::new(),
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
+        terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
+        live_manager: Some(manager),
+        search_index,
     });
+
+    // Refresh pricing table from litellm on startup and every 24h.
+    {
+        let pricing = state.pricing.clone();
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            refresh_pricing(&pricing, &db).await;
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                refresh_pricing(&pricing, &db).await;
+            }
+        });
+    }
 
     let mut app = Router::new()
         .merge(api_routes(state))
@@ -166,6 +202,49 @@ pub fn create_app_full(
     }
 
     app
+}
+
+async fn refresh_pricing(
+    pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>,
+    db: &Database,
+) {
+    // Tier 1: Try litellm fetch
+    match vibe_recall_db::fetch_litellm_pricing().await {
+        Ok(litellm) => {
+            let defaults = vibe_recall_db::default_pricing();
+            let mut merged = vibe_recall_db::merge_pricing(&defaults, &litellm);
+            vibe_recall_core::pricing::fill_tiering_gaps(&mut merged);
+            let count = merged.len();
+
+            // Persist to SQLite for cross-restart durability
+            if let Err(e) = vibe_recall_db::save_pricing_cache(db, &merged).await {
+                tracing::warn!("Failed to cache pricing to SQLite: {e}");
+            }
+
+            *pricing.write().expect("pricing lock poisoned") = merged;
+            tracing::info!(models = count, "Pricing refreshed from litellm + cached to SQLite");
+        }
+        Err(e) => {
+            tracing::warn!("litellm fetch failed: {e}");
+
+            // Tier 2: Try SQLite cache
+            match vibe_recall_db::load_pricing_cache(db).await {
+                Ok(Some(mut cached)) => {
+                    vibe_recall_core::pricing::fill_tiering_gaps(&mut cached);
+                    let count = cached.len();
+                    *pricing.write().expect("pricing lock poisoned") = cached;
+                    tracing::info!(models = count, "Pricing loaded from SQLite cache");
+                }
+                Ok(None) => {
+                    // Tier 3: Keep defaults (already gap-filled at startup)
+                    tracing::info!("No SQLite pricing cache, using defaults");
+                }
+                Err(e2) => {
+                    tracing::warn!("Failed to load pricing cache: {e2}, using defaults");
+                }
+            }
+        }
+    }
 }
 
 /// Create the Axum application with an external `IndexingState` and optional
@@ -217,7 +296,9 @@ mod tests {
 
     /// Helper: create an in-memory database for tests.
     async fn test_db() -> Database {
-        Database::new_in_memory().await.expect("in-memory DB for tests")
+        Database::new_in_memory()
+            .await
+            .expect("in-memory DB for tests")
     }
 
     /// Helper to make a GET request to the app.
@@ -299,7 +380,10 @@ mod tests {
 
         // Should have an error response
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert!(json.get("error").is_some(), "Expected error field in response");
+        assert!(
+            json.get("error").is_some(),
+            "Expected error field in response"
+        );
     }
 
     #[tokio::test]
@@ -470,7 +554,10 @@ mod tests {
     async fn test_create_app_with_static_some() {
         // Should not panic when a static dir path is provided
         // (even if the path doesn't exist - ServeDir handles this gracefully)
-        let _app = create_app_with_static(test_db().await, Some(std::path::PathBuf::from("/nonexistent")));
+        let _app = create_app_with_static(
+            test_db().await,
+            Some(std::path::PathBuf::from("/nonexistent")),
+        );
     }
 
     #[tokio::test]

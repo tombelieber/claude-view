@@ -4,4 +4,4 @@ import type { SessionInfo } from "./SessionInfo";
 /**
  * Response for GET /api/sessions with pagination
  */
-export type SessionsListResponse = { sessions: Array<SessionInfo>, total: number, filter: string, sort: string, };
+export type SessionsListResponse = { sessions: Array<SessionInfo>, total: number, hasMore: boolean, filter: string, sort: string, };

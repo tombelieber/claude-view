@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
   <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
@@ -184,16 +184,14 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ---
 
-## Platform Roadmap
+## Platform Support
 
 | Platform | Status |
 |----------|--------|
 | macOS (Apple Silicon) | Available |
 | macOS (Intel) | Available |
-| Linux (x64) | Available |
-| Windows (x64) | Available |
-| Linux (ARM64) | Coming |
-| Windows (ARM64) | Coming |
+| Linux (x64) | Planned (v2.1) |
+| Windows (x64) | Planned (v2.2) |
 
 ---
 
