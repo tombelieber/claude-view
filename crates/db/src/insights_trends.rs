@@ -272,8 +272,8 @@ pub fn calculate_trend_stats(data: &[MetricDataPoint], metric: &str) -> (f64, f6
         return (average, 0.0, "stable".to_string());
     }
 
-    let first = data.first().unwrap().value;
-    let last = data.last().unwrap().value;
+    let first = data.first().map(|d| d.value).unwrap_or(0.0);
+    let last = data.last().map(|d| d.value).unwrap_or(0.0);
 
     let trend = if first == 0.0 {
         0.0
@@ -393,7 +393,7 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
                 .partial_cmp(&b.avg_reedit_rate)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
-        .unwrap();
+        .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let worst = best_slots
         .iter()
@@ -402,7 +402,7 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
                 .partial_cmp(&b.avg_reedit_rate)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
-        .unwrap();
+        .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let days = [
         "Monday",
