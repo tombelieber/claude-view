@@ -25,6 +25,13 @@ use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
 pub use indexer::SearchDocument;
 pub use types::{MatchHit, SearchResponse, SessionHit};
 
+/// Schema version for the Tantivy index. Bump when the schema changes
+/// (field types, new fields, removed fields). A mismatch triggers auto-rebuild.
+pub const SEARCH_SCHEMA_VERSION: u32 = 3;
+// Version 1: Initial schema (project as STRING with encoded path)
+// Version 2: model field changed to TEXT for partial matching
+// Version 3: Force rebuild to ensure model TEXT schema is applied correctly
+
 /// Errors that can occur during search operations.
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
@@ -47,7 +54,7 @@ pub enum SearchError {
 /// - `session_id`: STRING | STORED — exact match, grouping, delete-by-session
 /// - `project`: STRING | STORED — qualifier filter (`project:claude-view`)
 /// - `branch`: STRING | STORED — qualifier filter (`branch:feature/auth`)
-/// - `model`: STRING | STORED — qualifier filter (`model:opus`)
+/// - `model`: TEXT | STORED — tokenized qualifier filter (`model:opus` matches `claude-opus-4-6`)
 /// - `role`: STRING | STORED — qualifier filter (`role:user`)
 /// - `content`: TEXT | STORED — full-text BM25 search + snippet generation
 /// - `turn_number`: u64, FAST | STORED — display ("turn 3")
@@ -60,7 +67,7 @@ pub fn build_schema() -> Schema {
     schema_builder.add_text_field("session_id", STRING | STORED);
     schema_builder.add_text_field("project", STRING | STORED);
     schema_builder.add_text_field("branch", STRING | STORED);
-    schema_builder.add_text_field("model", STRING | STORED);
+    schema_builder.add_text_field("model", TEXT | STORED);
     schema_builder.add_text_field("role", STRING | STORED);
 
     // Full-text field — tokenized, BM25-ranked, stored for snippet generation
@@ -107,12 +114,41 @@ impl SearchIndex {
     /// If the directory does not exist, it will be created. If an index already
     /// exists at the path, it will be opened. If the path exists but contains
     /// no valid index, a new one is created.
+    ///
+    /// Schema versioning: if a `schema_version` file exists in the index
+    /// directory and its value does not match `SEARCH_SCHEMA_VERSION`, the
+    /// index is wiped and rebuilt from scratch.
     pub fn open(path: &Path) -> Result<Self, SearchError> {
         std::fs::create_dir_all(path)?;
 
+        let version_path = path.join("schema_version");
+        let needs_rebuild = match std::fs::read_to_string(&version_path) {
+            Ok(v) => v.trim().parse::<u32>().unwrap_or(0) != SEARCH_SCHEMA_VERSION,
+            Err(_) => false, // no version file = first creation, not a rebuild
+        };
+
+        if needs_rebuild {
+            tracing::info!(
+                path = %path.display(),
+                "Search schema version mismatch — rebuilding index"
+            );
+            // Remove all files in the directory except schema_version
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.file_name().map(|n| n != "schema_version").unwrap_or(false) {
+                        if p.is_dir() {
+                            let _ = std::fs::remove_dir_all(&p);
+                        } else {
+                            let _ = std::fs::remove_file(&p);
+                        }
+                    }
+                }
+            }
+        }
+
         let schema = build_schema();
 
-        // Try to open existing index first, fall back to creating new
         let index = match Index::open_in_dir(path) {
             Ok(idx) => {
                 tracing::info!(path = %path.display(), "opened existing search index");
@@ -123,6 +159,9 @@ impl SearchIndex {
                 Index::create_in_dir(path, schema.clone())?
             }
         };
+
+        // Write current schema version
+        let _ = std::fs::write(&version_path, format!("{}", SEARCH_SCHEMA_VERSION));
 
         Self::from_index(index, schema)
     }
@@ -744,5 +783,148 @@ mod tests {
         // The session with the strongest match should come first
         assert_eq!(result.sessions[0].session_id, "sess-strong");
         assert!(result.sessions[0].best_score > result.sessions[1].best_score);
+    }
+
+    #[test]
+    fn test_schema_version_mismatch_triggers_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let idx_path = dir.path().join("search");
+
+        // Create an index at version 1
+        std::fs::create_dir_all(&idx_path).unwrap();
+        std::fs::write(idx_path.join("schema_version"), "1").unwrap();
+        let _idx = SearchIndex::open(&idx_path).unwrap();
+
+        // Now "upgrade" to version 999 and re-open
+        let version_path = idx_path.join("schema_version");
+        std::fs::write(&version_path, "1").unwrap(); // simulate old version on disk
+
+        let current = format!("{}", SEARCH_SCHEMA_VERSION);
+        // After open(), the version file should always match SEARCH_SCHEMA_VERSION
+        let _idx2 = SearchIndex::open(&idx_path).unwrap();
+        let after = std::fs::read_to_string(&version_path).unwrap();
+        assert_eq!(after.trim(), current, "schema_version file should be updated to current version");
+    }
+
+    #[test]
+    fn test_search_model_partial_match() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+
+        let docs = vec![
+            SearchDocument {
+                session_id: "s1".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: "claude-opus-4-6".to_string(),
+                role: "user".to_string(),
+                content: "hello world".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            },
+            SearchDocument {
+                session_id: "s2".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: "claude-sonnet-4-5".to_string(),
+                role: "user".to_string(),
+                content: "hello world".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            },
+        ];
+
+        idx.index_session("s1", &docs[..1]).unwrap();
+        idx.index_session("s2", &docs[1..]).unwrap();
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // Partial model name should match
+        let result = idx.search("model:opus hello", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1, "model:opus should match claude-opus-4-6");
+        assert_eq!(result.sessions[0].session_id, "s1");
+
+        // Full model name should also still match
+        let result2 = idx.search("model:claude-opus-4-6 hello", None, 10, 0).unwrap();
+        assert_eq!(result2.total_sessions, 1, "full model name should still match");
+    }
+
+    #[test]
+    fn test_search_project_qualifier_with_display_name() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+
+        let docs_a = vec![SearchDocument {
+            session_id: "s1".to_string(),
+            project: "claude-view".to_string(),
+            branch: "main".to_string(),
+            model: "claude-opus-4-6".to_string(),
+            role: "user".to_string(),
+            content: "fix the login bug".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec![],
+        }];
+
+        let docs_b = vec![SearchDocument {
+            session_id: "s2".to_string(),
+            project: "vibe-mom-test".to_string(),
+            branch: "main".to_string(),
+            model: "claude-sonnet-4-5".to_string(),
+            role: "user".to_string(),
+            content: "setup the project".to_string(),
+            turn_number: 1,
+            timestamp: 2000,
+            skills: vec![],
+        }];
+
+        idx.index_session("s1", &docs_a).unwrap();
+        idx.index_session("s2", &docs_b).unwrap();
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx.search("project:vibe-mom-test", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "s2");
+
+        let result2 = idx.search("project:claude-view fix", None, 10, 0).unwrap();
+        assert_eq!(result2.total_sessions, 1);
+        assert_eq!(result2.sessions[0].session_id, "s1");
+    }
+
+    #[test]
+    fn test_search_qualifier_only_no_text() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+
+        let docs = vec![SearchDocument {
+            session_id: "s1".to_string(),
+            project: "my-project".to_string(),
+            branch: "main".to_string(),
+            model: "claude-opus-4-6".to_string(),
+            role: "user".to_string(),
+            content: "implement authentication".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec!["commit".to_string()],
+        }];
+
+        idx.index_session("s1", &docs).unwrap();
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let r1 = idx.search("project:my-project", None, 10, 0).unwrap();
+        assert_eq!(r1.total_sessions, 1, "project-only qualifier should work");
+
+        let r2 = idx.search("branch:main", None, 10, 0).unwrap();
+        assert_eq!(r2.total_sessions, 1, "branch-only qualifier should work");
+
+        let r3 = idx.search("role:user", None, 10, 0).unwrap();
+        assert_eq!(r3.total_sessions, 1, "role-only qualifier should work");
+
+        let r4 = idx.search("skill:commit", None, 10, 0).unwrap();
+        assert_eq!(r4.total_sessions, 1, "skill-only qualifier should work");
+
+        let r5 = idx.search("model:opus", None, 10, 0).unwrap();
+        assert_eq!(r5.total_sessions, 1, "model-only qualifier (partial) should work");
     }
 }

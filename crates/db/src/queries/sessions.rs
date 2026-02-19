@@ -570,14 +570,18 @@ impl Database {
     /// based on: (1) never deep-indexed, (2) stale parse version, (3) file changed
     /// since last index (size or mtime differs).
     ///
-    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project_id)`
+    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project)`
+    ///
+    /// The `project` value is the display name (e.g. `claude-view`) rather than
+    /// the encoded path (`-Users-foo-claude-view`), so that search qualifiers
+    /// like `project:claude-view` match what users naturally type.
     pub async fn get_sessions_needing_deep_index(
         &self,
     ) -> DbResult<Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)>> {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
-                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(project_display_name, project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
             )
             .fetch_all(self.pool())
             .await?;

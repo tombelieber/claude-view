@@ -155,6 +155,8 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         contextWindowTokens={session.contextWindowTokens}
         model={session.model}
         group={session.agentState.group}
+        tokens={session.tokens}
+        turnCount={session.turnCount}
       />
 
       {/* Footer: turns */}

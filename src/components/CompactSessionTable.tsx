@@ -9,7 +9,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search } from 'lucide-react'
+import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search, FlaskConical } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
 import { buildSessionUrl } from '../lib/url-utils'
@@ -141,7 +141,12 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
     }),
     columnHelper.display({
       id: 'category',
-      header: 'Type',
+      header: () => (
+        <span className="inline-flex items-center gap-1" title="AI classification (experimental)">
+          Type
+          <FlaskConical className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400 opacity-60" />
+        </span>
+      ),
       size: 90,
       cell: ({ row }) => {
         const s = row.original

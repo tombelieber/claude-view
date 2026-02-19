@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { Columns3 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
 import { KanbanColumn } from './KanbanColumn'
@@ -78,21 +77,11 @@ export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, cu
   }, [sessions])
 
   if (sessions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-        <Columns3 className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-          No active sessions detected
-        </p>
-        <p className="text-xs mt-1">
-          Start a Claude Code session in your terminal
-        </p>
-      </div>
-    )
+    return null
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div className="flex gap-4 pb-4 h-full min-h-0">
       {COLUMNS.map((col) => (
         <KanbanColumn
           key={col.group}
