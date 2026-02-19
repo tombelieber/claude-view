@@ -21,6 +21,10 @@ type ProjectViewMode = 'list' | 'tree'
 export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const location = useLocation()
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
+  const sidebarWidth = useAppStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
+  const [isResizing, setIsResizing] = useState(false)
+  const widthRef = useRef(sidebarWidth)
 
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedProjectId = searchParams.get("project")
@@ -352,6 +356,32 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
     handleGroupClick,
   ])
 
+  // Keep ref in sync with store
+  useEffect(() => { widthRef.current = sidebarWidth }, [sidebarWidth])
+
+  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsResizing(true)
+    const startX = e.clientX
+    const startW = widthRef.current
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX
+      const newWidth = Math.round(Math.max(200, Math.min(600, startW + delta)))
+      widthRef.current = newWidth
+      setSidebarWidth(newWidth)
+    }
+
+    const onUp = () => {
+      setIsResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [setSidebarWidth])
+
   if (collapsed) {
     return (
       <aside className="w-14 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-2 gap-1">
@@ -414,7 +444,20 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   }
 
   return (
-    <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-all duration-200">
+    <aside
+      className={cn(
+        'relative bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden flex-shrink-0',
+        isResizing && 'select-none',
+      )}
+      style={{ width: sidebarWidth }}
+    >
+      {/* Resize handle (right edge) */}
+      <div
+        onPointerDown={handleResizeStart}
+        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-10 group"
+      >
+        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
+      </div>
       {/* ─── Zone 1: Navigation Tabs ─── */}
       <nav className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1" aria-label="Main navigation">
         {(() => {
