@@ -78,6 +78,7 @@ mod tests {
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
+            search_index: None,
         });
 
         let app = Router::new()

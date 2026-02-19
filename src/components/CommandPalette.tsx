@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, X, FolderOpen, Clock } from 'lucide-react'
+import { Search, X, FolderOpen, Clock, Loader2 } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useAppStore } from '../store/app-store'
+import { useSearch } from '../hooks/use-search'
+import { SearchResultCard } from './SearchResultCard'
 import { cn } from '../lib/utils'
 
 interface CommandPaletteProps {
@@ -27,6 +29,12 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
   const navigate = useNavigate()
   const { recentSearches, addRecentSearch } = useAppStore()
 
+  // Live search results from Tantivy backend
+  const { data: searchResults, isLoading: isSearching, isDebouncing } = useSearch(query, {
+    enabled: isOpen,
+    limit: 5,
+  })
+
   // Reset when opened
   useEffect(() => {
     if (isOpen) {
@@ -36,13 +44,13 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
     }
   }, [isOpen])
 
-  // Generate suggestions based on query
+  // Generate suggestions based on query (project autocomplete + recent searches)
   const suggestions = useMemo((): Suggestion[] => {
     const results: Suggestion[] = []
     const q = query.toLowerCase().trim()
 
     if (!q) {
-      // Show recent searches
+      // Show recent searches when no query
       for (const recent of recentSearches.slice(0, 3)) {
         results.push({ type: 'recent', label: recent, query: recent })
       }
@@ -68,32 +76,9 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
     return results.slice(0, 8)
   }, [query, projects, recentSearches])
 
-  // Handle keyboard navigation
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedIndex(i => Math.min(i + 1, suggestions.length - 1))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedIndex(i => Math.max(i - 1, 0))
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        if (suggestions[selectedIndex]) {
-          handleSelect(suggestions[selectedIndex].query)
-        } else if (query.trim()) {
-          handleSelect(query.trim())
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose, suggestions, selectedIndex, query])
+  // Total navigable items: suggestions + search result sessions
+  const searchSessionCount = searchResults?.sessions.length ?? 0
+  const totalItems = suggestions.length + searchSessionCount
 
   const handleSelect = useCallback((searchQuery: string) => {
     addRecentSearch(searchQuery)
@@ -107,6 +92,41 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
       handleSelect(query.trim())
     }
   }, [query, handleSelect])
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.min(i + 1, totalItems - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.max(i - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        if (selectedIndex < suggestions.length && suggestions[selectedIndex]) {
+          handleSelect(suggestions[selectedIndex].query)
+        } else if (selectedIndex >= suggestions.length && searchResults) {
+          // Navigate to the selected search result session
+          const sessionIdx = selectedIndex - suggestions.length
+          const session = searchResults.sessions[sessionIdx]
+          if (session) {
+            onClose()
+            navigate(`/sessions/${session.sessionId}`)
+          }
+        } else if (query.trim()) {
+          handleSelect(query.trim())
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose, suggestions, selectedIndex, query, totalItems, searchResults, handleSelect, navigate])
 
   const insertFilter = useCallback((filter: string) => {
     setQuery(prev => {
@@ -124,6 +144,9 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
   }
 
   if (!isOpen) return null
+
+  const hasLiveResults = query.trim().length > 0 && searchResults && searchResults.sessions.length > 0
+  const showLoading = query.trim().length > 0 && (isSearching || isDebouncing)
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]">
@@ -152,6 +175,9 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
               spellCheck={false}
               autoComplete="off"
             />
+            {showLoading && (
+              <Loader2 className="w-4 h-4 text-[#6e6e76] animate-spin" />
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -162,7 +188,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
           </div>
         </form>
 
-        {/* Suggestions */}
+        {/* Suggestions (project autocomplete + recent searches) */}
         {suggestions.length > 0 && (
           <div className="py-2 border-b border-[#2a2a2e]">
             {suggestions.map((suggestion, i) => {
@@ -186,6 +212,47 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
                 </button>
               )
             })}
+          </div>
+        )}
+
+        {/* Live search results from Tantivy */}
+        {hasLiveResults && (
+          <div className="py-2 border-b border-[#2a2a2e]">
+            <p className="px-4 py-1 text-xs font-medium text-[#6e6e76] uppercase tracking-wider">
+              {searchResults.totalSessions} {searchResults.totalSessions === 1 ? 'session' : 'sessions'}, {searchResults.totalMatches} {searchResults.totalMatches === 1 ? 'match' : 'matches'}
+              <span className="ml-2 normal-case tracking-normal">({searchResults.elapsedMs}ms)</span>
+            </p>
+            <div className="px-3 py-1 space-y-1">
+              {searchResults.sessions.map((hit, i) => {
+                const itemIndex = suggestions.length + i
+                return (
+                  <SearchResultCard
+                    key={hit.sessionId}
+                    hit={hit}
+                    isSelected={selectedIndex === itemIndex}
+                    onSelect={() => {
+                      onClose()
+                      navigate(`/sessions/${hit.sessionId}`)
+                    }}
+                  />
+                )
+              })}
+            </div>
+            {searchResults.totalSessions > searchResults.sessions.length && (
+              <button
+                onClick={() => handleSelect(query.trim())}
+                className="w-full px-4 py-2 text-xs text-blue-400 hover:text-blue-300 transition-colors text-center"
+              >
+                View all {searchResults.totalSessions} results
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* No results message */}
+        {query.trim().length > 0 && !isSearching && !isDebouncing && searchResults && searchResults.sessions.length === 0 && (
+          <div className="py-4 border-b border-[#2a2a2e] text-center">
+            <p className="text-sm text-[#6e6e76]">No sessions match your search.</p>
           </div>
         )}
 

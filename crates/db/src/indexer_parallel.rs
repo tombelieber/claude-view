@@ -423,6 +423,9 @@ pub struct ParseResult {
     pub lines_added: u32,
     pub lines_removed: u32,
     pub git_branch: Option<String>,
+    /// Collected message content for full-text search indexing.
+    /// Only user, assistant text, and tool_use inputs are included.
+    pub search_messages: Vec<vibe_recall_core::SearchableMessage>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -433,6 +436,8 @@ pub struct ParseResult {
 pub struct DeepIndexResult {
     pub session_id: String,
     pub file_path: String,
+    /// Project name (from sessions table `project_id` column), used for search indexing.
+    pub project: String,
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
     pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
@@ -687,6 +692,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             user_count += 1;
             // Check if this is a tool_result continuation (not a real user turn)
             let is_tool_result = tool_result_finder.find(line).is_some();
+            let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
                 if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                     first_user_content = Some(content.clone());
@@ -709,14 +715,27 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     result.deep.current_turn_start_ts = current_ts;
                     result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
                 }
+                // Collect for search indexing (skip tool_result continuations and system messages)
+                if !is_tool_result && !is_system_user_content(&content) {
+                    user_text_for_search = Some(content);
+                }
             }
             extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
-            if let Some(ts) = extract_timestamp_from_bytes(line, &timestamp_finder) {
+            let user_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
+            if let Some(ts) = user_ts {
                 diag.timestamps_extracted += 1;
                 if first_timestamp.is_none() {
                     first_timestamp = Some(ts);
                 }
                 last_timestamp = Some(ts);
+            }
+            // Push search message for user content
+            if let Some(text) = user_text_for_search {
+                result.search_messages.push(vibe_recall_core::SearchableMessage {
+                    role: "user".to_string(),
+                    content: text,
+                    timestamp: user_ts,
+                });
             }
             continue;
         }
@@ -724,6 +743,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         // Assistant lines: typed struct parse (skips text/thinking content allocation)
         if type_assistant.find(line).is_some() {
             diag.json_parse_attempts += 1;
+            // Extract timestamp for search before consuming the line in typed parse
+            let assistant_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
             match serde_json::from_slice::<AssistantLine>(line) {
                 Ok(parsed) => {
                     handle_assistant_line(
@@ -751,6 +772,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                             let (added, removed) = extract_loc_from_tool_use(line, is_edit);
                             result.lines_added = result.lines_added.saturating_add(added);
                             result.lines_removed = result.lines_removed.saturating_add(removed);
+                        }
+                    }
+
+                    // Collect assistant text content for search indexing.
+                    // Use SIMD text_finder on raw bytes — avoids re-parse, consistent with user path.
+                    if let Some(text) = extract_first_text_content(line, &content_finder, &text_finder) {
+                        if !text.is_empty() {
+                            result.search_messages.push(vibe_recall_core::SearchableMessage {
+                                role: "assistant".to_string(),
+                                content: text,
+                                timestamp: assistant_ts,
+                            });
                         }
                     }
                 }
@@ -816,6 +849,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 diag.lines_user += 1;
                 user_count += 1;
                 let is_tool_result = tool_result_finder.find(line).is_some();
+                let fallback_user_ts = extract_timestamp_from_value(&value);
+                let mut fallback_user_text: Option<String> = None;
                 if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
                     if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                         first_user_content = Some(content.clone());
@@ -825,7 +860,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     // Turn detection: real user prompts (not system prefixes, not tool_result)
                     if !is_tool_result && !is_system_user_content(&content) {
                         // Timestamp was already extracted above (before the match)
-                        let current_ts = extract_timestamp_from_value(&value);
+                        let current_ts = fallback_user_ts;
                         // Close previous turn if one was open
                         if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
                             let wall_secs = (end_ts - start_ts).max(0) as u32;
@@ -838,14 +873,25 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         // Start new turn
                         result.deep.current_turn_start_ts = current_ts;
                         result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
+                        // Collect for search indexing
+                        fallback_user_text = Some(content);
                     }
                 }
                 extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
+                // Push search message for fallback user content
+                if let Some(text) = fallback_user_text {
+                    result.search_messages.push(vibe_recall_core::SearchableMessage {
+                        role: "user".to_string(),
+                        content: text,
+                        timestamp: fallback_user_ts,
+                    });
+                }
             }
             "assistant" => {
                 // Spacing variant — fall back to Value-based extraction
                 diag.lines_assistant += 1;
                 assistant_count += 1;
+                let fallback_assistant_ts = extract_timestamp_from_value(&value);
                 handle_assistant_value(
                     &value,
                     byte_offset,
@@ -869,6 +915,27 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         let (added, removed) = extract_loc_from_tool_use(line, is_edit);
                         result.lines_added = result.lines_added.saturating_add(added);
                         result.lines_removed = result.lines_removed.saturating_add(removed);
+                    }
+                }
+
+                // Collect assistant content for search indexing (Value path)
+                let (text_content, tool_entries) = extract_search_content_from_value(&value);
+                if let Some(text) = text_content {
+                    if !text.is_empty() {
+                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                            role: "assistant".to_string(),
+                            content: text,
+                            timestamp: fallback_assistant_ts,
+                        });
+                    }
+                }
+                for tool_text in tool_entries {
+                    if !tool_text.is_empty() {
+                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                            role: "tool".to_string(),
+                            content: tool_text,
+                            timestamp: fallback_assistant_ts,
+                        });
                     }
                 }
             }
@@ -1437,6 +1504,70 @@ fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])>
     })
 }
 
+/// Extract text content from a JSONL `serde_json::Value` for full-text search indexing.
+///
+/// Returns a tuple of (text_content, tool_use_entries) where:
+/// - text_content: concatenated text blocks from the message (for "user" or "assistant" role)
+/// - tool_use_entries: individual tool_use block descriptions (role="tool")
+///
+/// Handles both string content (`"content": "..."`) and array content
+/// (`"content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]`).
+fn extract_search_content_from_value(
+    value: &serde_json::Value,
+) -> (Option<String>, Vec<String>) {
+    let mut tool_entries = Vec::new();
+
+    let message = match value.get("message") {
+        Some(m) => m,
+        None => return (None, tool_entries),
+    };
+
+    let content = match message.get("content") {
+        Some(c) => c,
+        None => return (None, tool_entries),
+    };
+
+    match content {
+        serde_json::Value::String(s) => (Some(s.clone()), tool_entries),
+        serde_json::Value::Array(arr) => {
+            let mut text_parts = Vec::new();
+            for block in arr {
+                let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                match block_type {
+                    "text" => {
+                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                            text_parts.push(text.to_string());
+                        }
+                    }
+                    "tool_use" => {
+                        // Include tool name + stringified input for searchability
+                        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        if let Some(input) = block.get("input") {
+                            if let Some(s) = input.as_str() {
+                                tool_entries.push(format!("{}: {}", name, s));
+                            }
+                            // For object inputs, include only if small (e.g., command field)
+                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
+                                tool_entries.push(format!("{}: {}", name, cmd));
+                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str()) {
+                                tool_entries.push(format!("{}: {}", name, fp));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let text = if text_parts.is_empty() {
+                None
+            } else {
+                Some(text_parts.join("\n"))
+            };
+            (text, tool_entries)
+        }
+        _ => (None, tool_entries),
+    }
+}
+
 /// Extract the first text content from a JSONL line (best-effort, no full JSON parse).
 fn extract_first_text_content(
     line: &[u8],
@@ -1690,6 +1821,7 @@ pub async fn pass_1_read_indexes(
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
+    search_index: Option<&vibe_recall_search::SearchIndex>,
     on_start: impl FnOnce(u64),
     on_file_done: F,
 ) -> Result<(usize, u64), String>
@@ -1707,9 +1839,9 @@ where
     // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
     // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
     let all_sessions_count = all_sessions.len();
-    let sessions: Vec<(String, String)> = all_sessions
+    let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
-        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version)| {
+        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
             let needs_index = if deep_indexed_at.is_none() {
                 // Never deep-indexed → must index
                 true
@@ -1736,7 +1868,7 @@ where
                 true
             };
             if needs_index {
-                Some((id, file_path))
+                Some((id, file_path, project))
             } else {
                 None
             }
@@ -1753,7 +1885,7 @@ where
     // Pre-compute total bytes of all JSONL files to process.
     let total_bytes: u64 = sessions
         .iter()
-        .filter_map(|(_, path)| std::fs::metadata(path).ok())
+        .filter_map(|(_, path, _)| std::fs::metadata(path).ok())
         .map(|m| m.len())
         .sum();
 
@@ -1777,7 +1909,7 @@ where
     // missing or empty (nothing to write).
     let mut handles = Vec::with_capacity(total);
 
-    for (id, file_path) in sessions {
+    for (id, file_path, project) in sessions {
         let sem = semaphore.clone();
         let counter = counter.clone();
         let on_done = on_file_done.clone();
@@ -1884,6 +2016,7 @@ where
             Ok::<Option<DeepIndexResult>, String>(Some(DeepIndexResult {
                 session_id: id,
                 file_path,
+                project,
                 parse_result,
                 classified_invocations: classified,
                 file_size,
@@ -1923,6 +2056,32 @@ where
     //   2. In-memory DB (tests): sqlx _tx functions via async transaction,
     //      because rusqlite can't open a separate connection to sqlx's
     //      in-memory database.
+    // Extract search-relevant data before the write phase moves `results`.
+    // This is needed because the rusqlite write path moves `results` into
+    // spawn_blocking (requires 'static), so we can't access them afterwards.
+    struct SearchBatch {
+        session_id: String,
+        project: String,
+        branch: Option<String>,
+        primary_model: Option<String>,
+        messages: Vec<vibe_recall_core::SearchableMessage>,
+    }
+    let search_batches: Vec<SearchBatch> = if search_index.is_some() {
+        results
+            .iter()
+            .filter(|r| !r.parse_result.search_messages.is_empty())
+            .map(|r| SearchBatch {
+                session_id: r.session_id.clone(),
+                project: r.project.clone(),
+                branch: r.parse_result.git_branch.clone(),
+                primary_model: compute_primary_model(&r.parse_result.turns),
+                messages: r.parse_result.search_messages.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     let use_rusqlite = !db.db_path().as_os_str().is_empty();
     let indexed = if !results.is_empty() {
         if use_rusqlite {
@@ -2107,6 +2266,52 @@ where
     } else {
         0
     };
+
+    // ── Search index phase (after SQLite commit) ──────────────────────
+    // Write collected search messages to Tantivy. Runs after SQLite succeeds.
+    // If Tantivy fails, we only log a warning — search index will be rebuilt
+    // on next startup.
+    if let Some(search) = search_index {
+        if !search_batches.is_empty() {
+            let mut search_errors = 0u32;
+            for batch in &search_batches {
+                let docs: Vec<vibe_recall_search::SearchDocument> = batch
+                    .messages
+                    .iter()
+                    .enumerate()
+                    .map(|(i, msg)| vibe_recall_search::SearchDocument {
+                        session_id: batch.session_id.clone(),
+                        project: batch.project.clone(),
+                        branch: batch.branch.clone().unwrap_or_default(),
+                        model: batch.primary_model.clone().unwrap_or_default(),
+                        role: msg.role.clone(),
+                        content: msg.content.clone(),
+                        turn_number: (i + 1) as u64,
+                        timestamp: msg.timestamp.unwrap_or(0),
+                        skills: vec![],
+                    })
+                    .collect();
+
+                if let Err(e) = search.index_session(&batch.session_id, &docs) {
+                    tracing::warn!(
+                        session_id = %batch.session_id,
+                        error = %e,
+                        "Failed to index session for search"
+                    );
+                    search_errors += 1;
+                }
+            }
+            if let Err(e) = search.commit() {
+                tracing::warn!(error = %e, "Failed to commit search index");
+            } else if search_errors > 0 {
+                tracing::info!(
+                    indexed = search_batches.len() - search_errors as usize,
+                    errors = search_errors,
+                    "Search index write complete (with errors)"
+                );
+            }
+        }
+    }
 
     let write_elapsed = phase_start.elapsed() - parse_elapsed;
 
@@ -2385,6 +2590,7 @@ pub async fn run_background_index<F>(
     claude_dir: &Path,
     db: &Database,
     registry_holder: Option<RegistryHolder>,
+    search_index: Option<&vibe_recall_search::SearchIndex>,
     on_pass1_done: impl FnOnce(usize, usize),
     on_pass2_start: impl FnOnce(u64),
     on_file_done: F,
@@ -2422,8 +2628,8 @@ where
             .map_err(|e| format!("Failed to seed invocables: {}", e))?;
     }
 
-    // Pass 2: use the registry for invocation classification
-    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), on_pass2_start, on_file_done).await?;
+    // Pass 2: use the registry for invocation classification + Tantivy search indexing
+    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), search_index, on_pass2_start, on_file_done).await?;
 
     // Backfill primary_model for sessions indexed before this field was populated
     match db.backfill_primary_models().await {
@@ -3171,7 +3377,7 @@ mod tests {
         // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, move |done, _total, _bytes| {
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, move |done, _total, _bytes| {
             progress_clone.store(done, Ordering::Relaxed);
         })
         .await
@@ -3201,11 +3407,11 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -3218,13 +3424,13 @@ mod tests {
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
         // Run Pass 2 — should deep-index the 1 session
-        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
 
         // Verify file_size_at_index and file_mtime_at_index are populated
         let sessions = db.get_sessions_needing_deep_index().await.unwrap();
         assert_eq!(sessions.len(), 1);
-        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version) = &sessions[0];
+        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) = &sessions[0];
         assert!(
             stored_size.is_some(),
             "file_size_at_index should be populated after deep index"
@@ -3243,7 +3449,7 @@ mod tests {
         );
 
         // Run Pass 2 again — should skip because file hasn't changed
-        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip unchanged session");
 
         // Now append data to the JSONL file (simulates user continuing conversation)
@@ -3273,7 +3479,7 @@ mod tests {
         drop(file);
 
         // Run Pass 2 again — should re-index because file size changed
-        let (third_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(third_run, 1, "Should re-index session after file was modified");
 
         // Verify the updated metrics reflect the new content
@@ -3286,7 +3492,7 @@ mod tests {
         );
 
         // Run Pass 2 one more time — should skip again (file hasn't changed)
-        let (fourth_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 

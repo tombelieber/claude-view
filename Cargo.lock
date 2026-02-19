@@ -3264,6 +3264,7 @@ dependencies = [
  "tracing",
  "ts-rs",
  "vibe-recall-core",
+ "vibe-recall-search",
  "vibe-recall-server",
 ]
 
@@ -3271,12 +3272,15 @@ dependencies = [
 name = "vibe-recall-search"
 version = "0.4.5"
 dependencies = [
+ "chrono",
+ "serde",
  "tantivy",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
  "tracing",
+ "ts-rs",
  "vibe-recall-core",
 ]
 
