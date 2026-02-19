@@ -12,6 +12,7 @@ interface MonitorState {
   pinnedPaneIds: Set<string>
   hiddenPaneIds: Set<string>
   verboseMode: boolean
+  richRenderMode: 'rich' | 'json'
 
   // Actions
   setGridOverride: (override: { cols: number; rows: number } | null) => void
@@ -23,6 +24,7 @@ interface MonitorState {
   hidePane: (id: string) => void
   showPane: (id: string) => void
   toggleVerbose: () => void
+  setRichRenderMode: (mode: 'rich' | 'json') => void
 }
 
 export const useMonitorStore = create<MonitorState>()(
@@ -35,6 +37,7 @@ export const useMonitorStore = create<MonitorState>()(
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
       verboseMode: false,
+      richRenderMode: 'rich',
 
       setGridOverride: (override) => set({ gridOverride: override }),
       setCompactHeaders: (compact) => set({ compactHeaders: compact }),
@@ -67,6 +70,7 @@ export const useMonitorStore = create<MonitorState>()(
       }),
 
       toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
+      setRichRenderMode: (mode) => set({ richRenderMode: mode }),
     }),
     {
       name: 'claude-view:monitor-grid-prefs',
@@ -76,6 +80,7 @@ export const useMonitorStore = create<MonitorState>()(
         pinnedPaneIds: state.pinnedPaneIds,
         hiddenPaneIds: state.hiddenPaneIds,
         verboseMode: state.verboseMode,
+        richRenderMode: state.richRenderMode,
       }),
       storage: {
         getItem: (name: string): StorageValue<Partial<MonitorState>> | null => {
