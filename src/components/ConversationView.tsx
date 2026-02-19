@@ -229,7 +229,7 @@ export function ConversationView() {
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(true)
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
   const richMessages = useMemo(
@@ -627,15 +627,16 @@ export function ConversationView() {
             />
           )}
         </div>
-      </div>
 
-      {/* Detail panel overlay */}
-      {panelOpen && panelData && (
-        <SessionDetailPanel
-          panelData={panelData}
-          onClose={() => setPanelOpen(false)}
-        />
-      )}
+        {/* Right: Detail panel (inline) */}
+        {panelOpen && panelData && (
+          <SessionDetailPanel
+            panelData={panelData}
+            onClose={() => setPanelOpen(false)}
+            inline
+          />
+        )}
+      </div>
     </div>
   )
 }
