@@ -110,3 +110,54 @@ describe('SessionCard sub-agent pills', () => {
     expect(screen.queryByText(/agents/)).not.toBeInTheDocument()
   })
 })
+
+describe('SessionCard question card', () => {
+  it('shows QuestionCard when state is awaiting_input with question context', () => {
+    const session = createMockSession({
+      agentState: {
+        group: 'needs_you',
+        state: 'awaiting_input',
+        label: 'Asked you a question',
+        context: {
+          questions: [{
+            question: 'Which database should we use?',
+            header: 'DB',
+            options: [
+              { label: 'PostgreSQL', description: 'Relational' },
+              { label: 'SQLite', description: 'Embedded' },
+            ],
+            multiSelect: false,
+          }],
+        },
+      },
+    })
+    renderCard(session)
+    expect(screen.getByTestId('question-card')).toBeInTheDocument()
+    expect(screen.getByText('Which database should we use?')).toBeInTheDocument()
+    expect(screen.getByText('PostgreSQL')).toBeInTheDocument()
+  })
+
+  it('does not show QuestionCard when awaiting_input but no context', () => {
+    const session = createMockSession({
+      agentState: {
+        group: 'needs_you',
+        state: 'awaiting_input',
+        label: 'Waiting for your next message',
+      },
+    })
+    renderCard(session)
+    expect(screen.queryByTestId('question-card')).not.toBeInTheDocument()
+  })
+
+  it('does not show QuestionCard when autonomous state', () => {
+    const session = createMockSession({
+      agentState: {
+        group: 'autonomous',
+        state: 'acting',
+        label: 'Using tools...',
+      },
+    })
+    renderCard(session)
+    expect(screen.queryByTestId('question-card')).not.toBeInTheDocument()
+  })
+})
