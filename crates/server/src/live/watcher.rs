@@ -117,7 +117,7 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(Recommended
                     };
                     if tx.try_send(file_event).is_err() {
                         let count = dropped_counter.fetch_add(1, Ordering::Relaxed) + 1;
-                        if count == 1 || count % 100 == 0 {
+                        if count == 1 || count.is_multiple_of(100) {
                             warn!(
                                 dropped_total = count,
                                 "File watcher channel full — event dropped (process detector will catch up)"

@@ -905,6 +905,7 @@ async fn handle_terminal_ws(
 /// Modified events are sent through the `mpsc::Sender<WatchEvent>` channel.
 fn start_file_watcher(
     tx: mpsc::Sender<WatchEvent>,
+    #[allow(clippy::ptr_arg)]
     file_path: &PathBuf,
 ) -> notify::Result<RecommendedWatcher> {
     let target_path = file_path.clone();
