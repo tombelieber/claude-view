@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { ChevronRight, ChevronDown, FileText, Brain, Wrench, FileCode, Terminal, Bot, CheckCircle2, XCircle, AlertTriangle, Zap, Shield } from 'lucide-react'
 import DOMPurify from 'dompurify'
 import { cn } from '../lib/utils'
@@ -388,19 +388,13 @@ export function XmlCard({ content, type }: XmlCardProps) {
     // - All attributes are removed (onclick, onerror, src, etc. removed)
     // - Text content is preserved
     // Final result: dangerous markup becomes plaintext when rendered in <pre>
-    const sanitized = useMemo(
-      () => {
-        if (!displayContent || !displayContent.trim()) {
-          return ''
-        }
-        return DOMPurify.sanitize(displayContent, {
+    const sanitized = (!displayContent || !displayContent.trim())
+      ? ''
+      : DOMPurify.sanitize(displayContent, {
           ALLOWED_TAGS: [],
           ALLOWED_ATTR: [],
           KEEP_CONTENT: true,
         })
-      },
-      [displayContent]
-    )
 
     return (
       <div className="border border-dashed border-l-4 border-l-amber-400 rounded-lg overflow-hidden bg-amber-950/20 my-2">

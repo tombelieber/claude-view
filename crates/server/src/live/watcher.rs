@@ -217,7 +217,6 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::path::PathBuf;
 
     /// Verify that path depth filtering correctly identifies parent sessions vs sub-agents
