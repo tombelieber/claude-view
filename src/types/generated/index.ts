@@ -161,11 +161,11 @@ export type { SkillStats } from './SkillStats'
 export type { TurnInfo } from './TurnInfo'
 export type { UncommittedWork } from './UncommittedWork'
 
-// Mission Control: Sub-Agent Visualization (Phase D)
+// Live Monitor: Sub-Agent Visualization (Phase D)
 export type { SubAgentStatus } from './SubAgentStatus'
 export type { SubAgentInfo } from './SubAgentInfo'
 
-// Mission Control: Task Progress Tracking
+// Live Monitor: Task Progress Tracking
 export type { ProgressStatus } from './ProgressStatus'
 export type { ProgressSource } from './ProgressSource'
 export type { ProgressItem } from './ProgressItem'

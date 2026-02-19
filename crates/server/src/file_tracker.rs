@@ -9,7 +9,7 @@ use tokio::io::{self, AsyncReadExt, AsyncSeekExt};
 
 /// Tracks a byte offset into a file for incremental line-by-line reading.
 ///
-/// Used by Mission Control's live terminal monitor to tail JSONL session
+/// Used by Live Monitor's live terminal monitor to tail JSONL session
 /// files without re-reading the entire file on each poll.
 pub struct FilePositionTracker {
     /// Current read position (byte offset from start of file).
