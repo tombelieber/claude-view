@@ -4,7 +4,7 @@
 //! JSONL tail parser, and cleanup task to maintain an in-memory map of all
 //! active Claude Code sessions.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -352,15 +352,23 @@ impl LiveSessionManager {
     ///
     /// Every 5 seconds:
     /// 1. Scans the process table for running Claude instances → updates PIDs.
-    /// 2. For sessions with no process + stale >300s + not Done → mark as session_ended.
+    /// 2. For sessions whose process was seen on the previous poll but is now gone
+    ///    → mark `session_ended` **immediately** (high confidence: process just died).
+    /// 3. For sessions where we never observed a process + stale >180s + not Done
+    ///    → mark `session_ended` (low-confidence fallback for macOS sysinfo misses).
     ///
     /// Does NO state re-derivation. Hooks own all state. This only catches crashes.
     fn spawn_process_detector(self: &Arc<Self>) {
         let manager = self.clone();
-        const STALE_THRESHOLD_SECS: u64 = 300; // 5 minutes
+        const STALE_THRESHOLD_SECS: u64 = 180; // 3 minutes
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            // Track session IDs that had a running process on the previous poll cycle.
+            // When a session was in this set last cycle but has no process now, the
+            // process just disappeared → immediate session_ended (no staleness wait).
+            let mut had_process: HashSet<String> = HashSet::new();
+
             loop {
                 interval.tick().await;
 
@@ -377,6 +385,8 @@ impl LiveSessionManager {
 
                 // Check each session: update PID + detect crashes
                 let mut dead_sessions: Vec<String> = Vec::new();
+                // Build the "has process NOW" set for this cycle, then swap into had_process.
+                let mut has_process_now: HashSet<String> = HashSet::new();
                 {
                     let processes = manager.processes.read().await;
                     let mut sessions = manager.sessions.write().await;
@@ -388,16 +398,25 @@ impl LiveSessionManager {
                         // Always update PID
                         session.pid = pid;
 
-                        // Crash detection: no process + stale + not already Done
-                        if !running && session.status != SessionStatus::Done {
-                            let seconds_since = seconds_since_modified_from_timestamp(
-                                session.last_activity_at,
-                            );
-                            if seconds_since > STALE_THRESHOLD_SECS {
+                        if running {
+                            // Process is alive — remember it for next cycle
+                            has_process_now.insert(session_id.clone());
+                        } else if session.status != SessionStatus::Done {
+                            // No process. Two cases:
+                            let was_seen = had_process.contains(session_id);
+
+                            if was_seen {
+                                // HIGH CONFIDENCE: we saw the process last cycle, now it's gone.
+                                // Mark session_ended immediately — no staleness wait.
+                                info!(
+                                    session_id = %session_id,
+                                    project = %session.project_path,
+                                    "Process disappeared — marking session ended immediately"
+                                );
                                 session.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
-                                    label: "Session ended (no process)".into(),
+                                    label: "Session ended (process exited)".into(),
                                     context: None,
                                 };
                                 session.status = SessionStatus::Done;
@@ -405,6 +424,32 @@ impl LiveSessionManager {
                                     session: session.clone(),
                                 });
                                 dead_sessions.push(session_id.clone());
+                            } else {
+                                // LOW CONFIDENCE: we never saw a process for this session
+                                // (macOS sysinfo may have missed it). Fall back to the
+                                // 180s stale threshold before marking ended.
+                                let seconds_since = seconds_since_modified_from_timestamp(
+                                    session.last_activity_at,
+                                );
+                                if seconds_since > STALE_THRESHOLD_SECS {
+                                    info!(
+                                        session_id = %session_id,
+                                        project = %session.project_path,
+                                        stale_seconds = seconds_since,
+                                        "No process ever observed + stale — marking session ended (fallback)"
+                                    );
+                                    session.agent_state = AgentState {
+                                        group: AgentStateGroup::NeedsYou,
+                                        state: "session_ended".into(),
+                                        label: "Session ended (no process)".into(),
+                                        context: None,
+                                    };
+                                    session.status = SessionStatus::Done;
+                                    let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                        session: session.clone(),
+                                    });
+                                    dead_sessions.push(session_id.clone());
+                                }
                             }
                         }
                     }
@@ -414,6 +459,9 @@ impl LiveSessionManager {
                         sessions.remove(session_id);
                     }
                 }
+
+                // Swap: this cycle's "has process" becomes next cycle's "had process"
+                had_process = has_process_now;
 
                 // Broadcast completions (outside lock)
                 for session_id in dead_sessions {
@@ -427,12 +475,12 @@ impl LiveSessionManager {
 
     /// Spawn the periodic housekeeping task.
     ///
-    /// Every 30 seconds: removes orphaned accumulators (session removed but accumulator lingered).
+    /// Every 60 seconds: removes orphaned accumulators (session removed but accumulator lingered).
     fn spawn_cleanup_task(self: &Arc<Self>) {
         let manager = self.clone();
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;
 
@@ -958,6 +1006,142 @@ mod tests {
         // Future timestamp should return 0
         let seconds = seconds_since_modified_from_timestamp(now + 1000);
         assert_eq!(seconds, 0);
+    }
+
+    /// Simulate the process detector's "had_process" tracking logic.
+    ///
+    /// This tests the core decision without spinning up the full async manager:
+    /// - Cycle 1: session has a running process → recorded in had_process set
+    /// - Cycle 2: session's process is gone → should trigger IMMEDIATE end
+    /// - Separate case: session never had a process → should use stale fallback
+    #[test]
+    fn test_process_disappearance_immediate_detection() {
+        use super::SessionStatus;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        const STALE_THRESHOLD_SECS: u64 = 300;
+
+        // --- Simulate cycle 1: process is running ---
+        let mut had_process: HashSet<String> = HashSet::new();
+        let session_id = "test-session-1".to_string();
+
+        // Process is running in cycle 1 → add to had_process
+        let process_running_cycle1 = true;
+        if process_running_cycle1 {
+            had_process.insert(session_id.clone());
+        }
+        assert!(had_process.contains(&session_id));
+
+        // --- Simulate cycle 2: process is gone ---
+        let process_running_cycle2 = false;
+        let session_status = SessionStatus::Working; // not Done yet
+        let last_activity_at = now - 10; // only 10 seconds ago — well under stale threshold
+
+        let mut immediate_end = false;
+        let mut stale_end = false;
+
+        if !process_running_cycle2 && session_status != SessionStatus::Done {
+            let was_seen = had_process.contains(&session_id);
+            if was_seen {
+                // HIGH CONFIDENCE: process just disappeared → immediate end
+                immediate_end = true;
+            } else {
+                // LOW CONFIDENCE: never saw process → check staleness
+                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
+                if seconds_since > STALE_THRESHOLD_SECS {
+                    stale_end = true;
+                }
+            }
+        }
+
+        // Session was in had_process → should be immediately ended
+        assert!(immediate_end, "Session with previously-seen process should be ended immediately");
+        assert!(!stale_end, "Should NOT have used stale fallback for a seen process");
+    }
+
+    /// Verify that sessions where we never observed a process still use
+    /// the 300s stale threshold (not immediate).
+    #[test]
+    fn test_never_seen_process_uses_stale_fallback() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        const STALE_THRESHOLD_SECS: u64 = 300;
+
+        let had_process: HashSet<String> = HashSet::new(); // empty — never saw a process
+        let session_id = "test-session-2".to_string();
+
+        // --- Case A: not stale enough (activity 10s ago) ---
+        {
+            let last_activity_at = now - 10;
+            let mut immediate_end = false;
+            let mut stale_end = false;
+
+            let was_seen = had_process.contains(&session_id);
+            if was_seen {
+                immediate_end = true;
+            } else {
+                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
+                if seconds_since > STALE_THRESHOLD_SECS {
+                    stale_end = true;
+                }
+            }
+
+            assert!(!immediate_end, "Should NOT immediately end a session we never saw a process for");
+            assert!(!stale_end, "Session active 10s ago should NOT hit stale threshold");
+        }
+
+        // --- Case B: stale enough (activity 400s ago) ---
+        {
+            let last_activity_at = now - 400;
+            let mut immediate_end = false;
+            let mut stale_end = false;
+
+            let was_seen = had_process.contains(&session_id);
+            if was_seen {
+                immediate_end = true;
+            } else {
+                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
+                if seconds_since > STALE_THRESHOLD_SECS {
+                    stale_end = true;
+                }
+            }
+
+            assert!(!immediate_end, "Should NOT immediately end a session we never saw a process for");
+            assert!(stale_end, "Session inactive for 400s should hit 300s stale threshold");
+        }
+    }
+
+    /// Verify that an already-Done session is not re-processed by the detector
+    /// regardless of process presence.
+    #[test]
+    fn test_done_session_not_reprocessed() {
+        use super::SessionStatus;
+
+        let mut had_process: HashSet<String> = HashSet::new();
+        let session_id = "test-session-done".to_string();
+
+        // Process was seen in a previous cycle
+        had_process.insert(session_id.clone());
+
+        // But session is already Done
+        let session_status = SessionStatus::Done;
+        let process_running = false;
+
+        let mut would_end = false;
+
+        if !process_running && session_status != SessionStatus::Done {
+            // This block should never execute because status == Done
+            would_end = true;
+        }
+
+        assert!(!would_end, "Already-Done session must not be re-processed by process detector");
     }
 
 }

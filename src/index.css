@@ -432,6 +432,24 @@ mark {
   color: #fef9c3;
 }
 
+/* ── Diff block: GitHub-style line backgrounds ── */
+/* CompactCodeBlock adds data-diff attributes to lines when language=diff */
+.diff-block [data-diff="add"] {
+  background: rgba(46, 160, 67, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="del"] {
+  background: rgba(248, 81, 73, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="hunk"] {
+  background: rgba(56, 139, 253, 0.1);
+  display: inline-block;
+  width: 100%;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
