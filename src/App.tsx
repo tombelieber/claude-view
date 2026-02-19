@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { useProjectSummaries } from './hooks/use-projects'
 import { useAppStore } from './store/app-store'
 import { useTheme } from './hooks/use-theme'
@@ -14,6 +14,7 @@ import { LiveMonitorSkeleton, ErrorState } from './components/LoadingStates'
 import { ColdStartOverlay } from './components/ColdStartOverlay'
 import { AuthBanner } from './components/AuthBanner'
 import { PatternAlert } from './components/PatternAlert'
+import { useLiveCommandStore } from './store/live-command-context'
 
 export default function App() {
   const { data: summaries, isLoading, error, refetch } = useProjectSummaries()
@@ -22,8 +23,7 @@ export default function App() {
   const indexingProgress = useIndexingProgress()
   const liveSessions = useLiveSessions()
   const { settings: soundSettings, updateSettings: updateSoundSettings, previewSound, audioUnlocked } = useNotificationSound(liveSessions.sessions)
-  const navigate = useNavigate()
-  const location = useLocation()
+  const liveContext = useLiveCommandStore((s) => s.context)
 
   // Global keyboard shortcut: Cmd+K
   useEffect(() => {
@@ -89,6 +89,7 @@ export default function App() {
         isOpen={isCommandPaletteOpen}
         onClose={closeCommandPalette}
         projects={summaries ?? []}
+        liveContext={liveContext ?? undefined}
       />
 
       <PatternAlert />
