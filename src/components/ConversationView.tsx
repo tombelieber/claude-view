@@ -28,22 +28,52 @@ import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
-/** Rich/JSON toggle for verbose mode header */
-function RichJsonToggle() {
+/** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
+function HistoryRichPane({ messages }: { messages: import('./live/RichPane').RichMessage[] }) {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  return (
+    <RichPane
+      messages={messages}
+      isVisible={true}
+      verboseMode={verboseMode}
+      bufferDone={true}
+    />
+  )
+}
+
+/** Verbose + Rich/JSON toggles — matches terminal view controls */
+function TerminalViewToggles() {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
   return (
-    <button
-      onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
-      className={cn(
-        'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-        richRenderMode === 'rich'
-          ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
-          : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+    <>
+      <button
+        onClick={toggleVerbose}
+        className={cn(
+          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+          verboseMode
+            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+            : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+        )}
+      >
+        {verboseMode ? 'verbose' : 'compact'}
+      </button>
+      {verboseMode && (
+        <button
+          onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
+          className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+            richRenderMode === 'rich'
+              ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
+              : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+          )}
+        >
+          {richRenderMode === 'rich' ? 'rich' : 'json'}
+        </button>
       )}
-    >
-      {richRenderMode === 'rich' ? 'rich' : 'json'}
-    </button>
+    </>
   )
 }
 
@@ -462,7 +492,7 @@ export function ConversationView() {
             </span>
           )}
           {viewMode === 'full' && (
-            <RichJsonToggle />
+            <TerminalViewToggles />
           )}
         </div>
 
@@ -642,12 +672,7 @@ export function ConversationView() {
             </ExpandProvider>
             </ThreadHighlightProvider>
           ) : (
-            <RichPane
-              messages={richMessages}
-              isVisible={true}
-              verboseMode={true}
-              bufferDone={true}
-            />
+            <HistoryRichPane messages={richMessages} />
           )}
         </div>
 

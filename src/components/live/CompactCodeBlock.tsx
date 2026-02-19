@@ -9,13 +9,15 @@ interface CompactCodeBlockProps {
   code: string | null | undefined
   language?: string | null | undefined
   blockId?: string
+  /** When true, never collapse — show full code block. */
+  verboseMode?: boolean
 }
 
 const COLLAPSE_THRESHOLD = 12
 
-export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockProps) {
+export function CompactCodeBlock({ code, language, blockId, verboseMode }: CompactCodeBlockProps) {
   const { expandedBlocks, toggleBlock } = useExpandContext()
-  const isExpanded = blockId ? expandedBlocks.has(blockId) : false
+  const isExpanded = verboseMode || (blockId ? expandedBlocks.has(blockId) : false)
   const [copied, setCopied] = useState(false)
   const { resolvedTheme } = useTheme()
   const highlighter = useShikiHighlighter()
@@ -94,8 +96,8 @@ export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockPr
         </pre>
       )}
 
-      {/* Collapse/Expand control */}
-      {shouldCollapse && (
+      {/* Collapse/Expand control — hidden in verbose mode (always expanded) */}
+      {shouldCollapse && !verboseMode && (
         <div className="border-t border-gray-200 dark:border-gray-700/60">
           <button
             onClick={() => blockId && toggleBlock(blockId)}
