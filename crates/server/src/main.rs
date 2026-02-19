@@ -140,6 +140,14 @@ async fn main() -> Result<()> {
 
     let startup_start = Instant::now();
 
+    // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
+    if std::env::consts::OS != "macos" {
+        eprintln!("\n\u{26a0}\u{fe0f}  vibe-recall currently supports macOS only.");
+        eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
+        eprintln!("   Follow progress: https://github.com/anonymous-dev/claude-view/issues\n");
+        std::process::exit(1);
+    }
+
     // Initialize Prometheus metrics
     init_metrics();
 
