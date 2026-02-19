@@ -42,7 +42,7 @@ export function KanbanColumn({
   onCardClick,
 }: KanbanColumnProps) {
   return (
-    <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1 h-full min-h-0">
+    <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
       <div className="relative bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col h-full min-h-0">
         <div className={cn('h-0.5 rounded-t-lg flex-shrink-0', accentColor)} />
         <div className="px-3 py-2 flex items-center justify-between flex-shrink-0">

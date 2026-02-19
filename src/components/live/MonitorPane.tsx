@@ -40,9 +40,9 @@ function contextPercent(session: LiveSession): number {
 
 /** Color class for context percentage text. */
 function contextColor(pct: number): string {
-  if (pct > 80) return 'text-red-400'
-  if (pct >= 50) return 'text-amber-400'
-  return 'text-green-400'
+  if (pct > 80) return 'text-red-500 dark:text-red-400'
+  if (pct >= 50) return 'text-amber-500 dark:text-amber-400'
+  return 'text-green-600 dark:text-green-400'
 }
 
 /** Status icon component based on agentState.group. */
@@ -114,12 +114,12 @@ export function MonitorPane({
   return (
     <div
       className={cn(
-        'flex flex-col rounded-lg border overflow-hidden bg-gray-950 transition-colors h-full',
+        'flex flex-col rounded-lg border overflow-hidden bg-white dark:bg-[#0D1117] transition-all duration-150 h-full',
         isSelected
-          ? 'ring-2 ring-blue-500 border-blue-500'
+          ? 'ring-2 ring-blue-500 dark:ring-[#1F6FEB] border-blue-500 dark:border-[#1F6FEB] shadow-lg shadow-blue-500/10 dark:shadow-[#1F6FEB]/10'
           : isHovered
-            ? 'border-gray-600'
-            : 'border-gray-800'
+            ? 'border-gray-300 dark:border-[#30363D] shadow-md shadow-black/10 dark:shadow-black/30'
+            : 'border-gray-200 dark:border-[#21262D]'
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -154,8 +154,8 @@ export function MonitorPane({
       {/* Content area */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {children ?? (
-          <div className="flex items-center justify-center h-full min-h-[120px] text-sm text-gray-500">
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          <div className="flex items-center justify-center h-full min-h-[120px] text-sm text-gray-400 dark:text-[#8B949E]">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin text-blue-500 dark:text-[#79C0FF]" />
             Connecting...
           </div>
         )}
@@ -192,12 +192,12 @@ function FullHeader({
 }) {
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 border-b border-gray-800 cursor-pointer select-none"
+      className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-[#161B22] border-b border-gray-200 dark:border-[#21262D] cursor-pointer select-none"
       onClick={onClick}
     >
       {/* Project name */}
       <span
-        className="text-xs font-medium text-gray-200 truncate max-w-[20ch]"
+        className="text-xs font-medium text-gray-800 dark:text-[#C9D1D9] truncate max-w-[20ch]"
         title={session.projectPath || name}
       >
         {name}
@@ -205,7 +205,7 @@ function FullHeader({
 
       {/* Branch */}
       {session.gitBranch && (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-gray-500 truncate max-w-[15ch]">
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[15ch]">
           <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
           <span className="truncate" title={session.gitBranch}>
             {session.gitBranch}
@@ -217,7 +217,7 @@ function FullHeader({
       <div className="flex-1" />
 
       {/* Metrics */}
-      <span className="text-[10px] font-mono text-gray-400 tabular-nums flex-shrink-0">
+      <span className="text-[10px] font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
         {cost}
       </span>
       <span className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}>
@@ -225,14 +225,14 @@ function FullHeader({
       </span>
 
       {/* Status icon */}
-      <GroupIcon group={session.agentState.group} className="w-3 h-3 text-gray-400 flex-shrink-0" />
+      <GroupIcon group={session.agentState.group} className="w-3 h-3 text-gray-400 dark:text-[#8B949E] flex-shrink-0" />
 
       {/* Divider */}
-      <div className="w-px h-3.5 bg-gray-700" />
+      <div className="w-px h-3.5 bg-gray-200 dark:bg-[#30363D]" />
 
       {/* Pin indicator */}
       {isPinned && (
-        <Pin className="w-3 h-3 text-blue-400 flex-shrink-0" />
+        <Pin className="w-3 h-3 text-blue-500 dark:text-[#79C0FF] flex-shrink-0" />
       )}
 
       {/* Action buttons */}
@@ -242,8 +242,8 @@ function FullHeader({
           onPin()
         }}
         className={cn(
-          'p-0.5 rounded hover:bg-gray-800 transition-colors',
-          isPinned ? 'text-blue-400 hover:text-blue-300' : 'text-gray-500 hover:text-gray-300'
+          'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-[#30363D] transition-colors',
+          isPinned ? 'text-blue-500 dark:text-[#79C0FF] hover:text-blue-600 dark:hover:text-[#A5D6FF]' : 'text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]'
         )}
         title={isPinned ? 'Unpin pane' : 'Pin pane'}
       >
@@ -255,7 +255,7 @@ function FullHeader({
           e.stopPropagation()
           onExpand()
         }}
-        className="p-0.5 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+        className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
         title="Expand pane"
       >
         <Maximize2 className="w-3 h-3" />
@@ -266,7 +266,7 @@ function FullHeader({
           e.stopPropagation()
           onHide()
         }}
-        className="p-0.5 rounded hover:bg-gray-800 text-gray-500 hover:text-red-400 transition-colors"
+        className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-red-500 dark:hover:text-[#FF7B72] transition-colors"
         title="Hide pane"
       >
         <X className="w-3 h-3" />
@@ -296,16 +296,16 @@ function CompactHeader({
 }) {
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-1 bg-gray-900 border-b border-gray-800 cursor-pointer select-none"
+      className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 dark:bg-[#161B22] border-b border-gray-200 dark:border-[#21262D] cursor-pointer select-none"
       onClick={onClick}
     >
       {/* Project name (shorter truncation) */}
-      <span className="text-[10px] font-medium text-gray-300 truncate max-w-[14ch]">
+      <span className="text-[10px] font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
         {name}
       </span>
 
       {/* Cost */}
-      <span className="text-[10px] font-mono text-gray-500 tabular-nums flex-shrink-0">
+      <span className="text-[10px] font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
         {cost}
       </span>
 
@@ -315,7 +315,7 @@ function CompactHeader({
       </span>
 
       {/* Turn count */}
-      <span className="text-[10px] font-mono text-gray-600 tabular-nums flex-shrink-0">
+      <span className="text-[10px] font-mono text-gray-400 dark:text-[#6E7681] tabular-nums flex-shrink-0">
         T{session.turnCount}
       </span>
 
@@ -323,7 +323,7 @@ function CompactHeader({
       <div className="flex-1" />
 
       {/* Pin indicator */}
-      {isPinned && <Pin className="w-2.5 h-2.5 text-blue-400 flex-shrink-0" />}
+      {isPinned && <Pin className="w-2.5 h-2.5 text-blue-500 dark:text-[#79C0FF] flex-shrink-0" />}
 
       {/* Expand only in compact mode */}
       <button
@@ -331,7 +331,7 @@ function CompactHeader({
           e.stopPropagation()
           onExpand()
         }}
-        className="p-0.5 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+        className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
         title="Expand pane"
       >
         <Maximize2 className="w-2.5 h-2.5" />
@@ -347,7 +347,7 @@ function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => 
   const truncatedActivity = activity.length > 40 ? activity.slice(0, 37) + '...' : activity
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 bg-gray-900 border-t border-gray-800 text-[10px] text-gray-500">
+    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] text-[10px] text-gray-400 dark:text-[#6E7681]">
       {/* Current activity */}
       <span className="truncate flex-1 min-w-0" title={activity}>
         {truncatedActivity || 'Idle'}

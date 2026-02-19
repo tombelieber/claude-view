@@ -722,7 +722,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     user_text_for_search = Some(content);
                 }
             }
-            extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
             let user_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
             if let Some(ts) = user_ts {
                 diag.timestamps_extracted += 1;
@@ -791,6 +790,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
+                    // Fallback: SIMD skill extraction even when typed parse fails
+                    extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
                 }
             }
             continue;
@@ -879,7 +880,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         fallback_user_text = Some(content);
                     }
                 }
-                extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
                 // Push search message for fallback user content
                 if let Some(text) = fallback_user_text {
                     result.search_messages.push(vibe_recall_core::SearchableMessage {
@@ -1179,6 +1179,16 @@ fn handle_assistant_line(
                                 "Edit" => deep.tool_counts.edit += 1,
                                 "Write" => deep.tool_counts.write += 1,
                                 "Bash" => deep.tool_counts.bash += 1,
+                                "Skill" => {
+                                    if let Some(skill_name) = block.input.as_ref()
+                                        .and_then(|i| i.get("skill"))
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        if !skill_name.is_empty() {
+                                            deep.skills_used.push(skill_name.to_string());
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
 
@@ -1308,15 +1318,26 @@ fn handle_assistant_value(
 
                         *tool_call_count += 1;
 
+                        let input = block.get("input");
+
                         match name {
                             "Read" => deep.tool_counts.read += 1,
                             "Edit" => deep.tool_counts.edit += 1,
                             "Write" => deep.tool_counts.write += 1,
                             "Bash" => deep.tool_counts.bash += 1,
+                            "Skill" => {
+                                if let Some(skill_name) = input
+                                    .and_then(|i| i.get("skill"))
+                                    .and_then(|v| v.as_str())
+                                {
+                                    if !skill_name.is_empty() {
+                                        deep.skills_used.push(skill_name.to_string());
+                                    }
+                                }
+                            }
                             _ => {}
                         }
 
-                        let input = block.get("input");
                         if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
                             if !fp.is_empty() {
                                 diag.file_paths_extracted += 1;
@@ -1633,7 +1654,8 @@ fn is_system_user_content(content: &str) -> bool {
         || trimmed.starts_with("{\"type\":\"tool_result\"")
 }
 
-/// Extract skill names from a user message line (looking for "skill":"..." patterns).
+/// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
+/// Used when the typed AssistantLine parse fails but we still want to capture skills.
 fn extract_skills_from_line(
     line: &[u8],
     skill_name_finder: &memmem::Finder,
@@ -3515,6 +3537,7 @@ mod tests {
             &claude_dir,
             &db,
             None, // no registry holder
+            None::<&vibe_recall_search::SearchIndex>,
             move |projects, sessions| {
                 *p1.lock().unwrap() = (projects, sessions);
             },
@@ -3992,11 +4015,47 @@ mod tests {
         );
         assert_eq!(result.raw_invocations[0].timestamp, 1706400100);
 
+        // Should also extract skill name into deep.skills_used
+        assert!(
+            result.deep.skills_used.contains(&"commit".to_string()),
+            "skills_used should contain 'commit', got: {:?}",
+            result.deep.skills_used
+        );
+
         // Now filter for commit skills
         let commit_skills = extract_commit_skill_invocations(&result.raw_invocations);
         assert_eq!(commit_skills.len(), 1);
         assert_eq!(commit_skills[0].skill_name, "commit");
         assert_eq!(commit_skills[0].timestamp_unix, 1706400100);
+    }
+
+    #[test]
+    fn test_skills_extracted_from_assistant_lines_not_user_lines() {
+        // Skill tool_use blocks live in assistant lines, not user lines.
+        // Verify skills are extracted from assistant lines and NOT from user lines
+        // that happen to contain the word "skill".
+        let data = br#"{"type":"user","message":{"content":"use the brainstorming skill please"}}
+{"type":"assistant","timestamp":1706400100,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:brainstorming"}}]}}
+{"type":"user","message":{"content":"now try systematic debugging"}}
+{"type":"assistant","timestamp":1706400200,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:systematic-debugging"}},{"type":"text","text":"Using systematic debugging..."}]}}
+{"type":"assistant","timestamp":1706400300,"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/test.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+
+        let mut skills = result.deep.skills_used.clone();
+        skills.sort();
+
+        assert_eq!(
+            skills,
+            vec!["superpowers:brainstorming", "superpowers:systematic-debugging"],
+            "Should extract exactly the 2 skills from assistant tool_use blocks"
+        );
+
+        // Read tool should NOT appear in skills
+        assert!(
+            !skills.contains(&"Read".to_string()),
+            "Non-Skill tools should not appear in skills_used"
+        );
     }
 
     /// Helper: create a test claude dir with two sessions in two projects.
