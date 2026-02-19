@@ -13,10 +13,10 @@ describe('formatTokens', () => {
     expect(formatTokens(2_900_000)).toBe('2.9M')
   })
 
-  it('formats thousands with K suffix', () => {
-    expect(formatTokens(1_000)).toBe('1K')
-    expect(formatTokens(450_000)).toBe('450K')
-    expect(formatTokens(999_999)).toBe('1000K')
+  it('formats thousands with k suffix', () => {
+    expect(formatTokens(1_000)).toBe('1k')
+    expect(formatTokens(450_000)).toBe('450k')
+    expect(formatTokens(999_999)).toBe('1000k')
   })
 
   it('formats small numbers without suffix', () => {

@@ -40,7 +40,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/live/stream", get(live_stream))
         .route("/live/sessions", get(list_live_sessions))
         .route("/live/sessions/{id}", get(get_live_session))
-        .route("/live/sessions/{id}/messages", get(get_live_session_messages))
+        .route(
+            "/live/sessions/{id}/messages",
+            get(get_live_session_messages),
+        )
         .route("/live/sessions/{id}/kill", post(kill_session))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
@@ -156,7 +159,11 @@ async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_js
     let map = state.live_sessions.read().await;
     let mut sessions: Vec<_> = map.values().cloned().collect();
     sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-    let process_count = state.live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
+    let process_count = state
+        .live_manager
+        .as_ref()
+        .map(|m| m.process_count())
+        .unwrap_or(0);
     Json(serde_json::json!({
         "sessions": sessions,
         "total": sessions.len(),
@@ -165,10 +172,7 @@ async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_js
 }
 
 /// GET /api/live/sessions/:id -- Get a single live session by ID.
-async fn get_live_session(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     let map = state.live_sessions.read().await;
     match map.get(&id) {
         Some(session) => Json(serde_json::json!({ "session": session })).into_response(),
@@ -301,7 +305,11 @@ async fn kill_session(
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
 async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let process_count = state.live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
+    let process_count = state
+        .live_manager
+        .as_ref()
+        .map(|m| m.process_count())
+        .unwrap_or(0);
     let summary = build_summary(&map, process_count);
     Json(serde_json::to_value(&summary).unwrap_or_default())
 }
@@ -310,24 +318,29 @@ async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json
 ///
 /// Exposes per-model costs in a frontend-friendly format (cost per million tokens).
 async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let models: HashMap<String, serde_json::Value> = state
-        .pricing
+    let pricing = state.pricing.read().unwrap();
+    let models: HashMap<String, serde_json::Value> = pricing
         .iter()
         .map(|(name, p)| {
-            (
-                name.clone(),
-                serde_json::json!({
-                    "inputPerMillion": p.input_cost_per_token * 1_000_000.0,
-                    "outputPerMillion": p.output_cost_per_token * 1_000_000.0,
-                    "cacheReadPerMillion": p.cache_read_cost_per_token * 1_000_000.0,
-                    "cacheWritePerMillion": p.cache_creation_cost_per_token * 1_000_000.0,
-                }),
-            )
+            let mut model = serde_json::json!({
+                "inputPerMillion": p.input_cost_per_token * 1_000_000.0,
+                "outputPerMillion": p.output_cost_per_token * 1_000_000.0,
+                "cacheReadPerMillion": p.cache_read_cost_per_token * 1_000_000.0,
+                "cacheWritePerMillion": p.cache_creation_cost_per_token * 1_000_000.0,
+            });
+            if let Some(rate) = p.input_cost_per_token_above_200k {
+                model["inputPerMillionAbove200k"] = serde_json::json!(rate * 1_000_000.0);
+            }
+            if let Some(rate) = p.output_cost_per_token_above_200k {
+                model["outputPerMillionAbove200k"] = serde_json::json!(rate * 1_000_000.0);
+            }
+            (name.clone(), model)
         })
         .collect();
     Json(serde_json::json!({
         "models": models,
-        "lastUpdated": "2026-02-12",
+        "modelCount": models.len(),
+        "source": "litellm+defaults",
     }))
 }
 

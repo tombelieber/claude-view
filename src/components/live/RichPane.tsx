@@ -16,6 +16,7 @@ import { ExpandProvider } from '../../contexts/ExpandContext'
 import { CompactCodeBlock } from './CompactCodeBlock'
 import { JsonKeyValueChips } from './JsonKeyValueChips'
 import { JsonTree } from './JsonTree'
+import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 
 // --- Types ---
 
@@ -318,7 +319,7 @@ function toolChipColor(name: string): string {
 
 // --- Message Card Components ---
 
-function UserMessage({ message, index }: { message: RichMessage; index: number }) {
+function UserMessage({ message }: { message: RichMessage; index?: number }) {
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -340,7 +341,7 @@ function UserMessage({ message, index }: { message: RichMessage; index: number }
   )
 }
 
-function AssistantMessage({ message, index }: { message: RichMessage; index: number }) {
+function AssistantMessage({ message }: { message: RichMessage; index?: number }) {
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -362,13 +363,33 @@ function AssistantMessage({ message, index }: { message: RichMessage; index: num
   )
 }
 
-function ToolUseMessage({ message, index }: { message: RichMessage; index: number }) {
-  const [expanded, setExpanded] = useState(false)
+function ToolUseMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
+  const [expanded, setExpanded] = useState(verboseMode)
   const rawName = message.name || 'Tool'
   const { short: label, server } = shortenToolName(rawName)
   const chipColor = toolChipColor(rawName)
   const inputObj = message.inputData
   const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
+  const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
+
+  if (isAskUserQuestion && verboseMode) {
+    return (
+      <div className="py-0.5 border-l-2 border-purple-500/30 dark:border-purple-500/20 pl-1">
+        <div className="flex items-start gap-1.5">
+          <Wrench className="w-3 h-3 text-purple-500 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                {label}
+              </span>
+            </div>
+            <AskUserQuestionDisplay inputData={inputObj} />
+          </div>
+          <Timestamp ts={message.ts} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="py-0.5 border-l-2 border-orange-500/30 dark:border-orange-500/20 pl-1">
@@ -388,6 +409,7 @@ function ToolUseMessage({ message, index }: { message: RichMessage; index: numbe
               <JsonKeyValueChips
                 data={inputObj as Record<string, unknown>}
                 onExpand={() => setExpanded(true)}
+                verboseMode={verboseMode}
               />
             )}
             {!expanded && !isObjectInput && message.input && (
@@ -522,14 +544,14 @@ function Timestamp({ ts }: { ts?: number }) {
 
 // --- Message renderer dispatch ---
 
-function MessageCard({ message, index }: { message: RichMessage; index: number }) {
+function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   switch (message.type) {
     case 'user':
       return <UserMessage message={message} index={index} />
     case 'assistant':
       return <AssistantMessage message={message} index={index} />
     case 'tool_use':
-      return <ToolUseMessage message={message} index={index} />
+      return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_result':
       return <ToolResultMessage message={message} index={index} />
     case 'thinking':
@@ -635,7 +657,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
           atBottomThreshold={30}
           itemContent={(index, message) => (
             <div className="px-2 py-0.5">
-              <MessageCard message={message} index={index} />
+              <MessageCard message={message} index={index} verboseMode={verboseMode} />
             </div>
           )}
           className="h-full"
