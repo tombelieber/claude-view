@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { sseUrl } from '../../lib/sse-url'
 import type { AgentState } from './types'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { ProgressItem } from '../../types/generated/ProgressItem'
 
 const STALL_THRESHOLD_MS = 3000
 
@@ -42,6 +43,7 @@ export interface LiveSession {
   currentTurnStartedAt?: number | null
   lastTurnTaskSeconds?: number | null
   subAgents?: SubAgentInfo[]
+  progressItems?: ProgressItem[]
 }
 
 export interface LiveSummary {

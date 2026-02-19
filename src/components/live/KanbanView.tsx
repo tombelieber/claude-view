@@ -38,10 +38,11 @@ export function needsYouSortKey(session: LiveSession): number {
   switch (session.agentState.state) {
     case 'needs_permission': return 0
     case 'awaiting_input': return 1
-    case 'error': return 2
-    case 'awaiting_approval': return 3
-    case 'idle': return 4
-    default: return 5
+    case 'interrupted': return 2
+    case 'error': return 3
+    case 'awaiting_approval': return 4
+    case 'idle': return 5
+    default: return 6
   }
 }
 
@@ -54,7 +55,13 @@ export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, cu
     for (const s of sessions) {
       groups[s.agentState.group].push(s)
     }
-    groups.autonomous.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    // Sort by last user input timestamp (stack order: most recent user prompt on top).
+    // This avoids re-sorting on every agent activity update — only user messages move cards.
+    groups.autonomous.sort((a, b) => {
+      const aTime = a.currentTurnStartedAt ?? a.lastActivityAt
+      const bTime = b.currentTurnStartedAt ?? b.lastActivityAt
+      return bTime - aTime
+    })
     groups.needs_you.sort((a, b) => {
       // Warm sessions first; 'unknown' sorts between warm and cold
       const cacheRank = (s: LiveSession) =>
