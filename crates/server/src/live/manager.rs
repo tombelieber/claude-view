@@ -62,6 +62,9 @@ struct SessionAccumulator {
     todo_items: Vec<vibe_recall_core::progress::ProgressItem>,
     /// Structured tasks from TaskCreate/TaskUpdate (incremental).
     task_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    /// Unix timestamp of the most recent cache hit or creation.
+    /// Updated when a line has cache_read_tokens > 0 OR cache_creation_tokens > 0.
+    last_cache_hit_at: Option<i64>,
 }
 
 impl SessionAccumulator {
@@ -81,6 +84,7 @@ impl SessionAccumulator {
             sub_agents: Vec::new(),
             todo_items: Vec::new(),
             task_items: Vec::new(),
+            last_cache_hit_at: None,
         }
     }
 }
@@ -103,6 +107,7 @@ struct JsonlMetadata {
     last_turn_task_seconds: Option<u32>,
     sub_agents: Vec<SubAgentInfo>,
     progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    last_cache_hit_at: Option<i64>,
 }
 
 /// Apply JSONL metadata to an existing session without touching hook-owned fields
@@ -141,6 +146,7 @@ fn apply_jsonl_metadata(
     session.last_turn_task_seconds = m.last_turn_task_seconds;
     session.sub_agents = m.sub_agents.clone();
     session.progress_items = m.progress_items.clone();
+    session.last_cache_hit_at = m.last_cache_hit_at;
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -605,6 +611,16 @@ impl LiveSessionManager {
                 acc.tokens.total_tokens += cache_creation;
             }
 
+            // Track last cache hit time when we see cache activity.
+            // This is the ground truth signal from Anthropic's API response.
+            if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
+                || line.cache_creation_tokens.map(|v| v > 0).unwrap_or(false)
+            {
+                if let Some(ref ts) = line.timestamp {
+                    acc.last_cache_hit_at = parse_timestamp_to_unix(ts);
+                }
+            }
+
             // Track the current context window fill from the latest assistant turn.
             // Context size = input_tokens + cache_read + cache_creation for that turn.
             if line.line_type == LineType::Assistant {
@@ -845,6 +861,7 @@ impl LiveSessionManager {
                 items.extend(acc.task_items.clone());
                 items
             },
+            last_cache_hit_at: acc.last_cache_hit_at,
         };
 
         // Drop accumulators lock before acquiring sessions lock
