@@ -34,6 +34,8 @@ interface SessionDetailPanelProps {
   /** Unified panel data (new — for history detail) */
   panelData?: SessionPanelData
   onClose: () => void
+  /** When true, render inline as a flex child instead of a fixed portal overlay. */
+  inline?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +95,7 @@ function getStoredPanelWidth(): number {
 // Component
 // ---------------------------------------------------------------------------
 
-export function SessionDetailPanel({ session, panelData: panelDataProp, onClose }: SessionDetailPanelProps) {
+export function SessionDetailPanel({ session, panelData: panelDataProp, onClose, inline }: SessionDetailPanelProps) {
   // Resolve to unified data shape
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
@@ -122,12 +124,14 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose 
   const [isResizing, setIsResizing] = useState(false)
 
   // Slide-in animation: mount with translate-x-full, then flip to translate-x-0
-  const [isVisible, setIsVisible] = useState(false)
+  // Skipped in inline mode (already visible in the flex layout)
+  const [isVisible, setIsVisible] = useState(!!inline)
   useEffect(() => {
+    if (inline) return
     // Trigger animation on next frame so the initial translate-x-full renders first
     const raf = requestAnimationFrame(() => setIsVisible(true))
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [inline])
 
   // Reset tab and drill-down when session changes
   useEffect(() => {
@@ -199,17 +203,21 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose 
   const totalCostUsd = data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
   const estimatedPrefix = data.cost?.isEstimated ? '~' : ''
 
-  // ---- Render into portal ----
-  return createPortal(
+  // ---- Render ----
+  const content = (
     <div
       className={cn(
-        'fixed top-0 right-0 h-screen z-50',
-        'bg-white dark:bg-gray-950',
-        'border-l border-gray-200 dark:border-gray-800',
-        'shadow-2xl shadow-black/50',
+        inline
+          ? 'h-full flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
+          : cn(
+              'fixed top-0 right-0 h-screen z-50',
+              'bg-white dark:bg-gray-950',
+              'border-l border-gray-200 dark:border-gray-800',
+              'shadow-2xl shadow-black/50',
+              'transition-transform duration-200 ease-out',
+              isVisible ? 'translate-x-0' : 'translate-x-full',
+            ),
         'flex flex-col',
-        'transition-transform duration-200 ease-out',
-        isVisible ? 'translate-x-0' : 'translate-x-full',
         isResizing && 'select-none',
       )}
       style={{ width: panelWidth }}
@@ -563,7 +571,8 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose 
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </div>
   )
+
+  return inline ? content : createPortal(content, document.body)
 }
