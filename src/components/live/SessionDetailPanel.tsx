@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText } from 'lucide-react'
+import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
 import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { RichPane } from './RichPane'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
@@ -11,6 +11,7 @@ import { TimelineView } from './TimelineView'
 import { CostBreakdown } from './CostBreakdown'
 import { SubAgentPills } from './SubAgentPills'
 import { ContextGauge } from './ContextGauge'
+import { CacheCountdownBar } from './CacheCountdownBar'
 import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
 import { formatTokenCount } from '../../lib/format-utils'
@@ -359,6 +360,20 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
               </div>
             </div>
 
+            {/* Cache countdown */}
+            {(session.lastCacheHitAt || session.cacheStatus !== 'unknown') && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Timer className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Prompt Cache</span>
+                </div>
+                <CacheCountdownBar
+                  lastCacheHitAt={session.lastCacheHitAt ?? null}
+                  cacheStatus={session.cacheStatus}
+                />
+              </div>
+            )}
+
             {/* Context gauge */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
               <div className="flex items-center gap-1.5 mb-2">
@@ -371,6 +386,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                 group={session.agentState.group}
                 tokens={session.tokens}
                 turnCount={session.turnCount}
+                expanded
               />
             </div>
 
@@ -486,7 +502,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
           <div className="overflow-y-auto h-full">
-            <CostBreakdown cost={session.cost} subAgents={session.subAgents} />
+            <CostBreakdown cost={session.cost} tokens={session.tokens} subAgents={session.subAgents} />
           </div>
         )}
       </div>
