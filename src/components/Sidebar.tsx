@@ -364,7 +364,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               ? 'bg-blue-500 text-white'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
           )}
-          title="Mission Control"
+          title="Live Monitor"
         >
           <Monitor className="w-5 h-5" />
         </Link>
@@ -436,7 +436,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                 )}
               >
                 <Monitor className="w-4 h-4" />
-                <span className="font-medium">Mission Control</span>
+                <span className="font-medium">Live Monitor</span>
               </Link>
               <Link
                 to={`/sessions${paramString ? `?${paramString}` : ""}`}
