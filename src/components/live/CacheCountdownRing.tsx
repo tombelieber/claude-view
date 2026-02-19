@@ -4,8 +4,8 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 const CACHE_TTL_SECONDS = 300
 
 interface CacheCountdownRingProps {
-  /** Unix timestamp in seconds of last activity */
-  lastActivityAt: number
+  /** Unix timestamp in seconds of last cache hit/creation, or null if no cache activity */
+  lastCacheHitAt: number | null
   /** Ring diameter in pixels (default 16) */
   size?: number
 }
@@ -13,19 +13,30 @@ interface CacheCountdownRingProps {
 /**
  * SVG circular progress ring showing Anthropic's prompt cache TTL (300s)
  * depleting in real-time. Green > 60%, amber 20-60%, red < 20%, gray at 0.
+ * Returns null if no cache activity has occurred.
  */
-export function CacheCountdownRing({ lastActivityAt, size = 16 }: CacheCountdownRingProps) {
-  const [remaining, setRemaining] = useState(() => computeRemaining(lastActivityAt))
+export function CacheCountdownRing({ lastCacheHitAt, size = 16 }: CacheCountdownRingProps) {
+  const hasCacheHit = lastCacheHitAt != null && lastCacheHitAt > 0
+  const [remaining, setRemaining] = useState(() => hasCacheHit ? computeRemaining(lastCacheHitAt) : 0)
 
   useEffect(() => {
-    setRemaining(computeRemaining(lastActivityAt))
+    if (!hasCacheHit) {
+      setRemaining(0)
+      return
+    }
+
+    setRemaining(computeRemaining(lastCacheHitAt))
 
     const interval = setInterval(() => {
-      setRemaining(computeRemaining(lastActivityAt))
+      setRemaining(computeRemaining(lastCacheHitAt))
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [lastActivityAt])
+  }, [lastCacheHitAt, hasCacheHit])
+
+  if (!hasCacheHit) {
+    return null
+  }
 
   const progress = remaining / CACHE_TTL_SECONDS // 1.0 = full, 0.0 = expired
   const color = ringColor(progress)
@@ -102,9 +113,9 @@ export function CacheCountdownRing({ lastActivityAt, size = 16 }: CacheCountdown
   )
 }
 
-function computeRemaining(lastActivityAt: number): number {
-  if (lastActivityAt <= 0) return 0
-  const elapsed = Math.floor(Date.now() / 1000) - lastActivityAt
+function computeRemaining(lastCacheHitAt: number | null): number {
+  if (lastCacheHitAt == null || lastCacheHitAt <= 0) return 0
+  const elapsed = Math.floor(Date.now() / 1000) - lastCacheHitAt
   return Math.max(0, CACHE_TTL_SECONDS - elapsed)
 }
 
