@@ -2,31 +2,38 @@
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
-> **Last updated:** 2026-02-19
+> **Last updated:** 2026-02-20
 
 ---
 
 ## Product Evolution
 
-The product has evolved through 3 distinct stages. Each stage builds on the previous, not replacing it.
+The product has evolved through 4 stages. Each builds on the previous.
 
 ```
 Stage 1: SESSION VIEWER (v0.1–v0.3)               ✅ SHIPPED
   "Browse and search Claude Code conversation history"
   └── Session browsing, JSONL parsing, search, export
 
-Stage 2: AI FLUENCY COACH (v0.4–v1.0)             🔧 IN PROGRESS
+Stage 2: AI FLUENCY COACH (v0.4–v0.5)             ✅ SHIPPED
   "Your AI fluency, measured"
   └── AI Fluency Score, metrics dashboard, analytics, insights
-  └── Rename: claude-view → claude-score
 
-Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
-  "Mission Control for your AI workforce"
+Stage 3: MISSION CONTROL (v0.5–v0.7)              🔧 IN PROGRESS
+  "Watch and control your AI agents"
   └── Live session monitoring across all terminals
   └── Cost tracking, context usage, sub-agent visualization
   └── Resume sessions from web dashboard (Agent SDK)
-  └── Kanban view of agent tasks
-  └── Mobile access via Tailscale/Cloudflare tunnel
+  └── Grid/List/Kanban/Monitor views
+
+Stage 4: CLAWMINI — AI AGENT RUNTIME (v1.0+)      📐 DESIGNED
+  "The iPhone for AI agents"
+  └── Plan Runner: plan files → parallel agents → PRs with screenshots
+  └── 3-layer verification: deterministic → AI review → human decision
+  └── Provider-agnostic orchestration (Claude, GPT, Gemini)
+  └── Plugin marketplace + SDLC vertical
+  └── Mobile command & control
+  └── Rename: claude-view → clawmini
 ```
 
 **Each stage expands the TAM:**
@@ -35,7 +42,8 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 |-------|------------|------------|-----|
 | Session Viewer | Claude Code user curious about history | "See your past sessions" | ~100K devs |
 | AI Fluency Coach | Dev wanting to improve their AI workflow | "Get better at AI-assisted coding" | ~500K devs |
-| AI Agent OS | Power user running 10-20+ concurrent agents | "Manage your AI workforce" | ~50K power users (but high willingness to pay) |
+| Mission Control | Power user running 10-20+ concurrent agents | "Watch and control your AI workforce" | ~50K power users |
+| clawmini | Non-technical users harnessing AI agents | "The iPhone for AI agents" | ~10M+ users |
 
 ---
 
@@ -78,6 +86,44 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 
 ---
 
+## clawmini: Module Roadmap
+
+> Vision doc: `docs/plans/2026-02-16-clawmini-vision.md`
+
+The product identity is shifting from **viewer → analyst → runtime**:
+
+```
+claude-view (viewer)  →  claude-score (analyst)  →  clawmini (runtime)
+   "看"                    "評分"                     "控制"
+```
+
+### Active Modules (dogfood-first)
+
+```
+M1 (Agent Dashboard) → M2 (Interactive Control) → M4 (Plan Runner)
+     Phase C,D,E            Phase F + spawning         Plan files → PRs
+     "Watch"                "Act"                       "Automate"
+```
+
+| Module | Milestone | Scope | Status |
+|--------|-----------|-------|--------|
+| **M1: Agent Dashboard** | MS1: Watch | Phase C (live terminal grid, xterm.js, WebSocket), Phase D (sub-agent viz, Agent Teams), Phase E (react-mosaic custom layout) | Phase C in progress (worktree) |
+| **M2: Interactive Control** | MS2: Act | Phase F (Agent SDK sidecar, resume, dashboard chat, permissions), agent spawning from dashboard, cost tracking | Not started |
+| **M4: Plan Runner** | MS3: Automate | Plan file → dependency DAG → git worktrees → parallel agents → Layer 1 (lint/test, max 2 retries) → Layer 2 (AI audit to 100/100) → Layer 3 (human approve) → PR with screenshots/demos. Crash recovery via pipeline.json | Not started |
+
+### Deferred Modules
+
+| Module | Why deferred | Revisit when |
+|--------|-------------|--------------|
+| **M3: Provider Layer** | Claude Code only for dogfooding. Provider trait designed but not needed yet | After M4, before public launch |
+| **M5: Plugin System** | Plan Runner IS the SDLC workflow for now. Formal plugin engine when packaging for others | After M4 ships, before marketplace |
+| **M6: Marketplace** | No users yet. Build the product first | After public launch + user demand |
+| **M7: Mobile** | Web-first. Dogfood at desk. Mobile adds PWA/relay complexity | After M1-M4 shippable on web |
+| **M8: Analytics** | Already shipped (fluency score, coaching). Good enough for now | When specific gaps identified |
+| **M9: Verticals** | SDLC is just the first Plan Runner workflow, not a separate module | Becomes M5 plugin when marketplace ships |
+
+---
+
 ## At a Glance
 
 | Phase | Status | Progress | Tier |
@@ -110,9 +156,9 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 | **Theme 4: Chat Insights** | **DONE** | 8/8 phases, 39/39 tasks — classification, patterns, insights page shipped | Personal |
 | **Ambient Coach (Insights v2)** | **DONE** | 13/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces, all tests green | Personal |
-| **Rename to claude-score** | Approved | Plan written, 60+ files mapped — deferred until GTM launch features complete | Personal |
+| **Rename to clawmini** | Deferred | Target changed from claude-score to clawmini (see vision doc). 60+ files mapped — deferred until M1-M4 complete | Personal |
 | **Mission Control** | **In Progress** | Phases A-D done (monitoring, views, monitor mode, sub-agent viz). Phases E-J pending (custom layout, interactive, Codex integration). 13 phase files | Personal |
-| **Mobile PWA** | **Approved** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Same React SPA (mobile-first), silent daemon, QR pairing (WhatsApp model). Open source, cloud relay is paid tier. Depends on Mission Control A (M1) and F (M3) | Personal |
+| **Mobile PWA** | **Deferred (M7)** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Deferred until M1-M4 shippable on web | Personal |
 | **Epic A: Smart Rules Engine** | **Draft** | Pattern insights → 1-click apply → `.claude/rules/` files → Claude auto-follows coaching. 6 tasks: backend API, PatternCard button, budget indicator, rules panel, tests, wiring | Personal |
 | **Epic B: Prompt Coach** | **Draft (Deferred)** | 4 phases: `/coach` skill (30min), Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts BEFORE they hit Claude | Personal |
 | **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
@@ -122,7 +168,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 
 **Current focus:** Mission Control Phase E+ (custom layout, interactive features) + Full-Text Search (Phase 6) + Action Log Tab
 
-**Recently completed:** Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown), Process-Gated Discovery, Page Reorganization (MC as home, analytics consolidated), Search Qualifier Fixes, Command Palette Redesign, Session Sort Redesign, Notification Sound Design
+**Recently completed:** Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown), AI Fluency Score (merged), Process-Gated Discovery, Page Reorganization (MC as home, analytics consolidated), Search Qualifier Fixes, Command Palette Redesign, Session Sort Redesign, Notification Sound Design
 
 **Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
 
@@ -296,8 +342,8 @@ Repositioning from "session browser" to "AI fluency tracker" for public launch.
 |---|------|--------|-------|
 | 1 | README rewrite with new positioning | **DONE** | "Your AI fluency, measured" tagline, METR study hook, competitor matrix |
 | 2 | GTM strategy document | **DONE** | Positioning, content calendar, Show HN draft (plan file archived) |
-| 3 | AI Fluency Score (backend) | In progress | Separate branch — weighted score from 5 components |
-| 4 | AI Fluency Score (frontend) | In progress | Separate branch — hero card on dashboard |
+| 3 | AI Fluency Score (backend) | **DONE** | Merged `feature/fluency-score` — weighted score from 5 components |
+| 4 | AI Fluency Score (frontend) | **DONE** | Merged `feature/fluency-score` — hero card on dashboard |
 | 5 | Demo GIF | Pending | 30-second walkthrough for README + social |
 | 6 | Launch blog post | Pending | "What I Learned from Analyzing 676 Claude Code Sessions" |
 | 7 | Show HN post | Pending | Draft in strategy doc, needs timing |
@@ -395,19 +441,21 @@ Plan file: TBD (will be created when Phase 5 begins)
 
 ---
 
-## Mobile PWA — Draft
+## Mobile PWA — Deferred (Module M7)
 
 Remote session monitoring and control from mobile devices via Progressive Web App + E2E encrypted relay.
 
-**Phases:**
+**Deferred until M1-M4 are shippable on web.** Web-first, dogfood at desk. Mobile adds PWA/relay/push notification complexity.
+
+**Phases (when resumed):**
 
 | Phase | Name | Status | Description | Depends On |
 |-------|------|--------|-------------|------------|
-| M1 | Status Monitor | `draft` | Push notifications, session status cards, basic cost tracking on mobile | Mission Control Phase A |
-| M2 | Read-Only Dashboard | `draft` | Full dashboard experience adapted for mobile, responsive charts/metrics | M1 |
-| M3 | Interactive Control | `draft` | Resume/pause sessions, send prompts from mobile via Agent SDK relay | Mission Control Phase F |
+| M1 | Status Monitor | `deferred` | Push notifications, session status cards, basic cost tracking on mobile | Mission Control Phase A |
+| M2 | Read-Only Dashboard | `deferred` | Full dashboard experience adapted for mobile, responsive charts/metrics | M1 |
+| M3 | Interactive Control | `deferred` | Resume/pause sessions, send prompts from mobile via Agent SDK relay | Mission Control Phase F |
 
-Plan file: `2026-02-12-mobile-pwa-design.md` (to be created)
+Plan file: `2026-02-12-mobile-pwa-design.md`
 
 ---
 
@@ -431,7 +479,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-06-dashboard-analytics-pr-fixes.md` | pending | **Dashboard Analytics PR Fixes** — PR review fix items for dashboard analytics |
 | `2026-02-06-theme3-pr-review-fixes.md` | pending | **Theme 3 PR Fixes** — PR review fix items for git contribution feature |
 | `2026-02-07-navigation-restructure-design.md` | approved | **Navigation Restructure** — sidebar and routing redesign |
-| `2026-02-07-rename-to-claude-score.md` | approved | **Rename** — full rename plan: vibe-recall/claude-view → claude-score (60+ files, 4 tiers) |
+| `2026-02-07-rename-to-claude-score.md` | superseded | **Rename** — original plan: claude-view → claude-score. Superseded by clawmini vision (target now `clawmini`). 60+ file rename plan still useful as template |
 | `2026-02-07-stacked-trend-by-project-design.md` | draft | **Stacked Trend by Project** — per-project trend visualization |
 | `2026-02-09-sidebar-ux-overhaul.md` | pending | **Sidebar UX Overhaul** — sidebar navigation improvements |
 | `2026-02-10-dashboard-project-branch-filter.md` | pending | **Dashboard Project/Branch Filter** — project and branch filtering for dashboard |
@@ -451,6 +499,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-15-full-chat-fluency-score.md` | draft | **Full-Chat AI Fluency Score (Deferred → Next Phase)** — 7-dimension per-session scoring via conversation digest + LLM analysis. Anthropic API + OpenAI-compat providers. Plan audited (22 fixes applied). Deferred so current branch can merge first |
 | `2026-02-15-agent-state-hooks-design.md` | approved | **Agent State Hooks** — replacement for intelligent session states design |
 | `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
+| `2026-02-16-clawmini-vision.md` | draft | **clawmini Vision** — North star. Provider-agnostic AI workforce manager. 3 moats: plugin marketplace, mobile-first UX, orchestration layer. MVP: Agent Dashboard (M1) → Interactive Control (M2) → Plan Runner (M4). See "clawmini: Module Roadmap" section above |
 | `2026-02-16-relay-hosting-adr.md` | approved | **Relay Hosting ADR** — architecture decision record for relay server hosting |
 | `2026-02-16-spinner-ux-session-cards.md` | draft | **Spinner UX for Session Cards** — loading state UX for session cards |
 | `2026-02-16-task-time-metrics.md` | draft | **Task Time Metrics** — time tracking metrics for agent tasks |
