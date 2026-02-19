@@ -16,8 +16,6 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'needs_you',
       state: 'awaiting_input',
       label: 'Waiting for your next message',
-      confidence: 0.9,
-      source: 'jsonl',
     },
     gitBranch: 'main',
     pid: null,
@@ -77,7 +75,7 @@ describe('SessionCard pulse dot', () => {
   it('shows pulse dot for autonomous (running) sessions', () => {
     const session = createMockSession({
       status: 'working',
-      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working', confidence: 1.0, source: 'jsonl' },
+      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working' },
     })
     renderCard(session)
     expect(screen.getByTestId('pulse-dot')).toBeInTheDocument()
@@ -85,7 +83,7 @@ describe('SessionCard pulse dot', () => {
 
   it('does not show pulse dot for waiting sessions', () => {
     const session = createMockSession({
-      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting', confidence: 0.9, source: 'jsonl' },
+      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting' },
     })
     renderCard(session)
     expect(screen.queryByTestId('pulse-dot')).not.toBeInTheDocument()

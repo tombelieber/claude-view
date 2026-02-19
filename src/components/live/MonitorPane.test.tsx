@@ -15,8 +15,6 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'autonomous',
       state: 'tool_use',
       label: 'Working',
-      confidence: 1.0,
-      source: 'jsonl',
     },
     gitBranch: 'feature/cool-stuff',
     pid: 12345,

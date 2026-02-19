@@ -172,9 +172,7 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 **Re-pairing:** Desktop UI has a "Remove device" button. Revokes the phone's public key. Phone must scan a new QR code to re-pair.
 
-> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md#5-qr-pairing-flow).** 
->
-> ⚠️ **TODO:** This document is planned but not yet written. For now, refer to the QR Pairing Flow section above for the high-level protocol.
+> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md#3-pairing-protocol).**
 
 ---
 
@@ -215,8 +213,6 @@ Build the relay protocol for M3 from day 1. The WebSocket protocol is bidirectio
 The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is to forward encrypted blobs between paired devices. It stores no session data, logs no message content, and cannot decrypt payloads.
 
 **For detailed relay server design (endpoints, constraints, deployment config, cost estimates), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md).**
-
-> ⚠️ **TODO:** This document is planned but not yet written. For M1 scope, the relay architecture in Section 4 and security layers in Section 5 provide sufficient specification.
 
 ---
 
@@ -382,7 +378,8 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 ## Cross-references
 
-- [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment. **⚠️ TODO: Not yet written**
+- [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment
+- [`docs/plans/2026-02-17-flyio-relay-implementation.md`](2026-02-17-flyio-relay-implementation.md) -- Step-by-step implementation plan for the relay
 - [`docs/plans/2026-02-16-relay-hosting-adr.md`](2026-02-16-relay-hosting-adr.md) -- Hosting provider decision (Fly.io) and re-evaluation triggers
 - [`docs/plans/mission-control/design.md`](mission-control/design.md) -- Mission Control architecture (Phase A is prerequisite)
 - [`docs/plans/mission-control/phase-a-monitoring.md`](mission-control/phase-a-monitoring.md) -- JSONL watcher, state machine, broadcast channel
@@ -395,7 +392,7 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 | # | Issue | Severity | Fix Applied |
 |---|-------|----------|-------------|
-| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Added TODO warnings at all references (lines 175, 215, 381) noting the document is planned but not written |
+| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Created the design document and implementation plan, removed TODO warnings |
 | 2 | Binary name mismatch: plan used `vibe-recall-server` but actual binary is `vibe-recall` | Blocker | Updated lines 73 and 107 to use `vibe-recall` |
 | 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `vibe-recall` naming consistently |
 | 4 | CLI naming unclear: `npx claude-view` vs `vibe-recall` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `vibe-recall` binary (line 257) |

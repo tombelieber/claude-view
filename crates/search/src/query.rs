@@ -1,0 +1,449 @@
+use std::collections::HashMap;
+use std::time::Instant;
+
+use tantivy::collector::TopDocs;
+use tantivy::query::{BooleanQuery, Occur, Query, TermQuery};
+use tantivy::schema::IndexRecordOption;
+use tantivy::snippet::SnippetGenerator;
+use tantivy::schema::Value;
+use tantivy::{DocAddress, TantivyDocument, Term};
+use tracing::debug;
+
+use crate::types::{MatchHit, SearchResponse, SessionHit};
+use crate::{SearchError, SearchIndex};
+
+/// A parsed qualifier extracted from the query string.
+#[derive(Debug, Clone)]
+struct Qualifier {
+    key: String,
+    value: String,
+}
+
+/// Parse a raw query string into text query + qualifiers.
+///
+/// Qualifiers are `key:value` pairs. Supported keys:
+/// `project`, `branch`, `model`, `role`, `skill`.
+///
+/// Everything that is not a qualifier becomes the text query.
+fn parse_query_string(raw: &str) -> (String, Vec<Qualifier>) {
+    let mut qualifiers = Vec::new();
+    let mut text_parts = Vec::new();
+
+    let known_keys = ["project", "branch", "model", "role", "skill"];
+
+    // Tokenize respecting quoted strings
+    let tokens = tokenize_query(raw);
+
+    for token in tokens {
+        if let Some(colon_pos) = token.find(':') {
+            let key = &token[..colon_pos];
+            let value = &token[colon_pos + 1..];
+            if known_keys.contains(&key) && !value.is_empty() {
+                qualifiers.push(Qualifier {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                });
+                continue;
+            }
+        }
+        text_parts.push(token);
+    }
+
+    let text_query = text_parts.join(" ");
+    (text_query, qualifiers)
+}
+
+/// Tokenize a query string, preserving quoted phrases as single tokens.
+fn tokenize_query(raw: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut chars = raw.chars().peekable();
+    let mut current = String::new();
+
+    while let Some(&ch) = chars.peek() {
+        match ch {
+            '"' => {
+                // Start of a quoted phrase — consume until closing quote
+                chars.next(); // consume opening quote
+                let mut phrase = String::from("\"");
+                loop {
+                    match chars.next() {
+                        Some('"') => {
+                            phrase.push('"');
+                            break;
+                        }
+                        Some(c) => phrase.push(c),
+                        None => {
+                            // Unterminated quote — treat as regular text
+                            phrase.push('"');
+                            break;
+                        }
+                    }
+                }
+                // Flush any accumulated text before the quote
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+                tokens.push(phrase);
+            }
+            ' ' | '\t' => {
+                chars.next();
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => {
+                chars.next();
+                current.push(ch);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
+impl SearchIndex {
+    /// Execute a full-text search query.
+    ///
+    /// - `query_str`: Raw query string, may contain qualifiers like `project:foo`
+    ///   and quoted phrases like `"exact match"`.
+    /// - `scope`: Optional scope filter, e.g. `"project:claude-view"`.
+    /// - `limit`: Maximum number of session groups to return.
+    /// - `offset`: Number of session groups to skip (for pagination).
+    pub fn search(
+        &self,
+        query_str: &str,
+        scope: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<SearchResponse, SearchError> {
+        let start = Instant::now();
+
+        let (text_query, mut qualifiers) = parse_query_string(query_str);
+
+        // Add scope as a qualifier if provided
+        if let Some(scope_str) = scope {
+            if let Some(colon_pos) = scope_str.find(':') {
+                let key = &scope_str[..colon_pos];
+                let value = &scope_str[colon_pos + 1..];
+                if !value.is_empty() {
+                    qualifiers.push(Qualifier {
+                        key: key.to_string(),
+                        value: value.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Build the combined query
+        let mut sub_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+        // Text query (the main BM25-scored part)
+        if !text_query.trim().is_empty() {
+            let query_parser =
+                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
+            let parsed = query_parser.parse_query(&text_query)?;
+            sub_queries.push((Occur::Must, parsed));
+        }
+
+        // Qualifier term queries
+        for qual in &qualifiers {
+            let field = match qual.key.as_str() {
+                "project" => self.project_field,
+                "branch" => self.branch_field,
+                "model" => self.model_field,
+                "role" => self.role_field,
+                "skill" => self.skills_field,
+                _ => continue,
+            };
+            let term = Term::from_field_text(field, &qual.value);
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            sub_queries.push((Occur::Must, Box::new(term_query)));
+        }
+
+        // If no query components at all, return empty
+        if sub_queries.is_empty() {
+            return Ok(SearchResponse {
+                query: query_str.to_string(),
+                total_sessions: 0,
+                total_matches: 0,
+                elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                sessions: vec![],
+            });
+        }
+
+        let combined_query = BooleanQuery::new(sub_queries);
+
+        let searcher = self.reader.searcher();
+
+        // Collect enough docs to handle offset + limit at the session level.
+        // Since multiple docs can belong to the same session, we need to
+        // over-fetch. A reasonable heuristic: fetch up to (limit + offset) * 20
+        // individual docs, capped at a sane maximum.
+        let max_docs = ((limit + offset) * 20).min(10_000);
+        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(max_docs))?;
+
+        // Group by session_id
+        let mut session_groups: HashMap<String, Vec<(f32, DocAddress)>> = HashMap::new();
+
+        for (score, doc_addr) in &top_docs {
+            let retrieved: TantivyDocument = searcher.doc(*doc_addr)?;
+            let session_id = retrieved
+                .get_first(self.session_id_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            session_groups
+                .entry(session_id)
+                .or_default()
+                .push((*score, *doc_addr));
+        }
+
+        let total_sessions_all = session_groups.len();
+        let total_matches_all: usize = session_groups.values().map(|v| v.len()).sum();
+
+        // Build a snippet generator for the text query
+        // (only if we have a text query to highlight)
+        let snippet_gen = if !text_query.trim().is_empty() {
+            let query_parser =
+                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
+            let parsed = query_parser.parse_query(&text_query)?;
+            SnippetGenerator::create(&searcher, &*parsed, self.content_field).ok()
+        } else {
+            None
+        };
+
+        // Sort sessions by best score descending
+        let mut session_entries: Vec<(String, Vec<(f32, DocAddress)>)> =
+            session_groups.into_iter().collect();
+        session_entries.sort_by(|a, b| {
+            let best_a = a.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
+            let best_b = b.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
+            best_b
+                .partial_cmp(&best_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Apply offset and limit at the session level
+        let paginated: Vec<_> = session_entries
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        // Build SessionHit for each group
+        let mut sessions = Vec::with_capacity(paginated.len());
+
+        for (session_id, mut scored_docs) in paginated {
+            // Sort docs within session by score descending
+            scored_docs.sort_by(|a, b| {
+                b.0.partial_cmp(&a.0)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            let mut matches = Vec::with_capacity(scored_docs.len());
+            let mut best_score = f32::NEG_INFINITY;
+            let mut project = String::new();
+            let mut branch = String::new();
+            let mut latest_timestamp: i64 = 0;
+
+            for (score, doc_addr) in &scored_docs {
+                let retrieved: TantivyDocument = searcher.doc(*doc_addr)?;
+
+                let role = retrieved
+                    .get_first(self.role_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let turn_number = retrieved
+                    .get_first(self.turn_number_field)
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+
+                let timestamp = retrieved
+                    .get_first(self.timestamp_field)
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+
+                // Generate snippet
+                let snippet = match &snippet_gen {
+                    Some(gen) => {
+                        let snip = gen.snippet_from_doc(&retrieved);
+                        let html = snip.to_html();
+                        if html.is_empty() {
+                            // If no highlight, fall back to first 200 chars of content
+                            retrieved
+                                .get_first(self.content_field)
+                                .and_then(|v| v.as_str())
+                                .map(|s| {
+                                    if s.len() > 200 {
+                                        format!("{}...", &s[..200])
+                                    } else {
+                                        s.to_string()
+                                    }
+                                })
+                                .unwrap_or_default()
+                        } else {
+                            html
+                        }
+                    }
+                    None => {
+                        // No text query — just return truncated content
+                        retrieved
+                            .get_first(self.content_field)
+                            .and_then(|v| v.as_str())
+                            .map(|s| {
+                                if s.len() > 200 {
+                                    format!("{}...", &s[..200])
+                                } else {
+                                    s.to_string()
+                                }
+                            })
+                            .unwrap_or_default()
+                    }
+                };
+
+                if *score > best_score {
+                    best_score = *score;
+                }
+
+                if timestamp > latest_timestamp {
+                    latest_timestamp = timestamp;
+                }
+
+                // Capture project and branch from first doc
+                if project.is_empty() {
+                    project = retrieved
+                        .get_first(self.project_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    branch = retrieved
+                        .get_first(self.branch_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                }
+
+                matches.push(MatchHit {
+                    role,
+                    turn_number,
+                    snippet,
+                    timestamp,
+                });
+            }
+
+            let top_match = matches.first().cloned().unwrap_or(MatchHit {
+                role: String::new(),
+                turn_number: 0,
+                snippet: String::new(),
+                timestamp: 0,
+            });
+
+            sessions.push(SessionHit {
+                session_id,
+                project,
+                branch: if branch.is_empty() {
+                    None
+                } else {
+                    Some(branch)
+                },
+                modified_at: latest_timestamp,
+                match_count: matches.len(),
+                best_score,
+                top_match,
+                matches,
+            });
+        }
+
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        debug!(
+            query = query_str,
+            total_sessions = total_sessions_all,
+            total_matches = total_matches_all,
+            elapsed_ms = elapsed_ms,
+            "search completed"
+        );
+
+        Ok(SearchResponse {
+            query: query_str.to_string(),
+            total_sessions: total_sessions_all,
+            total_matches: total_matches_all,
+            elapsed_ms,
+            sessions,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_query_plain_text() {
+        let (text, quals) = parse_query_string("JWT authentication");
+        assert_eq!(text, "JWT authentication");
+        assert!(quals.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_with_qualifiers() {
+        let (text, quals) = parse_query_string("project:claude-view auth token");
+        assert_eq!(text, "auth token");
+        assert_eq!(quals.len(), 1);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "claude-view");
+    }
+
+    #[test]
+    fn test_parse_query_multiple_qualifiers() {
+        let (text, quals) = parse_query_string("project:myapp role:user fix bug");
+        assert_eq!(text, "fix bug");
+        assert_eq!(quals.len(), 2);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "myapp");
+        assert_eq!(quals[1].key, "role");
+        assert_eq!(quals[1].value, "user");
+    }
+
+    #[test]
+    fn test_parse_query_quoted_phrase() {
+        let (text, quals) = parse_query_string("\"JWT authentication\" project:myapp");
+        assert_eq!(text, "\"JWT authentication\"");
+        assert_eq!(quals.len(), 1);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "myapp");
+    }
+
+    #[test]
+    fn test_parse_query_unknown_qualifier_treated_as_text() {
+        let (text, quals) = parse_query_string("unknown:value search text");
+        assert_eq!(text, "unknown:value search text");
+        assert!(quals.is_empty());
+    }
+
+    #[test]
+    fn test_parse_query_qualifier_empty_value() {
+        // `project:` with no value should be treated as text, not a qualifier
+        let (text, quals) = parse_query_string("project: search text");
+        assert_eq!(text, "project: search text");
+        assert!(quals.is_empty());
+    }
+
+    #[test]
+    fn test_tokenize_preserves_quoted_strings() {
+        let tokens = tokenize_query("hello \"world foo\" bar");
+        assert_eq!(tokens, vec!["hello", "\"world foo\"", "bar"]);
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_quote() {
+        let tokens = tokenize_query("hello \"world foo");
+        assert_eq!(tokens, vec!["hello", "\"world foo\""]);
+    }
+}

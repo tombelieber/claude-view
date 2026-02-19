@@ -11,6 +11,11 @@ export function cleanPreviewText(text: string): string {
   cleaned = cleaned.replace(/\/[\w-]+:[\w-]+\s*/g, '')
   // Remove "superpowers:" prefixed words
   cleaned = cleaned.replace(/superpowers:\S+\s*/g, '')
+  // Unescape JSON escape sequences (raw JSONL content has literal \n, \\, \", \t)
+  cleaned = cleaned.replace(/\\n/g, ' ')
+  cleaned = cleaned.replace(/\\t/g, ' ')
+  cleaned = cleaned.replace(/\\"/g, '"')
+  cleaned = cleaned.replace(/\\\\/g, '\\')
   // Collapse whitespace
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
   // If it starts with common system prompt patterns, show a clean label

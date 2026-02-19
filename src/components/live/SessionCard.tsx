@@ -2,7 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   GitBranch,
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive,
+  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
 } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
@@ -10,13 +10,14 @@ import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { SubAgentPills } from './SubAgentPills'
+import { TaskProgressList } from './TaskProgressList'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive,
+  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -25,6 +26,7 @@ const COLOR_MAP: Record<string, string> = {
   green: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
 }
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
@@ -135,6 +137,11 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
           lastTurnTaskSeconds={session.lastTurnTaskSeconds}
         />
       </div>
+
+      {/* Task progress */}
+      {session.progressItems && session.progressItems.length > 0 && (
+        <TaskProgressList items={session.progressItems} />
+      )}
 
       {/* Sub-agent pills */}
       {session.subAgents && session.subAgents.length > 0 && (
