@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
+import { type LiveSession } from './use-live-sessions'
+import type { SessionPanelData } from './session-panel-data'
+import { liveSessionToPanelData } from './session-panel-data'
+import { SessionMetricsBar } from '../SessionMetricsBar'
+import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
+import { CommitsPanel } from '../CommitsPanel'
 import { RichPane } from './RichPane'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { ActionLogTab } from './action-log'
@@ -24,7 +29,10 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'cost'
 
 interface SessionDetailPanelProps {
-  session: LiveSession
+  /** Live session (existing callers) */
+  session?: LiveSession
+  /** Unified panel data (new — for history detail) */
+  panelData?: SessionPanelData
   onClose: () => void
 }
 
@@ -85,14 +93,25 @@ function getStoredPanelWidth(): number {
 // Component
 // ---------------------------------------------------------------------------
 
-export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps) {
-  const hasSubAgents = session.subAgents && session.subAgents.length > 0
+export function SessionDetailPanel({ session, panelData: panelDataProp, onClose }: SessionDetailPanelProps) {
+  // Resolve to unified data shape
+  const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
+  const isLive = !panelDataProp
+  const hasSubAgents = data.subAgents && data.subAgents.length > 0
 
   // ---- Local state ----
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
-  const { messages: richMessages, bufferDone } = useLiveSessionMessages(session.id, true)
+
+  // Live mode: WebSocket messages; History mode: pre-loaded messages
+  const { messages: liveMessages, bufferDone: liveBufferDone } = useLiveSessionMessages(
+    data.id,
+    isLive, // only connect WebSocket for live sessions
+  )
+  const richMessages = isLive ? liveMessages : (data.terminalMessages ?? [])
+  const bufferDone = isLive ? liveBufferDone : true // history messages are always fully loaded
+
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string; agentType: string; description: string
   } | null>(null)
@@ -114,7 +133,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
   useEffect(() => {
     setActiveTab('overview')
     setDrillDownAgent(null)
-  }, [session.id])
+  }, [data.id])
 
   // ESC key handling: drill-down first, then close
   useEffect(() => {
@@ -138,11 +157,11 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
   // Copy session ID to clipboard
   const [copied, setCopied] = useState(false)
   const copySessionId = useCallback(() => {
-    navigator.clipboard.writeText(session.id).then(() => {
+    navigator.clipboard.writeText(data.id).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
-  }, [session.id])
+  }, [data.id])
 
   // Drag-to-resize the left edge
   const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -171,14 +190,14 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
   }, [])
 
   // ---- Derived values ----
-  const statusLabel = session.status === 'working' ? 'Running' : session.status === 'paused' ? 'Paused' : 'Done'
-  const statusColor = session.status === 'working'
+  const statusLabel = data.status === 'working' ? 'Running' : data.status === 'paused' ? 'Paused' : 'Done'
+  const statusColor = data.status === 'working'
     ? 'text-green-600 dark:text-green-400'
-    : session.status === 'paused'
+    : data.status === 'paused'
       ? 'text-amber-600 dark:text-amber-400'
       : 'text-gray-500 dark:text-gray-400'
-  const totalCostUsd = sessionTotalCost(session)
-  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
+  const totalCostUsd = data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
+  const estimatedPrefix = data.cost?.isEstimated ? '~' : ''
 
   // ---- Render into portal ----
   return createPortal(
@@ -211,9 +230,9 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
         <div className="flex items-center gap-2 px-4 pt-3 pb-1">
           <span
             className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex-1"
-            title={session.projectPath}
+            title={data.projectPath}
           >
-            {session.projectDisplayName || session.project}
+            {data.projectDisplayName || data.project}
           </span>
           <button
             onClick={onClose}
@@ -226,23 +245,23 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
 
         {/* Row 2: Metadata chips */}
         <div className="flex items-center gap-2 px-4 pb-2.5 flex-wrap">
-          {session.gitBranch && (
+          {data.gitBranch && (
             <span
               className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 dark:text-gray-500 truncate max-w-[180px]"
-              title={session.gitBranch}
+              title={data.gitBranch}
             >
               <GitBranch className="w-3 h-3 flex-shrink-0" />
-              {session.gitBranch}
+              {data.gitBranch}
             </span>
           )}
 
           <button
             onClick={copySessionId}
-            title={`Copy session ID: ${session.id}`}
+            title={`Copy session ID: ${data.id}`}
             className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-            {session.id.slice(0, 8)}
+            {data.id.slice(0, 8)}
           </button>
 
           <div className="flex-1" />
@@ -251,7 +270,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
             {estimatedPrefix}{formatCostUsd(totalCostUsd)}
           </span>
           <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
-            Turn {session.turnCount}
+            Turn {data.turnCount}
           </span>
         </div>
       </div>
@@ -323,12 +342,12 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                   {estimatedPrefix}{formatCostUsd(totalCostUsd)}
                 </div>
                 <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
-                  <span>In: ${(session.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
-                  <span>Out: ${(session.cost?.outputCostUsd ?? 0).toFixed(2)}</span>
+                  <span>In: ${(data.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
+                  <span>Out: ${(data.cost?.outputCostUsd ?? 0).toFixed(2)}</span>
                 </div>
-                {(session.cost?.cacheSavingsUsd ?? 0) > 0 && (
+                {(data.cost?.cacheSavingsUsd ?? 0) > 0 && (
                   <div className="text-[10px] font-mono text-green-600 dark:text-green-400 mt-0.5">
-                    Saved: ${(session.cost?.cacheSavingsUsd ?? 0).toFixed(2)}
+                    Saved: ${(data.cost?.cacheSavingsUsd ?? 0).toFixed(2)}
                   </div>
                 )}
               </button>
@@ -346,30 +365,30 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500 dark:text-gray-500">Model</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{formatModel(session.model)}</span>
+                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{formatModel(data.model)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500 dark:text-gray-500">Turns</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{session.turnCount}</span>
+                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{data.turnCount}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500 dark:text-gray-500">Tokens</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{formatTokenCount(session.tokens.totalTokens)}</span>
+                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{formatTokenCount(data.tokens.totalTokens)}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Cache countdown */}
-            {(session.lastCacheHitAt || session.cacheStatus !== 'unknown') && (
+            {/* Cache countdown (live-only) */}
+            {isLive && (data.lastCacheHitAt || data.cacheStatus !== 'unknown') && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Timer className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                   <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Prompt Cache</span>
                 </div>
                 <CacheCountdownBar
-                  lastCacheHitAt={session.lastCacheHitAt ?? null}
-                  cacheStatus={session.cacheStatus}
+                  lastCacheHitAt={data.lastCacheHitAt ?? null}
+                  cacheStatus={data.cacheStatus}
                 />
               </div>
             )}
@@ -381,11 +400,11 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Context Window</span>
               </div>
               <ContextGauge
-                contextWindowTokens={session.contextWindowTokens}
-                model={session.model}
-                group={session.agentState.group}
-                tokens={session.tokens}
-                turnCount={session.turnCount}
+                contextWindowTokens={data.contextWindowTokens}
+                model={data.model}
+                group={data.agentState?.group ?? 'needs_you'}
+                tokens={data.tokens}
+                turnCount={data.turnCount}
                 expanded
               />
             </div>
@@ -399,15 +418,15 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                 <div className="flex items-center gap-1.5 mb-2">
                   <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                   <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
-                    Sub-Agents ({session.subAgents!.length})
+                    Sub-Agents ({data.subAgents!.length})
                   </span>
                 </div>
-                <SubAgentPills subAgents={session.subAgents!} />
+                <SubAgentPills subAgents={data.subAgents!} />
               </button>
             )}
 
             {/* Mini timeline (clickable -> Sub-Agents tab) */}
-            {hasSubAgents && session.startedAt && (
+            {hasSubAgents && data.startedAt && (
               <button
                 onClick={() => setActiveTab('sub-agents')}
                 className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
@@ -417,23 +436,61 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                   <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Timeline</span>
                 </div>
                 <TimelineView
-                  subAgents={session.subAgents!}
-                  sessionStartedAt={session.startedAt}
+                  subAgents={data.subAgents!}
+                  sessionStartedAt={data.startedAt}
                   sessionDurationMs={
-                    session.status === 'done'
-                      ? (session.lastActivityAt - session.startedAt) * 1000
-                      : Date.now() - session.startedAt * 1000
+                    data.status === 'done'
+                      ? ((data.lastActivityAt ?? 0) - data.startedAt) * 1000
+                      : Date.now() - data.startedAt * 1000
                   }
                 />
               </button>
             )}
 
             {/* Last user message */}
-            {session.lastUserMessage && (
+            {data.lastUserMessage && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Last Prompt</span>
-                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(session.lastUserMessage)}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(data.lastUserMessage)}</p>
               </div>
+            )}
+
+            {/* ---- History-only: Session Metrics ---- */}
+            {data.historyExtras?.sessionInfo && data.historyExtras.sessionInfo.userPromptCount > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                <SessionMetricsBar
+                  prompts={data.historyExtras.sessionInfo.userPromptCount}
+                  tokens={
+                    data.historyExtras.sessionInfo.totalInputTokens != null && data.historyExtras.sessionInfo.totalOutputTokens != null
+                      ? BigInt(data.historyExtras.sessionInfo.totalInputTokens) + BigInt(data.historyExtras.sessionInfo.totalOutputTokens)
+                      : null
+                  }
+                  filesRead={data.historyExtras.sessionInfo.filesReadCount}
+                  filesEdited={data.historyExtras.sessionInfo.filesEditedCount}
+                  reeditRate={
+                    data.historyExtras.sessionInfo.filesEditedCount > 0
+                      ? data.historyExtras.sessionInfo.reeditedFilesCount / data.historyExtras.sessionInfo.filesEditedCount
+                      : null
+                  }
+                  commits={data.historyExtras.sessionInfo.commitCount}
+                  variant="vertical"
+                />
+              </div>
+            )}
+
+            {/* ---- History-only: Files Touched ---- */}
+            {data.historyExtras?.sessionDetail && (
+              <FilesTouchedPanel
+                files={buildFilesTouched(
+                  data.historyExtras.sessionDetail.filesRead ?? [],
+                  data.historyExtras.sessionDetail.filesEdited ?? []
+                )}
+              />
+            )}
+
+            {/* ---- History-only: Linked Commits ---- */}
+            {data.historyExtras?.sessionDetail && (
+              <CommitsPanel commits={data.historyExtras.sessionDetail.commits ?? []} />
             )}
           </div>
         )}
@@ -459,7 +516,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
             {drillDownAgent ? (
               <SubAgentDrillDown
                 key={drillDownAgent.agentId}
-                sessionId={session.id}
+                sessionId={data.id}
                 agentId={drillDownAgent.agentId}
                 agentType={drillDownAgent.agentType}
                 description={drillDownAgent.description}
@@ -470,22 +527,22 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                 {/* Swim lanes (~50% height) */}
                 <div className="flex-1 min-h-0 overflow-y-auto p-4">
                   <SwimLanes
-                    subAgents={session.subAgents!}
-                    sessionActive={session.status === 'working'}
+                    subAgents={data.subAgents!}
+                    sessionActive={data.status === 'working'}
                     onDrillDown={handleDrillDown}
                   />
                 </div>
 
                 {/* Timeline (~50% height, only when startedAt is available) */}
-                {session.startedAt && (
+                {data.startedAt && (
                   <div className="flex-1 min-h-0 overflow-y-auto p-4 border-t border-gray-200 dark:border-gray-800">
                     <TimelineView
-                      subAgents={session.subAgents!}
-                      sessionStartedAt={session.startedAt}
+                      subAgents={data.subAgents!}
+                      sessionStartedAt={data.startedAt}
                       sessionDurationMs={
-                        session.status === 'done'
-                          ? (session.lastActivityAt - session.startedAt) * 1000
-                          : Date.now() - session.startedAt * 1000
+                        data.status === 'done'
+                          ? ((data.lastActivityAt ?? 0) - data.startedAt) * 1000
+                          : Date.now() - data.startedAt * 1000
                       }
                     />
                   </div>
@@ -502,7 +559,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
           <div className="overflow-y-auto h-full">
-            <CostBreakdown cost={session.cost} tokens={session.tokens} subAgents={session.subAgents} />
+            <CostBreakdown cost={data.cost} tokens={data.tokens} subAgents={data.subAgents} />
           </div>
         )}
       </div>
