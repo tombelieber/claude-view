@@ -592,6 +592,13 @@ impl LiveSessionManager {
                 acc.tokens.cache_creation_tokens += cache_creation;
                 acc.tokens.total_tokens += cache_creation;
             }
+            // Accumulate split cache creation by TTL
+            if let Some(tokens_5m) = line.cache_creation_5m_tokens {
+                acc.tokens.cache_creation_5m_tokens += tokens_5m;
+            }
+            if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
+                acc.tokens.cache_creation_1hr_tokens += tokens_1hr;
+            }
 
             // Track last cache hit time when we see cache activity.
             // This is the ground truth signal from Anthropic's API response.
@@ -714,6 +721,8 @@ impl LiveSessionManager {
                             output_tokens: result.usage_output_tokens.unwrap_or(0),
                             cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
                             cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
+                            cache_creation_5m_tokens: 0,
+                            cache_creation_1hr_tokens: 0,
                             total_tokens: 0, // not used by calculate_cost
                         };
                         let sub_cost = self
