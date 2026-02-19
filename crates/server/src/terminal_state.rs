@@ -1,4 +1,4 @@
-//! WebSocket connection manager for Mission Control terminal monitoring.
+//! WebSocket connection manager for Live Monitor terminal monitoring.
 //!
 //! Tracks active WebSocket connections per session and enforces global
 //! and per-session connection limits to prevent resource exhaustion.
