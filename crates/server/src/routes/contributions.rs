@@ -347,7 +347,7 @@ pub async fn get_contributions(
     // Compute per-model cost from ModelStats token data + pricing table
     let mut total_cost_usd = 0.0;
     let mut used_fallback_pricing = false;
-    let pricing = state.pricing.read().unwrap();
+    let pricing = state.pricing.read().expect("pricing lock poisoned");
     for ms in &mut by_model {
         let tokens = TokenBreakdown {
             input_tokens: ms.input_tokens,

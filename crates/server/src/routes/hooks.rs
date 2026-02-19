@@ -65,9 +65,6 @@ async fn handle_hook(
         event = %payload.hook_event_name,
         state = %agent_state.state,
         group = ?agent_state.group,
-        has_context = agent_state.context.is_some(),
-        tool_name = payload.tool_name.as_deref().unwrap_or("-"),
-        has_tool_input = payload.tool_input.is_some(),
         "Hook event received"
     );
 
@@ -356,17 +353,11 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
         "PreToolUse" => {
             let tool_name = payload.tool_name.as_deref().unwrap_or("unknown");
             match tool_name {
-                "AskUserQuestion" => {
-                    tracing::warn!(
-                        tool_input = ?payload.tool_input,
-                        "AskUserQuestion PreToolUse — tool_input dump"
-                    );
-                    AgentState {
-                        group: AgentStateGroup::NeedsYou,
-                        state: "awaiting_input".into(),
-                        label: "Asked you a question".into(),
-                        context: payload.tool_input.clone(),
-                    }
+                "AskUserQuestion" => AgentState {
+                    group: AgentStateGroup::NeedsYou,
+                    state: "awaiting_input".into(),
+                    label: "Asked you a question".into(),
+                    context: payload.tool_input.clone(),
                 },
                 "ExitPlanMode" => AgentState {
                     group: AgentStateGroup::NeedsYou,
@@ -445,22 +436,15 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 label: "Session idle".into(),
                 context: None,
             },
-            Some("elicitation_dialog") => {
-                tracing::warn!(
-                    message = ?payload.message,
-                    tool_input = ?payload.tool_input,
-                    "Notification/elicitation_dialog — payload dump"
-                );
-                AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "awaiting_input".into(),
-                    label: payload
-                        .message
-                        .as_deref()
-                        .map(|m| m.chars().take(100).collect::<String>())
-                        .unwrap_or_else(|| "Awaiting input".into()),
-                    context: None,
-                }
+            Some("elicitation_dialog") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "awaiting_input".into(),
+                label: payload
+                    .message
+                    .as_deref()
+                    .map(|m| m.chars().take(100).collect::<String>())
+                    .unwrap_or_else(|| "Awaiting input".into()),
+                context: None,
             },
             _ => AgentState {
                 group: AgentStateGroup::NeedsYou,
