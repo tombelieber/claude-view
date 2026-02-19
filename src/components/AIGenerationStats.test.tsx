@@ -10,7 +10,7 @@ vi.mock('../hooks/use-ai-generation', () => ({
   formatTokens: (tokens: number | null | undefined) => {
     if (tokens === null || tokens === undefined) return '--'
     if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-    if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
+    if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`
     return tokens.toString()
   },
   formatLineCount: (lines: number, showPlus = true) => {
@@ -113,7 +113,7 @@ describe('AIGenerationStats', () => {
       render(<AIGenerationStats />)
 
       expect(screen.getByText('Lines Generated')).toBeInTheDocument()
-      expect(screen.getByText('Files Created')).toBeInTheDocument()
+      expect(screen.getByText('Files Edited')).toBeInTheDocument()
       expect(screen.getByText('Tokens Used')).toBeInTheDocument()
     })
 
@@ -126,17 +126,17 @@ describe('AIGenerationStats', () => {
     it('should render files created value', () => {
       render(<AIGenerationStats />)
       expect(screen.getByText('5')).toBeInTheDocument()
-      expect(screen.getByText('written by AI')).toBeInTheDocument()
+      expect(screen.getByText('modified by AI')).toBeInTheDocument()
     })
 
     it('should render token total with input/output breakdown', () => {
       render(<AIGenerationStats />)
-      // Total: 80000 -> 80.0K
-      expect(screen.getByText('80.0K')).toBeInTheDocument()
-      // Input: 50000 -> 50.0K
-      expect(screen.getByText('input: 50.0K')).toBeInTheDocument()
-      // Output: 30000 -> 30.0K
-      expect(screen.getByText('output: 30.0K')).toBeInTheDocument()
+      // Total: 80000 -> 80.0k
+      expect(screen.getByText('80.0k')).toBeInTheDocument()
+      // Input: 50000 -> 50.0k
+      expect(screen.getByText('input: 50.0k')).toBeInTheDocument()
+      // Output: 30000 -> 30.0k
+      expect(screen.getByText('output: 30.0k')).toBeInTheDocument()
     })
   })
 
@@ -205,7 +205,7 @@ describe('AIGenerationStats', () => {
 
       expect(screen.queryByText('Lines Generated')).not.toBeInTheDocument()
       // Other cards should still be visible
-      expect(screen.getByText('Files Created')).toBeInTheDocument()
+      expect(screen.getByText('Files Edited')).toBeInTheDocument()
       expect(screen.getByText('Tokens Used')).toBeInTheDocument()
     })
 

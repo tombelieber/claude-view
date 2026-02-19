@@ -130,7 +130,45 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 ---
 
-## 6. QR Pairing Flow
+## 6. Push Notification Suppression (Mobile Presence)
+
+### Problem
+
+Without suppression, every `WAITING_FOR_USER` event triggers a push — potentially 10-30 pushes/hour in an active session. This creates notification spam when the user is actively using the mobile PWA.
+
+### Solution: Mobile-side presence detection
+
+The relay suppresses push notifications when the mobile PWA is open and in the foreground. Detection is **mobile-side only** — desktop state is irrelevant.
+
+| Mobile PWA state | Push sent? |
+|------------------|------------|
+| Open + foreground (WebSocket connected, app visible) | ❌ No |
+| Backgrounded / tab hidden / app closed | ✅ Yes |
+
+### Mechanism
+
+```
+Mobile PWA → WebSocket connection → heartbeat every 30s with "presence: active"
+    └── Relay tracks: mobile_last_seen < 60s ago → "mobile is active"
+    
+WAITING_FOR_USER fires:
+    └── Relay checks mobile presence
+    └── Mobile active (WS connected + recent heartbeat)?
+        └── Yes → Skip push (user is looking at the app)
+        └── No → Send push via OneSignal
+```
+
+### Why desktop doesn't factor in
+
+Desktop web app (localhost:47892) already receives real-time state via SSE — it never needs push notifications. Push is exclusively for mobile clients.
+
+### Comparison to messaging apps
+
+This matches WhatsApp/Instagram behavior: if you're viewing the chat, you don't get notified about new messages in that chat. Presence is detected via active WebSocket connection + app visibility.
+
+---
+
+## 7. QR Pairing Flow
 
 ```
 ┌──────────────────────┐         ┌──────────────────┐         ┌───────────────────┐
@@ -172,11 +210,11 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 **Re-pairing:** Desktop UI has a "Remove device" button. Revokes the phone's public key. Phone must scan a new QR code to re-pair.
 
-> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md#3-pairing-protocol).**
+> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see section 3 in [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md#3-pairing-protocol).**
 
 ---
 
-## 7. PWA Mobile Phases
+## 8. PWA Mobile Phases
 
 | Phase | Name | Scope | Timeline | Depends on |
 |-------|------|-------|----------|------------|
@@ -208,15 +246,15 @@ Build the relay protocol for M3 from day 1. The WebSocket protocol is bidirectio
 
 ---
 
-## 8. Relay Server Design (crates/relay/)
+## 9. Relay Server Design (crates/relay/)
 
 The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is to forward encrypted blobs between paired devices. It stores no session data, logs no message content, and cannot decrypt payloads.
 
-**For detailed relay server design (endpoints, constraints, deployment config, cost estimates), see [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md).**
+**For detailed relay server design (endpoints, constraints, deployment config, cost estimates), see [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md).**
 
 ---
 
-## 9. Daemon Design
+## 10. Daemon Design
 
 ### macOS launchd plist
 
@@ -279,7 +317,7 @@ The server IS the daemon. Same binary, always running. No mode switch, no separa
 
 ---
 
-## 10. Dependencies on Mission Control
+## 11. Dependencies on Mission Control
 
 | Mission Control Phase | What it provides | PWA Phase that needs it |
 |----------------------|-----------------|----------------------|
@@ -307,7 +345,7 @@ Phase A broadcast channel
 
 ---
 
-## 11. Relationship to GTM Strategy
+## 12. Relationship to GTM Strategy
 
 ### The pivot
 
@@ -356,7 +394,7 @@ Spec-to-code engine customer (future product)
 
 ---
 
-## 12. Future Vision (Deferred)
+## 13. Future Vision (Deferred)
 
 These features build on the remote monitoring foundation but are out of scope for this design.
 
@@ -378,8 +416,8 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 ## Cross-references
 
-- [`docs/plans/2026-02-17-flyio-relay-design.md`](2026-02-17-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment
-- [`docs/plans/2026-02-17-flyio-relay-implementation.md`](2026-02-17-flyio-relay-implementation.md) -- Step-by-step implementation plan for the relay
+- [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment
+- [`docs/plans/2026-02-19-flyio-relay-implementation.md`](2026-02-19-flyio-relay-implementation.md) -- Step-by-step implementation plan for the relay
 - [`docs/plans/2026-02-16-relay-hosting-adr.md`](2026-02-16-relay-hosting-adr.md) -- Hosting provider decision (Fly.io) and re-evaluation triggers
 - [`docs/plans/mission-control/design.md`](mission-control/design.md) -- Mission Control architecture (Phase A is prerequisite)
 - [`docs/plans/mission-control/phase-a-monitoring.md`](mission-control/phase-a-monitoring.md) -- JSONL watcher, state machine, broadcast channel
@@ -392,9 +430,11 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 | # | Issue | Severity | Fix Applied |
 |---|-------|----------|-------------|
-| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Created the design document and implementation plan, removed TODO warnings |
+| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Created `2026-02-19-flyio-relay-design.md` with full relay protocol spec |
 | 2 | Binary name mismatch: plan used `vibe-recall-server` but actual binary is `vibe-recall` | Blocker | Updated lines 73 and 107 to use `vibe-recall` |
 | 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `vibe-recall` naming consistently |
 | 4 | CLI naming unclear: `npx claude-view` vs `vibe-recall` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `vibe-recall` binary (line 257) |
 | 5 | Hook path in phase-a-monitoring differs from actual | Minor | Noted in changelog; phase-a-monitoring.md is a separate plan with its own audit cycle |
 | 6 | Growth loop uses old `claude-score` product name | Minor | Left as-is; this is a conceptual diagram, not code reference. Product naming TBD. |
+| 7 | Push notification spam risk: every WAITING_FOR_USER would trigger push | Blocker | Added section 6 (Push Notification Suppression) with mobile-side presence detection |
+| 8 | Cross-references pointed to non-existent `2026-02-17-*.md` files | Blocker | Updated all references to `2026-02-19-flyio-relay-design.md` |

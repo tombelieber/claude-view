@@ -14,9 +14,10 @@ import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { MobileTabBar } from '../components/live/MobileTabBar'
 import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
 import { TerminalOverlay } from '../components/live/TerminalOverlay'
-import type { LiveSummary, UseLiveSessionsResult } from '../components/live/use-live-sessions'
+import { sessionTotalCost, type LiveSummary, type UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
+import { formatTokenCount } from '../lib/format-utils'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -64,7 +65,7 @@ export function MissionControlPage() {
         case 'needs_you': needsYouCount++; break
         case 'autonomous': autonomousCount++; break
       }
-      totalCostTodayUsd += s.cost?.totalUsd ?? 0
+      totalCostTodayUsd += sessionTotalCost(s)
       totalTokensToday += s.tokens?.totalTokens ?? 0
     }
     return { needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday }
@@ -358,12 +359,6 @@ function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
       </div>
     </div>
   )
-}
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
-  return String(n)
 }
 
 function formatRelativeTime(date: Date): string {

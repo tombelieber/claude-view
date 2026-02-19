@@ -8,7 +8,7 @@ import {
   GitBranch,
   Bell,
 } from 'lucide-react'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
 import { SubAgentPills } from './SubAgentPills'
@@ -26,9 +26,11 @@ function projectName(session: LiveSession): string {
   return session.project
 }
 
-/** Format cost as $X.XX */
-function formatCost(totalUsd: number): string {
-  return `$${totalUsd.toFixed(2)}`
+/** Format cost as $X.XX (or $X.XXXX for sub-cent values). */
+function formatCost(session: LiveSession): string {
+  const usd = sessionTotalCost(session)
+  const formatted = usd === 0 ? '$0.00' : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
+  return `${session.cost?.isEstimated ? '~' : ''}${formatted}`
 }
 
 /** Compute context window percentage from tokens + model. */
@@ -109,7 +111,7 @@ export function MonitorPane({
 
   const name = projectName(session)
   const ctxPct = contextPercent(session)
-  const cost = formatCost(session.cost.totalUsd)
+  const cost = formatCost(session)
 
   return (
     <div

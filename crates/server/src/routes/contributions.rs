@@ -28,7 +28,7 @@ use ts_rs::TS;
 use vibe_recall_db::{
     calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
     DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
-    TokenBreakdown, UncommittedWork, FALLBACK_COST_PER_TOKEN_USD,
+    TokenBreakdown, UncommittedWork, FALLBACK_INPUT_COST_PER_TOKEN, FALLBACK_OUTPUT_COST_PER_TOKEN,
 };
 
 use crate::error::{ApiError, ApiResult};
@@ -347,6 +347,7 @@ pub async fn get_contributions(
     // Compute per-model cost from ModelStats token data + pricing table
     let mut total_cost_usd = 0.0;
     let mut used_fallback_pricing = false;
+    let pricing = state.pricing.read().unwrap();
     for ms in &mut by_model {
         let tokens = TokenBreakdown {
             input_tokens: ms.input_tokens,
@@ -354,13 +355,16 @@ pub async fn get_contributions(
             cache_read_tokens: ms.cache_read_tokens,
             cache_creation_tokens: ms.cache_creation_tokens,
         };
-        let model_cost = match lookup_pricing(&ms.model, &state.pricing) {
+        let model_cost = match lookup_pricing(&ms.model, &pricing) {
             Some(p) => calculate_cost_usd(&tokens, p),
             None => {
                 used_fallback_pricing = true;
-                let total = (ms.input_tokens + ms.output_tokens
-                    + ms.cache_read_tokens + ms.cache_creation_tokens) as f64;
-                total * FALLBACK_COST_PER_TOKEN_USD
+                let input = ms.input_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN;
+                let output = ms.output_tokens as f64 * FALLBACK_OUTPUT_COST_PER_TOKEN;
+                let cache_read = ms.cache_read_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
+                let cache_creation =
+                    ms.cache_creation_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
+                input + output + cache_read + cache_creation
             }
         };
         total_cost_usd += model_cost;
@@ -411,10 +415,7 @@ pub async fn get_contributions(
         }
     }
 
-    let cost_trend: Vec<f64> = trend
-        .iter()
-        .map(|t| t.cost_cents as f64 / 100.0)
-        .collect();
+    let cost_trend: Vec<f64> = trend.iter().map(|t| t.cost_cents as f64 / 100.0).collect();
 
     let efficiency = EfficiencyMetrics {
         total_cost: total_cost_usd,
@@ -551,10 +552,7 @@ pub async fn get_branch_sessions(
         .get_branch_sessions(&branch, range, from_date, to_date, project_id, limit)
         .await?;
 
-    let response = BranchSessionsResponse {
-        branch,
-        sessions,
-    };
+    let response = BranchSessionsResponse { branch, sessions };
 
     // Cache for 5 minutes
     let mut headers = HeaderMap::new();
@@ -588,22 +586,34 @@ async fn get_previous_period_contributions(
         TimeRange::Week => {
             // Previous 7 days
             let now = chrono::Local::now();
-            let from = (now - chrono::Duration::days(14)).format("%Y-%m-%d").to_string();
-            let to = (now - chrono::Duration::days(8)).format("%Y-%m-%d").to_string();
+            let from = (now - chrono::Duration::days(14))
+                .format("%Y-%m-%d")
+                .to_string();
+            let to = (now - chrono::Duration::days(8))
+                .format("%Y-%m-%d")
+                .to_string();
             (from, to)
         }
         TimeRange::Month => {
             // Previous 30 days
             let now = chrono::Local::now();
-            let from = (now - chrono::Duration::days(60)).format("%Y-%m-%d").to_string();
-            let to = (now - chrono::Duration::days(31)).format("%Y-%m-%d").to_string();
+            let from = (now - chrono::Duration::days(60))
+                .format("%Y-%m-%d")
+                .to_string();
+            let to = (now - chrono::Duration::days(31))
+                .format("%Y-%m-%d")
+                .to_string();
             (from, to)
         }
         TimeRange::NinetyDays => {
             // Previous 90 days
             let now = chrono::Local::now();
-            let from = (now - chrono::Duration::days(180)).format("%Y-%m-%d").to_string();
-            let to = (now - chrono::Duration::days(91)).format("%Y-%m-%d").to_string();
+            let from = (now - chrono::Duration::days(180))
+                .format("%Y-%m-%d")
+                .to_string();
+            let to = (now - chrono::Duration::days(91))
+                .format("%Y-%m-%d")
+                .to_string();
             (from, to)
         }
         TimeRange::All | TimeRange::Custom => {
@@ -656,7 +666,11 @@ fn generate_skill_insight(by_skill: &[SkillStats]) -> String {
             }
         }
         (None, Some(bs)) => {
-            format!("{} is your most effective skill ({:.0}% re-edit rate)", bs.skill, bs.reedit_rate * 100.0)
+            format!(
+                "{} is your most effective skill ({:.0}% re-edit rate)",
+                bs.skill,
+                bs.reedit_rate * 100.0
+            )
         }
         _ => "Skill usage patterns not yet established".to_string(),
     }
@@ -728,7 +742,10 @@ fn generate_uncommitted_insight(uncommitted: &[UncommittedWork], total_lines: i6
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/contributions", get(get_contributions))
-        .route("/contributions/sessions/{id}", get(get_session_contribution))
+        .route(
+            "/contributions/sessions/{id}",
+            get(get_session_contribution),
+        )
         .route(
             "/contributions/branches/{name}/sessions",
             get(get_branch_sessions),
@@ -823,8 +840,11 @@ mod tests {
     async fn test_get_contributions_custom_range() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body, _) =
-            do_get(app, "/api/contributions?range=custom&from=2026-01-01&to=2026-02-01").await;
+        let (status, body, _) = do_get(
+            app,
+            "/api/contributions?range=custom&from=2026-01-01&to=2026-02-01",
+        )
+        .await;
 
         assert_eq!(status, StatusCode::OK);
 

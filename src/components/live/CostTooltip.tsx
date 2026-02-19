@@ -10,6 +10,7 @@ interface CostTooltipProps {
     cacheReadCostUsd: number
     cacheCreationCostUsd: number
     cacheSavingsUsd: number
+    isEstimated: boolean
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
   subAgents?: SubAgentInfo[]
@@ -84,7 +85,8 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
   const totalSubAgentCost = hasSubAgentCosts
     ? subAgentsWithCost.reduce((sum, sa) => sum + (sa.costUsd ?? 0), 0)
     : 0
-  const mainAgentCost = hasSubAgentCosts ? cost.totalUsd - totalSubAgentCost : 0
+  const mainAgentCost = cost.totalUsd
+  const sessionTotalUsd = cost.totalUsd + totalSubAgentCost
 
   return (
     <div ref={triggerRef} className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
@@ -96,7 +98,7 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
             {hasSubAgentCosts ? (
               <>
                 <div className="font-medium text-gray-900 dark:text-gray-100 mb-1">
-                  Session Cost: ${cost.totalUsd.toFixed(2)}
+                  Session Cost: ${sessionTotalUsd.toFixed(2)}
                 </div>
                 <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
                   <AgentCostRow label="Main agent:" cost={mainAgentCost} isLast={false} />
@@ -130,6 +132,11 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
             <div className={`pt-1 ${cacheStatusColor}`}>
               Cache: {cacheStatusLabel}
             </div>
+            {cost.isEstimated && (
+              <div className="text-amber-500 dark:text-amber-400 pt-1 text-[10px]">
+                Estimated - model not in pricing table
+              </div>
+            )}
           </div>
         </div>,
         document.body

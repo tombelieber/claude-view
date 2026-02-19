@@ -4,7 +4,7 @@
 //! file modification time, and process presence.
 
 use serde::{Deserialize, Serialize};
-use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
+use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 /// The universal agent state — driven by hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
