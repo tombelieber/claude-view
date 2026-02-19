@@ -5,11 +5,20 @@ import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
 import { ScoreBadge } from './ScoreBadge'
 import { AuthPill } from './AuthPill'
+import { NotificationSoundPopover } from './live/NotificationSoundPopover'
+import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 
-export function Header() {
+interface HeaderProps {
+  soundSettings: NotificationSoundSettings
+  onSoundSettingsChange: (patch: Partial<NotificationSoundSettings>) => void
+  onSoundPreview: () => void
+  audioUnlocked: boolean
+}
+
+export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, audioUnlocked }: HeaderProps) {
   const location = useLocation()
   const params = useParams()
   const [searchParams] = useSearchParams()
@@ -21,16 +30,13 @@ export function Header() {
   const getBreadcrumbs = () => {
     const crumbs: { label: string; path: string }[] = []
 
-    if (location.pathname === '/contributions') {
-      const projectFilter = searchParams.get('project')
-      if (projectFilter) {
-        crumbs.push({
-          label: projectFilter.split('/').pop() || 'Project',
-          path: `/?project=${encodeURIComponent(projectFilter)}`
-        })
-      }
+    if (location.pathname === '/analytics') {
+      const tab = searchParams.get('tab')
+      const tabLabel = tab === 'contributions' ? 'Contributions'
+        : tab === 'insights' ? 'Insights'
+        : 'Overview'
       crumbs.push({
-        label: 'Contributions',
+        label: `Analytics — ${tabLabel}`,
         path: location.pathname + location.search
       })
     } else if (location.pathname.match(/^\/sessions\/[^/]+$/)) {
@@ -122,6 +128,13 @@ export function Header() {
             </kbd>
           </div>
         </div>
+
+        <NotificationSoundPopover
+          settings={soundSettings}
+          onSettingsChange={onSoundSettingsChange}
+          onPreview={onSoundPreview}
+          audioUnlocked={audioUnlocked}
+        />
 
         <button
           onClick={cycleTheme}
