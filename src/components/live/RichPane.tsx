@@ -300,6 +300,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
   const [hasNewMessages, setHasNewMessages] = useState(false)
   const prevMessageCountRef = useRef(displayMessages.length)
   const hasScrolledToBottomRef = useRef(false)
+  const prevVerboseModeRef = useRef(verboseMode)
 
   // Jump to bottom once after initial buffer loads
   useEffect(() => {
@@ -314,6 +315,21 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
       })
     }
   }, [bufferDone, displayMessages.length])
+
+  // Scroll to bottom when verbose mode toggles (list length changes drastically)
+  useEffect(() => {
+    if (prevVerboseModeRef.current !== verboseMode) {
+      prevVerboseModeRef.current = verboseMode
+      if (displayMessages.length > 0) {
+        requestAnimationFrame(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index: displayMessages.length - 1,
+            behavior: 'auto',
+          })
+        })
+      }
+    }
+  }, [verboseMode, displayMessages.length])
 
   // Track when new messages arrive while user is scrolled up
   useEffect(() => {

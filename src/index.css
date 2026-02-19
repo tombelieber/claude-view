@@ -57,6 +57,41 @@ body {
   background: #6b7280;
 }
 
+/* ── Prose: code block overrides ── */
+
+/* Light mode: soft gray bg, dark text */
+.prose pre {
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
+
+.prose :not(pre) > code {
+  background: #eff1f3;
+  color: #24292f;
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+  content: none;
+}
+
+/* Dark mode: deep surface bg, light text */
+:where(.dark, .dark *) .prose pre {
+  background: #161B22;
+  color: #C9D1D9;
+  border: 1px solid #30363D;
+}
+
+:where(.dark, .dark *) .prose :not(pre) > code {
+  background: #21262D;
+  color: #C9D1D9;
+}
+
 /* Utility classes for metric typography */
 .font-metric-value {
   font-family: var(--font-mono);
