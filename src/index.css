@@ -57,6 +57,41 @@ body {
   background: #6b7280;
 }
 
+/* ── Prose: code block overrides ── */
+
+/* Light mode: soft gray bg, dark text */
+.prose pre {
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
+
+.prose :not(pre) > code {
+  background: #eff1f3;
+  color: #24292f;
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+  content: none;
+}
+
+/* Dark mode: deep surface bg, light text */
+:where(.dark, .dark *) .prose pre {
+  background: #161B22;
+  color: #C9D1D9;
+  border: 1px solid #30363D;
+}
+
+:where(.dark, .dark *) .prose :not(pre) > code {
+  background: #21262D;
+  color: #C9D1D9;
+}
+
 /* Utility classes for metric typography */
 .font-metric-value {
   font-family: var(--font-mono);
@@ -366,6 +401,53 @@ body {
 }
 .animate-indeterminate {
   animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+/* SwimLanes progress bar: animated width + margin slide */
+@keyframes swimlane-progress {
+  0% { width: 0%; margin-left: 0%; }
+  50% { width: 40%; margin-left: 30%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+/* TimelineView: growing bar animation for running agents */
+@keyframes timeline-bar-grow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+.timeline-bar-growing {
+  animation: timeline-bar-grow 1.5s ease-in-out infinite;
+}
+
+/* Search highlight: <mark> tags from Tantivy snippet generator */
+mark {
+  background: #fef08a;
+  color: #1c1917;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+:where(.dark, .dark *) mark {
+  background: #854d0e;
+  color: #fef9c3;
+}
+
+/* ── Diff block: GitHub-style line backgrounds ── */
+/* CompactCodeBlock adds data-diff attributes to lines when language=diff */
+.diff-block [data-diff="add"] {
+  background: rgba(46, 160, 67, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="del"] {
+  background: rgba(248, 81, 73, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="hunk"] {
+  background: rgba(56, 139, 253, 0.1);
+  display: inline-block;
+  width: 100%;
 }
 
 /* Reduced motion */

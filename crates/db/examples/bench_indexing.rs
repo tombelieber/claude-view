@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Pass 2 benchmark ---
     let start = Instant::now();
-    let (indexed, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, |_| {}, |indexed, total, _| {
+    let (indexed, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |indexed, total, _| {
         if indexed % 50 == 0 || indexed == total {
             eprint!("\r  Pass 2: {}/{}", indexed, total);
         }
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Subsequent launch benchmark (Pass 2 should skip all) ---
     let start = Instant::now();
-    let (indexed2, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, |_| {}, |_, _, _| {})
+    let (indexed2, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
         .await
         .map_err(|e| format!("Pass 2 rerun failed: {}", e))?;
     let rerun_elapsed = start.elapsed();

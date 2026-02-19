@@ -2,20 +2,23 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   GitBranch,
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive,
+  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
 } from 'lucide-react'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
-import { cn } from '../../lib/utils'
+import { SubAgentPills } from './SubAgentPills'
+import { TaskProgressList } from './TaskProgressList'
+import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SessionSpinner, pickVerb } from '../spinner'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive,
+  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -24,6 +27,13 @@ const COLOR_MAP: Record<string, string> = {
   green: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+}
+
+function formatCostUsd(usd: number): string {
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return `$${usd.toFixed(4)}`
+  return `$${usd.toFixed(2)}`
 }
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
@@ -46,43 +56,44 @@ export { StateBadge }
 
 interface SessionCardProps {
   session: LiveSession
+  stalledSessions?: Set<string>
+  currentTime: number
+  /** When provided, renders as a div instead of Link. Used by Kanban for side panel. */
+  onClickOverride?: () => void
 }
 
-const GROUP_CONFIG = {
-  needs_you: { color: 'bg-amber-500', label: 'Needs You', pulse: false },
-  autonomous: { color: 'bg-green-500', label: 'Working', pulse: true },
-  delivered: { color: 'bg-zinc-700', label: 'Done', pulse: false },
-} as const
-
-export function SessionCard({ session }: SessionCardProps) {
+export function SessionCard({ session, stalledSessions, currentTime, onClickOverride }: SessionCardProps) {
   const [searchParams] = useSearchParams()
-  const statusConfig = GROUP_CONFIG[session.agentState.group] || GROUP_CONFIG.autonomous
-  const duration = formatDuration(session.startedAt, session.lastActivityAt)
+  const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
+  const elapsedSeconds = currentTime - turnStart
 
-  // Title: first user message (cleaned) > project display name > project id
+  // Title: last user message (cleaned) > first user message > project display name
+  const rawLastMessage = session.lastUserMessage || ''
   const rawTitle = session.title || ''
-  const title = rawTitle ? cleanPreviewText(rawTitle) : (session.projectDisplayName || session.project)
+  const cleanedLastMessage = rawLastMessage ? cleanPreviewText(rawLastMessage) : ''
+  const cleanedTitle = rawTitle ? cleanPreviewText(rawTitle) : ''
+  const title = cleanedLastMessage || cleanedTitle || (session.projectDisplayName || session.project)
 
   // Show "last message" only when different from title
-  const lastMsg = session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : ''
+  const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
+  const totalCost = sessionTotalCost(session)
+  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
-  return (
-    <Link
-      to={buildSessionUrl(session.id, searchParams)}
-      className="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 transition-colors"
-    >
-      {/* Header: status dot + badges + cost */}
+  const cardClassName = "group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors"
+
+  const cardContent = (
+    <>
+      {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
-        <span
-          className={cn(
-            'inline-block h-2.5 w-2.5 rounded-full flex-shrink-0',
-            statusConfig.color,
-            statusConfig.pulse && 'animate-pulse'
-          )}
-          title={statusConfig.label}
-        />
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+          {session.agentState.group === 'autonomous' && (
+            <span
+              data-testid="pulse-dot"
+              className="inline-block w-2 h-2 rounded-full bg-green-500 flex-shrink-0 motion-safe:animate-pulse"
+              aria-hidden="true"
+            />
+          )}
           <span
             className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
             title={session.projectPath || session.projectDisplayName || session.project}
@@ -99,14 +110,16 @@ export function SessionCard({ session }: SessionCardProps) {
             </span>
           )}
         </div>
-        <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus}>
-          <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums flex-shrink-0">
-            ${session.cost.totalUsd.toFixed(2)}
-          </span>
-        </CostTooltip>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus} subAgents={session.subAgents}>
+            <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
+              {estimatedPrefix}{formatCostUsd(totalCost)}
+            </span>
+          </CostTooltip>
+        </div>
       </div>
 
-      {/* Title: semantic (first user message) or project name */}
+      {/* Title: latest human prompt, with fallback to first prompt/project name */}
       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mb-1">
         {title}
       </p>
@@ -118,48 +131,75 @@ export function SessionCard({ session }: SessionCardProps) {
         </p>
       )}
 
-      {/* State badge */}
-      {session.agentState.group === 'needs_you' ? (
-        <div className="mb-2">
-          <StateBadge agentState={session.agentState} />
+      {/* Spinner row */}
+      <div className="mb-2">
+        <SessionSpinner
+          mode="live"
+          durationSeconds={elapsedSeconds}
+          inputTokens={session.tokens.inputTokens}
+          outputTokens={session.tokens.outputTokens}
+          model={session.model}
+          isStalled={stalledSessions?.has(session.id)}
+          agentStateGroup={session.agentState.group}
+          agentStateLabel={session.agentState.label}
+          spinnerVerb={pickVerb(session.id)}
+          lastCacheHitAt={session.lastCacheHitAt}
+          lastTurnTaskSeconds={session.lastTurnTaskSeconds}
+        />
+      </div>
+
+      {/* Question card (AskUserQuestion) — show whenever context has questions,
+          regardless of specific state (awaiting_input, needs_permission, etc.) */}
+      {session.agentState.context && isAskUserQuestionInput(session.agentState.context) && (
+        <AskUserQuestionDisplay inputData={session.agentState.context} variant="amber" />
+      )}
+
+      {/* Task progress */}
+      {session.progressItems && session.progressItems.length > 0 && (
+        <TaskProgressList items={session.progressItems} />
+      )}
+
+      {/* Sub-agent pills */}
+      {session.subAgents && session.subAgents.length > 0 && (
+        <div className="mb-2 -mx-1">
+          <SubAgentPills subAgents={session.subAgents} />
         </div>
-      ) : session.currentActivity ? (
-        <div className="text-xs text-green-600 dark:text-green-400 truncate mb-2">
-          {session.currentActivity}
-        </div>
-      ) : session.agentState.group === 'delivered' ? (
-        <div className="mb-2">
-          <StateBadge agentState={session.agentState} />
-        </div>
-      ) : null}
+      )}
 
       {/* Context gauge */}
       <ContextGauge
         contextWindowTokens={session.contextWindowTokens}
         model={session.model}
         group={session.agentState.group}
+        tokens={session.tokens}
+        turnCount={session.turnCount}
+        agentLabel={session.agentState.label}
       />
 
-      {/* Footer: turns, duration, cost savings */}
+      {/* Footer: turns */}
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
-        {duration && <span>{duration}</span>}
       </div>
+    </>
+  )
+
+  if (onClickOverride) {
+    return (
+      <div
+        onClick={(e) => { e.stopPropagation(); onClickOverride() }}
+        className={cardClassName}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickOverride() } }}
+      >
+        {cardContent}
+      </div>
+    )
+  }
+
+  return (
+    <Link to={buildSessionUrl(session.id, searchParams)} className={cardClassName} style={{ cursor: 'pointer' }}>
+      {cardContent}
     </Link>
   )
-}
-
-function formatDuration(startedAt: number | null, lastActivityAt: number): string {
-  if (!startedAt || startedAt <= 0) return ''
-  const seconds = lastActivityAt - startedAt
-  if (seconds < 0) return ''
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
-  const days = Math.floor(hours / 24)
-  const remainingHours = hours % 24
-  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`
 }
