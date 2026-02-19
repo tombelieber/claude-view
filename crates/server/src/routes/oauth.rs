@@ -153,7 +153,7 @@ fn read_keychain_credentials() -> Option<Vec<u8>> {
 
         // Try hex-decoding (macOS keychain sometimes returns hex-encoded UTF-8).
         let hex = raw.strip_prefix("0x").or(raw.strip_prefix("0X")).unwrap_or(&raw);
-        if hex.len() % 2 != 0 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !hex.len().is_multiple_of(2) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
             return None;
         }
         let bytes: Vec<u8> = (0..hex.len())

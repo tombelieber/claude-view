@@ -708,7 +708,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
                         let wall_secs = (end_ts - start_ts).max(0) as u32;
                         result.deep.total_task_time_seconds += wall_secs;
-                        if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+                        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
                             result.deep.longest_task_seconds = Some(wall_secs);
                             result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
                         }
@@ -868,7 +868,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
                             let wall_secs = (end_ts - start_ts).max(0) as u32;
                             result.deep.total_task_time_seconds += wall_secs;
-                            if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+                            if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
                                 result.deep.longest_task_seconds = Some(wall_secs);
                                 result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
                             }
@@ -1009,7 +1009,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
         let wall_secs = (end_ts - start_ts).max(0) as u32;
         result.deep.total_task_time_seconds += wall_secs;
-        if result.deep.longest_task_seconds.map_or(true, |prev| wall_secs > prev) {
+        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
             result.deep.longest_task_seconds = Some(wall_secs);
             result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
         }
@@ -2571,7 +2571,6 @@ pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 ///
 /// If `registry_holder` is provided, the built registry is stored in it so
 /// API routes can access it after indexing completes.
-
 /// Prune sessions from the database whose JSONL files no longer exist on disk.
 ///
 /// Queries all session file_paths from the DB, checks each one for existence
