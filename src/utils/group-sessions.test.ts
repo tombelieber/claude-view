@@ -46,6 +46,9 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     hookProgressCount: 0,
     mcpProgressCount: 0,
     parseVersion: 1,
+    totalTaskTimeSeconds: null,
+    longestTaskSeconds: null,
+    longestTaskPreview: null,
     ...overrides,
   };
 }

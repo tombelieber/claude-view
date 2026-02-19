@@ -158,4 +158,22 @@ export type { OverviewMetrics } from './OverviewMetrics'
 export type { SessionContribution } from './SessionContribution'
 export type { SessionContributionResponse } from './SessionContributionResponse'
 export type { SkillStats } from './SkillStats'
+export type { TurnInfo } from './TurnInfo'
 export type { UncommittedWork } from './UncommittedWork'
+
+// Live Monitor: Sub-Agent Visualization (Phase D)
+export type { SubAgentStatus } from './SubAgentStatus'
+export type { SubAgentInfo } from './SubAgentInfo'
+
+// Live Monitor: Task Progress Tracking
+export type { ProgressStatus } from './ProgressStatus'
+export type { ProgressSource } from './ProgressSource'
+export type { ProgressItem } from './ProgressItem'
+
+// Live Monitor: Rich Session Data (unified accumulator output)
+export type { RichSessionData } from './RichSessionData'
+
+// Full-text search types
+export type { SearchResponse } from './SearchResponse'
+export type { SessionHit } from './SessionHit'
+export type { MatchHit } from './MatchHit'

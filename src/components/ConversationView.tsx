@@ -1,26 +1,81 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal, PanelRight } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
 import { useSessionMessages } from '../hooks/use-session-messages'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
+import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { MessageTyped } from './MessageTyped'
 import { ErrorBoundary } from './ErrorBoundary'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
+import { SessionDetailPanel } from './live/SessionDetailPanel'
+import { RichPane } from './live/RichPane'
+import { messagesToRichMessages } from '../lib/message-to-rich'
+import { historyToPanelData } from './live/session-panel-data'
 import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
-import { generateMarkdown, generateResumeContext, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
+import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
+import { useMonitorStore } from '../store/monitor-store'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
+
+/** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
+function HistoryRichPane({ messages }: { messages: import('./live/RichPane').RichMessage[] }) {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  return (
+    <RichPane
+      messages={messages}
+      isVisible={true}
+      verboseMode={verboseMode}
+      bufferDone={true}
+    />
+  )
+}
+
+/** Verbose + Rich/JSON toggles — matches terminal view controls */
+function TerminalViewToggles() {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
+  return (
+    <>
+      <button
+        onClick={toggleVerbose}
+        className={cn(
+          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+          verboseMode
+            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+            : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+        )}
+      >
+        {verboseMode ? 'verbose' : 'compact'}
+      </button>
+      {verboseMode && (
+        <button
+          onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
+          className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+            richRenderMode === 'rich'
+              ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
+              : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+          )}
+        >
+          {richRenderMode === 'rich' ? 'rich' : 'json'}
+        </button>
+      )}
+    </>
+  )
+}
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
 const EMPTY_CONTENT = new Set(['(no content)', ''])
@@ -58,6 +113,8 @@ export function ConversationView() {
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
+  const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
@@ -93,6 +150,9 @@ export function ConversationView() {
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
+
+  // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
+  const { data: richData } = useRichSessionData(sessionId || null)
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -140,23 +200,26 @@ export function ConversationView() {
   }, [session, projectName, sessionId])
 
   const handleResume = useCallback(async () => {
+    const projectPath = sessionDetail?.projectPath
+    if (projectPath) {
+      try {
+        const res = await fetch(`/api/check-path?path=${encodeURIComponent(projectPath)}`)
+        const data = await res.json()
+        if (!data.exists) {
+          showToast('Project path no longer exists — worktree may have been removed', 4000)
+          return
+        }
+      } catch {
+        // If the check fails (e.g. endpoint doesn't exist yet), proceed anyway
+      }
+    }
     const cmd = `claude --resume ${sessionId}`
     const ok = await copyToClipboard(cmd)
     showToast(
       ok ? 'Resume command copied — paste in terminal' : 'Failed to copy — check browser permissions',
       3000
     )
-  }, [sessionId])
-
-  const handleContinueChat = useCallback(async () => {
-    if (!session || !sessionDetail) return
-    const context = generateResumeContext(session.messages, sessionDetail)
-    const ok = await copyToClipboard(context)
-    showToast(
-      ok ? 'Context copied — paste into a new Claude session' : 'Failed to copy — check browser permissions',
-      3000
-    )
-  }, [session, sessionDetail])
+  }, [sessionId, sessionDetail])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
@@ -172,13 +235,13 @@ export function ConversationView() {
         handleExportPdf()
       } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
-        handleContinueChat()
+        handleResume()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleExportHtml, handleExportPdf, handleContinueChat])
+  }, [handleExportHtml, handleExportPdf, handleResume])
 
   // Close export menu on outside click
   useEffect(() => {
@@ -192,6 +255,18 @@ export function ConversationView() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [exportMenuOpen])
 
+  // Close resume menu on outside click
+  useEffect(() => {
+    if (!resumeMenuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (resumeMenuRef.current && !resumeMenuRef.current.contains(e.target as Node)) {
+        setResumeMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [resumeMenuOpen])
+
   const allMessages = useMemo(
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
     [pagesData]
@@ -203,6 +278,20 @@ export function ConversationView() {
     [allMessages, viewMode]
   )
   const hiddenCount = allMessages.length - filteredMessages.length
+
+  const [panelOpen, setPanelOpen] = useState(true)
+
+  // Convert messages to RichMessage[] for verbose mode + terminal tab
+  const richMessages = useMemo(
+    () => allMessages.length > 0 ? messagesToRichMessages(allMessages) : [],
+    [allMessages]
+  )
+
+  // Build panel data for SessionDetailPanel
+  const panelData = useMemo(() => {
+    if (!sessionDetail) return undefined
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessages)
+  }, [sessionDetail, richData, sessionInfo, richMessages])
 
   // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
   // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
@@ -317,7 +406,7 @@ export function ConversationView() {
             </div>
           </div>
 
-          {/* Right: Metrics sidebar — still renders from DB data */}
+          {/* Right: Metrics sidebar — still renders from DB data (no rich data since JSONL is gone) */}
           <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
             {sessionDetail.userPromptCount > 0 && (
               <SessionMetricsBar
@@ -381,7 +470,7 @@ export function ConversationView() {
               )}
             >
               <Eye className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Smart
+              Compact
             </button>
             <button
               onClick={() => setViewMode('full')}
@@ -394,7 +483,7 @@ export function ConversationView() {
               )}
             >
               <Code className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Full
+              Verbose
             </button>
           </div>
           {viewMode === 'compact' && hiddenCount > 0 && (
@@ -402,24 +491,70 @@ export function ConversationView() {
               {hiddenCount} hidden
             </span>
           )}
+          {viewMode === 'full' && (
+            <TerminalViewToggles />
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Primary CTA: Continue This Chat */}
+          {/* Panel toggle */}
           <button
-            onClick={handleContinueChat}
-            disabled={!exportsReady || !sessionDetail}
-            aria-label="Copy conversation context to clipboard for continuing in a new session"
+            onClick={() => setPanelOpen(!panelOpen)}
+            aria-pressed={panelOpen}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady && sessionDetail
-                ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
-                : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
+              'p-1.5 rounded-md transition-colors',
+              panelOpen
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
             )}
+            title="Toggle detail panel"
           >
-            <Copy className="w-4 h-4" />
-            <span>Continue This Chat</span>
+            <PanelRight className="w-4 h-4" />
           </button>
+
+          {/* Continue / Resume dropdown */}
+          <div className="relative" ref={resumeMenuRef}>
+            <button
+              onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
+              disabled={!exportsReady}
+              aria-label="Continue options"
+              aria-expanded={resumeMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+                exportsReady
+                  ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
+              )}
+            >
+              <Terminal className="w-4 h-4" />
+              <span>Continue</span>
+              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", resumeMenuOpen && "rotate-180")} aria-hidden="true" />
+            </button>
+
+            {resumeMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                <button
+                  onClick={() => { handleCopyMarkdown(); setResumeMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Full Transcript
+                </button>
+                <button
+                  onClick={() => { handleResume(); setResumeMenuOpen(false) }}
+                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
+                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span className="flex flex-col items-start">
+                    <span>Resume Command</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Export overflow menu */}
           <div className="relative" ref={exportMenuRef}>
@@ -444,17 +579,6 @@ export function ConversationView() {
             {exportMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
-                  onClick={() => { handleResume(); setExportMenuOpen(false) }}
-                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
-                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span className="flex flex-col items-start">
-                    <span>Resume Command</span>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
-                  </span>
-                </button>
-                <button
                   onClick={() => { handleExportHtml(); setExportMenuOpen(false) }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
@@ -475,13 +599,6 @@ export function ConversationView() {
                   <Download className="w-4 h-4" />
                   Markdown
                 </button>
-                <button
-                  onClick={() => { handleCopyMarkdown(); setExportMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy Full Transcript
-                </button>
               </div>
             )}
           </div>
@@ -492,107 +609,81 @@ export function ConversationView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages */}
         <div className="flex-1 min-w-0">
-          <ThreadHighlightProvider>
-          <ExpandProvider>
-            <Virtuoso
-              data={filteredMessages}
-              startReached={handleStartReached}
-              initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
-              followOutput="smooth"
-              itemContent={(index, message) => {
-                const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                return (
-                  <div className="max-w-4xl mx-auto px-6 pb-4">
-                    <ErrorBoundary key={message.uuid || index}>
-                      <MessageTyped
-                        message={message}
-                        messageIndex={index}
-                        messageType={message.role}
-                        metadata={message.metadata}
-                        parentUuid={thread?.parentUuid}
-                        indent={thread?.indent ?? 0}
-                        isChildMessage={thread?.isChild ?? false}
-                        onGetThreadChain={getThreadChainForUuid}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                )
-              }}
-              components={{
-                Header: () => (
-                  isFetchingPreviousPage ? (
-                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                      Loading older messages...
+          {viewMode === 'compact' ? (
+            <ThreadHighlightProvider>
+            <ExpandProvider>
+              <Virtuoso
+                data={filteredMessages}
+                startReached={handleStartReached}
+                initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                followOutput="smooth"
+                itemContent={(index, message) => {
+                  const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                  return (
+                    <div className="max-w-4xl mx-auto px-6 pb-4">
+                      <ErrorBoundary key={message.uuid || index}>
+                        <MessageTyped
+                          message={message}
+                          messageIndex={index}
+                          messageType={message.role}
+                          metadata={message.metadata}
+                          parentUuid={thread?.parentUuid}
+                          indent={thread?.indent ?? 0}
+                          isChildMessage={thread?.isChild ?? false}
+                          onGetThreadChain={getThreadChainForUuid}
+                        />
+                      </ErrorBoundary>
                     </div>
-                  ) : hasPreviousPage ? (
-                    <div className="h-6" />
-                  ) : filteredMessages.length > 0 ? (
-                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                      Beginning of conversation
-                    </div>
-                  ) : (
-                    <div className="h-6" />
                   )
-                ),
-                Footer: () => (
-                  filteredMessages.length > 0 ? (
-                    <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                      {totalMessages} messages
-                      {viewMode === 'compact' && hiddenCount > 0 && (
-                        <> &bull; {hiddenCount} hidden in compact view</>
-                      )}
-                      {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                        <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                      )}
-                    </div>
-                  ) : null
-                )
-              }}
-              increaseViewportBy={{ top: 400, bottom: 400 }}
-              className="h-full overflow-auto"
-            />
-          </ExpandProvider>
-          </ThreadHighlightProvider>
+                }}
+                components={{
+                  Header: () => (
+                    isFetchingPreviousPage ? (
+                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                        Loading older messages...
+                      </div>
+                    ) : hasPreviousPage ? (
+                      <div className="h-6" />
+                    ) : filteredMessages.length > 0 ? (
+                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                        Beginning of conversation
+                      </div>
+                    ) : (
+                      <div className="h-6" />
+                    )
+                  ),
+                  Footer: () => (
+                    filteredMessages.length > 0 ? (
+                      <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                        {totalMessages} messages
+                        {hiddenCount > 0 && (
+                          <> &bull; {hiddenCount} hidden in compact view</>
+                        )}
+                        {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                          <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                        )}
+                      </div>
+                    ) : null
+                  )
+                }}
+                increaseViewportBy={{ top: 400, bottom: 400 }}
+                className="h-full overflow-auto"
+              />
+            </ExpandProvider>
+            </ThreadHighlightProvider>
+          ) : (
+            <HistoryRichPane messages={richMessages} />
+          )}
         </div>
 
-        {/* Right: Metrics Sidebar */}
-        <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
-          {/* Metrics (vertical layout per plan B9.3) */}
-          {sessionInfo && sessionInfo.userPromptCount > 0 && (
-            <SessionMetricsBar
-              prompts={sessionInfo.userPromptCount}
-              tokens={
-                sessionInfo.totalInputTokens != null && sessionInfo.totalOutputTokens != null
-                  ? BigInt(sessionInfo.totalInputTokens) + BigInt(sessionInfo.totalOutputTokens)
-                  : null
-              }
-              filesRead={sessionInfo.filesReadCount}
-              filesEdited={sessionInfo.filesEditedCount}
-              reeditRate={
-                sessionInfo.filesEditedCount > 0
-                  ? sessionInfo.reeditedFilesCount / sessionInfo.filesEditedCount
-                  : null
-              }
-              commits={sessionInfo.commitCount}
-              variant="vertical"
-            />
-          )}
-
-          {/* Files Touched */}
-          {sessionDetail && (
-            <FilesTouchedPanel
-              files={buildFilesTouched(
-                sessionDetail.filesRead ?? [],
-                sessionDetail.filesEdited ?? []
-              )}
-            />
-          )}
-
-          {/* Linked Commits */}
-          {sessionDetail && (
-            <CommitsPanel commits={sessionDetail.commits ?? []} />
-          )}
-        </aside>
+        {/* Right: Detail panel (inline) */}
+        {panelOpen && panelData && (
+          <SessionDetailPanel
+            panelData={panelData}
+            onClose={() => setPanelOpen(false)}
+            inline
+          />
+        )}
       </div>
     </div>
   )
