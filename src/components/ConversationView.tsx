@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import * as Tabs from '@radix-ui/react-tabs'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
@@ -7,11 +8,15 @@ import { useSession, isNotFoundError } from '../hooks/use-session'
 import { useSessionMessages } from '../hooks/use-session-messages'
 import { useProjectSessions } from '../hooks/use-projects'
 import { useSessionDetail } from '../hooks/use-session-detail'
+import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { MessageTyped } from './MessageTyped'
 import { ErrorBoundary } from './ErrorBoundary'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
+import { HistoryOverviewTab } from './HistoryOverviewTab'
+import { HistoryCostTab } from './HistoryCostTab'
+import { SwimLanes } from './live/SwimLanes'
 import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
 import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
@@ -24,6 +29,15 @@ import type { ProjectSummary } from '../hooks/use-projects'
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
 const EMPTY_CONTENT = new Set(['(no content)', ''])
+
+/** Radix Tabs trigger styling — explicit Tailwind, no shadcn/ui CSS vars */
+const TAB_TRIGGER_CLASS = [
+  'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors',
+  'text-gray-500 dark:text-gray-400',
+  'hover:text-gray-700 dark:hover:text-gray-200',
+  'data-[state=active]:bg-gray-200 dark:data-[state=active]:bg-gray-700',
+  'data-[state=active]:text-gray-900 dark:data-[state=active]:text-gray-100',
+].join(' ')
 
 function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
   if (mode === 'full') return messages
@@ -95,6 +109,10 @@ export function ConversationView() {
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
+
+  // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
+  const { data: richData, isLoading: isLoadingRich } = useRichSessionData(sessionId || null)
+  const hasSubAgents = (richData?.subAgents?.length ?? 0) > 0
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -334,7 +352,7 @@ export function ConversationView() {
             </div>
           </div>
 
-          {/* Right: Metrics sidebar — still renders from DB data */}
+          {/* Right: Metrics sidebar — still renders from DB data (no rich data since JSONL is gone) */}
           <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
             {sessionDetail.userPromptCount > 0 && (
               <SessionMetricsBar
@@ -582,44 +600,55 @@ export function ConversationView() {
           </ThreadHighlightProvider>
         </div>
 
-        {/* Right: Metrics Sidebar */}
-        <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
-          {/* Metrics (vertical layout per plan B9.3) */}
-          {sessionInfo && sessionInfo.userPromptCount > 0 && (
-            <SessionMetricsBar
-              prompts={sessionInfo.userPromptCount}
-              tokens={
-                sessionInfo.totalInputTokens != null && sessionInfo.totalOutputTokens != null
-                  ? BigInt(sessionInfo.totalInputTokens) + BigInt(sessionInfo.totalOutputTokens)
-                  : null
-              }
-              filesRead={sessionInfo.filesReadCount}
-              filesEdited={sessionInfo.filesEditedCount}
-              reeditRate={
-                sessionInfo.filesEditedCount > 0
-                  ? sessionInfo.reeditedFilesCount / sessionInfo.filesEditedCount
-                  : null
-              }
-              commits={sessionInfo.commitCount}
-              variant="vertical"
-            />
-          )}
-
-          {/* Files Touched */}
-          {sessionDetail && (
-            <FilesTouchedPanel
-              files={buildFilesTouched(
-                sessionDetail.filesRead ?? [],
-                sessionDetail.filesEdited ?? []
+        {/* Right: Tabbed Sidebar */}
+        <div className="w-[300px] flex-shrink-0 hidden lg:flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <Tabs.Root defaultValue="overview" className="flex flex-col h-full">
+            <Tabs.List className="flex border-b border-gray-200 dark:border-gray-700 px-2 pt-2 gap-1 flex-shrink-0">
+              <Tabs.Trigger value="overview" className={TAB_TRIGGER_CLASS}>
+                Overview
+              </Tabs.Trigger>
+              {hasSubAgents && (
+                <Tabs.Trigger value="sub-agents" className={TAB_TRIGGER_CLASS}>
+                  Sub-Agents
+                </Tabs.Trigger>
               )}
-            />
-          )}
+              <Tabs.Trigger value="cost" className={TAB_TRIGGER_CLASS}>
+                Cost
+              </Tabs.Trigger>
+            </Tabs.List>
 
-          {/* Linked Commits */}
-          {sessionDetail && (
-            <CommitsPanel commits={sessionDetail.commits ?? []} />
-          )}
-        </aside>
+            <Tabs.Content value="overview" className="flex-1 overflow-y-auto p-4">
+              {sessionDetail && (
+                <HistoryOverviewTab
+                  sessionDetail={sessionDetail}
+                  sessionInfo={sessionInfo}
+                  richData={richData}
+                  isLoadingRich={isLoadingRich}
+                />
+              )}
+            </Tabs.Content>
+
+            {hasSubAgents && (
+              <Tabs.Content value="sub-agents" className="flex-1 overflow-y-auto p-4">
+                <SwimLanes subAgents={richData!.subAgents} />
+              </Tabs.Content>
+            )}
+
+            <Tabs.Content value="cost" className="flex-1 overflow-y-auto p-4">
+              {richData ? (
+                <HistoryCostTab richData={richData} />
+              ) : isLoadingRich ? (
+                <div className="text-xs text-gray-400 animate-pulse py-4 text-center">
+                  Loading cost data...
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 py-4 text-center">
+                  Cost data unavailable
+                </div>
+              )}
+            </Tabs.Content>
+          </Tabs.Root>
+        </div>
       </div>
     </div>
   )
