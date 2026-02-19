@@ -163,10 +163,31 @@ export function TerminalPane({
       fontSize: 12,
       fontFamily: 'JetBrains Mono, Menlo, monospace',
       theme: {
+        // Base
         background: '#0D1117',
-        foreground: '#E6EDF3',
-        cursor: '#58A6FF',
-        selectionBackground: '#264F78',
+        foreground: '#C9D1D9',
+        cursor: '#79C0FF',
+        cursorAccent: '#0D1117',
+        selectionBackground: '#1F6FEB44',
+        selectionInactiveBackground: '#1F6FEB22',
+        // ANSI normal (0–7)
+        black: '#484F58',
+        red: '#FF7B72',
+        green: '#7EE787',
+        yellow: '#FFA657',
+        blue: '#79C0FF',
+        magenta: '#D2A8FF',
+        cyan: '#56D4DD',
+        white: '#B1BAC4',
+        // ANSI bright (8–15)
+        brightBlack: '#6E7681',
+        brightRed: '#FFA198',
+        brightGreen: '#56D364',
+        brightYellow: '#E3B341',
+        brightBlue: '#A5D6FF',
+        brightMagenta: '#E2B5FF',
+        brightCyan: '#76E4F7',
+        brightWhite: '#F0F6FC',
       },
       scrollback: scrollback,
       cursorBlink: false,
@@ -297,7 +318,7 @@ export function TerminalPane({
       {showScrollBtn && !showOverlay && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-2 right-2 z-10 flex items-center gap-1 rounded-md bg-gray-800/90 border border-gray-600 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-700 hover:text-white transition-colors shadow-lg"
+          className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-md bg-[#1F2937]/95 border border-[#374151] px-2.5 py-1.5 text-[11px] font-medium text-[#A5D6FF] hover:bg-[#374151] hover:text-[#F0F6FC] transition-all duration-150 shadow-lg shadow-black/40 backdrop-blur-sm"
           title="Scroll to bottom"
         >
           <ArrowDown className="w-3 h-3" />
@@ -307,28 +328,29 @@ export function TerminalPane({
 
       {showOverlay && (
         <div
-          className={`absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity duration-200 ${
+          className={`absolute inset-0 flex items-center justify-center bg-[#0D1117]/80 backdrop-blur-[2px] transition-opacity duration-200 ${
             connectionState === 'error' ? 'cursor-pointer' : ''
           }`}
           onClick={connectionState === 'error' ? reconnect : undefined}
         >
-          <div className="flex flex-col items-center gap-2 text-sm text-zinc-300">
+          <div className="flex flex-col items-center gap-2.5 text-sm">
             {connectionState === 'connecting' && (
               <>
-                <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
-                <span>Connecting...</span>
+                <Loader2 className="h-5 w-5 animate-spin text-[#79C0FF]" />
+                <span className="text-[#8B949E]">Connecting...</span>
               </>
             )}
             {connectionState === 'disconnected' && (
               <>
-                <Loader2 className="h-5 w-5 animate-spin text-yellow-400" />
-                <span>Reconnecting...</span>
+                <Loader2 className="h-5 w-5 animate-spin text-[#FFA657]" />
+                <span className="text-[#8B949E]">Reconnecting...</span>
               </>
             )}
             {connectionState === 'error' && (
               <>
-                <WifiOff className="h-5 w-5 text-red-400" />
-                <span>Connection failed. Click to retry.</span>
+                <WifiOff className="h-5 w-5 text-[#FF7B72]" />
+                <span className="text-[#8B949E]">Connection failed</span>
+                <span className="text-[11px] text-[#6E7681]">Click to retry</span>
               </>
             )}
           </div>
