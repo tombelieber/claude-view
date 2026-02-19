@@ -258,27 +258,25 @@ let mdBlockCounter = 0
  * through CompactCodeBlock (Shiki highlighting, copy, collapse) and
  * give inline `code` a distinct visual treatment.
  */
-const markdownComponents: Components = {
-  // Fenced code blocks: ```lang ... ``` → CompactCodeBlock with Shiki
-  // react-markdown wraps these in <pre><code className="language-X">
-  pre({ children }) {
-    // Extract <code> child props to get language + text
-    const codeChild = Array.isArray(children) ? children[0] : children
-    if (codeChild && typeof codeChild === 'object' && 'props' in codeChild) {
-      const { className, children: codeText } = codeChild.props as {
-        className?: string
-        children?: React.ReactNode
-      }
-      const langMatch = /language-(\w+)/.exec(className || '')
-      const lang = langMatch ? langMatch[1] : 'text'
-      const text = String(codeText || '').replace(/\n$/, '')
-      const id = `md-code-${mdBlockCounter++}`
-      return <CompactCodeBlock code={text} language={lang} blockId={id} />
+function MarkdownPre({ children }: { children?: React.ReactNode }) {
+  const verbose = useMonitorStore((s) => s.verboseMode)
+  const codeChild = Array.isArray(children) ? children[0] : children
+  if (codeChild && typeof codeChild === 'object' && 'props' in codeChild) {
+    const { className, children: codeText } = codeChild.props as {
+      className?: string
+      children?: React.ReactNode
     }
-    // Fallback: plain <pre> (shouldn't happen with standard markdown)
-    return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
-  },
-  // Inline code — compact monospace chip
+    const langMatch = /language-(\w+)/.exec(className || '')
+    const lang = langMatch ? langMatch[1] : 'text'
+    const text = String(codeText || '').replace(/\n$/, '')
+    const id = `md-code-${mdBlockCounter++}`
+    return <CompactCodeBlock code={text} language={lang} blockId={id} verboseMode={verbose} />
+  }
+  return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
+}
+
+const markdownComponents: Components = {
+  pre: MarkdownPre as Components['pre'],
   code({ children, ...rest }) {
     return (
       <code
@@ -334,7 +332,7 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
             verboseMode ? (
               <JsonTree data={parsedJson} verboseMode={verboseMode} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} verboseMode={verboseMode} />
             )
           ) : (
             <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -360,7 +358,7 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
             verboseMode ? (
               <JsonTree data={parsedJson} verboseMode={verboseMode} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} verboseMode={verboseMode} />
             )
           ) : (
             <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -375,7 +373,8 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
 }
 
 function ToolUseMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
-  const [expanded, setExpanded] = useState(verboseMode)
+  const [manualExpanded, setManualExpanded] = useState(verboseMode)
+  const expanded = verboseMode || manualExpanded
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const rawName = message.name || 'Tool'
@@ -429,7 +428,7 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
             {!showRich && !expanded && isObjectInput && (
               <JsonKeyValueChips
                 data={inputObj as Record<string, unknown>}
-                onExpand={() => setExpanded(true)}
+                onExpand={() => setManualExpanded(true)}
                 verboseMode={verboseMode}
               />
             )}
@@ -444,16 +443,18 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
           )}
           {!showRich && expanded && (
             <div className="mt-1">
-              <button
-                onClick={() => setExpanded(false)}
-                className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors cursor-pointer"
-              >
-                [ Collapse ]
-              </button>
+              {!verboseMode && (
+                <button
+                  onClick={() => setManualExpanded(false)}
+                  className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors cursor-pointer"
+                >
+                  [ Collapse ]
+                </button>
+              )}
               {isObjectInput ? (
                 <JsonTree data={inputObj} verboseMode={verboseMode} />
               ) : (
-                <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} />
+                <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} verboseMode={verboseMode} />
               )}
             </div>
           )}
@@ -491,11 +492,11 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
           </div>
         ) : diffLike ? (
           <div className="mt-0.5 pl-4 diff-block">
-            <CompactCodeBlock code={message.content} language="diff" blockId={`result-${index}`} />
+            <CompactCodeBlock code={message.content} language="diff" blockId={`result-${index}`} verboseMode={verboseMode} />
           </div>
         ) : codeLike ? (
           <div className="mt-0.5 pl-4">
-            <CompactCodeBlock code={cleanCode} language={codeLang} blockId={`result-${index}`} />
+            <CompactCodeBlock code={cleanCode} language={codeLang} blockId={`result-${index}`} verboseMode={verboseMode} />
           </div>
         ) : (
           <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -507,8 +508,9 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
   )
 }
 
-function ThinkingMessage({ message }: { message: RichMessage }) {
-  const [expanded, setExpanded] = useState(false)
+function ThinkingMessage({ message, verboseMode = false }: { message: RichMessage; verboseMode?: boolean }) {
+  const [manualExpanded, setManualExpanded] = useState(false)
+  const expanded = verboseMode || manualExpanded
   // Show a preview: first line or first ~120 chars
   const preview = useMemo(() => {
     const first = message.content.split('\n')[0] || ''
@@ -518,7 +520,7 @@ function ThinkingMessage({ message }: { message: RichMessage }) {
   return (
     <div className="py-0.5">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setManualExpanded((v) => !v)}
         className="flex items-center gap-1.5 w-full text-left cursor-pointer group"
       >
         <Brain className="w-3 h-3 text-purple-500/50 dark:text-purple-400/50 flex-shrink-0" />
@@ -581,7 +583,7 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
     case 'tool_result':
       return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
     case 'thinking':
-      return <ThinkingMessage message={message} />
+      return <ThinkingMessage message={message} verboseMode={verboseMode} />
     case 'error':
       return <ErrorMessage message={message} index={index} />
     default:
