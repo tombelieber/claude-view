@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import * as Tabs from '@radix-ui/react-tabs'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal, PanelRight } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
@@ -14,9 +13,10 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
-import { HistoryOverviewTab } from './HistoryOverviewTab'
-import { HistoryCostTab } from './HistoryCostTab'
-import { SwimLanes } from './live/SwimLanes'
+import { SessionDetailPanel } from './live/SessionDetailPanel'
+import { RichPane } from './live/RichPane'
+import { messagesToRichMessages } from '../lib/message-to-rich'
+import { historyToPanelData } from './live/session-panel-data'
 import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
 import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
@@ -29,15 +29,6 @@ import type { ProjectSummary } from '../hooks/use-projects'
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
 const EMPTY_CONTENT = new Set(['(no content)', ''])
-
-/** Radix Tabs trigger styling — explicit Tailwind, no shadcn/ui CSS vars */
-const TAB_TRIGGER_CLASS = [
-  'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors',
-  'text-gray-500 dark:text-gray-400',
-  'hover:text-gray-700 dark:hover:text-gray-200',
-  'data-[state=active]:bg-gray-200 dark:data-[state=active]:bg-gray-700',
-  'data-[state=active]:text-gray-900 dark:data-[state=active]:text-gray-100',
-].join(' ')
 
 function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
   if (mode === 'full') return messages
@@ -111,8 +102,7 @@ export function ConversationView() {
   const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
 
   // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
-  const { data: richData, isLoading: isLoadingRich } = useRichSessionData(sessionId || null)
-  const hasSubAgents = (richData?.subAgents?.length ?? 0) > 0
+  const { data: richData } = useRichSessionData(sessionId || null)
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -238,6 +228,20 @@ export function ConversationView() {
     [allMessages, viewMode]
   )
   const hiddenCount = allMessages.length - filteredMessages.length
+
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  // Convert messages to RichMessage[] for verbose mode + terminal tab
+  const richMessages = useMemo(
+    () => allMessages.length > 0 ? messagesToRichMessages(allMessages) : [],
+    [allMessages]
+  )
+
+  // Build panel data for SessionDetailPanel
+  const panelData = useMemo(() => {
+    if (!sessionDetail) return undefined
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessages)
+  }, [sessionDetail, richData, sessionInfo, richMessages])
 
   // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
   // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
@@ -440,6 +444,21 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Panel toggle */}
+          <button
+            onClick={() => setPanelOpen(!panelOpen)}
+            aria-pressed={panelOpen}
+            className={cn(
+              'p-1.5 rounded-md transition-colors',
+              panelOpen
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+            )}
+            title="Toggle detail panel"
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+
           {/* Continue / Resume dropdown */}
           <div className="relative" ref={resumeMenuRef}>
             <button
@@ -537,119 +556,86 @@ export function ConversationView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages */}
         <div className="flex-1 min-w-0">
-          <ThreadHighlightProvider>
-          <ExpandProvider>
-            <Virtuoso
-              data={filteredMessages}
-              startReached={handleStartReached}
-              initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
-              followOutput="smooth"
-              itemContent={(index, message) => {
-                const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                return (
-                  <div className="max-w-4xl mx-auto px-6 pb-4">
-                    <ErrorBoundary key={message.uuid || index}>
-                      <MessageTyped
-                        message={message}
-                        messageIndex={index}
-                        messageType={message.role}
-                        metadata={message.metadata}
-                        parentUuid={thread?.parentUuid}
-                        indent={thread?.indent ?? 0}
-                        isChildMessage={thread?.isChild ?? false}
-                        onGetThreadChain={getThreadChainForUuid}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                )
-              }}
-              components={{
-                Header: () => (
-                  isFetchingPreviousPage ? (
-                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                      Loading older messages...
+          {viewMode === 'compact' ? (
+            <ThreadHighlightProvider>
+            <ExpandProvider>
+              <Virtuoso
+                data={filteredMessages}
+                startReached={handleStartReached}
+                initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                followOutput="smooth"
+                itemContent={(index, message) => {
+                  const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                  return (
+                    <div className="max-w-4xl mx-auto px-6 pb-4">
+                      <ErrorBoundary key={message.uuid || index}>
+                        <MessageTyped
+                          message={message}
+                          messageIndex={index}
+                          messageType={message.role}
+                          metadata={message.metadata}
+                          parentUuid={thread?.parentUuid}
+                          indent={thread?.indent ?? 0}
+                          isChildMessage={thread?.isChild ?? false}
+                          onGetThreadChain={getThreadChainForUuid}
+                        />
+                      </ErrorBoundary>
                     </div>
-                  ) : hasPreviousPage ? (
-                    <div className="h-6" />
-                  ) : filteredMessages.length > 0 ? (
-                    <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                      Beginning of conversation
-                    </div>
-                  ) : (
-                    <div className="h-6" />
                   )
-                ),
-                Footer: () => (
-                  filteredMessages.length > 0 ? (
-                    <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                      {totalMessages} messages
-                      {viewMode === 'compact' && hiddenCount > 0 && (
-                        <> &bull; {hiddenCount} hidden in compact view</>
-                      )}
-                      {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                        <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                      )}
-                    </div>
-                  ) : null
-                )
-              }}
-              increaseViewportBy={{ top: 400, bottom: 400 }}
-              className="h-full overflow-auto"
+                }}
+                components={{
+                  Header: () => (
+                    isFetchingPreviousPage ? (
+                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                        Loading older messages...
+                      </div>
+                    ) : hasPreviousPage ? (
+                      <div className="h-6" />
+                    ) : filteredMessages.length > 0 ? (
+                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                        Beginning of conversation
+                      </div>
+                    ) : (
+                      <div className="h-6" />
+                    )
+                  ),
+                  Footer: () => (
+                    filteredMessages.length > 0 ? (
+                      <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                        {totalMessages} messages
+                        {hiddenCount > 0 && (
+                          <> &bull; {hiddenCount} hidden in compact view</>
+                        )}
+                        {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                          <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                        )}
+                      </div>
+                    ) : null
+                  )
+                }}
+                increaseViewportBy={{ top: 400, bottom: 400 }}
+                className="h-full overflow-auto"
+              />
+            </ExpandProvider>
+            </ThreadHighlightProvider>
+          ) : (
+            <RichPane
+              messages={richMessages}
+              isVisible={true}
+              verboseMode={true}
+              bufferDone={true}
             />
-          </ExpandProvider>
-          </ThreadHighlightProvider>
-        </div>
-
-        {/* Right: Tabbed Sidebar */}
-        <div className="w-[300px] flex-shrink-0 hidden lg:flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-          <Tabs.Root defaultValue="overview" className="flex flex-col h-full">
-            <Tabs.List className="flex border-b border-gray-200 dark:border-gray-700 px-2 pt-2 gap-1 flex-shrink-0">
-              <Tabs.Trigger value="overview" className={TAB_TRIGGER_CLASS}>
-                Overview
-              </Tabs.Trigger>
-              {hasSubAgents && (
-                <Tabs.Trigger value="sub-agents" className={TAB_TRIGGER_CLASS}>
-                  Sub-Agents
-                </Tabs.Trigger>
-              )}
-              <Tabs.Trigger value="cost" className={TAB_TRIGGER_CLASS}>
-                Cost
-              </Tabs.Trigger>
-            </Tabs.List>
-
-            <Tabs.Content value="overview" className="flex-1 overflow-y-auto p-4">
-              {sessionDetail && (
-                <HistoryOverviewTab
-                  sessionDetail={sessionDetail}
-                  sessionInfo={sessionInfo}
-                  richData={richData}
-                  isLoadingRich={isLoadingRich}
-                />
-              )}
-            </Tabs.Content>
-
-            {hasSubAgents && (
-              <Tabs.Content value="sub-agents" className="flex-1 overflow-y-auto p-4">
-                <SwimLanes subAgents={richData!.subAgents} />
-              </Tabs.Content>
-            )}
-
-            <Tabs.Content value="cost" className="flex-1 overflow-y-auto p-4">
-              {richData ? (
-                <HistoryCostTab richData={richData} />
-              ) : isLoadingRich ? (
-                <div className="text-xs text-gray-400 animate-pulse py-4 text-center">
-                  Loading cost data...
-                </div>
-              ) : (
-                <div className="text-xs text-gray-400 py-4 text-center">
-                  Cost data unavailable
-                </div>
-              )}
-            </Tabs.Content>
-          </Tabs.Root>
+          )}
         </div>
       </div>
+
+      {/* Detail panel overlay */}
+      {panelOpen && panelData && (
+        <SessionDetailPanel
+          panelData={panelData}
+          onClose={() => setPanelOpen(false)}
+        />
+      )}
     </div>
   )
 }
