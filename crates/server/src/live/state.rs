@@ -1,4 +1,4 @@
-//! Live session state types and status derivation for Mission Control.
+//! Live session state types and status derivation for Live Monitor.
 //!
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
@@ -110,7 +110,7 @@ pub struct LiveSession {
     pub last_cache_hit_at: Option<i64>,
 }
 
-/// Events broadcast over the SSE channel to connected Mission Control clients.
+/// Events broadcast over the SSE channel to connected Live Monitor clients.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
