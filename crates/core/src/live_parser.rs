@@ -66,6 +66,8 @@ pub struct LiveLine {
     pub output_tokens: Option<u64>,
     pub cache_read_tokens: Option<u64>,
     pub cache_creation_tokens: Option<u64>,
+    pub cache_creation_5m_tokens: Option<u64>,
+    pub cache_creation_1hr_tokens: Option<u64>,
     pub timestamp: Option<String>,
     pub stop_reason: Option<String>,
     /// Git branch extracted from user-type JSONL lines.
@@ -273,6 +275,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 output_tokens: None,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
+                cache_creation_5m_tokens: None,
+                cache_creation_1hr_tokens: None,
                 timestamp: None,
                 stop_reason: None,
                 git_branch: None,
@@ -336,19 +340,19 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         None
     };
 
-    let (input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens) =
+    let (input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_5m_tokens, cache_creation_1hr_tokens) =
         if finders.usage_key.find(raw).is_some() {
             // Try top-level usage, then nested message.usage
-            let (i, o, cr, cc) = extract_usage(&parsed);
+            let (i, o, cr, cc, c5m, c1h) = extract_usage(&parsed);
             if i.is_some() || o.is_some() {
-                (i, o, cr, cc)
+                (i, o, cr, cc, c5m, c1h)
             } else if let Some(m) = msg {
                 extract_usage(m)
             } else {
-                (None, None, None, None)
+                (None, None, None, None, None, None)
             }
         } else {
-            (None, None, None, None)
+            (None, None, None, None, None, None)
         };
 
     let timestamp = parsed
@@ -611,6 +615,8 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         output_tokens,
         cache_read_tokens,
         cache_creation_tokens,
+        cache_creation_5m_tokens,
+        cache_creation_1hr_tokens,
         timestamp,
         stop_reason,
         git_branch,
@@ -672,10 +678,10 @@ fn extract_content_and_tools(
 /// Extract token counts from a `usage` sub-object.
 fn extract_usage(
     parsed: &serde_json::Value,
-) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
+) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
     let usage = match parsed.get("usage") {
         Some(u) => u,
-        None => return (None, None, None, None),
+        None => return (None, None, None, None, None, None),
     };
 
     let input = usage
@@ -691,7 +697,17 @@ fn extract_usage(
         .get("cache_creation_input_tokens")
         .and_then(|v| v.as_u64());
 
-    (input, output, cache_read, cache_creation)
+    // Extract ephemeral cache breakdown when present
+    let (cache_creation_5m, cache_creation_1hr) = usage
+        .get("cache_creation")
+        .map(|cc| {
+            let t5m = cc.get("ephemeral_5m_input_tokens").and_then(|v| v.as_u64());
+            let t1h = cc.get("ephemeral_1h_input_tokens").and_then(|v| v.as_u64());
+            (t5m, t1h)
+        })
+        .unwrap_or((None, None));
+
+    (input, output, cache_read, cache_creation, cache_creation_5m, cache_creation_1hr)
 }
 
 /// Truncate a string to at most `max` characters, appending "..." if trimmed.
@@ -1346,6 +1362,47 @@ mod tests {
             LineType::Result,
             "Result lines must be classified as Result"
         );
+    }
+
+    #[test]
+    fn test_parse_tail_extracts_ephemeral_cache_breakdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ephemeral.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"hi","model":"claude-opus-4-6","usage":{{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":200,"cache_creation_input_tokens":57339,"cache_creation":{{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":57339}}}}}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        assert_eq!(line.cache_creation_tokens, Some(57339));
+        assert_eq!(line.cache_creation_5m_tokens, Some(0));
+        assert_eq!(line.cache_creation_1hr_tokens, Some(57339));
+    }
+
+    #[test]
+    fn test_parse_tail_no_ephemeral_breakdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no_ephemeral.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"hi","usage":{{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":1000}}}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        let line = &lines[0];
+        assert_eq!(line.cache_creation_tokens, Some(1000));
+        assert_eq!(line.cache_creation_5m_tokens, None);
+        assert_eq!(line.cache_creation_1hr_tokens, None);
     }
 
     #[test]
