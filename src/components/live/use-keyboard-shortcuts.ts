@@ -92,17 +92,17 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
 
       switch (key) {
         case '1':
-          opts.onViewModeChange('grid')
+          opts.onViewModeChange('kanban')
           e.preventDefault()
           break
 
         case '2':
-          opts.onViewModeChange('list')
+          opts.onViewModeChange('grid')
           e.preventDefault()
           break
 
         case '3':
-          opts.onViewModeChange('kanban')
+          opts.onViewModeChange('list')
           e.preventDefault()
           break
 

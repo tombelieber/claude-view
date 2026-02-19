@@ -215,30 +215,11 @@ async fn handle_hook(
         }
         "SessionEnd" => {
             let session_id = payload.session_id.clone();
-            {
-                let mut sessions = state.live_sessions.write().await;
-                if let Some(session) = sessions.get_mut(&session_id) {
-                    session.agent_state = agent_state.clone();
-                    session.status = status_from_agent_state(&agent_state);
-                    session.current_activity = agent_state.label.clone();
-                    session.last_activity_at = now;
-                    let _ = state.live_tx.send(SessionEvent::SessionUpdated {
-                        session: session.clone(),
-                    });
-                }
+            state.live_sessions.write().await.remove(&session_id);
+            if let Some(mgr) = &state.live_manager {
+                mgr.remove_accumulator(&session_id).await;
             }
-            // Remove from live map after 10s delay.
-            let state_clone = state.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                state_clone.live_sessions.write().await.remove(&session_id);
-                if let Some(mgr) = &state_clone.live_manager {
-                    mgr.remove_accumulator(&session_id).await;
-                }
-                let _ = state_clone.live_tx.send(SessionEvent::SessionCompleted {
-                    session_id,
-                });
-            });
+            let _ = state.live_tx.send(SessionEvent::SessionCompleted { session_id });
         }
         // ── Metadata-only events ─────────────────────────────────────────
         // Sub-entity lifecycle: update metadata but NEVER touch agent_state.

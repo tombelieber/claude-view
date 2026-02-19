@@ -118,6 +118,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
 | **Paid: LLM Classification** | **Draft (Deferred)** | 3 provider options: BYO Claude CLI (shipped), hosted API (paid), BYO API key. Free tier = user's own CLI. Pro tier = hosted bulk classify + auto-classify + BYO key. `LlmProvider` trait already extensible | **Pro** |
 | **Full-Chat AI Fluency Score** | **Draft (Deferred → Next Phase)** | 7-dimension per-session scoring (Prompt Clarity, Task Scoping, Course Correction, Tool Leverage, Iteration Efficiency, Outcome Quality, Context Economy). Conversation digest preprocessor, local + AI scoring, Anthropic API + OpenAI-compat providers. Plan fully audited (22 issues fixed). Deferred to next phase so current branch can merge | Personal |
+| **Action Log Tab** | **Pending** | 5th "Log" tab in SessionDetailPanel — filterable action timeline with paired tool_use/tool_result rows, timing, expandable raw JSON. 9 tasks: extract useSessionMessages hook, ActionItem types, filter chips, ActionRow, TurnSeparatorRow, ActionLogTab, wiring, edge cases, verification | Personal |
 
 **Current focus:** GTM Launch (build in public, first posts) + Epic A: Smart Rules Engine + Mission Control Phase C (Monitor Mode)
 
@@ -451,6 +452,8 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-19-process-gated-discovery.md` | done | **Process-Gated Discovery Implementation** — 6-task implementation plan for process-gated session discovery |
 | `2026-02-19-page-reorg-design.md` | done | **Page Reorganization Design** — Mission Control as home page, analytics consolidated into single tabbed page |
 | `2026-02-19-page-reorg-impl.md` | done | **Page Reorganization Implementation** — 6-task implementation: AnalyticsPage wrapper, router update, sidebar reduction (5→3), header breadcrumbs, redirects |
+| `2026-02-19-action-log-tab-design.md` | pending | **Action Log Tab Design** — developer-focused action timeline for SessionDetailPanel, filterable by category (skill/mcp/builtin/agent/error), paired tool_use/tool_result rows with timing and expandable JSON |
+| `2026-02-19-action-log-tab-impl.md` | pending | **Action Log Tab Implementation** — 9 tasks: extract useSessionMessages hook, ActionItem types + useActionItems transform, ActionFilterChips, ActionRow, TurnSeparatorRow, ActionLogTab with react-virtuoso, wire into SessionDetailPanel, edge cases, verification |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
