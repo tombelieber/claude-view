@@ -11,6 +11,7 @@ import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
+import { QuestionCard } from './QuestionCard'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
@@ -147,6 +148,11 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         />
       </div>
 
+      {/* Question card (AskUserQuestion) */}
+      {session.agentState.state === 'awaiting_input' && session.agentState.context && (
+        <QuestionCard context={session.agentState.context} />
+      )}
+
       {/* Task progress */}
       {session.progressItems && session.progressItems.length > 0 && (
         <TaskProgressList items={session.progressItems} />
@@ -166,6 +172,7 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         group={session.agentState.group}
         tokens={session.tokens}
         turnCount={session.turnCount}
+        agentLabel={session.agentState.label}
       />
 
       {/* Footer: turns */}
