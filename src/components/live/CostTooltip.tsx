@@ -1,4 +1,5 @@
-import { useState, useRef, type ReactNode } from 'react'
+import { useState, useRef, useLayoutEffect, useCallback, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 interface CostTooltipProps {
@@ -15,9 +16,45 @@ interface CostTooltipProps {
   children: ReactNode
 }
 
+const TOOLTIP_W = 224 // w-56
+const MARGIN = 8
+
 export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTooltipProps) {
   const [isOpen, setIsOpen] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({})
+
+  const computePlacement = useCallback(() => {
+    const trigger = triggerRef.current
+    const tooltip = tooltipRef.current
+    if (!trigger || !tooltip) return
+    const rect = trigger.getBoundingClientRect()
+    const tipH = tooltip.offsetHeight
+    const spaceBelow = window.innerHeight - rect.bottom
+    // Don't let tooltip render behind the App header (h-12 = 48px + margin)
+    const topBoundary = 56
+
+    let top: number
+    if (spaceBelow >= tipH + MARGIN) {
+      top = rect.bottom + MARGIN
+    } else if (rect.top - tipH - MARGIN >= topBoundary) {
+      top = rect.top - tipH - MARGIN
+    } else {
+      // Not enough room above or below — prefer below, clamp to viewport
+      top = rect.bottom + MARGIN
+    }
+
+    // Anchor right edge to trigger's right edge
+    const left = Math.max(MARGIN, rect.right - TOOLTIP_W)
+
+    setTooltipStyle({ position: 'fixed', top, left, zIndex: 9999 })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (isOpen) computePlacement()
+  }, [isOpen, computePlacement])
 
   const handleMouseEnter = () => {
     clearTimeout(timeoutRef.current)
@@ -50,10 +87,10 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
   const mainAgentCost = hasSubAgentCosts ? cost.totalUsd - totalSubAgentCost : 0
 
   return (
-    <div className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <div ref={triggerRef} className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       {children}
-      {isOpen && (
-        <div className="absolute z-50 right-0 top-full mt-1 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs">
+      {isOpen && createPortal(
+        <div ref={tooltipRef} style={tooltipStyle} className="w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
           <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Cost Breakdown</div>
           <div className="space-y-1">
             {hasSubAgentCosts ? (
@@ -94,7 +131,8 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
               Cache: {cacheStatusLabel}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, GitBranch, List } from 'lucide-react'
+import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { GROUP_ORDER } from './types'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -107,13 +107,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
   }
 
   if (sessions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-        <List className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No sessions to display</p>
-        <p className="text-xs mt-1">Active Claude Code sessions will appear here</p>
-      </div>
-    )
+    return null
   }
 
   return (
