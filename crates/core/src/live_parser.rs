@@ -340,20 +340,26 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         None
     };
 
-    let (input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_5m_tokens, cache_creation_1hr_tokens) =
-        if finders.usage_key.find(raw).is_some() {
-            // Try top-level usage, then nested message.usage
-            let (i, o, cr, cc, c5m, c1h) = extract_usage(&parsed);
-            if i.is_some() || o.is_some() {
-                (i, o, cr, cc, c5m, c1h)
-            } else if let Some(m) = msg {
-                extract_usage(m)
-            } else {
-                (None, None, None, None, None, None)
-            }
+    let UsageTokens {
+        input: input_tokens,
+        output: output_tokens,
+        cache_read: cache_read_tokens,
+        cache_creation: cache_creation_tokens,
+        cache_creation_5m: cache_creation_5m_tokens,
+        cache_creation_1hr: cache_creation_1hr_tokens,
+    } = if finders.usage_key.find(raw).is_some() {
+        // Try top-level usage, then nested message.usage
+        let u = extract_usage(&parsed);
+        if u.input.is_some() || u.output.is_some() {
+            u
+        } else if let Some(m) = msg {
+            extract_usage(m)
         } else {
-            (None, None, None, None, None, None)
-        };
+            UsageTokens::default()
+        }
+    } else {
+        UsageTokens::default()
+    };
 
     let timestamp = parsed
         .get("timestamp")
@@ -675,21 +681,26 @@ fn extract_content_and_tools(
     (preview, tool_names, has_tool_result)
 }
 
+/// Token counts extracted from a `usage` sub-object.
+#[derive(Debug, Default)]
+struct UsageTokens {
+    pub input: Option<u64>,
+    pub output: Option<u64>,
+    pub cache_read: Option<u64>,
+    pub cache_creation: Option<u64>,
+    pub cache_creation_5m: Option<u64>,
+    pub cache_creation_1hr: Option<u64>,
+}
+
 /// Extract token counts from a `usage` sub-object.
-fn extract_usage(
-    parsed: &serde_json::Value,
-) -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
+fn extract_usage(parsed: &serde_json::Value) -> UsageTokens {
     let usage = match parsed.get("usage") {
         Some(u) => u,
-        None => return (None, None, None, None, None, None),
+        None => return UsageTokens::default(),
     };
 
-    let input = usage
-        .get("input_tokens")
-        .and_then(|v| v.as_u64());
-    let output = usage
-        .get("output_tokens")
-        .and_then(|v| v.as_u64());
+    let input = usage.get("input_tokens").and_then(|v| v.as_u64());
+    let output = usage.get("output_tokens").and_then(|v| v.as_u64());
     let cache_read = usage
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_u64());
@@ -707,7 +718,14 @@ fn extract_usage(
         })
         .unwrap_or((None, None));
 
-    (input, output, cache_read, cache_creation, cache_creation_5m, cache_creation_1hr)
+    UsageTokens {
+        input,
+        output,
+        cache_read,
+        cache_creation,
+        cache_creation_5m,
+        cache_creation_1hr,
+    }
 }
 
 /// Truncate a string to at most `max` characters, appending "..." if trimmed.

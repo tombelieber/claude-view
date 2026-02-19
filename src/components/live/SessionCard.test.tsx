@@ -111,8 +111,8 @@ describe('SessionCard sub-agent pills', () => {
   })
 })
 
-describe('SessionCard question card', () => {
-  it('shows QuestionCard when state is awaiting_input with question context', () => {
+describe('SessionCard question display', () => {
+  it('shows AskUserQuestionDisplay when context has questions', () => {
     const session = createMockSession({
       agentState: {
         group: 'needs_you',
@@ -132,12 +132,36 @@ describe('SessionCard question card', () => {
       },
     })
     renderCard(session)
-    expect(screen.getByTestId('question-card')).toBeInTheDocument()
     expect(screen.getByText('Which database should we use?')).toBeInTheDocument()
     expect(screen.getByText('PostgreSQL')).toBeInTheDocument()
+    expect(screen.getByText('SQLite')).toBeInTheDocument()
   })
 
-  it('does not show QuestionCard when awaiting_input but no context', () => {
+  it('shows AskUserQuestionDisplay for needs_permission state with question context', () => {
+    const session = createMockSession({
+      agentState: {
+        group: 'needs_you',
+        state: 'needs_permission',
+        label: 'Asked you a question',
+        context: {
+          questions: [{
+            question: 'Which framework?',
+            header: 'Framework',
+            options: [
+              { label: 'React', description: 'Component-based' },
+              { label: 'Vue', description: 'Progressive' },
+            ],
+            multiSelect: false,
+          }],
+        },
+      },
+    })
+    renderCard(session)
+    expect(screen.getByText('Which framework?')).toBeInTheDocument()
+    expect(screen.getByText('React')).toBeInTheDocument()
+  })
+
+  it('does not show question display when awaiting_input but no context', () => {
     const session = createMockSession({
       agentState: {
         group: 'needs_you',
@@ -146,10 +170,10 @@ describe('SessionCard question card', () => {
       },
     })
     renderCard(session)
-    expect(screen.queryByTestId('question-card')).not.toBeInTheDocument()
+    expect(screen.queryByText('Single selection only')).not.toBeInTheDocument()
   })
 
-  it('does not show QuestionCard when autonomous state', () => {
+  it('does not show question display when autonomous state without question context', () => {
     const session = createMockSession({
       agentState: {
         group: 'autonomous',
@@ -158,6 +182,6 @@ describe('SessionCard question card', () => {
       },
     })
     renderCard(session)
-    expect(screen.queryByTestId('question-card')).not.toBeInTheDocument()
+    expect(screen.queryByText('Single selection only')).not.toBeInTheDocument()
   })
 })
