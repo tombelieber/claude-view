@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    extract::{Path, State, WebSocketUpgrade},
     extract::ws::{CloseFrame, Message, WebSocket},
+    extract::{Path, State, WebSocketUpgrade},
     response::Response,
     routing::get,
     Router,
@@ -83,13 +83,13 @@ async fn ws_terminal_handler(
                     "type": "error",
                     "message": format!("Session '{}' not found", session_id),
                 });
+                let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
                 let _ = socket
-                    .send(Message::Text(err_msg.to_string().into()))
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4004,
+                        reason: "Session not found".into(),
+                    })))
                     .await;
-                let _ = socket.send(Message::Close(Some(CloseFrame {
-                    code: 4004,
-                    reason: "Session not found".into(),
-                }))).await;
             });
         }
     };
@@ -106,13 +106,13 @@ async fn ws_terminal_handler(
                 "type": "error",
                 "message": e.to_string(),
             });
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4004,
+                    reason: "Connection limit exceeded".into(),
+                })))
                 .await;
-            let _ = socket.send(Message::Close(Some(CloseFrame {
-                code: 4004,
-                reason: "Connection limit exceeded".into(),
-            }))).await;
             return;
         }
 
@@ -147,9 +147,7 @@ async fn ws_subagent_terminal_handler(
                 "type": "error",
                 "message": format!("Invalid agent ID: '{}'", agent_id),
             });
-            let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
-                .await;
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
                 .send(Message::Close(Some(CloseFrame {
                     code: 4004,
@@ -173,9 +171,7 @@ async fn ws_subagent_terminal_handler(
                     "type": "error",
                     "message": format!("Parent session '{}' not found", session_id),
                 });
-                let _ = socket
-                    .send(Message::Text(err_msg.to_string().into()))
-                    .await;
+                let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
                 let _ = socket
                     .send(Message::Close(Some(CloseFrame {
                         code: 4004,
@@ -199,9 +195,7 @@ async fn ws_subagent_terminal_handler(
                     agent_id, session_id
                 ),
             });
-            let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
-                .await;
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
                 .send(Message::Close(Some(CloseFrame {
                     code: 4004,
@@ -221,9 +215,7 @@ async fn ws_subagent_terminal_handler(
                 "type": "error",
                 "message": e.to_string(),
             });
-            let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
-                .await;
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
                 .send(Message::Close(Some(CloseFrame {
                     code: 4004,
@@ -418,9 +410,7 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
 
     // Extract timestamp
     let timestamp = if finders.timestamp_key.find(line_bytes).is_some() {
-        parsed
-            .get("timestamp")
-            .and_then(|v| v.as_str())
+        parsed.get("timestamp").and_then(|v| v.as_str())
     } else {
         None
     };
@@ -483,8 +473,14 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
                 }
             }
             "tool_use" => {
-                let tool_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
-                let input = block.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                let tool_name = block
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown");
+                let input = block
+                    .get("input")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 let mut result = serde_json::json!({
                     "type": "tool_use",
                     "name": tool_name,
@@ -605,13 +601,13 @@ async fn handle_terminal_ws(
             "type": "error",
             "message": "Session JSONL file not found on disk",
         });
+        let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
         let _ = socket
-            .send(Message::Text(err_msg.to_string().into()))
+            .send(Message::Close(Some(CloseFrame {
+                code: 4004,
+                reason: "Session JSONL file not found".into(),
+            })))
             .await;
-        let _ = socket.send(Message::Close(Some(CloseFrame {
-            code: 4004,
-            reason: "Session JSONL file not found".into(),
-        }))).await;
         return;
     }
 
@@ -621,11 +617,7 @@ async fn handle_terminal_ws(
         Ok(lines) => {
             for line in &lines {
                 for formatted in format_line_for_mode(line, &current_mode, &finders) {
-                    if socket
-                        .send(Message::Text(formatted.into()))
-                        .await
-                        .is_err()
-                    {
+                    if socket.send(Message::Text(formatted.into())).await.is_err() {
                         return; // client disconnected
                     }
                 }
@@ -650,13 +642,13 @@ async fn handle_terminal_ws(
                 "type": "error",
                 "message": format!("Failed to read scrollback: {e}"),
             });
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4500,
+                    reason: "Scrollback read failed".into(),
+                })))
                 .await;
-            let _ = socket.send(Message::Close(Some(CloseFrame {
-                code: 4500,
-                reason: "Scrollback read failed".into(),
-            }))).await;
             return;
         }
     }
@@ -665,32 +657,29 @@ async fn handle_terminal_ws(
     let (watch_tx, mut watch_rx) = mpsc::channel::<WatchEvent>(64);
 
     // Create a file position tracker starting at the current end of file
-    let mut tracker = match crate::file_tracker::FilePositionTracker::new_at_end(
-        file_path.clone(),
-    )
-    .await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to create file tracker"
-            );
-            let err_msg = serde_json::json!({
-                "type": "error",
-                "message": format!("Failed to initialize file tracker: {e}"),
-            });
-            let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
-                .await;
-            let _ = socket.send(Message::Close(Some(CloseFrame {
-                code: 4500,
-                reason: "File tracker init failed".into(),
-            }))).await;
-            return;
-        }
-    };
+    let mut tracker =
+        match crate::file_tracker::FilePositionTracker::new_at_end(file_path.clone()).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to create file tracker"
+                );
+                let err_msg = serde_json::json!({
+                    "type": "error",
+                    "message": format!("Failed to initialize file tracker: {e}"),
+                });
+                let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4500,
+                        reason: "File tracker init failed".into(),
+                    })))
+                    .await;
+                return;
+            }
+        };
 
     // Start the notify watcher for this specific file
     let watched_path = file_path.clone();
@@ -706,13 +695,13 @@ async fn handle_terminal_ws(
                 "type": "error",
                 "message": format!("Failed to start file watcher: {e}"),
             });
+            let _ = socket.send(Message::Text(err_msg.to_string().into())).await;
             let _ = socket
-                .send(Message::Text(err_msg.to_string().into()))
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4500,
+                    reason: "Watch failed".into(),
+                })))
                 .await;
-            let _ = socket.send(Message::Close(Some(CloseFrame {
-                code: 4500,
-                reason: "Watch failed".into(),
-            }))).await;
             return;
         }
     };
@@ -959,17 +948,14 @@ fn start_file_watcher(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use futures_util::{SinkExt, StreamExt};
+    use std::io::Write;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite;
 
     /// Helper: create an AppState with an in-memory database and a live session
     /// registered pointing to the given JSONL file path.
-    async fn test_state_with_session(
-        session_id: &str,
-        file_path: &str,
-    ) -> Arc<AppState> {
+    async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppState> {
         let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
         let state = Arc::new(AppState {
             start_time: std::time::Instant::now(),
@@ -980,7 +966,7 @@ mod tests {
             classify: Arc::new(crate::classify_state::ClassifyState::new()),
             facet_ingest: Arc::new(crate::facet_ingest::FacetIngestState::new()),
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
-            pricing: std::collections::HashMap::new(),
+            pricing: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
 
@@ -992,7 +978,7 @@ mod tests {
 
         // Register the session in the live sessions map
         {
-            use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
+            use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
             let mut map = state.live_sessions.write().await;
             let session = crate::live::state::LiveSession {
                 id: session_id.to_string(),
@@ -1038,9 +1024,7 @@ mod tests {
     async fn start_test_server(
         state: Arc<AppState>,
     ) -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
-        let app = Router::new()
-            .nest("/api/live", router())
-            .with_state(state);
+        let app = Router::new().nest("/api/live", router()).with_state(state);
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1063,8 +1047,7 @@ mod tests {
             addr.port(),
             session_id
         );
-        let (ws_stream, _response) =
-            tokio_tungstenite::connect_async(&url).await.unwrap();
+        let (ws_stream, _response) = tokio_tungstenite::connect_async(&url).await.unwrap();
         ws_stream
     }
 
@@ -1108,7 +1091,11 @@ mod tests {
     #[tokio::test]
     async fn ws_upgrade_returns_101() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        writeln!(tmp.as_file(), r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#).unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#
+        )
+        .unwrap();
 
         let state = test_state_with_session("test-ws-upgrade", tmp.path().to_str().unwrap()).await;
         let (addr, server_handle) = start_test_server(state).await;
@@ -1126,7 +1113,10 @@ mod tests {
 
         // Should receive at least one message (scrollback line or buffer_end)
         let msg = recv_text(&mut ws).await;
-        assert!(msg.is_some(), "Expected at least one message after handshake");
+        assert!(
+            msg.is_some(),
+            "Expected at least one message after handshake"
+        );
 
         ws.close(None).await.ok();
         server_handle.abort();
@@ -1149,7 +1139,7 @@ mod tests {
             classify: Arc::new(crate::classify_state::ClassifyState::new()),
             facet_ingest: Arc::new(crate::facet_ingest::FacetIngestState::new()),
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
-            pricing: std::collections::HashMap::new(),
+            pricing: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
 
@@ -1169,10 +1159,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&msg.unwrap()).unwrap();
         assert_eq!(parsed["type"], "error");
         assert!(
-            parsed["message"]
-                .as_str()
-                .unwrap()
-                .contains("not found"),
+            parsed["message"].as_str().unwrap().contains("not found"),
             "Error message should mention 'not found'"
         );
 
@@ -1180,7 +1167,10 @@ mod tests {
         match tokio::time::timeout(Duration::from_secs(2), ws.next()).await {
             Ok(Some(Ok(tungstenite::Message::Close(frame)))) => {
                 if let Some(cf) = frame {
-                    assert_eq!(cf.code, tungstenite::protocol::frame::coding::CloseCode::from(4004));
+                    assert_eq!(
+                        cf.code,
+                        tungstenite::protocol::frame::coding::CloseCode::from(4004)
+                    );
                 }
             }
             _ => {
@@ -1199,9 +1189,21 @@ mod tests {
     async fn ws_initial_buffer_sent() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         // Write 3 JSONL lines
-        writeln!(tmp.as_file(), r#"{{"type":"user","message":{{"role":"user","content":"line 1"}}}}"#).unwrap();
-        writeln!(tmp.as_file(), r#"{{"type":"assistant","message":{{"role":"assistant","content":"line 2"}}}}"#).unwrap();
-        writeln!(tmp.as_file(), r#"{{"type":"user","message":{{"role":"user","content":"line 3"}}}}"#).unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","message":{{"role":"user","content":"line 1"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"line 2"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","message":{{"role":"user","content":"line 3"}}}}"#
+        )
+        .unwrap();
         tmp.as_file().flush().unwrap();
 
         let state = test_state_with_session("test-buffer", tmp.path().to_str().unwrap()).await;
@@ -1236,7 +1238,12 @@ mod tests {
         }
 
         assert!(found_buffer_end, "Expected buffer_end marker");
-        assert_eq!(lines.len(), 3, "Expected 3 scrollback lines, got {}", lines.len());
+        assert_eq!(
+            lines.len(),
+            3,
+            "Expected 3 scrollback lines, got {}",
+            lines.len()
+        );
 
         // Verify lines contain the original data
         assert!(lines[0]["data"].as_str().unwrap().contains("line 1"));
@@ -1255,7 +1262,11 @@ mod tests {
     async fn ws_live_lines_streamed() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         // Write initial content
-        writeln!(tmp.as_file(), r#"{{"type":"user","message":{{"role":"user","content":"initial"}}}}"#).unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","message":{{"role":"user","content":"initial"}}}}"#
+        )
+        .unwrap();
         tmp.as_file().flush().unwrap();
 
         let state = test_state_with_session("test-live", tmp.path().to_str().unwrap()).await;
@@ -1304,7 +1315,9 @@ mod tests {
             loop {
                 if let Some(text) = recv_text(&mut ws).await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if v["type"] == "line" && v["data"].as_str().unwrap_or("").contains("live response") {
+                        if v["type"] == "line"
+                            && v["data"].as_str().unwrap_or("").contains("live response")
+                        {
                             return Some(v);
                         }
                     }
@@ -1333,7 +1346,11 @@ mod tests {
     #[tokio::test]
     async fn ws_disconnect_drops_watcher() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        writeln!(tmp.as_file(), r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#).unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#
+        )
+        .unwrap();
         tmp.as_file().flush().unwrap();
 
         let state = test_state_with_session("test-disconnect", tmp.path().to_str().unwrap()).await;
@@ -1406,7 +1423,10 @@ mod tests {
                 match parsed["type"].as_str() {
                     Some("line") => {
                         // Raw mode: should have "data" field with the original line
-                        assert!(parsed.get("data").is_some(), "Raw mode should have 'data' field");
+                        assert!(
+                            parsed.get("data").is_some(),
+                            "Raw mode should have 'data' field"
+                        );
                         raw_lines.push(parsed);
                     }
                     Some("buffer_end") => break,
@@ -1414,7 +1434,10 @@ mod tests {
                 }
             }
         }
-        assert!(!raw_lines.is_empty(), "Should have received at least 1 raw line");
+        assert!(
+            !raw_lines.is_empty(),
+            "Should have received at least 1 raw line"
+        );
 
         // Switch to rich mode
         ws.send(tungstenite::Message::Text(
@@ -1532,7 +1555,10 @@ mod tests {
         // Has "type" substring but isn't valid JSON — should be skipped in rich mode
         let line = r#"this is not json but has "type" in it"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(result.is_empty(), "Invalid JSON should be skipped in rich mode");
+        assert!(
+            result.is_empty(),
+            "Invalid JSON should be skipped in rich mode"
+        );
     }
 
     #[test]
@@ -1541,23 +1567,34 @@ mod tests {
         // Valid JSON but no "type" key — skipped in rich mode
         let line = r#"{"role":"user","content":"hello"}"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(result.is_empty(), "Line without type key should be skipped in rich mode");
+        assert!(
+            result.is_empty(),
+            "Line without type key should be skipped in rich mode"
+        );
     }
 
     #[test]
     fn format_line_rich_mode_progress_skipped() {
         let finders = RichModeFinders::new();
-        let line = r#"{"type":"progress","data":{"type":"hook_progress","hookEvent":"SessionStart"}}"#;
+        let line =
+            r#"{"type":"progress","data":{"type":"hook_progress","hookEvent":"SessionStart"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(result.is_empty(), "Progress events should be skipped in rich mode");
+        assert!(
+            result.is_empty(),
+            "Progress events should be skipped in rich mode"
+        );
     }
 
     #[test]
     fn format_line_rich_mode_meta_skipped() {
         let finders = RichModeFinders::new();
-        let line = r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"system prompt"}}"#;
+        let line =
+            r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"system prompt"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(result.is_empty(), "Meta messages should be skipped in rich mode");
+        assert!(
+            result.is_empty(),
+            "Meta messages should be skipped in rich mode"
+        );
     }
 
     #[test]
@@ -1568,7 +1605,10 @@ mod tests {
         assert_eq!(results.len(), 1);
         let parsed: serde_json::Value = serde_json::from_str(&results[0]).unwrap();
         assert_eq!(parsed["type"], "thinking");
-        assert!(parsed["content"].as_str().unwrap().contains("Let me analyze this"));
+        assert!(parsed["content"]
+            .as_str()
+            .unwrap()
+            .contains("Let me analyze this"));
         assert_eq!(parsed["ts"], "2026-01-15T10:30:00Z");
     }
 
@@ -1578,7 +1618,10 @@ mod tests {
         // Has type but no extractable content
         let line = r#"{"type":"assistant","message":{"role":"assistant"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(result.is_empty(), "Messages without content should be skipped");
+        assert!(
+            result.is_empty(),
+            "Messages without content should be skipped"
+        );
     }
 
     #[test]
@@ -1588,7 +1631,13 @@ mod tests {
         let line = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"reasoning here"},{"type":"text","text":"Part 1"},{"type":"text","text":"Part 2"},{"type":"tool_use","name":"Read","id":"1","input":{"file":"a.rs"}},{"type":"tool_use","name":"Write","id":"2","input":{"file":"b.rs"}}]},"timestamp":"2026-02-16T00:00:00Z"}"#;
         let results = format_line_for_mode(line, "rich", &finders);
         // Should produce: 2 tool_use + 1 thinking + 1 text (concatenated) = 4 messages
-        assert_eq!(results.len(), 4, "Expected 4 messages, got {}: {:?}", results.len(), results);
+        assert_eq!(
+            results.len(),
+            4,
+            "Expected 4 messages, got {}: {:?}",
+            results.len(),
+            results
+        );
 
         // Check tool_use messages
         let tool1: serde_json::Value = serde_json::from_str(&results[0]).unwrap();

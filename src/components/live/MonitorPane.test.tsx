@@ -40,6 +40,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       cacheReadCostUsd: 0.1,
       cacheCreationCostUsd: 0.03,
       cacheSavingsUsd: 0.2,
+      isEstimated: false,
     },
     cacheStatus: 'warm',
     ...overrides,
@@ -97,6 +98,7 @@ describe('MonitorPane', () => {
             cacheReadCostUsd: 0.5,
             cacheCreationCostUsd: 0.06,
             cacheSavingsUsd: 0,
+            isEstimated: false,
           },
         }),
       })
@@ -140,23 +142,15 @@ describe('MonitorPane', () => {
 
   describe('pin indicator', () => {
     it('shows pin icon when isPinned=true', () => {
-      const { container } = renderMonitorPane({ isPinned: true })
-
-      // Pin icon renders as an SVG with lucide class; when pinned there are extra Pin icons
-      // The pin indicator in the header is a separate <Pin> with text-blue-400
-      const blueIcons = container.querySelectorAll('.text-blue-400')
-      expect(blueIcons.length).toBeGreaterThan(0)
+      renderMonitorPane({ isPinned: true })
+      const pinButton = screen.getByTitle('Unpin pane')
+      expect(pinButton.className).toContain('text-blue-500')
     })
 
     it('does not show pin indicator icon when isPinned=false', () => {
-      const { container } = renderMonitorPane({ isPinned: false })
-
-      // When not pinned, the standalone Pin indicator should not render,
-      // but the pin action button still exists. The indicator-specific Pin
-      // has class text-blue-400 (without hover prefix).
-      // The pin button when not pinned has text-gray-500 class
+      renderMonitorPane({ isPinned: false })
       const pinButton = screen.getByTitle('Pin pane')
-      expect(pinButton.className).toContain('text-gray-500')
+      expect(pinButton.className).toContain('text-gray-400')
     })
   })
 

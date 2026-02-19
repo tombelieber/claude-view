@@ -16,6 +16,14 @@ export function formatNumber(value: bigint | number | null): string {
   return num.toLocaleString()
 }
 
+/** Format token counts with mission-control style suffixes (k/M). */
+export function formatTokenCount(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '--'
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}k`
+  return String(value)
+}
+
 /**
  * Format percentage values.
  * @param value - If 0-1 range, pass asRatio=true. If already percentage (0-100), pass asRatio=false.
