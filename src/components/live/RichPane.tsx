@@ -319,7 +319,7 @@ function toolChipColor(name: string): string {
 
 // --- Message Card Components ---
 
-function UserMessage({ message }: { message: RichMessage; index?: number }) {
+function UserMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -328,7 +328,11 @@ function UserMessage({ message }: { message: RichMessage; index?: number }) {
         <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
-            <JsonTree data={parsedJson} />
+            verboseMode ? (
+              <JsonTree data={parsedJson} />
+            ) : (
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
+            )
           ) : (
             <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
               <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
@@ -341,7 +345,7 @@ function UserMessage({ message }: { message: RichMessage; index?: number }) {
   )
 }
 
-function AssistantMessage({ message }: { message: RichMessage; index?: number }) {
+function AssistantMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -350,7 +354,11 @@ function AssistantMessage({ message }: { message: RichMessage; index?: number })
         <Bot className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
-            <JsonTree data={parsedJson} />
+            verboseMode ? (
+              <JsonTree data={parsedJson} />
+            ) : (
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
+            )
           ) : (
             <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
               <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
@@ -547,9 +555,9 @@ function Timestamp({ ts }: { ts?: number }) {
 function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   switch (message.type) {
     case 'user':
-      return <UserMessage message={message} index={index} />
+      return <UserMessage message={message} index={index} verboseMode={verboseMode} />
     case 'assistant':
-      return <AssistantMessage message={message} index={index} />
+      return <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_use':
       return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_result':
