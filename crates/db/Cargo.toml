@@ -20,6 +20,7 @@ chrono = { workspace = true }
 memmap2 = { workspace = true }
 memchr = { workspace = true }
 ts-rs = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
