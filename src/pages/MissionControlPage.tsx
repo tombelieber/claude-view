@@ -27,7 +27,7 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   if (stored && ['grid', 'list', 'kanban', 'monitor'].includes(stored)) {
     return stored
   }
-  return 'grid'
+  return 'kanban'
 }
 
 export function MissionControlPage() {
@@ -188,7 +188,7 @@ export function MissionControlPage() {
 
       {/* Scrollable content — kanban columns scroll independently, other views page-scroll */}
       <div className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
-        <div className={`max-w-7xl mx-auto ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
+        <div className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
           {/* View content */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
