@@ -313,9 +313,8 @@ pub async fn trigger_reindex(
 pub async fn clear_cache(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClearCacheResponse>> {
-    // Calculate size of cache before clearing
-    let cache_dir = dirs::cache_dir()
-        .map(|d| d.join("vibe-recall").join("index"));
+    // Calculate size of search index before clearing
+    let cache_dir = vibe_recall_core::paths::search_index_dir();
 
     let cleared_bytes = if let Some(ref dir) = cache_dir {
         if dir.exists() {
