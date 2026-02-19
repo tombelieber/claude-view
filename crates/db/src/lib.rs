@@ -14,6 +14,8 @@ pub mod insights_trends;
 
 pub use queries::AIGenerationStats;
 pub use queries::BranchCount;
+pub use queries::ActivityPoint;
+pub use queries::SessionFilterParams;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
@@ -296,8 +298,7 @@ impl Database {
 
 /// Returns the default database path: `~/.cache/vibe-recall/vibe-recall.db`
 pub fn default_db_path() -> DbResult<PathBuf> {
-    let cache_dir = dirs::cache_dir().ok_or(DbError::NoCacheDir)?;
-    Ok(cache_dir.join("vibe-recall").join("vibe-recall.db"))
+    vibe_recall_core::paths::db_path().ok_or(DbError::NoCacheDir)
 }
 
 #[cfg(test)]

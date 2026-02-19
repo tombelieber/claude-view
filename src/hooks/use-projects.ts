@@ -1,10 +1,8 @@
-import { useQuery, useQueries } from '@tanstack/react-query'
-import type { ProjectSummary, SessionsPage, SessionInfo } from '../types/generated'
+import { useQuery } from '@tanstack/react-query'
+import type { ProjectSummary, SessionsPage } from '../types/generated'
 
 // Re-export for backward compatibility with existing imports
-export type { ProjectSummary, SessionsPage, SessionInfo } from '../types/generated'
-// Keep ProjectInfo re-export for components that still reference it
-export type { ProjectInfo } from '../types/generated'
+export type { ProjectSummary, SessionsPage, SessionInfo, ProjectInfo } from '../types/generated'
 
 async function fetchProjectSummaries(): Promise<ProjectSummary[]> {
   const response = await fetch('/api/projects')
@@ -45,20 +43,4 @@ export function useProjectSessions(projectId: string | undefined, opts: ProjectS
     queryFn: () => fetchProjectSessions(projectId!, opts),
     enabled: !!projectId,
   })
-}
-
-export function useAllSessions(projectIds: string[]) {
-  const queries = useQueries({
-    queries: projectIds.map(id => ({
-      queryKey: ['project-sessions', id, { limit: 1000 }],
-      queryFn: () => fetchProjectSessions(id, { limit: 1000 }),
-    })),
-  })
-
-  const isLoading = queries.some(q => q.isLoading)
-  const sessions: SessionInfo[] = queries
-    .flatMap(q => q.data?.sessions ?? [])
-    .sort((a, b) => Number(b.modifiedAt) - Number(a.modifiedAt))
-
-  return { sessions, isLoading }
 }
