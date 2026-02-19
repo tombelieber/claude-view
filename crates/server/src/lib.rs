@@ -117,6 +117,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: None,
+        search_index: None,
     });
     api_routes(state)
 }
@@ -130,6 +131,7 @@ pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
+    search_index: Option<Arc<vibe_recall_search::SearchIndex>>,
     static_dir: Option<PathBuf>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
@@ -163,6 +165,7 @@ pub fn create_app_full(
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: Some(manager),
+        search_index,
     });
 
     let mut app = Router::new()

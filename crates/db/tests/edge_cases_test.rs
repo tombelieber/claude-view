@@ -438,7 +438,7 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
 
     // Run parallel indexing
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
 
     assert_eq!(indexed, 10, "All 10 sessions should be indexed");
 
