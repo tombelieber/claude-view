@@ -65,7 +65,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 dark:bg-[#010409]/80 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -74,14 +74,15 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
         className={cn(
           'relative flex flex-col',
           'w-[calc(100vw-32px)] h-[calc(100vh-32px)]',
-          'bg-gray-950 rounded-xl border border-gray-800',
-          'shadow-2xl shadow-black/80',
+          'bg-white dark:bg-[#0D1117] rounded-xl',
+          'border border-gray-200 dark:border-[#30363D]',
+          'shadow-2xl shadow-black/30 dark:shadow-black/80',
           'transition-transform duration-200 ease-out',
           isVisible ? 'scale-100' : 'scale-[0.97]',
         )}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-900 border-b border-gray-800 rounded-t-xl flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-[#161B22] border-b border-gray-200 dark:border-[#21262D] rounded-t-xl flex-shrink-0">
           <StatusDot
             group={session.agentState.group}
             size="sm"
@@ -89,7 +90,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           />
 
           <span
-            className="text-sm font-medium text-gray-100 truncate max-w-[200px]"
+            className="text-sm font-medium text-gray-900 dark:text-[#E6EDF3] truncate max-w-[200px]"
             title={session.projectPath}
           >
             {session.projectDisplayName || session.project}
@@ -97,7 +98,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {session.gitBranch && (
             <span
-              className="inline-flex items-center gap-1 text-xs font-mono text-gray-500 truncate max-w-[160px]"
+              className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[160px]"
               title={session.gitBranch}
             >
               <GitBranch className="w-3 h-3 flex-shrink-0" />
@@ -110,10 +111,10 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           <button
             onClick={copySessionId}
             title={`Copy session ID: ${session.id}`}
-            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 hover:text-gray-300 transition-colors"
+            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
           >
             {copied ? (
-              <Check className="w-3 h-3 text-green-500" />
+              <Check className="w-3 h-3 text-green-500 dark:text-[#56D364]" />
             ) : (
               <Copy className="w-3 h-3" />
             )}
@@ -123,10 +124,10 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           <div className="flex-1" />
 
           {/* Metrics */}
-          <span className="text-xs font-mono text-gray-400 tabular-nums">
+          <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums">
             ${session.cost.totalUsd.toFixed(2)}
           </span>
-          <span className="text-xs text-gray-500 tabular-nums">
+          <span className="text-xs text-gray-400 dark:text-[#6E7681] tabular-nums">
             Turn {session.turnCount}
           </span>
           <div className="w-16">
@@ -139,8 +140,8 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             className={cn(
               'text-[10px] px-2 py-0.5 rounded border transition-colors',
               verboseMode
-                ? 'border-blue-500 text-blue-400'
-                : 'border-gray-700 text-gray-500 hover:text-gray-300',
+                ? 'border-blue-500 dark:border-[#1F6FEB] text-blue-600 dark:text-[#79C0FF]'
+                : 'border-gray-300 dark:border-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]',
             )}
           >
             {verboseMode ? 'verbose' : 'compact'}
@@ -149,14 +150,14 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           {/* Close */}
           <button
             onClick={onClose}
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+            className="p-1 rounded text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] hover:bg-gray-200 dark:hover:bg-[#30363D] transition-colors"
             aria-label="Close terminal overlay"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Terminal — takes up all remaining space */}
+        {/* Terminal — takes up all remaining space (always dark) */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <RichTerminalPane
             sessionId={session.id}
@@ -166,16 +167,16 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
         </div>
 
         {/* Footer hint */}
-        <div className="flex items-center px-4 py-1.5 bg-gray-900 border-t border-gray-800 rounded-b-xl flex-shrink-0">
-          <span className="text-[10px] text-gray-600">
-            <kbd className="px-1 py-0.5 rounded bg-gray-800 text-gray-400 font-mono text-[9px]">
+        <div className="flex items-center px-4 py-1.5 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] rounded-b-xl flex-shrink-0">
+          <span className="text-[10px] text-gray-400 dark:text-[#484F58]">
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-[#21262D] text-gray-500 dark:text-[#8B949E] font-mono text-[9px] border border-gray-200 dark:border-[#30363D]">
               ESC
             </kbd>
             <span className="ml-1.5">to close</span>
           </span>
           <div className="flex-1" />
           {session.currentActivity && (
-            <span className="text-[10px] text-gray-500 truncate max-w-[400px]">
+            <span className="text-[10px] text-gray-400 dark:text-[#6E7681] truncate max-w-[400px]">
               {session.currentActivity}
             </span>
           )}

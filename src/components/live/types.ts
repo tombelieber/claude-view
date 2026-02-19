@@ -45,9 +45,9 @@ export const GROUP_ORDER: Record<AgentStateGroup, number> = {
 }
 
 export const LIVE_VIEW_MODES = [
-  { id: 'grid' as const, label: 'Grid', icon: 'LayoutGrid', shortcut: '1' },
-  { id: 'list' as const, label: 'List', icon: 'List', shortcut: '2' },
-  { id: 'kanban' as const, label: 'Board', icon: 'Columns3', shortcut: '3' },
+  { id: 'kanban' as const, label: 'Board', icon: 'Columns3', shortcut: '1' },
+  { id: 'grid' as const, label: 'Grid', icon: 'LayoutGrid', shortcut: '2' },
+  { id: 'list' as const, label: 'List', icon: 'List', shortcut: '3' },
   { id: 'monitor' as const, label: 'Monitor', icon: 'Monitor', shortcut: '4' },
 ] as const
 
