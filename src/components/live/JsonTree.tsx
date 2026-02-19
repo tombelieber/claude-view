@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { CompactCodeBlock } from './CompactCodeBlock'
+import { useMonitorStore } from '../../store/monitor-store'
 
 interface JsonTreeProps {
   data: unknown
@@ -176,7 +177,9 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   )
 }
 
-export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_NODES, verboseMode = false }: JsonTreeProps) {
+export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_NODES, verboseMode: verboseModeProp }: JsonTreeProps) {
+  const storeVerbose = useMonitorStore((s) => s.verboseMode)
+  const verboseMode = verboseModeProp ?? storeVerbose
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [showFallback, setShowFallback] = useState(false)
   const [copied, setCopied] = useState(false)
