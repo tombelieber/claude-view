@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { FolderOpen } from 'lucide-react'
 import { useProjectSummaries } from './hooks/use-projects'
 import { useAppStore } from './store/app-store'
 import { useTheme } from './hooks/use-theme'
@@ -77,19 +76,19 @@ export default function App() {
       <ColdStartOverlay progress={indexingProgress} />
 
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar projects={summaries} collapsed={sidebarCollapsed} />
+        <Sidebar projects={summaries ?? []} collapsed={sidebarCollapsed} />
 
         <main id="main" className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
-          <Outlet context={{ summaries, liveSessions }} />
+          <Outlet context={{ summaries: summaries ?? [], liveSessions }} />
         </main>
       </div>
 
-      <StatusBar projects={summaries} />
+      <StatusBar projects={summaries ?? []} />
 
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={closeCommandPalette}
-        projects={summaries}
+        projects={summaries ?? []}
       />
 
       <PatternAlert />
