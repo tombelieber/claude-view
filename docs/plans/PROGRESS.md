@@ -447,6 +447,10 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-15-agent-state-hooks-design.md` | approved | **Agent State Hooks** — replacement for intelligent session states design |
 | `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
 | `2026-02-18-full-text-search-design.md` | approved | **Phase 6: Full-Text Search** — Tantivy embedded search engine, Cmd+K global search, scoped search bar, BM25 ranking, fuzzy matching, faceted filters. 3 phases: index pipeline, search UI, advanced features |
+| `2026-02-19-process-gated-discovery-design.md` | done | **Process-Gated Discovery** — Prevent dead sessions from appearing as "running". Hooks are sole lifecycle authority; process detection gates startup recovery. JSONL watcher only enriches existing sessions |
+| `2026-02-19-process-gated-discovery.md` | done | **Process-Gated Discovery Implementation** — 6-task implementation plan for process-gated session discovery |
+| `2026-02-19-page-reorg-design.md` | done | **Page Reorganization Design** — Mission Control as home page, analytics consolidated into single tabbed page |
+| `2026-02-19-page-reorg-impl.md` | done | **Page Reorganization Implementation** — 6-task implementation: AnalyticsPage wrapper, router update, sidebar reduction (5→3), header breadcrumbs, redirects |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 
