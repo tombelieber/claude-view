@@ -105,7 +105,7 @@ Stage 3: AI AGENT OS (v1.x–v2.0)                  📐 DESIGNED
 | **Theme 2: Dashboard Analytics** | **DONE** | 5/5 features — time range filter, heatmap tooltips, sync redesign, AI generation breakdown, storage overview + responsive + observability + feature flags | Personal |
 | **GTM Launch** | **In Progress** | README rewrite done, GTM strategy doc done, AI Fluency Score in progress (separate branch) | Personal |
 | **Cold Start UX** | **DONE** | 7/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay), auto-open browser | Personal |
-| Phase 6: Search (Tantivy) | Deferred | — | Both |
+| **Phase 6: Search (Tantivy)** | **Approved** | Design complete — Tantivy embedded, Cmd+K, scoped search bar | Both |
 | Phase 7: Multi-Tool Providers | Draft | Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline | Both |
 | App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
 | **Theme 4: Chat Insights** | **DONE** | 8/8 phases, 39/39 tasks — classification, patterns, insights page shipped | Personal |
@@ -446,6 +446,7 @@ Clean 3-tier structure: active work only in main folder.
 | `2026-02-15-intelligent-session-states.md` | superseded | **Intelligent Session States** — superseded by `2026-02-15-agent-state-hooks-design.md` |
 | `2026-02-15-agent-state-hooks-design.md` | approved | **Agent State Hooks** — replacement for intelligent session states design |
 | `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
+| `2026-02-18-full-text-search-design.md` | approved | **Phase 6: Full-Text Search** — Tantivy embedded search engine, Cmd+K global search, scoped search bar, BM25 ranking, fuzzy matching, faceted filters. 3 phases: index pipeline, search UI, advanced features |
 
 ### Reference Plans (in `/docs/plans/archived/`)
 

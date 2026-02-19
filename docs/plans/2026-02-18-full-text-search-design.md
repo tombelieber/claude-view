@@ -52,7 +52,7 @@ theme: "Search & Discovery"
      └─────────────────┘    └─────────────────────┘
 ```
 
-**Storage**: Tantivy index at `~/.claude-view/search-index/`. Rebuilt from JSONL if deleted.
+**Storage**: Tantivy index at `<cache_dir>/vibe-recall/search-index/` (macOS: `~/Library/Caches/vibe-recall/search-index/`, Linux: `~/.cache/vibe-recall/search-index/`). Resolved via `dirs::cache_dir().join("vibe-recall").join("search-index")` — same base as the existing SQLite DB at `<cache_dir>/vibe-recall/vibe-recall.db`. Rebuilt from JSONL if deleted.
 
 **Data flow**: Deep indexer parses JSONL → inserts messages into Tantivy (same pass) → search API queries Tantivy → returns session-grouped results with highlighted snippets.
 
@@ -62,17 +62,48 @@ theme: "Search & Discovery"
 
 Each message is a Tantivy document (~400K documents for 3K sessions):
 
-| Field | Tantivy Type | Stored | Indexed | Purpose |
-|-------|-------------|--------|---------|---------|
-| `session_id` | `STRING` | Yes | Facet | Group results by session, delete-by-session for re-index |
-| `project` | `STRING` | Yes | Facet | Qualifier: `project:claude-view` |
-| `branch` | `STRING` | Yes | Facet | Qualifier: `branch:feature/auth` |
-| `model` | `STRING` | Yes | Facet | Qualifier: `model:opus` |
-| `role` | `STRING` | Yes | Facet | Qualifier: `role:user` — values: `user`, `assistant`, `tool` |
-| `content` | `TEXT` | Yes | Full-text (BM25) | The actual message text — tokenized, searchable |
-| `turn_number` | `U64` | Yes | Fast | For display in results ("turn 3") |
-| `timestamp` | `I64` | Yes | Fast | For `after:`/`before:` range queries and result ordering |
-| `skills` | `STRING` (multi) | Yes | Facet | Qualifier: `skill:commit` |
+| Field | Builder Call (Tantivy 0.22) | Purpose |
+|-------|---------------------------|---------|
+| `session_id` | `add_text_field("session_id", STRING \| STORED)` | Group results by session, delete-by-session for re-index |
+| `project` | `add_text_field("project", STRING \| STORED)` | Qualifier: `project:claude-view` — maps from `SessionInfo.project` |
+| `branch` | `add_text_field("branch", STRING \| STORED)` | Qualifier: `branch:feature/auth` — maps from `SessionInfo.git_branch: Option<String>` (use `""` for None) |
+| `model` | `add_text_field("model", STRING \| STORED)` | Qualifier: `model:opus` — maps from `SessionInfo.primary_model: Option<String>` (use `""` for None) |
+| `role` | `add_text_field("role", STRING \| STORED)` | Qualifier: `role:user` — map `Role::User` → `"user"`, `Role::Assistant` → `"assistant"`, `Role::ToolUse` → `"tool"`. Skip `ToolResult`, `System`, `Progress`, `Summary` (noise, not user-relevant) |
+| `content` | `add_text_field("content", TEXT \| STORED)` | The actual message text — tokenized for full-text BM25 search |
+| `turn_number` | `add_u64_field("turn_number", FAST \| STORED)` | For display in results ("turn 3") — derived from incrementing counter over `search_messages` during the write phase (1-based). Not a field on `Message`. |
+| `timestamp` | `add_i64_field("timestamp", FAST \| STORED)` | For `after:`/`before:` range queries — derived from `Message.timestamp: Option<String>` (ISO-8601). Must parse to unix seconds via `chrono::DateTime::parse_from_rfc3339().timestamp()`. Use `0` if None (excluded from range queries). |
+| `skills` | `add_text_field("skills", STRING \| STORED)` (multi-valued) | Qualifier: `skill:commit` |
+
+**Note on Tantivy 0.22 types**: `STRING` and `TEXT` are `TextOptions` presets — `STRING` indexes the field as a single untokenized term (for exact-match qualifiers), `TEXT` tokenizes and indexes for full-text search with BM25 scoring. `FAST` and `STORED` are flags, not separate types. `FAST` enables columnar storage for fast range queries and sorting. `STORED` means the field value is retrievable from search results.
+
+### Concrete schema builder (verbatim-compilable)
+
+```rust
+use tantivy::schema::*;
+
+pub fn build_schema() -> Schema {
+    let mut schema_builder = Schema::builder();
+
+    // Untokenized string fields for exact-match qualifiers and grouping
+    schema_builder.add_text_field("session_id", STRING | STORED);
+    schema_builder.add_text_field("project", STRING | STORED);
+    schema_builder.add_text_field("branch", STRING | STORED);
+    schema_builder.add_text_field("model", STRING | STORED);
+    schema_builder.add_text_field("role", STRING | STORED);
+
+    // Full-text field — tokenized, BM25-ranked, stored for snippet generation
+    schema_builder.add_text_field("content", TEXT | STORED);
+
+    // Numeric fast fields for range queries and display
+    schema_builder.add_u64_field("turn_number", FAST | STORED);
+    schema_builder.add_i64_field("timestamp", FAST | STORED);
+
+    // Multi-valued string field — one doc can have multiple skills
+    schema_builder.add_text_field("skills", STRING | STORED);
+
+    schema_builder.build()
+}
+```
 
 ### Why one doc per message, not per session
 
@@ -190,14 +221,16 @@ Search bar is context-scoped. Cmd+K is always global. No "search everywhere" lin
 ### Component Breakdown
 
 **`useSearch` hook** (`src/hooks/use-search.ts`)
-- Debounced query (200ms) → `GET /api/search`
+- Debounced query (200ms) → `GET /api/search`. **Note: React Query v5 has no built-in debounce.** Implement manually: `useState` for raw query, `useEffect` + `setTimeout(200ms)` to produce `debouncedQuery`, then pass `debouncedQuery` as part of the `useQuery` key with `enabled: debouncedQuery.length > 0`.
 - Manages: `query`, `results`, `isLoading`, `scope`, `selectedIndex`
 - Keyboard navigation: arrow keys move `selectedIndex`, Enter opens session
-- Scope auto-set from current route (`useLocation()`)
-- React Query for caching and deduplication
+- Scope auto-set from current route (`useLocation()` — react-router-dom v7)
+- React Query (`@tanstack/react-query` v5) for caching and deduplication. Follow existing pattern: query key as array of primitives `['search', debouncedQuery, scope]`, set `staleTime` and `gcTime` (NOT `cacheTime` — renamed in v5).
+- **Reuse existing Zustand state**: `useAppStore` already has `recentSearches`, `addRecentSearch()`, `isCommandPaletteOpen`, `openCommandPalette()`, `closeCommandPalette()`. Do NOT duplicate this state in the hook.
 
-**`SearchBar`** (`src/components/SearchBar.tsx`)
-- Always visible in header
+**`SearchBar`** (`src/components/SearchBar.tsx`) — new component, but **modifies existing `Header.tsx`**
+- Replaces the existing search button in `Header.tsx` (lines 108-118) that currently calls `openCommandPalette()`.
+- Always visible in header as an `<input>`, not just a button.
 - Scope chip: colored pill showing current context, click to remove (goes global)
 - Results in dropdown below (max-height, scrollable)
 - `Escape` clears and closes. `ArrowDown` moves into results.
@@ -209,13 +242,10 @@ Search bar is context-scoped. Cmd+K is always global. No "search everywhere" lin
 └──────────────────────────────────────────────────┘
 ```
 
-**`CommandPalette`** (`src/components/CommandPalette.tsx`)
-- Modal overlay, always global scope
-- Portal-rendered (escapes any parent context)
-- `Escape` or click-outside closes
-- Shows recent searches when input is empty
-- Arrow keys navigate results, `Enter` opens
-- `Cmd+K` toggles open/close
+**`CommandPalette`** (`src/components/CommandPalette.tsx`) — **ALREADY EXISTS (228 lines)**
+- Existing implementation handles: Cmd+K toggle, portal rendering, keyboard nav (arrow keys, Enter, Escape), recent searches from Zustand, and navigation to `/search?q=`.
+- **Modify, don't recreate.** Changes needed: replace client-side `filterSessions` call with Tantivy-backed `useSearch` hook results, render `SearchResultCard` components instead of current `SessionCard` items, add Tantivy result metadata (match count, snippets with `<mark>` tags).
+- **Keyboard shortcut coordination**: `App.tsx` (line 25-35) already registers global `Cmd+K` on `window`. `MissionControlPage.tsx` (line 119-131) adds a capture-phase override to suppress the global handler. Do NOT add a third competing listener — reuse the existing Zustand `openCommandPalette()`/`closeCommandPalette()` actions.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -286,7 +316,7 @@ Expanded:
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+K` | Open/close command palette |
-| `Ctrl+F` (session page) | Focus search bar (in-session mode) |
+| `Ctrl+F` (session page) | Focus search bar (in-session mode) — add to existing `ConversationView.tsx` keydown handler (lines 166-185), do NOT add a separate `window` listener |
 | `Escape` | Close palette / clear search bar |
 | `↑↓` | Navigate results |
 | `Enter` | Open selected result |
@@ -322,11 +352,52 @@ When on a session detail page, the search bar switches to find-in-conversation m
 
 The deep indexer in `crates/db/src/indexer_parallel.rs` already:
 1. Opens each JSONL file
-2. Parses every message via `parse_bytes()`
-3. Extracts 60+ fields
+2. Parses every message via `vibe_recall_db::indexer_parallel::parse_bytes()` → returns `ParseResult`
+3. Extracts 60+ fields from `ParseResult`
 4. Writes to SQLite
 
-**Addition**: After step 2, also write each message to Tantivy. Same parsed data, no extra file reads.
+**Critical architectural constraint**: `parse_bytes()` returns `ParseResult` which contains `Vec<RawTurn>` — but `RawTurn` is a **compact token-accounting struct** (uuid, seq, model_id, input/output tokens). It has **no `.messages` field, no `.content`, no `.role`**. Message text content is NOT available from `ParseResult`. To get actual message content (role, text, timestamp) for Tantivy indexing, a different parser path is needed.
+
+**Integration strategy (two-phase approach)**:
+
+1. **Extend `ParseResult`** to collect message content during `parse_bytes()`. Add a new field:
+   ```rust
+   pub struct ParseResult {
+       // ... existing fields ...
+       /// Collected message content for search indexing (role, content, timestamp_unix)
+       pub search_messages: Vec<SearchableMessage>,
+   }
+
+   pub struct SearchableMessage {
+       pub role: String,      // "user", "assistant", "tool" — mapped from Role enum
+       pub content: String,
+       pub timestamp: Option<i64>,  // parsed from ISO-8601 to unix seconds
+   }
+   ```
+   This is populated inside `parse_bytes()` during the existing line-by-line parse, filtering to only `Role::User`, `Role::Assistant`, and `Role::ToolUse`. Skip `ToolResult` (noisy output), `System`, `Progress`, and `Summary`. The ISO-8601 timestamp string is converted to unix i64 using `chrono::DateTime::parse_from_rfc3339().timestamp()`.
+
+   **Memory impact**: Collecting all message text in `search_messages` means the full content of every indexed message for every session in a batch is held in memory between the parallel parse phase and the sequential write phase. For a batch of ~100 sessions (the deep indexer's batch size), this is manageable. For a full re-index of 3K sessions, the indexer processes in batches — `search_messages` for each batch is dropped after Tantivy writes complete in the write phase, keeping peak memory proportional to batch size, not total corpus size. If memory pressure becomes a concern, the batch size can be reduced or `search_messages` can be written to Tantivy eagerly per-session in the write loop and cleared immediately after.
+
+2. **Write to Tantivy in the sequential write phase** (not the parallel parse phase). After the parallel parse tasks complete and results are collected, the write phase (`spawn_blocking` closure at line ~1931) iterates over all `DeepIndexResult`s and writes to SQLite. **Add Tantivy writes in this same sequential loop**:
+   - `delete_term(session_id)` — remove old docs for re-indexed session
+   - `add_document()` for each `SearchableMessage`
+   - One `commit()` after the entire batch completes
+
+   This avoids `IndexWriter` lock contention (Tantivy has a single writer per index) and mirrors the existing SQLite transaction pattern. Since the write phase runs in a single `spawn_blocking` closure, `IndexWriter` can be passed as `&mut IndexWriter` — no `Mutex` needed. The writer is created once at startup (via `Index::writer()`), stored in the `SearchIndex` struct, and borrowed mutably only in this sequential write phase.
+
+3. **Thread `project` through `DeepIndexResult`**. Currently `get_sessions_needing_deep_index()` returns only `(id, file_path)` — it does NOT return `project`. Fix: extend the SQL query to also SELECT `project`, and add `project: String` to `DeepIndexResult`. Similarly, `primary_model` is only computed in the write phase via `compute_primary_model()` — it is available there but NOT during parsing.
+
+**Key type mappings in the write phase**:
+- `session_id`: from `DeepIndexResult.id`
+- `project`: from `DeepIndexResult.project` (new field — requires extending `get_sessions_needing_deep_index()`)
+- `git_branch`: from `DeepIndexResult.parse_result.git_branch: Option<String>`
+- `primary_model`: from `compute_primary_model(&result.parse_result.turns)` (already computed in write phase at line ~1995)
+- Messages: from `DeepIndexResult.parse_result.search_messages: Vec<SearchableMessage>` (new field)
+- Turn number: tracked as an incrementing counter over `search_messages` (1-based index as messages are iterated)
+
+**Role filtering** (applied inside `parse_bytes()` when collecting `search_messages`):
+- Include: `Role::User` → `"user"`, `Role::Assistant` → `"assistant"`, `Role::ToolUse` → `"tool"`
+- Exclude: `ToolResult`, `System`, `Progress`, `Summary`
 
 ### Incremental updates
 
@@ -343,34 +414,105 @@ If the Tantivy index is deleted or corrupted:
 
 ### Index location
 
-`~/.claude-view/search-index/` — alongside the existing SQLite DB at `~/.claude-view/sessions.db`.
+`<cache_dir>/vibe-recall/search-index/` — alongside the existing SQLite DB at `<cache_dir>/vibe-recall/vibe-recall.db`. Use `dirs::cache_dir().join("vibe-recall").join("search-index")` in Rust. On macOS this is `~/Library/Caches/vibe-recall/search-index/`, on Linux `~/.cache/vibe-recall/search-index/`.
 
 ---
 
 ## Backend Implementation
 
+### Crate dependency fix (pre-requisite)
+
+`crates/search/Cargo.toml` is missing `serde` and `ts-rs`. Add before implementation:
+
+```toml
+# Add to [dependencies] in crates/search/Cargo.toml
+serde = { workspace = true }
+ts-rs = { workspace = true }
+```
+
 ### New files
 
 | File | Purpose |
 |------|---------|
-| `crates/search/src/lib.rs` | Tantivy schema definition, index open/create |
-| `crates/search/src/indexer.rs` | `index_message()`, `delete_session()`, `commit()` |
+| `crates/search/src/lib.rs` | Tantivy schema definition, index open/create (replaces current stub: `pub fn placeholder() {}`) |
+| `crates/search/src/indexer.rs` | `index_session()`, `delete_session()`, `commit()` |
 | `crates/search/src/query.rs` | Query parsing (qualifiers, phrase, fuzzy, regex), execute, snippet extraction |
-| `crates/search/src/types.rs` | `SearchResult`, `SessionHit`, `MatchHit` response types |
+| `crates/search/src/types.rs` | `SearchResponse`, `SessionHit`, `MatchHit` response types |
 | `crates/server/src/routes/search.rs` | `GET /api/search` Axum handler |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
-| `crates/db/src/indexer_parallel.rs` | Add Tantivy writes during deep index pass |
-| `crates/server/src/main.rs` | Open Tantivy index at startup, add to `AppState`, register `/api/search` route |
-| `crates/server/src/lib.rs` | Add `SearchIndex` to `AppState` struct |
+| `crates/search/Cargo.toml` | Add `serde` and `ts-rs` workspace dependencies |
+| `crates/core/src/types.rs` (or new file in core) | Add `SearchableMessage` struct; extend `ParseResult` with `search_messages: Vec<SearchableMessage>` |
+| `crates/db/src/indexer_parallel.rs` | (1) Collect `search_messages` during `parse_bytes()` line-by-line parse. (2) Extend `get_sessions_needing_deep_index()` to also SELECT `project`. (3) Add `project: String` to `DeepIndexResult`. (4) Pass `Arc<SearchIndex>` into `pass_2_deep_index()`. (5) Add Tantivy batch write (delete+insert+commit) in the sequential write phase alongside SQLite writes. |
+| `crates/server/src/state.rs` | Add `pub search_index: Arc<SearchIndex>` field to `AppState` struct |
+| `crates/server/src/state.rs` | Update `AppState::new()` (line ~70) and `AppState::new_with_indexing()` (line ~95) and `AppState::new_with_indexing_and_registry()` (line ~119) |
+| `crates/server/src/lib.rs` | Update `create_app_with_git_sync()` (line ~103) and `create_app_full()` (line ~154) — both construct `AppState { ... }` directly |
+| `crates/server/src/routes/mod.rs` | Add `pub mod search;` declaration and `.nest("/api", search::router())` in `api_routes()` |
+| `src/types/generated/index.ts` | Manually add re-exports: `export * from './SearchResponse'`, `export * from './SessionHit'`, `export * from './MatchHit'` |
+
+| `crates/server/src/routes/jobs.rs` | Update test helper `AppState { ... }` struct literal (1 site, in `#[cfg(test)]`) |
+| `crates/server/src/routes/terminal.rs` | Update test helper `AppState { ... }` struct literals (2 sites, in `#[cfg(test)]`) |
+
+**Critical: AppState has 7 construction sites (not 5) — ALL must include the new `search_index` field or the code won't compile:**
+1. `state.rs` — `AppState::new()` (~line 70)
+2. `state.rs` — `AppState::new_with_indexing()` (~line 95)
+3. `state.rs` — `AppState::new_with_indexing_and_registry()` (~line 119)
+4. `lib.rs` — `create_app_with_git_sync()` (~line 103)
+5. `lib.rs` — `create_app_full()` (~line 154)
+6. `routes/jobs.rs` — test helper (~line 65, `#[cfg(test)]`)
+7. `routes/terminal.rs` — test helpers (~lines 974, 1143, `#[cfg(test)]`)
+
+### Axum handler pattern (copy from existing routes)
+
+The search route handler must follow the established pattern:
+
+```rust
+// crates/server/src/routes/search.rs
+
+use crate::error::ApiResult;
+use crate::AppState;
+use axum::{extract::{Query, State}, routing::get, Json, Router};
+use serde::Deserialize;
+use std::sync::Arc;
+use vibe_recall_search::types::SearchResponse;
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct SearchQuery {
+    pub q: Option<String>,
+    pub scope: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+pub fn router() -> Router<Arc<AppState>> {
+    Router::new().route("/search", get(search_handler))
+}
+
+pub async fn search_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> ApiResult<Json<SearchResponse>> {
+    let q = query.q.as_deref().unwrap_or("").trim();
+    if q.is_empty() {
+        return Err(crate::error::ApiError::BadRequest(
+            "query parameter 'q' is required".to_string(),
+        ));
+    }
+    // ... Tantivy query execution ...
+}
+```
+
+**Note**: All URL query params are **snake_case** (matching every other endpoint in the codebase). No camelCase in URLs.
 
 ### Rust types
 
 ```rust
 // crates/search/src/types.rs
+// Requires: serde = { workspace = true }, ts-rs = { workspace = true } in crates/search/Cargo.toml
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -435,18 +577,20 @@ pub struct MatchHit {
 | Tantivy schema + crate | Backend | Build out `crates/search/` with schema |
 | Index during Pass 2 | Backend | Pipe parsed messages into Tantivy during deep indexing |
 | `GET /api/search` | Backend | Endpoint with plain text + exact phrase + scope |
-| `CommandPalette` (Cmd+K) | Frontend | Global search modal, result cards, keyboard nav |
-| `SearchBar` scoped mode | Frontend | Header bar with scope chips, dropdown results |
-| `SearchResultCard` | Frontend | Shared result component with expandable matches |
+| Upgrade `CommandPalette` | Frontend | **Modify existing** `src/components/CommandPalette.tsx` — replace client-side filtering with Tantivy `useSearch` hook, add `SearchResultCard` rendering |
+| Upgrade `SearchResults` page | Frontend | **Modify existing** `src/components/SearchResults.tsx` — replace `useAllSessions` + `src/lib/search.ts` with Tantivy `useSearch` hook |
+| `SearchBar` scoped mode | Frontend | **New** component in header (replaces existing button in `Header.tsx`), scope chips, dropdown results |
+| `SearchResultCard` | Frontend | **New** shared result component with expandable matches |
+| Update `src/types/generated/index.ts` | Frontend | Manually add `export * from './SearchResponse'`, `export * from './SessionHit'`, `export * from './MatchHit'` |
 
 ### Phase 2 — Polish & power features
 
 | Item | What |
 |------|------|
-| Qualifiers | Parse `project:`, `branch:`, `model:`, `role:`, `skill:`, `after:`, `before:` |
+| Qualifiers | Parse `project:`, `branch:`, `model:`, `role:`, `skill:`, `after:`, `before:` — **Note:** `src/lib/search.ts` already implements client-side qualifier parsing for `project:`, `path:`, `skill:`, `after:`, `before:`, regex, phrase. Port this logic to Rust or delegate to Tantivy's QueryParser. |
 | Fuzzy matching | Tantivy edit-distance fuzzy (`~` suffix) |
 | Regex | `/pattern/` → `RegexQuery` |
-| Recent searches | Persist last 20 searches in localStorage |
+| Recent searches | Already implemented in Zustand (`useAppStore.recentSearches`, `addRecentSearch()`). Just ensure Tantivy search calls `addRecentSearch()` on submit. |
 | In-session search | Client-side Ctrl+F with highlight-and-scroll |
 
 ### Phase 3 — Intelligent search (future)
@@ -484,3 +628,70 @@ pub struct MatchHit {
 | No results | "No sessions match" with suggestions: "Try removing quotes for broader search" or "Search all sessions" link if scoped |
 | Search API timeout (>5s) | "Search is taking longer than expected. Try a simpler query." |
 | Very large result set (>100 sessions) | Paginate. Show "Showing 20 of 147 sessions. Load more." |
+
+---
+
+## Existing Code to Reuse or Replace
+
+These files already exist and the plan must integrate with them, not recreate from scratch:
+
+| File | Current State | Plan Action |
+|------|--------------|-------------|
+| `src/components/CommandPalette.tsx` (228 lines) | Fully implemented: Cmd+K, keyboard nav, recent searches, Zustand integration | **Modify**: replace client-side `filterSessions` with Tantivy `useSearch` results |
+| `src/components/SearchResults.tsx` (110 lines) | Page-level search with client-side filtering via `useAllSessions` | **Modify**: replace with Tantivy-backed `useSearch` hook |
+| `src/lib/search.ts` (183 lines) | Client-side `parseQuery`/`filterSessions` with `project:`, `path:`, `skill:`, `after:`, `before:`, regex, phrase | **Dead code after Phase 1** — both consumers (`SearchResults.tsx`, `CommandPalette.tsx`) are migrated to Tantivy-backed `useSearch`. Port qualifier parsing logic to Rust. Remove `search.ts` when in-session search lands in Phase 2 (in-session search uses a dedicated `useInSessionSearch` hook with simple string matching, not this file's `filterSessions`). |
+| `src/store/app-store.ts` | Zustand: `recentSearches`, `isCommandPaletteOpen`, `addRecentSearch()`, `openCommandPalette()`, `closeCommandPalette()` | **Reuse as-is** |
+| `src/components/Header.tsx` (line 108-118) | Search button that calls `openCommandPalette()` | **Replace** button with `SearchBar` input component |
+| `src/App.tsx` (line 25-35) | Global `Cmd+K` listener on `window` | **Keep** — already wired to Zustand `openCommandPalette()` |
+| `src/pages/MissionControlPage.tsx` (line 119-131) | Capture-phase `Cmd+K` override | **Keep** — do not conflict |
+| `src/components/ConversationView.tsx` (line 166-185) | Existing `keydown` handler for `Cmd+Shift+E/P` | **Extend** with `Ctrl+F` for in-session search |
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Plan said `AppState` is in `crates/server/src/lib.rs` — actual: `crates/server/src/state.rs` with 5 construction sites | Blocker | Updated "Modified files" table to list `state.rs` and all 5 construction sites explicitly |
+| 2 | No hook point for search indexing — `parse_bytes()` doesn't expose session metadata | Blocker | Added detailed integration strategy: pass `Arc<SearchIndex>` into `pass_2_deep_index()`, call inside existing per-session closure |
+| 3 | `crates/search/Cargo.toml` missing `serde` and `ts-rs` dependencies | Blocker | Added "Crate dependency fix" pre-requisite section with exact lines to add |
+| 4 | Wrong data directory: plan said `~/.claude-view/`, actual: `dirs::cache_dir().join("vibe-recall")` | Blocker | Fixed all path references to use `<cache_dir>/vibe-recall/search-index/` with platform-specific paths |
+| 5 | `CommandPalette.tsx` already fully exists (228 lines) — plan treated as net-new | Blocker | Changed to "Modify existing" with specific changes needed |
+| 6 | `SearchResults.tsx` already exists with client-side filtering | Blocker | Changed Phase 1 to "Upgrade SearchResults page" instead of creating new |
+| 7 | `src/types/generated/index.ts` is hand-maintained — new types won't be importable without manual update | Blocker | Added explicit step in "Modified files" to add re-exports |
+| 8 | Route registration is in `routes/mod.rs`, not `main.rs` | Blocker | Fixed "Modified files" table to reference `routes/mod.rs` with `pub mod search;` + `.nest()` call |
+| 9 | Field name mismatches: `branch` vs `git_branch`, `model` vs `primary_model` | Warning | Updated Tantivy schema table with actual field names and mappings |
+| 10 | `Message.timestamp` is `Option<String>` (ISO-8601), not `i64` | Warning | Added conversion note to schema table: parse via `chrono::DateTime::parse_from_rfc3339().timestamp()` |
+| 11 | `turn_number` doesn't exist on `Message` — from `RawTurn.seq` | Warning | Updated schema table: derived from message sequence counter, not a Message field |
+| 12 | `Role` enum has 7 values, plan maps to 3 without specifying which to skip | Warning | Added explicit role filtering: index `User`, `Assistant`, `ToolUse`; skip `ToolResult`, `System`, `Progress`, `Summary` |
+| 13 | Existing client-side search engine at `src/lib/search.ts` already has most "Phase 2" qualifiers | Warning | Added note to Phase 2 qualifiers about porting existing client-side logic |
+| 14 | Zustand store already owns search state — plan risked duplicating it | Warning | Added explicit "reuse existing Zustand state" note to `useSearch` hook spec |
+| 15 | `Header.tsx` modification needed — not purely additive | Warning | Updated `SearchBar` spec to note it replaces existing button |
+| 16 | Multiple keyboard shortcut listeners could conflict | Warning | Added coordination notes for Cmd+K (App.tsx, MissionControlPage.tsx) and Ctrl+F (ConversationView.tsx) |
+| 17 | React Query v5 has no built-in debounce | Warning | Added explicit debounce implementation notes to `useSearch` hook spec |
+| 18 | Recent searches already in Zustand — plan's Phase 2 said "persist in localStorage" | Warning | Updated Phase 2 to reference existing Zustand `addRecentSearch()` |
+| 19 | Added "Existing Code to Reuse or Replace" section | — | New section documenting all existing files the plan must integrate with |
+| 20 | Added Axum handler pattern with concrete code | — | New section showing exact handler signature, query params struct, error handling |
+
+**Round 2 — Adversarial Review Fixes (score: 61→85)**
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 21 | `RawTurn` has no `.messages: Vec<Message>` — entire integration strategy based on non-existent field | Blocker | Completely rewrote integration strategy: extend `ParseResult` with `search_messages: Vec<SearchableMessage>` collected during `parse_bytes()` |
+| 22 | `project` not in scope in `pass_2_deep_index()` — `get_sessions_needing_deep_index()` doesn't return it | Blocker | Added requirement to extend SQL query to SELECT project, add `project: String` to `DeepIndexResult` |
+| 23 | Missing `use serde::Deserialize;` and `use vibe_recall_search::types::SearchResponse;` in handler code block | Blocker | Added both imports to the code block |
+| 24 | Plan claimed 5 AppState construction sites; actual is 7 (2 test helpers in `jobs.rs` and `terminal.rs` missed) | Blocker | Updated count to 7, listed all sites with file/line references, added `jobs.rs` and `terminal.rs` to modified files |
+| 25 | Tantivy writes in parallel parse tasks would cause `IndexWriter` lock contention | Important | Moved Tantivy writes to sequential write phase — batch delete+insert+commit alongside SQLite transaction |
+| 26 | `primary_model` not computed at parse phase, only available in write phase | Important | Documented that `compute_primary_model()` is called in write phase — Tantivy writes happen there too |
+| 27 | `turn_number` derivation from `RawTurn.seq` misleading — `RawTurn` has no messages | Minor | Changed to incrementing counter over `search_messages` in the write phase. Removed `RawTurn.seq` analogy from schema table. |
+
+**Round 3 — Final Precision Fixes (score: ~85→100)**
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 28 | Tantivy schema table used informal type notation (`STRING`, `TEXT`, `U64`, `I64`, `Fast`) that could mislead — these are `TextOptions` presets and flags, not separate types | Important | Replaced schema table "Tantivy Type" column with "Builder Call (Tantivy 0.22)" showing exact `add_text_field`/`add_u64_field`/`add_i64_field` calls with proper flag syntax. Added explanatory note on `STRING` vs `TEXT` vs `FAST` vs `STORED` semantics. |
+| 29 | No concrete, compilable schema builder code — informal table left room for API misuse | Important | Added "Concrete schema builder (verbatim-compilable)" code block with `use tantivy::schema::*`, `Schema::builder()`, and all 9 field definitions matching the table exactly. |
+| 30 | `IndexWriter` requires exclusive access (`&mut`) but plan didn't mention this constraint | Important | Added note to write phase section: since sequential `spawn_blocking` runs single-threaded, `&mut IndexWriter` suffices — no `Mutex` needed. Writer created once at startup, stored in `SearchIndex`, borrowed mutably only in write phase. |
+| 31 | `turn_number` schema table row still referenced `RawTurn.seq` analogy, inconsistent with key type mappings section | Minor | Removed `(analogous to RawTurn.seq)` from schema table. Now consistently says "incrementing counter over `search_messages`" in both schema table and key type mappings. |
+| 32 | `src/lib/search.ts` lifecycle unclear — plan said "Keep for fallback / in-session search" but both consumers migrate away in Phase 1 | Minor | Clarified: dead code after Phase 1, removed when in-session search lands in Phase 2. In-session search uses dedicated `useInSessionSearch` hook, not `filterSessions`. |
+| 33 | `SearchableMessage` memory impact unaddressed — collecting all message text in `ParseResult` could be significant for large batches | Minor | Added memory impact note: peak memory proportional to batch size (not corpus size) because `search_messages` is dropped after each batch's Tantivy write. Batch size is tunable if memory pressure occurs. |
