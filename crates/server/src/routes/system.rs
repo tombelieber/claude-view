@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     routing::{get, post},
     Json, Router,
 };
@@ -399,6 +399,29 @@ fn calculate_dir_size(dir: &std::path::Path) -> u64 {
 }
 
 // ============================================================================
+// Check Path
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CheckPathQuery {
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckPathResponse {
+    exists: bool,
+}
+
+/// GET /api/check-path?path=... — Check whether a filesystem path still exists.
+///
+/// Used by the frontend to validate project paths before offering "resume session".
+/// Worktree directories can be removed, making the session un-resumable.
+async fn check_path(Query(q): Query<CheckPathQuery>) -> Json<CheckPathResponse> {
+    let exists = std::path::Path::new(&q.path).exists();
+    Json(CheckPathResponse { exists })
+}
+
+// ============================================================================
 // Router
 // ============================================================================
 
@@ -410,6 +433,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/system/clear-cache", post(clear_cache))
         .route("/system/git-resync", post(trigger_git_resync))
         .route("/system/reset", post(reset_all))
+        .route("/check-path", get(check_path))
 }
 
 // ============================================================================

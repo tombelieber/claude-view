@@ -983,9 +983,11 @@ mod tests {
             pricing: std::collections::HashMap::new(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
-            state_resolver: crate::live::state_resolver::StateResolver::new(),
+
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: None,
         });
 
         // Register the session in the live sessions map
@@ -1003,8 +1005,6 @@ mod tests {
                     group: crate::live::state::AgentStateGroup::Autonomous,
                     state: "working".to_string(),
                     label: "Working".to_string(),
-                    confidence: 1.0,
-                    source: crate::live::state::SignalSource::Jsonl,
                     context: None,
                 },
                 git_branch: None,
@@ -1023,6 +1023,7 @@ mod tests {
                 current_turn_started_at: None,
                 last_turn_task_seconds: None,
                 sub_agents: Vec::new(),
+                progress_items: Vec::new(),
             };
             map.insert(session_id.to_string(), session);
         }
@@ -1150,9 +1151,11 @@ mod tests {
             pricing: std::collections::HashMap::new(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
-            state_resolver: crate::live::state_resolver::StateResolver::new(),
+
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: None,
         });
 
         let (addr, server_handle) = start_test_server(state).await;
