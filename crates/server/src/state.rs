@@ -78,7 +78,11 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -104,7 +108,11 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -133,7 +141,11 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
