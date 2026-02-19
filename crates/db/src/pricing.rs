@@ -55,6 +55,26 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
             .and_then(|v| v.as_f64())
             .unwrap_or(input_cost_per_token * 1.25);
 
+        let input_cost_per_token_above_200k = value
+            .get("input_cost_per_token_above_200k_tokens")
+            .and_then(|v| v.as_f64());
+
+        let output_cost_per_token_above_200k = value
+            .get("output_cost_per_token_above_200k_tokens")
+            .and_then(|v| v.as_f64());
+
+        let cache_creation_cost_per_token_above_200k = value
+            .get("cache_creation_input_token_cost_above_200k_tokens")
+            .and_then(|v| v.as_f64());
+
+        let cache_read_cost_per_token_above_200k = value
+            .get("cache_read_input_token_cost_above_200k_tokens")
+            .and_then(|v| v.as_f64());
+
+        let cache_creation_cost_per_token_1hr = value
+            .get("cache_creation_input_token_cost_above_1hr")
+            .and_then(|v| v.as_f64());
+
         result.insert(
             model_id,
             ModelPricing {
@@ -62,11 +82,11 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
                 output_cost_per_token,
                 cache_creation_cost_per_token,
                 cache_read_cost_per_token,
-                input_cost_per_token_above_200k: None,
-                output_cost_per_token_above_200k: None,
-                cache_creation_cost_per_token_above_200k: None,
-                cache_read_cost_per_token_above_200k: None,
-                cache_creation_cost_per_token_1hr: None,
+                input_cost_per_token_above_200k,
+                output_cost_per_token_above_200k,
+                cache_creation_cost_per_token_above_200k,
+                cache_read_cost_per_token_above_200k,
+                cache_creation_cost_per_token_1hr,
             },
         );
     }
@@ -98,11 +118,11 @@ pub fn merge_pricing(
                     output_cost_per_token: litellm_pricing.output_cost_per_token,
                     cache_creation_cost_per_token: litellm_pricing.cache_creation_cost_per_token,
                     cache_read_cost_per_token: litellm_pricing.cache_read_cost_per_token,
-                    input_cost_per_token_above_200k: existing.input_cost_per_token_above_200k,
-                    output_cost_per_token_above_200k: existing.output_cost_per_token_above_200k,
-                    cache_creation_cost_per_token_above_200k: existing.cache_creation_cost_per_token_above_200k,
-                    cache_read_cost_per_token_above_200k: existing.cache_read_cost_per_token_above_200k,
-                    cache_creation_cost_per_token_1hr: existing.cache_creation_cost_per_token_1hr,
+                    input_cost_per_token_above_200k: litellm_pricing.input_cost_per_token_above_200k.or(existing.input_cost_per_token_above_200k),
+                    output_cost_per_token_above_200k: litellm_pricing.output_cost_per_token_above_200k.or(existing.output_cost_per_token_above_200k),
+                    cache_creation_cost_per_token_above_200k: litellm_pricing.cache_creation_cost_per_token_above_200k.or(existing.cache_creation_cost_per_token_above_200k),
+                    cache_read_cost_per_token_above_200k: litellm_pricing.cache_read_cost_per_token_above_200k.or(existing.cache_read_cost_per_token_above_200k),
+                    cache_creation_cost_per_token_1hr: litellm_pricing.cache_creation_cost_per_token_1hr.or(existing.cache_creation_cost_per_token_1hr),
                 },
             );
         } else {
@@ -161,7 +181,10 @@ mod tests {
         assert_eq!(merged_model.input_cost_per_token, 4e-6);
         assert_eq!(merged_model.output_cost_per_token, 20e-6);
         assert_eq!(merged_model.input_cost_per_token_above_200k, Some(10e-6));
-        assert_eq!(merged_model.output_cost_per_token_above_200k, Some(37.5e-6));
+        assert_eq!(merged_model.output_cost_per_token_above_200k, Some(25e-6 * 1.5));
+        assert_eq!(merged_model.cache_creation_cost_per_token_above_200k, None);
+        assert_eq!(merged_model.cache_read_cost_per_token_above_200k, None);
+        assert_eq!(merged_model.cache_creation_cost_per_token_1hr, None);
     }
 
     #[test]
@@ -185,5 +208,46 @@ mod tests {
 
         let merged = merge_pricing(&defaults, &litellm);
         assert!(merged.contains_key("claude-new-model"));
+    }
+
+    #[test]
+    fn test_merge_uses_litellm_tiering_over_defaults() {
+        let mut defaults = HashMap::new();
+        defaults.insert(
+            "claude-opus-4-6".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: Some(10e-6),
+                output_cost_per_token_above_200k: Some(37.5e-6),
+                cache_creation_cost_per_token_above_200k: Some(12.5e-6),
+                cache_read_cost_per_token_above_200k: Some(1e-6),
+                cache_creation_cost_per_token_1hr: Some(10e-6),
+            },
+        );
+
+        let mut litellm = HashMap::new();
+        litellm.insert(
+            "claude-opus-4-6".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: Some(11e-6),
+                output_cost_per_token_above_200k: Some(38e-6),
+                cache_creation_cost_per_token_above_200k: Some(13e-6),
+                cache_read_cost_per_token_above_200k: Some(1.1e-6),
+                cache_creation_cost_per_token_1hr: Some(11e-6),
+            },
+        );
+
+        let merged = merge_pricing(&defaults, &litellm);
+        let m = merged.get("claude-opus-4-6").unwrap();
+        assert_eq!(m.input_cost_per_token_above_200k, Some(11e-6));
+        assert_eq!(m.cache_creation_cost_per_token_above_200k, Some(13e-6));
+        assert_eq!(m.cache_creation_cost_per_token_1hr, Some(11e-6));
     }
 }
