@@ -4,7 +4,7 @@
 //! JSONL tail parser, and cleanup task to maintain an in-memory map of all
 //! active Claude Code sessions.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -15,20 +15,16 @@ use tracing::{error, info, warn};
 use vibe_recall_core::cost::{
     self, calculate_live_cost, derive_cache_status, TokenUsage,
 };
-use vibe_recall_core::live_parser::{LiveLine, LineType, TailFinders, parse_tail};
+use vibe_recall_core::live_parser::{LineType, TailFinders, parse_tail};
 use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
 use vibe_recall_db::ModelPricing;
 
-use super::classifier::{
-    MessageSummary, PauseClassification, PauseReason,
-    SessionStateClassifier, SessionStateContext,
-};
 use super::process::{ClaudeProcess, detect_claude_processes, has_running_process};
 use super::state::{
-    AgentState, AgentStateGroup, SignalSource,
-    LiveSession, SessionEvent, SessionStatus, derive_activity, derive_status,
+    AgentState, AgentStateGroup,
+    LiveSession, SessionEvent, SessionStatus,
 };
-use super::state_resolver::StateResolver;
+use crate::live::state::status_from_agent_state;
 use super::watcher::{FileEvent, initial_scan, start_watcher};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
@@ -56,22 +52,16 @@ struct SessionAccumulator {
     git_branch: Option<String>,
     /// The timestamp of the first line (session start).
     started_at: Option<i64>,
-    /// The last LiveLine parsed (for status derivation).
-    last_line: Option<LiveLine>,
-    /// Unix timestamp when this session was marked Done (for cleanup).
-    completed_at: Option<u64>,
-    /// Current agent state (replaces pause_classification).
-    agent_state: AgentState,
-    /// Recent messages for classification context (ring buffer, last 5).
-    recent_messages: VecDeque<MessageSummary>,
-    /// Previous status for transition detection.
-    last_status: Option<SessionStatus>,
     /// Unix timestamp when the current user turn started (real prompt, not meta/tool-result/system).
     current_turn_started_at: Option<i64>,
     /// Seconds the agent spent on the last completed turn (Working->Paused).
     last_turn_task_seconds: Option<u32>,
     /// Sub-agents spawned in this session (accumulated across tail polls).
     sub_agents: Vec<SubAgentInfo>,
+    /// Current todo items from the latest TodoWrite call (full replacement).
+    todo_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    /// Structured tasks from TaskCreate/TaskUpdate (incremental).
+    task_items: Vec<vibe_recall_core::progress::ProgressItem>,
 }
 
 impl SessionAccumulator {
@@ -86,173 +76,71 @@ impl SessionAccumulator {
             last_user_message: String::new(),
             git_branch: None,
             started_at: None,
-            last_line: None,
-            completed_at: None,
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "thinking".into(),
-                label: "Discovered...".into(),
-                confidence: 0.3,
-                source: SignalSource::Fallback,
-                context: None,
-            },
-            recent_messages: VecDeque::new(),
-            last_status: None,
             current_turn_started_at: None,
             last_turn_task_seconds: None,
             sub_agents: Vec::new(),
+            todo_items: Vec::new(),
+            task_items: Vec::new(),
         }
     }
 }
 
-/// Convert a PauseClassification (from the structural classifier) to AgentState.
-fn pause_classification_to_agent_state(c: &PauseClassification) -> AgentState {
-    let (group, state) = match c.reason {
-        PauseReason::NeedsInput => (AgentStateGroup::NeedsYou, "awaiting_input"),
-        PauseReason::TaskComplete => (AgentStateGroup::NeedsYou, "task_complete"),
-        PauseReason::WorkDelivered => (AgentStateGroup::NeedsYou, "work_delivered"),
-        PauseReason::MidWork => (AgentStateGroup::NeedsYou, "idle"),
-        PauseReason::Error => (AgentStateGroup::NeedsYou, "error"),
-    };
-    AgentState {
-        group,
-        state: state.into(),
-        label: c.label.clone(),
-        confidence: c.confidence,
-        source: SignalSource::Jsonl,
-        context: None,
-    }
-}
-
-/// Pure function: derive agent state from current evidence.
-///
-/// Called on EVERY update — not gated by status transitions. This eliminates
-/// the race condition where a tool_result line steals the Working→Paused
-/// transition from the real end_turn line.
-///
-/// The 120s MidWork timeout (previously Phase 4 in spawn_process_detector)
-/// is incorporated here for instant reactivity.
-fn derive_agent_state(
-    status: &SessionStatus,
-    last_line: Option<&LiveLine>,
-    recent_messages: &VecDeque<MessageSummary>,
-    classifier: &SessionStateClassifier,
-    has_running_process: bool,
-    seconds_since_modified: u64,
+/// Metadata extracted from JSONL processing — never touches agent_state or status.
+struct JsonlMetadata {
+    git_branch: Option<String>,
+    pid: Option<u32>,
+    title: String,
+    last_user_message: String,
     turn_count: u32,
-    is_first_poll: bool,
-) -> AgentState {
-    match status {
-        SessionStatus::Working => AgentState {
-            group: AgentStateGroup::Autonomous,
-            state: "acting".into(),
-            label: "Working...".into(),
-            confidence: 0.7,
-            source: SignalSource::Jsonl,
-            context: None,
-        },
-        SessionStatus::Done => AgentState {
-            group: AgentStateGroup::NeedsYou,
-            state: "session_ended".into(),
-            label: "Session ended".into(),
-            confidence: 0.9,
-            source: SignalSource::Jsonl,
-            context: None,
-        },
-        SessionStatus::Paused => {
-            let ctx = SessionStateContext {
-                recent_messages: recent_messages.iter().cloned().collect(),
-                last_stop_reason: last_line.and_then(|l| l.stop_reason.clone()),
-                last_tool: last_line.and_then(|l| l.tool_names.last().cloned()),
-                has_running_process,
-                seconds_since_modified,
-                turn_count,
-            };
-
-            // Tier 1: structural classification (instant)
-            if let Some(c) = classifier.structural_classify(&ctx) {
-                return pause_classification_to_agent_state(&c);
-            }
-
-            // Fallback classification
-            let c = classifier.fallback_classify(&ctx);
-
-            // MidWork = ambiguous pause. Keep Autonomous if ALL of:
-            //   (a) fallback says MidWork (no end_turn detected), AND
-            //   (b) process detected OR file active within 60s, AND
-            //   (c) not stale (≤120s) — absorbs former Phase 4, AND
-            //   (d) not first poll without process evidence
-            let keep_autonomous = c.reason == PauseReason::MidWork && if is_first_poll {
-                has_running_process
-            } else {
-                (has_running_process || seconds_since_modified <= 60)
-                    && seconds_since_modified <= 120
-            };
-
-            if keep_autonomous {
-                AgentState {
-                    group: AgentStateGroup::Autonomous,
-                    state: "thinking".into(),
-                    label: "Between steps...".into(),
-                    confidence: if has_running_process { 0.5 } else { 0.4 },
-                    source: SignalSource::Jsonl,
-                    context: None,
-                }
-            } else {
-                pause_classification_to_agent_state(&c)
-            }
-        }
-    }
+    started_at: Option<i64>,
+    last_activity_at: i64,
+    model: Option<String>,
+    tokens: TokenUsage,
+    context_window_tokens: u64,
+    cost: vibe_recall_core::cost::CostBreakdown,
+    cache_status: vibe_recall_core::cost::CacheStatus,
+    current_turn_started_at: Option<i64>,
+    last_turn_task_seconds: Option<u32>,
+    sub_agents: Vec<SubAgentInfo>,
+    progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
 }
 
-/// Handle side effects of status transitions.
-///
-/// This is NOT classification — classification is done by `derive_agent_state()`.
-/// This function only handles:
-/// - Task time computation on Working→Paused
-/// - Task time clearing on →Working
-/// - Completion tracking + sub-agent cleanup on →Done
-fn handle_transitions(
-    new_status: &SessionStatus,
-    acc: &mut SessionAccumulator,
-    last_activity_at: i64,
+/// Apply JSONL metadata to an existing session without touching hook-owned fields
+/// (agent_state, status, current_activity).
+fn apply_jsonl_metadata(
+    session: &mut LiveSession,
+    m: &JsonlMetadata,
+    file_path: &str,
+    project: &str,
+    project_display_name: &str,
+    project_path: &str,
 ) {
-    let old_status = acc.last_status.clone();
-
-    // Working→Paused (or first-discovery-as-Paused): compute task time
-    let is_working_to_paused = *new_status == SessionStatus::Paused
-        && (old_status == Some(SessionStatus::Working) || old_status.is_none());
-    if is_working_to_paused {
-        if let Some(turn_start) = acc.current_turn_started_at {
-            let elapsed = (last_activity_at - turn_start).max(0) as u32;
-            acc.last_turn_task_seconds = Some(elapsed);
-        }
+    session.file_path = file_path.to_string();
+    session.project = project.to_string();
+    session.project_display_name = project_display_name.to_string();
+    session.project_path = project_path.to_string();
+    session.git_branch = m.git_branch.clone();
+    session.pid = m.pid;
+    if !m.title.is_empty() {
+        session.title = m.title.clone();
     }
-
-    // →Working: clear frozen task time
-    if *new_status == SessionStatus::Working {
-        acc.last_turn_task_seconds = None;
+    if !m.last_user_message.is_empty() {
+        session.last_user_message = m.last_user_message.clone();
     }
-
-    // →Done: track completion time + orphaned sub-agent cleanup
-    if *new_status == SessionStatus::Done && acc.completed_at.is_none() {
-        let completed_at_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        acc.completed_at = Some(completed_at_secs);
-        for agent in &mut acc.sub_agents {
-            if agent.status == SubAgentStatus::Running {
-                agent.status = SubAgentStatus::Error;
-                agent.completed_at = Some(completed_at_secs as i64);
-                agent.current_activity = None;
-            }
-        }
-    } else if *new_status != SessionStatus::Done {
-        acc.completed_at = None;
+    session.turn_count = m.turn_count;
+    if m.started_at.is_some() {
+        session.started_at = m.started_at;
     }
-
-    acc.last_status = Some(new_status.clone());
+    session.last_activity_at = m.last_activity_at;
+    session.model = m.model.clone();
+    session.tokens = m.tokens.clone();
+    session.context_window_tokens = m.context_window_tokens;
+    session.cost = m.cost.clone();
+    session.cache_status = m.cache_status.clone();
+    session.current_turn_started_at = m.current_turn_started_at;
+    session.last_turn_task_seconds = m.last_turn_task_seconds;
+    session.sub_agents = m.sub_agents.clone();
+    session.progress_items = m.progress_items.clone();
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -270,10 +158,6 @@ pub struct LiveSessionManager {
     processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,
     /// Per-model pricing table for cost calculation (core-level types).
     pricing: Arc<HashMap<String, cost::ModelPricing>>,
-    /// Session state classifier for intelligent pause classification.
-    classifier: Arc<SessionStateClassifier>,
-    /// Resolves agent state by merging hook and JSONL signals (hook wins if fresh).
-    state_resolver: StateResolver,
 }
 
 impl LiveSessionManager {
@@ -283,9 +167,7 @@ impl LiveSessionManager {
     /// broadcast sender for SSE event streaming.
     pub fn start(
         pricing: HashMap<String, ModelPricing>,
-        state_resolver: StateResolver,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
-        let classifier = Arc::new(SessionStateClassifier::new());
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
 
@@ -312,8 +194,6 @@ impl LiveSessionManager {
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             processes: Arc::new(RwLock::new(HashMap::new())),
             pricing: Arc::new(core_pricing),
-            classifier,
-            state_resolver,
         });
 
         // Spawn background tasks
@@ -329,6 +209,18 @@ impl LiveSessionManager {
     /// Subscribe to session events for SSE streaming.
     pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
         self.tx.subscribe()
+    }
+
+    /// Called by hook handler when SessionStart creates a new session.
+    pub async fn create_accumulator_for_hook(&self, session_id: &str) {
+        self.accumulators.write().await
+            .entry(session_id.to_string())
+            .or_insert_with(SessionAccumulator::new);
+    }
+
+    /// Called by hook handler when SessionEnd removes a session after delay.
+    pub async fn remove_accumulator(&self, session_id: &str) {
+        self.accumulators.write().await.remove(session_id);
     }
 
     /// Spawn the file watcher background task.
@@ -457,24 +349,23 @@ impl LiveSessionManager {
         });
     }
 
-    /// Spawn the process detector background task.
+    /// Spawn the crash-only process detector.
     ///
-    /// Every 2 seconds, scans the process table for running Claude instances
-    /// and updates the shared process map. Re-derives status AND agent state
-    /// for all sessions (agent state derivation is not transition-gated).
+    /// Every 5 seconds:
+    /// 1. Scans the process table for running Claude instances → updates PIDs.
+    /// 2. For sessions with no process + stale >300s + not Done → mark as session_ended.
     ///
-    /// Uses a 3-phase pattern to avoid deadlocks and TOCTOU races:
-    /// - Phase 1 (under sessions+accumulators locks): Derive status + agent state.
-    /// - Phase 2 (no locks): Feed JSONL states into the resolver.
-    /// - Phase 3 (under sessions lock only): Call resolve() and apply final state.
+    /// Does NO state re-derivation. Hooks own all state. This only catches crashes.
     fn spawn_process_detector(self: &Arc<Self>) {
         let manager = self.clone();
+        const STALE_THRESHOLD_SECS: u64 = 300; // 5 minutes
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
 
+                // Scan process table
                 let new_processes = tokio::task::spawn_blocking(detect_claude_processes)
                     .await
                     .unwrap_or_default();
@@ -484,125 +375,59 @@ impl LiveSessionManager {
                     *processes = new_processes;
                 }
 
-                // Phase 1: Collect changes under locks, then drop locks.
-                // Sync work ONLY — no .await while holding both guards.
-                let mut pending_updates: Vec<(String, SessionStatus, Option<u32>, AgentState)> =
-                    Vec::new();
-
+                // Check each session: update PID + detect crashes
+                let mut dead_sessions: Vec<String> = Vec::new();
                 {
                     let processes = manager.processes.read().await;
                     let mut sessions = manager.sessions.write().await;
-                    let mut accumulators = manager.accumulators.write().await;
 
                     for (session_id, session) in sessions.iter_mut() {
-                        if let Some(acc) = accumulators.get_mut(session_id) {
+                        let (running, pid) =
+                            has_running_process(&processes, &session.project_path);
+
+                        // Always update PID
+                        session.pid = pid;
+
+                        // Crash detection: no process + stale + not already Done
+                        if !running && session.status != SessionStatus::Done {
                             let seconds_since = seconds_since_modified_from_timestamp(
                                 session.last_activity_at,
                             );
-                            let (running, pid) =
-                                has_running_process(&processes, &session.project_path);
-                            let new_status =
-                                derive_status(acc.last_line.as_ref(), seconds_since, running);
-
-                            let status_or_pid_changed =
-                                session.status != new_status || session.pid != pid;
-
-                            if status_or_pid_changed {
-                                // Status/pid changed — must re-derive and handle transitions
-                                let is_first_poll = acc.last_status.is_none();
-                                let new_agent_state = derive_agent_state(
-                                    &new_status,
-                                    acc.last_line.as_ref(),
-                                    &acc.recent_messages,
-                                    &manager.classifier,
-                                    running,
-                                    seconds_since,
-                                    acc.user_turn_count,
-                                    is_first_poll,
-                                );
-                                handle_transitions(
-                                    &new_status, acc, session.last_activity_at,
-                                );
-                                acc.agent_state = new_agent_state;
-
-                                pending_updates.push((
-                                    session_id.clone(),
-                                    new_status,
-                                    pid,
-                                    acc.agent_state.clone(),
-                                ));
-                            } else {
-                                // Status unchanged — check if agent state group changed
-                                // (time-based transitions like MidWork→NeedsYou at 120s).
-                                // Skip hook-sourced states: long subagent runs are
-                                // legitimately autonomous, don't override with JSONL derivation.
-                                if matches!(session.agent_state.source, SignalSource::Hook) {
-                                    continue;
-                                }
-                                let is_first_poll = acc.last_status.is_none();
-                                let new_agent_state = derive_agent_state(
-                                    &new_status,
-                                    acc.last_line.as_ref(),
-                                    &acc.recent_messages,
-                                    &manager.classifier,
-                                    running,
-                                    seconds_since,
-                                    acc.user_turn_count,
-                                    is_first_poll,
-                                );
-                                if session.agent_state.group != new_agent_state.group {
-                                    acc.agent_state = new_agent_state;
-                                    pending_updates.push((
-                                        session_id.clone(),
-                                        new_status,
-                                        pid,
-                                        acc.agent_state.clone(),
-                                    ));
-                                }
+                            if seconds_since > STALE_THRESHOLD_SECS {
+                                session.agent_state = AgentState {
+                                    group: AgentStateGroup::NeedsYou,
+                                    state: "session_ended".into(),
+                                    label: "Session ended (no process)".into(),
+                                    context: None,
+                                };
+                                session.status = SessionStatus::Done;
+                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                    session: session.clone(),
+                                });
+                                dead_sessions.push(session_id.clone());
                             }
                         }
                     }
-                }
-                // All locks dropped here.
 
-                // Phase 2: Feed JSONL states into resolver (async, no external locks held).
-                // update_from_jsonl() only needs StateResolver's internal lock.
-                for (session_id, ref new_status, _, ref jsonl_state) in &pending_updates {
-                    // Clear stale hook states when JSONL evidence shows Working.
-                    if *new_status == SessionStatus::Working {
-                        manager.state_resolver.clear_hook_state(session_id).await;
+                    // Remove dead sessions from map
+                    for session_id in &dead_sessions {
+                        sessions.remove(session_id);
                     }
-                    manager.state_resolver.update_from_jsonl(session_id, jsonl_state.clone()).await;
                 }
 
-                // Phase 3: Resolve and apply under sessions lock.
-                // CRITICAL: resolve() is called HERE (not Phase 2) to prevent TOCTOU race.
-                if !pending_updates.is_empty() {
-                    let mut sessions = manager.sessions.write().await;
-                    for (session_id, new_status, pid, _) in pending_updates {
-                        if let Some(session) = sessions.get_mut(&session_id) {
-                            let resolved = manager.state_resolver.resolve(&session_id).await;
-                            session.status = new_status.clone();
-                            session.pid = pid;
-                            session.agent_state = resolved;
-                            // Clear stale activity when session is no longer Working.
-                            if new_status != SessionStatus::Working {
-                                session.current_activity = String::new();
-                            }
-                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
-                        }
-                    }
+                // Broadcast completions (outside lock)
+                for session_id in dead_sessions {
+                    let _ = manager.tx.send(SessionEvent::SessionCompleted {
+                        session_id,
+                    });
                 }
             }
         });
     }
 
-    /// Spawn the cleanup background task.
+    /// Spawn the periodic housekeeping task.
     ///
-    /// Every 30 seconds, removes sessions that have been `Done` for more
-    /// than 10 minutes and broadcasts `SessionCompleted` events.
+    /// Every 30 seconds: removes orphaned accumulators (session removed but accumulator lingered).
     fn spawn_cleanup_task(self: &Arc<Self>) {
         let manager = self.clone();
 
@@ -611,45 +436,22 @@ impl LiveSessionManager {
             loop {
                 interval.tick().await;
 
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-
-                let mut to_remove = Vec::new();
-
+                // Clean up orphaned accumulators (session removed but accumulator lingered)
                 {
                     let sessions = manager.sessions.read().await;
-                    let accumulators = manager.accumulators.read().await;
-
-                    for (session_id, session) in sessions.iter() {
-                        if session.status == SessionStatus::Done {
-                            if let Some(acc) = accumulators.get(session_id) {
-                                if let Some(completed_at) = acc.completed_at {
-                                    if now.saturating_sub(completed_at) > 600 {
-                                        to_remove.push(session_id.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !to_remove.is_empty() {
-                    let mut sessions = manager.sessions.write().await;
                     let mut accumulators = manager.accumulators.write().await;
-                    for session_id in &to_remove {
-                        sessions.remove(session_id);
-                        accumulators.remove(session_id);
-                        let _ = manager.tx.send(SessionEvent::SessionCompleted {
-                            session_id: session_id.clone(),
-                        });
+                    let orphan_ids: Vec<String> = accumulators
+                        .keys()
+                        .filter(|id| !sessions.contains_key(*id))
+                        .cloned()
+                        .collect();
+                    for id in &orphan_ids {
+                        accumulators.remove(id);
                     }
-                    info!("Cleaned up {} done sessions", to_remove.len());
+                    if !orphan_ids.is_empty() {
+                        info!("Cleaned up {} orphaned accumulators", orphan_ids.len());
+                    }
                 }
-
-                // Clean up stale hook states (entries older than 10 minutes)
-                manager.state_resolver.cleanup_stale(Duration::from_secs(600)).await;
             }
         });
     }
@@ -722,6 +524,19 @@ impl LiveSessionManager {
             .or_insert_with(SessionAccumulator::new);
 
         acc.offset = new_offset;
+
+        // Detect file replacement: offset rollback means file was replaced.
+        // Clear task progress to prevent duplicates on replay from offset 0.
+        // TodoWrite is naturally idempotent (full replacement); only task_items needs reset.
+        if new_offset > 0 && new_offset < current_offset {
+            tracing::info!(
+                session_id = %session_id,
+                old_offset = current_offset,
+                new_offset = new_offset,
+                "File replaced — clearing task progress for clean re-accumulation"
+            );
+            acc.task_items.clear();
+        }
 
         for line in &new_lines {
             // Accumulate tokens (cumulative, for cost calculation)
@@ -871,70 +686,76 @@ impl LiveSessionManager {
                     }
                 }
             }
-        }
 
-        // Track recent messages for pause classification
-        for line in &new_lines {
-            if line.line_type == LineType::User || line.line_type == LineType::Assistant {
-                acc.recent_messages.push_back(MessageSummary {
-                    role: match line.line_type {
-                        LineType::User => "user".to_string(),
-                        LineType::Assistant => "assistant".to_string(),
-                        _ => continue,
-                    },
-                    content_preview: line.content_preview.clone(),
-                    tool_names: line.tool_names.clone(),
+            // --- TodoWrite: full replacement ---
+            if let Some(ref todos) = line.todo_write {
+                use vibe_recall_core::progress::{ProgressItem, ProgressStatus, ProgressSource};
+                acc.todo_items = todos.iter().map(|t| {
+                    let status = match t.status.as_str() {
+                        "in_progress" => ProgressStatus::InProgress,
+                        "completed" => ProgressStatus::Completed,
+                        _ => ProgressStatus::Pending,
+                    };
+                    ProgressItem {
+                        id: None,
+                        tool_use_id: None,
+                        title: t.content.clone(),
+                        status,
+                        active_form: if t.active_form.is_empty() { None } else { Some(t.active_form.clone()) },
+                        source: ProgressSource::Todo,
+                    }
+                }).collect();
+            }
+
+            // --- TaskCreate: append with dedup guard ---
+            for create in &line.task_creates {
+                use vibe_recall_core::progress::{ProgressItem, ProgressStatus, ProgressSource};
+                if acc.task_items.iter().any(|t| t.tool_use_id.as_deref() == Some(&create.tool_use_id)) {
+                    continue; // Already seen this create (replay resilience)
+                }
+                acc.task_items.push(ProgressItem {
+                    id: None, // Assigned later by TaskIdAssignment
+                    tool_use_id: Some(create.tool_use_id.clone()),
+                    title: create.subject.clone(),
+                    status: ProgressStatus::Pending,
+                    active_form: if create.active_form.is_empty() { None } else { Some(create.active_form.clone()) },
+                    source: ProgressSource::Task,
                 });
+            }
 
-                // Keep only last 5 messages
-                const MAX_RECENT_MESSAGES: usize = 5;
-                while acc.recent_messages.len() > MAX_RECENT_MESSAGES {
-                    acc.recent_messages.pop_front();
+            // --- TaskIdAssignment: assign system ID ---
+            for assignment in &line.task_id_assignments {
+                if let Some(task) = acc.task_items.iter_mut()
+                    .find(|t| t.tool_use_id.as_deref() == Some(&assignment.tool_use_id))
+                {
+                    task.id = Some(assignment.task_id.clone());
+                }
+            }
+
+            // --- TaskUpdate: modify existing task ---
+            for update in &line.task_updates {
+                use vibe_recall_core::progress::ProgressStatus;
+                if let Some(task) = acc.task_items.iter_mut()
+                    .find(|t| t.id.as_deref() == Some(&update.task_id))
+                {
+                    if let Some(ref s) = update.status {
+                        task.status = match s.as_str() {
+                            "in_progress" => ProgressStatus::InProgress,
+                            "completed" => ProgressStatus::Completed,
+                            _ => ProgressStatus::Pending,
+                        };
+                    }
+                    if let Some(ref subj) = update.subject {
+                        task.title = subj.clone();
+                    }
+                    if let Some(ref af) = update.active_form {
+                        task.active_form = Some(af.clone());
+                    }
                 }
             }
         }
 
-        // Keep the last line for status derivation
-        if let Some(last) = new_lines.last() {
-            acc.last_line = Some(last.clone());
-        }
-
-        // Derive status
-        let processes = self.processes.read().await;
-        let (running, pid) = has_running_process(&processes, &project_path);
-        let status = derive_status(acc.last_line.as_ref(), seconds_since, running);
-
-        // Capture before handle_transitions mutates it
-        let is_first_poll = acc.last_status.is_none();
-
-        // Side effects only (task time, completion, sub-agent cleanup)
-        handle_transitions(&status, acc, last_activity_at);
-
-        // Derive agent state from current evidence (always runs, no transition gating)
-        acc.agent_state = derive_agent_state(
-            &status,
-            acc.last_line.as_ref(),
-            &acc.recent_messages,
-            &self.classifier,
-            running,
-            seconds_since,
-            acc.user_turn_count,
-            is_first_poll,
-        );
-
-        // Derive activity
-        let tool_names = acc
-            .last_line
-            .as_ref()
-            .map(|l| l.tool_names.as_slice())
-            .unwrap_or(&[]);
-        let is_streaming = status == SessionStatus::Working
-            && acc.last_line.as_ref().map_or(false, |l| {
-                l.tool_names.is_empty() && l.stop_reason.as_deref() != Some("end_turn")
-            });
-        let current_activity = derive_activity(tool_names, is_streaming);
-
-        // Calculate cost
+        // Calculate cost from accumulated tokens
         let cost = calculate_live_cost(
             &acc.tokens,
             acc.model.as_deref(),
@@ -942,32 +763,24 @@ impl LiveSessionManager {
         );
 
         // Derive cache status from time since last activity
-        let cache_status = if seconds_since < 300 {
-            derive_cache_status(Some(seconds_since))
-        } else {
-            derive_cache_status(Some(seconds_since))
-        };
+        let cache_status = derive_cache_status(Some(seconds_since));
 
         let file_path_str = path
             .to_str()
             .unwrap_or("")
             .to_string();
 
-        // Build LiveSession while accumulators lock is still held (reads ~15 fields from acc).
-        // Made `mut` so we can overwrite agent_state with the resolved value after dropping locks.
-        let mut live_session = LiveSession {
-            id: session_id.clone(),
-            project: project.clone(),
-            project_display_name,
-            project_path,
-            file_path: file_path_str,
-            status,
-            agent_state: acc.agent_state.clone(),  // Temporarily uses JSONL-derived state
+        // Process detector needs PID for this session
+        let processes = self.processes.read().await;
+        let (_, pid) = has_running_process(&processes, &project_path);
+        drop(processes);
+
+        // Collect metadata from accumulator (snapshot while lock is held)
+        let metadata = JsonlMetadata {
             git_branch: acc.git_branch.clone(),
             pid,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
-            current_activity,
             turn_count: acc.user_turn_count,
             started_at: acc.started_at,
             last_activity_at,
@@ -979,27 +792,57 @@ impl LiveSessionManager {
             current_turn_started_at: acc.current_turn_started_at,
             last_turn_task_seconds: acc.last_turn_task_seconds,
             sub_agents: acc.sub_agents.clone(),
+            progress_items: {
+                let mut items = acc.todo_items.clone();
+                items.extend(acc.task_items.clone());
+                items
+            },
         };
 
-        // Drop the accumulators lock before acquiring sessions lock
-        drop(processes);
+        // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
 
-        // When JSONL shows Working, clear stale hook states (e.g. awaiting_input
-        // from a prior turn). The user has responded and Claude is active again.
-        if live_session.status == SessionStatus::Working {
-            self.state_resolver.clear_hook_state(&session_id).await;
-        }
-
-        // Feed JSONL state to resolver, then resolve (hook wins if fresh).
-        // These calls only acquire StateResolver's internal locks, safe without external locks.
-        self.state_resolver.update_from_jsonl(&session_id, live_session.agent_state.clone()).await;
-        let resolved_state = self.state_resolver.resolve(&session_id).await;
-        live_session.agent_state = resolved_state;  // Overwrite with resolved state
-
-        // Update the shared session map
+        // Update the shared session map — metadata only, hooks own agent_state/status
         let mut sessions = self.sessions.write().await;
-        sessions.insert(session_id, live_session);
+        if let Some(session) = sessions.get_mut(&session_id) {
+            // Existing session: update metadata, preserve hook-owned state
+            apply_jsonl_metadata(session, &metadata, &file_path_str, &project, &project_display_name, &project_path);
+        } else {
+            // New session discovered via JSONL (no hook yet): use fallback state
+            let fallback_state = AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "unknown".into(),
+                label: "Connecting...".into(),
+                context: None,
+            };
+            let session = LiveSession {
+                id: session_id.clone(),
+                project: project.clone(),
+                project_display_name,
+                project_path,
+                file_path: file_path_str,
+                status: status_from_agent_state(&fallback_state),
+                agent_state: fallback_state,
+                git_branch: metadata.git_branch.clone(),
+                pid: metadata.pid,
+                title: metadata.title.clone(),
+                last_user_message: metadata.last_user_message.clone(),
+                current_activity: "Connecting...".into(),
+                turn_count: metadata.turn_count,
+                started_at: metadata.started_at,
+                last_activity_at: metadata.last_activity_at,
+                model: metadata.model.clone(),
+                tokens: metadata.tokens.clone(),
+                context_window_tokens: metadata.context_window_tokens,
+                cost: metadata.cost.clone(),
+                cache_status: metadata.cache_status.clone(),
+                current_turn_started_at: metadata.current_turn_started_at,
+                last_turn_task_seconds: metadata.last_turn_task_seconds,
+                sub_agents: metadata.sub_agents.clone(),
+                progress_items: metadata.progress_items.clone(),
+            };
+            sessions.insert(session_id, session);
+        }
     }
 
     // NOTE: Tier 2 AI classification (spawn_ai_classification) was removed.
@@ -1151,295 +994,4 @@ mod tests {
         assert_eq!(seconds, 0);
     }
 
-    // =========================================================================
-    // derive_agent_state tests
-    // =========================================================================
-
-    /// Helper to create a LiveLine for agent state derivation tests.
-    fn make_test_line(
-        line_type: LineType,
-        tool_names: Vec<String>,
-        stop_reason: Option<&str>,
-        is_tool_result: bool,
-    ) -> LiveLine {
-        LiveLine {
-            line_type,
-            role: None,
-            content_preview: String::new(),
-            tool_names,
-            model: None,
-            input_tokens: None,
-            output_tokens: None,
-            cache_read_tokens: None,
-            cache_creation_tokens: None,
-            timestamp: None,
-            stop_reason: stop_reason.map(String::from),
-            git_branch: None,
-            is_meta: false,
-            is_tool_result_continuation: is_tool_result,
-            has_system_prefix: false,
-            sub_agent_spawns: Vec::new(),
-            sub_agent_result: None,
-            sub_agent_progress: None,
-        }
-    }
-
-    #[test]
-    fn test_derive_agent_state_working_is_autonomous() {
-        let classifier = SessionStateClassifier::new();
-        let state = derive_agent_state(
-            &SessionStatus::Working,
-            None,
-            &VecDeque::new(),
-            &classifier,
-            true, 5, 3, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::Autonomous);
-        assert_eq!(state.state, "acting");
-    }
-
-    #[test]
-    fn test_derive_agent_state_done_is_needs_you() {
-        let classifier = SessionStateClassifier::new();
-        let state = derive_agent_state(
-            &SessionStatus::Done,
-            None,
-            &VecDeque::new(),
-            &classifier,
-            false, 400, 3, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou);
-        assert_eq!(state.state, "session_ended");
-    }
-
-    #[test]
-    fn test_derive_agent_state_paused_end_turn_is_needs_you() {
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &VecDeque::new(),
-            &classifier,
-            true, 5, 5, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou,
-            "end_turn assistant line should always produce NeedsYou");
-    }
-
-    #[test]
-    fn test_derive_agent_state_tool_result_midwork_autonomous() {
-        // tool_result with process running = between steps = Autonomous (correct for intermediate state)
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(LineType::User, vec![], None, true);
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &VecDeque::new(),
-            &classifier,
-            true, 5, 5, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::Autonomous,
-            "tool_result with process running should be Autonomous (between steps)");
-    }
-
-    #[test]
-    fn test_derive_agent_state_midwork_stale_120s_is_needs_you() {
-        // MidWork + process running but >120s idle = stale, should be NeedsYou
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(LineType::User, vec![], None, true);
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &VecDeque::new(),
-            &classifier,
-            true, 130, 5, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou,
-            "MidWork >120s should force NeedsYou even with process running");
-    }
-
-    /// THE critical regression test: simulates the race condition.
-    /// tool_result arrives first (Autonomous), then end_turn (should flip to NeedsYou).
-    #[test]
-    fn test_derive_agent_state_race_condition_tool_result_then_end_turn() {
-        let classifier = SessionStateClassifier::new();
-
-        // Step 1: tool_result line → should be Autonomous (between steps)
-        let tool_result_line = make_test_line(LineType::User, vec![], None, true);
-        let state1 = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&tool_result_line),
-            &VecDeque::new(),
-            &classifier,
-            true, 5, 5, false,
-        );
-        assert_eq!(state1.group, AgentStateGroup::Autonomous,
-            "Intermediate: tool_result with process should be Autonomous");
-
-        // Step 2: end_turn line → MUST be NeedsYou (the fix!)
-        let end_turn_line = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
-        let state2 = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&end_turn_line),
-            &VecDeque::new(),
-            &classifier,
-            true, 5, 5, false,
-        );
-        assert_eq!(state2.group, AgentStateGroup::NeedsYou,
-            "REGRESSION: end_turn must produce NeedsYou regardless of previous state");
-    }
-
-    #[test]
-    fn test_derive_agent_state_first_poll_no_process_is_needs_you() {
-        // On first discovery, MidWork without confirmed process → NeedsYou
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(LineType::User, vec![], None, true);
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &VecDeque::new(),
-            &classifier,
-            false, 5, 5, true, // is_first_poll = true, no process
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou,
-            "First poll without process should not keep Autonomous");
-    }
-
-    #[test]
-    fn test_derive_agent_state_ask_user_question_is_needs_you() {
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(
-            LineType::Assistant,
-            vec!["AskUserQuestion".to_string()],
-            Some("end_turn"),
-            false,
-        );
-        let mut recent = VecDeque::new();
-        recent.push_back(MessageSummary {
-            role: "assistant".to_string(),
-            content_preview: "Which option?".to_string(),
-            tool_names: vec!["AskUserQuestion".to_string()],
-        });
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &recent,
-            &classifier,
-            true, 5, 5, false,
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou);
-        assert_eq!(state.state, "awaiting_input");
-    }
-
-    #[test]
-    fn test_derive_agent_state_single_turn_end_turn_is_task_complete() {
-        // Structural classifier single-turn Q&A path: turn_count ≤ 2 + end_turn + assistant message
-        let classifier = SessionStateClassifier::new();
-        let last = make_test_line(LineType::Assistant, vec![], Some("end_turn"), false);
-        let mut recent = VecDeque::new();
-        recent.push_back(MessageSummary {
-            role: "assistant".to_string(),
-            content_preview: "The answer is 42.".to_string(),
-            tool_names: vec![],
-        });
-        let state = derive_agent_state(
-            &SessionStatus::Paused,
-            Some(&last),
-            &recent,
-            &classifier,
-            true, 5, 1, false, // turn_count = 1 → triggers single-turn Q&A structural match
-        );
-        assert_eq!(state.group, AgentStateGroup::NeedsYou);
-        assert_eq!(state.state, "task_complete",
-            "Single-turn Q&A with end_turn should hit structural classifier → task_complete");
-    }
-
-    // =========================================================================
-    // handle_transitions tests
-    // =========================================================================
-
-    #[test]
-    fn test_handle_transitions_working_to_paused_computes_task_time() {
-        let mut acc = SessionAccumulator::new();
-        acc.last_status = Some(SessionStatus::Working);
-        acc.current_turn_started_at = Some(1000);
-
-        handle_transitions(&SessionStatus::Paused, &mut acc, 1033);
-
-        assert_eq!(acc.last_turn_task_seconds, Some(33),
-            "Working→Paused should compute task time as last_activity_at - turn_start");
-        assert_eq!(acc.last_status, Some(SessionStatus::Paused));
-    }
-
-    #[test]
-    fn test_handle_transitions_to_working_clears_task_time() {
-        let mut acc = SessionAccumulator::new();
-        acc.last_turn_task_seconds = Some(42);
-
-        handle_transitions(&SessionStatus::Working, &mut acc, 0);
-
-        assert_eq!(acc.last_turn_task_seconds, None,
-            "Entering Working should clear task time");
-    }
-
-    #[test]
-    fn test_handle_transitions_to_done_sets_completed_at() {
-        let mut acc = SessionAccumulator::new();
-        acc.last_status = Some(SessionStatus::Paused);
-
-        handle_transitions(&SessionStatus::Done, &mut acc, 0);
-
-        assert!(acc.completed_at.is_some());
-        assert_eq!(acc.last_status, Some(SessionStatus::Done));
-    }
-
-    #[test]
-    fn test_handle_transitions_done_cleans_up_running_subagents() {
-        let mut acc = SessionAccumulator::new();
-        acc.sub_agents.push(SubAgentInfo {
-            tool_use_id: "toolu_1".into(),
-            agent_id: None,
-            agent_type: "Explore".into(),
-            description: "test".into(),
-            status: SubAgentStatus::Running,
-            started_at: 1000,
-            completed_at: None,
-            duration_ms: None,
-            tool_use_count: None,
-            cost_usd: None,
-            current_activity: None,
-        });
-
-        handle_transitions(&SessionStatus::Done, &mut acc, 0);
-
-        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error,
-            "Running sub-agents should be marked Error on session Done");
-    }
-
-    #[test]
-    fn test_handle_transitions_paused_to_paused_no_task_time_change() {
-        let mut acc = SessionAccumulator::new();
-        acc.last_status = Some(SessionStatus::Paused);
-        acc.last_turn_task_seconds = Some(33);
-
-        handle_transitions(&SessionStatus::Paused, &mut acc, 2000);
-
-        assert_eq!(acc.last_turn_task_seconds, Some(33),
-            "Paused→Paused should NOT recompute task time");
-    }
-
-    #[test]
-    fn test_handle_transitions_first_discovery_as_paused_computes_task_time() {
-        // First discovery (last_status = None) as Paused should still compute task time
-        let mut acc = SessionAccumulator::new();
-        // last_status is None (first discovery)
-        acc.current_turn_started_at = Some(500);
-
-        handle_transitions(&SessionStatus::Paused, &mut acc, 555);
-
-        assert_eq!(acc.last_turn_task_seconds, Some(55),
-            "First discovery as Paused (old_status.is_none()) should compute task time");
-        assert_eq!(acc.last_status, Some(SessionStatus::Paused));
-    }
 }
