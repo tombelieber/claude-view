@@ -125,7 +125,7 @@ export function TimelineView({
   const durationSec = sessionDurationMs / 1000
 
   return (
-    <div className="flex flex-col gap-3 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-4 font-mono">
+    <div className="flex flex-col gap-3 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-4 font-mono overflow-hidden">
       {/* Time axis */}
       <div className="relative h-8 border-b border-gray-300 dark:border-gray-700">
         <div className="absolute inset-0 flex items-end">

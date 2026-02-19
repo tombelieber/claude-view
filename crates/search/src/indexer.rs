@@ -35,8 +35,7 @@ impl SearchIndex {
         docs: &[SearchDocument],
     ) -> Result<(), SearchError> {
         let writer = self.writer.lock().map_err(|e| {
-            SearchError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SearchError::Io(std::io::Error::other(
                 format!("writer lock poisoned: {e}"),
             ))
         })?;
@@ -78,8 +77,7 @@ impl SearchIndex {
     /// Delete all documents for a given session_id. Does NOT commit.
     pub fn delete_session(&self, session_id: &str) -> Result<(), SearchError> {
         let writer = self.writer.lock().map_err(|e| {
-            SearchError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SearchError::Io(std::io::Error::other(
                 format!("writer lock poisoned: {e}"),
             ))
         })?;
@@ -96,8 +94,7 @@ impl SearchIndex {
     /// Call this after indexing a batch of sessions.
     pub fn commit(&self) -> Result<(), SearchError> {
         let mut writer = self.writer.lock().map_err(|e| {
-            SearchError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SearchError::Io(std::io::Error::other(
                 format!("writer lock poisoned: {e}"),
             ))
         })?;
