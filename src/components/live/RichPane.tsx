@@ -329,7 +329,7 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
             verboseMode ? (
-              <JsonTree data={parsedJson} />
+              <JsonTree data={parsedJson} verboseMode={verboseMode} />
             ) : (
               <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
             )
@@ -355,7 +355,7 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
             verboseMode ? (
-              <JsonTree data={parsedJson} />
+              <JsonTree data={parsedJson} verboseMode={verboseMode} />
             ) : (
               <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
             )
@@ -380,21 +380,10 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
   const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
   const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
 
-  if (isAskUserQuestion) {
+  if (isAskUserQuestion && !verboseMode) {
     return (
-      <div className="py-0.5 border-l-2 border-purple-500/30 dark:border-purple-500/20 pl-1">
-        <div className="flex items-start gap-1.5">
-          <Wrench className="w-3 h-3 text-purple-500 dark:text-purple-400 flex-shrink-0 mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                {label}
-              </span>
-            </div>
-            <AskUserQuestionDisplay inputData={inputObj} />
-          </div>
-          <Timestamp ts={message.ts} />
-        </div>
+      <div className="py-0.5">
+        <AskUserQuestionDisplay inputData={inputObj} variant="amber" />
       </div>
     )
   }
@@ -433,7 +422,7 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
                 [ Collapse ]
               </button>
               {isObjectInput ? (
-                <JsonTree data={inputObj} />
+                <JsonTree data={inputObj} verboseMode={verboseMode} />
               ) : (
                 <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} />
               )}
@@ -446,7 +435,7 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
   )
 }
 
-function ToolResultMessage({ message, index }: { message: RichMessage; index: number }) {
+function ToolResultMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   const hasContent = message.content.length > 0
   const jsonDetected = hasContent && isJsonContent(message.content)
   const diffLike = hasContent && !jsonDetected && isDiffContent(message.content)
@@ -469,7 +458,7 @@ function ToolResultMessage({ message, index }: { message: RichMessage; index: nu
       {hasContent && (
         jsonDetected && parsedJson !== null ? (
           <div className="mt-0.5 pl-4">
-            <JsonTree data={parsedJson} />
+            <JsonTree data={parsedJson} verboseMode={verboseMode} />
           </div>
         ) : diffLike ? (
           <div className="mt-0.5 pl-4 diff-block">
@@ -561,7 +550,7 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
     case 'tool_use':
       return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_result':
-      return <ToolResultMessage message={message} index={index} />
+      return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
     case 'thinking':
       return <ThinkingMessage message={message} />
     case 'error':

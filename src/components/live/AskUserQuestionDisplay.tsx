@@ -1,4 +1,4 @@
-import { HelpCircle, CheckCircle2, Circle } from 'lucide-react'
+import { HelpCircle, MessageCircle, CheckCircle2, Circle } from 'lucide-react'
 
 interface QuestionOption {
   label: string
@@ -22,24 +22,45 @@ function isAskUserQuestionInput(data: unknown): data is AskUserQuestionInput {
   return Array.isArray(d.questions)
 }
 
-export function AskUserQuestionDisplay({ inputData }: { inputData: unknown }) {
+const COLORS = {
+  purple: {
+    border: 'border-purple-200/50 dark:border-purple-500/20',
+    bg: 'bg-purple-50/30 dark:bg-purple-900/10',
+    headerBorder: 'border-purple-200/30 dark:border-purple-500/10',
+    headerBg: 'bg-purple-100/50 dark:bg-purple-900/20',
+    icon: 'text-purple-500 dark:text-purple-400',
+    headerText: 'text-purple-600 dark:text-purple-400',
+  },
+  amber: {
+    border: 'border-amber-200/50 dark:border-amber-500/20',
+    bg: 'bg-amber-50/30 dark:bg-amber-900/10',
+    headerBorder: 'border-amber-200/30 dark:border-amber-500/10',
+    headerBg: 'bg-amber-100/50 dark:bg-amber-900/20',
+    icon: 'text-amber-500 dark:text-amber-400',
+    headerText: 'text-amber-600 dark:text-amber-400',
+  },
+} as const
+
+export function AskUserQuestionDisplay({ inputData, variant = 'purple' }: { inputData: unknown; variant?: 'purple' | 'amber' }) {
   if (!isAskUserQuestionInput(inputData)) return null
 
   const { questions } = inputData
+  const c = COLORS[variant]
+  const Icon = variant === 'amber' ? MessageCircle : HelpCircle
 
   return (
     <div className="mt-2 space-y-3">
       {questions.map((q, qi) => (
         <div
           key={qi}
-          className="rounded-lg border border-purple-200/50 dark:border-purple-500/20 bg-purple-50/30 dark:bg-purple-900/10 overflow-hidden"
+          className={`rounded-lg border ${c.border} ${c.bg} overflow-hidden`}
         >
-          <div className="px-3 py-2 border-b border-purple-200/30 dark:border-purple-500/10 bg-purple-100/50 dark:bg-purple-900/20">
+          <div className={`px-3 py-2 border-b ${c.headerBorder} ${c.headerBg}`}>
             <div className="flex items-start gap-2">
-              <HelpCircle className="w-4 h-4 text-purple-500 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+              <Icon className={`w-4 h-4 ${c.icon} flex-shrink-0 mt-0.5`} />
               <div className="min-w-0 flex-1">
                 {q.header && (
-                  <div className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-0.5">
+                  <div className={`text-[10px] font-mono ${c.headerText} uppercase tracking-wide mb-0.5`}>
                     {q.header}
                   </div>
                 )}

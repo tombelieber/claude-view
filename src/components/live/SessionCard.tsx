@@ -11,7 +11,7 @@ import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
-import { QuestionCard } from './QuestionCard'
+import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
@@ -148,9 +148,10 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         />
       </div>
 
-      {/* Question card (AskUserQuestion) */}
-      {session.agentState.state === 'awaiting_input' && session.agentState.context && (
-        <QuestionCard context={session.agentState.context} />
+      {/* Question card (AskUserQuestion) — show whenever context has questions,
+          regardless of specific state (awaiting_input, needs_permission, etc.) */}
+      {session.agentState.context && isAskUserQuestionInput(session.agentState.context) && (
+        <AskUserQuestionDisplay inputData={session.agentState.context} variant="amber" />
       )}
 
       {/* Task progress */}
