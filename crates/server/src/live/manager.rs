@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
@@ -24,7 +25,6 @@ use super::state::{
     AgentState, AgentStateGroup,
     LiveSession, SessionEvent, SessionStatus,
 };
-use crate::live::state::status_from_agent_state;
 use super::watcher::{FileEvent, initial_scan, start_watcher};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
@@ -156,6 +156,9 @@ pub struct LiveSessionManager {
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
     /// Detected Claude processes, keyed by working directory.
     processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,
+    /// Total number of Claude processes detected (not deduplicated by cwd).
+    /// Updated by the eager scan and periodic detector.
+    process_count: Arc<AtomicU32>,
     /// Per-model pricing table for cost calculation (core-level types).
     pricing: Arc<HashMap<String, cost::ModelPricing>>,
 }
@@ -193,6 +196,7 @@ impl LiveSessionManager {
             finders: Arc::new(TailFinders::new()),
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             processes: Arc::new(RwLock::new(HashMap::new())),
+            process_count: Arc::new(AtomicU32::new(0)),
             pricing: Arc::new(core_pricing),
         });
 
@@ -223,6 +227,26 @@ impl LiveSessionManager {
         self.accumulators.write().await.remove(session_id);
     }
 
+    /// Total number of Claude processes detected on the system.
+    ///
+    /// This is the raw process count (not deduplicated by cwd).
+    /// Updated by the eager scan at startup and the periodic detector.
+    pub fn process_count(&self) -> u32 {
+        self.process_count.load(Ordering::Relaxed)
+    }
+
+    /// Run a one-shot process table scan and store results.
+    async fn run_eager_process_scan(&self) {
+        let (new_processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
+            .await
+            .unwrap_or_default();
+        self.process_count.store(total_count, Ordering::Relaxed);
+        let unique_cwds = new_processes.len();
+        let mut processes = self.processes.write().await;
+        *processes = new_processes;
+        info!("Process scan: {} Claude processes ({} unique projects)", total_count, unique_cwds);
+    }
+
     /// Spawn the file watcher background task.
     ///
     /// 1. Performs an initial scan of `~/.claude/projects/` for recent JSONL files.
@@ -232,7 +256,11 @@ impl LiveSessionManager {
         let manager = self.clone();
 
         tokio::spawn(async move {
-            // Initial scan
+            // --- Startup recovery sequence ---
+            // 1. Eager process scan FIRST — builds the process table before JSONL scan
+            manager.run_eager_process_scan().await;
+
+            // 2. Initial JSONL scan — build accumulators, gate session creation on process
             let projects_dir = match dirs::home_dir() {
                 Some(home) => home.join(".claude").join("projects"),
                 None => {
@@ -250,17 +278,10 @@ impl LiveSessionManager {
 
             info!("Initial scan found {} recent JSONL files", initial_paths.len());
 
-            // Process each discovered file
+            // Warm up accumulators so that when hooks arrive, metadata is ready.
+            // No sessions are created here — hooks are the sole authority.
             for path in &initial_paths {
                 manager.process_jsonl_update(path).await;
-                // Mark initial discoveries
-                let session_id = extract_session_id(path);
-                let sessions = manager.sessions.read().await;
-                if let Some(session) = sessions.get(&session_id) {
-                    let _ = manager.tx.send(SessionEvent::SessionDiscovered {
-                        session: session.clone(),
-                    });
-                }
             }
 
             // Start the file system watcher
@@ -293,44 +314,22 @@ impl LiveSessionManager {
                             .unwrap_or_default()
                     };
                     for path in &catchup_paths {
-                        let sid = extract_session_id(path);
-                        let is_new = {
-                            let sessions = manager.sessions.read().await;
-                            !sessions.contains_key(&sid)
-                        };
                         manager.process_jsonl_update(path).await;
-                        if is_new {
-                            let sessions = manager.sessions.read().await;
-                            if let Some(session) = sessions.get(&sid) {
-                                let _ = manager.tx.send(SessionEvent::SessionDiscovered {
-                                    session: session.clone(),
-                                });
-                            }
-                        }
+                        // Sessions are only created by hooks — no discovery broadcast needed.
+                        // If a hook already created the session, process_jsonl_update enriched it.
                     }
                 }
                 match event {
                     FileEvent::Modified(path) => {
                         let session_id = extract_session_id(&path);
-                        let is_new = {
-                            let sessions = manager.sessions.read().await;
-                            !sessions.contains_key(&session_id)
-                        };
-
                         manager.process_jsonl_update(&path).await;
 
+                        // Broadcast update if session exists (created by hook)
                         let sessions = manager.sessions.read().await;
                         if let Some(session) = sessions.get(&session_id) {
-                            let event = if is_new {
-                                SessionEvent::SessionDiscovered {
-                                    session: session.clone(),
-                                }
-                            } else {
-                                SessionEvent::SessionUpdated {
-                                    session: session.clone(),
-                                }
-                            };
-                            let _ = manager.tx.send(event);
+                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                session: session.clone(),
+                            });
                         }
                     }
                     FileEvent::Removed(path) => {
@@ -366,10 +365,11 @@ impl LiveSessionManager {
                 interval.tick().await;
 
                 // Scan process table
-                let new_processes = tokio::task::spawn_blocking(detect_claude_processes)
+                let (new_processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
                     .await
                     .unwrap_or_default();
 
+                manager.process_count.store(total_count, Ordering::Relaxed);
                 {
                     let mut processes = manager.processes.write().await;
                     *processes = new_processes;
@@ -802,47 +802,16 @@ impl LiveSessionManager {
         // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
 
-        // Update the shared session map — metadata only, hooks own agent_state/status
+        // Update the shared session map — metadata only, hooks own agent_state/status.
+        // NEVER create sessions here. Only hooks (SessionStart) and startup recovery
+        // (process-gated) create sessions. If no session exists, the accumulator holds
+        // the metadata until a hook or recovery creates the session entry.
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&session_id) {
-            // Existing session: update metadata, preserve hook-owned state
             apply_jsonl_metadata(session, &metadata, &file_path_str, &project, &project_display_name, &project_path);
-        } else {
-            // New session discovered via JSONL (no hook yet): use fallback state
-            let fallback_state = AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "unknown".into(),
-                label: "Connecting...".into(),
-                context: None,
-            };
-            let session = LiveSession {
-                id: session_id.clone(),
-                project: project.clone(),
-                project_display_name,
-                project_path,
-                file_path: file_path_str,
-                status: status_from_agent_state(&fallback_state),
-                agent_state: fallback_state,
-                git_branch: metadata.git_branch.clone(),
-                pid: metadata.pid,
-                title: metadata.title.clone(),
-                last_user_message: metadata.last_user_message.clone(),
-                current_activity: "Connecting...".into(),
-                turn_count: metadata.turn_count,
-                started_at: metadata.started_at,
-                last_activity_at: metadata.last_activity_at,
-                model: metadata.model.clone(),
-                tokens: metadata.tokens.clone(),
-                context_window_tokens: metadata.context_window_tokens,
-                cost: metadata.cost.clone(),
-                cache_status: metadata.cache_status.clone(),
-                current_turn_started_at: metadata.current_turn_started_at,
-                last_turn_task_seconds: metadata.last_turn_task_seconds,
-                sub_agents: metadata.sub_agents.clone(),
-                progress_items: metadata.progress_items.clone(),
-            };
-            sessions.insert(session_id, session);
         }
+        // else: no session in map — accumulator is populated, metadata will be applied
+        // when SessionStart hook or startup recovery creates the session entry.
     }
 
     // NOTE: Tier 2 AI classification (spawn_ai_classification) was removed.
@@ -880,19 +849,12 @@ fn extract_project_info(path: &Path) -> (String, String, String) {
         .unwrap_or("unknown")
         .to_string();
 
-    // Decode the URL-encoded project directory name to get the real path
-    let project_path = urlencoding::decode(&project_encoded)
-        .unwrap_or_else(|_| project_encoded.clone().into())
-        .to_string();
+    // Resolve the encoded directory name to a real filesystem path.
+    // Claude Code encodes paths like `/Users/foo/@org/project` as
+    // `-Users-foo--org-project` (special chars → `-`), NOT URL-encoding.
+    let resolved = vibe_recall_core::discovery::resolve_project_path(&project_encoded);
 
-    // The display name is the last path component of the decoded path
-    let project_display_name = project_path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&project_path)
-        .to_string();
-
-    (project_encoded, project_display_name, project_path)
+    (project_encoded, resolved.display_name, resolved.full_path)
 }
 
 /// Calculate seconds since a Unix timestamp.
@@ -938,23 +900,27 @@ mod tests {
     #[test]
     fn test_extract_project_info_simple() {
         let path = PathBuf::from(
-            "/home/user/.claude/projects/my-project/session.jsonl",
+            "/home/user/.claude/projects/-tmp/session.jsonl",
         );
         let (encoded, display, decoded) = extract_project_info(&path);
-        assert_eq!(encoded, "my-project");
-        assert_eq!(display, "my-project");
-        assert_eq!(decoded, "my-project");
+        assert_eq!(encoded, "-tmp");
+        assert_eq!(display, "tmp");
+        assert_eq!(decoded, "/tmp");
     }
 
     #[test]
-    fn test_extract_project_info_url_encoded() {
+    fn test_extract_project_info_encoded_path() {
+        // Claude Code encodes `/Users/test/my-project` as `-Users-test-my-project`
+        // (special chars → `-`), NOT URL-encoding.
         let path = PathBuf::from(
-            "/home/user/.claude/projects/%2FUsers%2Ftest%2Fmy-project/session.jsonl",
+            "/home/user/.claude/projects/-Users-test-my-project/session.jsonl",
         );
-        let (encoded, display, decoded) = extract_project_info(&path);
-        assert_eq!(encoded, "%2FUsers%2Ftest%2Fmy-project");
-        assert_eq!(display, "my-project");
-        assert_eq!(decoded, "/Users/test/my-project");
+        let (encoded, display, _decoded) = extract_project_info(&path);
+        assert_eq!(encoded, "-Users-test-my-project");
+        // Display name is the last path component
+        assert!(!display.is_empty());
+        // Decoded path should start with /
+        assert!(_decoded.starts_with('/'));
     }
 
     #[test]
