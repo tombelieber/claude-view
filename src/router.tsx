@@ -1,13 +1,11 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import App from './App'
-import { StatsDashboard } from './components/StatsDashboard'
 import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
-import { InsightsPage } from './components/InsightsPage'
-import { ContributionsPage } from './pages/ContributionsPage'
 import { MissionControlPage } from './pages/MissionControlPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
@@ -48,10 +46,10 @@ export const router = createBrowserRouter([
     path: '/',
     element: <App />,
     children: [
-      { index: true, element: <StatsDashboard /> },
+      { index: true, element: <MissionControlPage /> },
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
-      { path: 'insights', element: <InsightsPage /> },
+      { path: 'analytics', element: <AnalyticsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
@@ -64,11 +62,12 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'search', element: <SearchResults /> },
-      // Flat contributions route (new canonical URL, uses ?project= query param)
-      { path: 'contributions', element: <ContributionsPage /> },
-      { path: 'mission-control', element: <MissionControlPage /> },
+      // Redirect old contributions URL to analytics tab
+      { path: 'contributions', element: <Navigate to="/analytics?tab=contributions" replace /> },
+      { path: 'mission-control', element: <Navigate to="/" replace /> },
       // Redirects for old URLs
       { path: 'history', element: <Navigate to="/sessions" replace /> },
+      { path: 'insights', element: <Navigate to="/analytics?tab=insights" replace /> },
       // Redirect old singular /session/:id to /sessions/:id
       { path: 'session/:sessionId', element: <SingularSessionRedirect /> },
       // Legacy redirect
