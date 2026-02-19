@@ -586,6 +586,9 @@ async fn get_project_sessions(
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         });
     }
 
@@ -617,6 +620,10 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
     // Captures the full skill including the leading /
     // Pattern: /word with optional :word or -word segments, not followed by /
     let skill_regex = Regex::new(r"(?:^|[^/\w])(/[a-zA-Z][\w:-]*)(?:[^/]|$)").ok();
+
+    // Regex for extracting skill names from Skill tool_use blocks in assistant lines
+    // Matches: "skill":"superpowers:systematic-debugging" (with optional whitespace around colon)
+    let skill_input_regex = Regex::new(r#""skill"\s*:\s*"([^"]+)""#).ok();
 
     // Regex for file paths in tool inputs
     let file_path_regex = Regex::new(r#""file_path"\s*:\s*"([^"]+)""#).ok();
@@ -664,6 +671,20 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
 
             // Count tool uses
             count_tools_quick(line, &mut metadata.tool_counts);
+
+            // Extract skill names from Skill tool_use blocks
+            if line.contains(r#""name":"Skill""#) || line.contains(r#""name": "Skill""#) {
+                if let Some(ref re) = skill_input_regex {
+                    for cap in re.captures_iter(line) {
+                        if let Some(skill) = cap.get(1) {
+                            let skill_name = skill.as_str().to_string();
+                            if !skill_name.is_empty() && !metadata.skills_used.contains(&skill_name) {
+                                metadata.skills_used.push(skill_name);
+                            }
+                        }
+                    }
+                }
+            }
 
             // Extract file paths (filename only, limit to 5)
             if metadata.files_touched.len() < 5 {
@@ -1383,6 +1404,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         }
     }
 

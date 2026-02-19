@@ -171,12 +171,19 @@ impl Database {
     ///
     /// For example, if `from` to `to` is 7 days, the comparison period
     /// is the 7 days before `from`.
-    pub async fn get_trends_with_range(&self, from: i64, to: i64, project: Option<&str>, branch: Option<&str>) -> DbResult<WeekTrends> {
+    pub async fn get_trends_with_range(
+        &self,
+        from: i64,
+        to: i64,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<WeekTrends> {
         let duration = to - from;
         let comp_end = from - 1;
         let comp_start = comp_end - duration;
 
-        self.get_trends_for_periods(from, to, comp_start, comp_end, project, branch).await
+        self.get_trends_for_periods(from, to, comp_start, comp_end, project, branch)
+            .await
     }
 
     /// Get week-over-week trend metrics.
@@ -192,7 +199,8 @@ impl Database {
         let (curr_start, curr_end) = current_week_bounds();
         let (prev_start, prev_end) = previous_week_bounds();
 
-        self.get_trends_for_periods(curr_start, curr_end, prev_start, prev_end, None, None).await
+        self.get_trends_for_periods(curr_start, curr_end, prev_start, prev_end, None, None)
+            .await
     }
 
     /// Internal: Get trend metrics comparing two arbitrary periods.
@@ -210,7 +218,6 @@ impl Database {
         project: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<WeekTrends> {
-
         // Query A — session-table metrics for both periods in one scan (replaces 8 queries)
         let (
             curr_sessions, curr_prompts, curr_files_edited, curr_reedited,
@@ -242,16 +249,15 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        // Query B — tokens from turns table for both periods (replaces 2 queries)
+        // Query B — tokens from sessions table for both periods (replaces 2 queries)
         let (curr_tokens, prev_tokens): (i64, i64) = sqlx::query_as(
             r#"
             SELECT
               COALESCE(SUM(CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2
-                THEN COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0) ELSE 0 END), 0),
+                THEN COALESCE(s.total_input_tokens, 0) + COALESCE(s.total_output_tokens, 0) ELSE 0 END), 0),
               COALESCE(SUM(CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4
-                THEN COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0) ELSE 0 END), 0)
-            FROM turns t
-            INNER JOIN sessions s ON t.session_id = s.id
+                THEN COALESCE(s.total_input_tokens, 0) + COALESCE(s.total_output_tokens, 0) ELSE 0 END), 0)
+            FROM sessions s
             WHERE s.is_sidechain = 0
               AND s.last_message_at >= ?3 AND s.last_message_at <= ?2
               AND (?5 IS NULL OR s.project_id = ?5)
@@ -291,8 +297,16 @@ impl Database {
         .await?;
 
         // Derived metrics
-        let curr_avg_tokens = if curr_prompts > 0 { curr_tokens / curr_prompts } else { 0 };
-        let prev_avg_tokens = if prev_prompts > 0 { prev_tokens / prev_prompts } else { 0 };
+        let curr_avg_tokens = if curr_prompts > 0 {
+            curr_tokens / curr_prompts
+        } else {
+            0
+        };
+        let prev_avg_tokens = if prev_prompts > 0 {
+            prev_tokens / prev_prompts
+        } else {
+            0
+        };
 
         let curr_reedit_rate = if curr_files_edited > 0 {
             ((curr_reedited as f64 / curr_files_edited as f64) * 100.0).round() as i64
@@ -427,22 +441,19 @@ impl Database {
 
     /// Get the git sync interval in seconds.
     pub async fn get_git_sync_interval(&self) -> DbResult<u64> {
-        let (interval,): (i64,) = sqlx::query_as(
-            "SELECT git_sync_interval_secs FROM index_metadata WHERE id = 1",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (interval,): (i64,) =
+            sqlx::query_as("SELECT git_sync_interval_secs FROM index_metadata WHERE id = 1")
+                .fetch_one(self.pool())
+                .await?;
         Ok(interval as u64)
     }
 
     /// Set the git sync interval in seconds.
     pub async fn set_git_sync_interval(&self, seconds: u64) -> DbResult<()> {
-        sqlx::query(
-            "UPDATE index_metadata SET git_sync_interval_secs = ?1 WHERE id = 1",
-        )
-        .bind(seconds as i64)
-        .execute(self.pool())
-        .await?;
+        sqlx::query("UPDATE index_metadata SET git_sync_interval_secs = ?1 WHERE id = 1")
+            .bind(seconds as i64)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 }
@@ -540,21 +551,14 @@ mod tests {
 
         // Start should be on a Monday at midnight
         let start_dt = Utc.timestamp_opt(start, 0).unwrap();
-        assert_eq!(
-            start_dt.weekday(),
-            Weekday::Mon,
-            "Start should be a Monday"
-        );
+        assert_eq!(start_dt.weekday(), Weekday::Mon, "Start should be a Monday");
         assert_eq!(start_dt.hour(), 0, "Start should be at 00:00");
         assert_eq!(start_dt.minute(), 0);
         assert_eq!(start_dt.second(), 0);
 
         // End should be approximately now (within 5 seconds)
         let now = Utc::now().timestamp();
-        assert!(
-            (end - now).abs() < 5,
-            "End should be approximately now"
-        );
+        assert!((end - now).abs() < 5, "End should be approximately now");
     }
 
     #[test]
@@ -566,11 +570,7 @@ mod tests {
 
         // Start should be on a Monday at midnight
         let start_dt = Utc.timestamp_opt(start, 0).unwrap();
-        assert_eq!(
-            start_dt.weekday(),
-            Weekday::Mon,
-            "Start should be a Monday"
-        );
+        assert_eq!(start_dt.weekday(), Weekday::Mon, "Start should be a Monday");
         assert_eq!(start_dt.hour(), 0, "Start should be at 00:00");
 
         // End should be on a Sunday at 23:59:59
@@ -649,11 +649,11 @@ mod tests {
         db.update_session_deep_fields(
             "sess-curr-1",
             "Last message",
-            3,  // turn_count
-            2,  // tool_edit
-            5,  // tool_read
-            1,  // tool_bash
-            1,  // tool_write
+            3, // turn_count
+            2, // tool_edit
+            5, // tool_read
+            1, // tool_bash
+            1, // tool_write
             "[]",
             "[]",
             10, // user_prompt_count
@@ -661,29 +661,43 @@ mod tests {
             15, // tool_call_count
             r#"["/a.rs"]"#,
             r#"["/b.rs", "/c.rs"]"#,
-            1,  // files_read_count
-            2,  // files_edited_count
-            0,  // reedited_files_count
+            1, // files_read_count
+            2, // files_edited_count
+            0, // reedited_files_count
             600,
             1,
             None, // first_message_at
             // Phase 3.5: Full parser metrics
-            0, 0, 0, 0, // token counts
-            0,           // thinking_block_count
-            None, None, None, // turn durations
-            0, 0, 0, 0, // error/retry/compaction/hook_blocked
-            0, 0, 0, 0, // progress counts
-            None,        // summary_text
-            1,           // parse_version
-            1000,        // file_size
-            1706200000,  // file_mtime
-            0, 0, 0,    // lines_added, lines_removed, loc_source
-            0, 0,        // ai_lines_added, ai_lines_removed
-            None,        // work_type
-            None,        // git_branch
-            None,        // primary_model
-            None,        // last_message_at
-            None,        // first_user_prompt
+            0,
+            0,
+            0,
+            0, // token counts
+            0, // thinking_block_count
+            None,
+            None,
+            None, // turn durations
+            0,
+            0,
+            0,
+            0, // error/retry/compaction/hook_blocked
+            0,
+            0,
+            0,
+            0,          // progress counts
+            None,       // summary_text
+            1,          // parse_version
+            1000,       // file_size
+            1706200000, // file_mtime
+            0,
+            0,
+            0, // lines_added, lines_removed, loc_source
+            0,
+            0,    // ai_lines_added, ai_lines_removed
+            None, // work_type
+            None, // git_branch
+            None, // primary_model
+            None, // last_message_at
+            None, // first_user_prompt
         )
         .await
         .unwrap();
@@ -815,10 +829,7 @@ mod tests {
         assert_eq!(second_metadata.commits_found, 80);
         assert_eq!(second_metadata.links_created, 15);
         // Note: last_git_sync_at timestamp might change due to updated_at, but the data is preserved
-        assert_eq!(
-            second_metadata.commits_found,
-            first_metadata.commits_found
-        );
+        assert_eq!(second_metadata.commits_found, first_metadata.commits_found);
     }
 
     #[tokio::test]
@@ -880,7 +891,12 @@ mod tests {
             last_message: format!("Last message for {}", id),
             files_touched: vec![],
             skills_used: vec![],
-            tool_counts: vibe_recall_core::ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            tool_counts: vibe_recall_core::ToolCounts {
+                edit: 5,
+                read: 10,
+                bash: 3,
+                write: 2,
+            },
             message_count: 20,
             turn_count: 8,
             summary: None,
@@ -926,6 +942,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         }
     }
 
@@ -958,21 +977,33 @@ mod tests {
         db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
 
         // No filter — trends include both sessions
-        let trends = db.get_trends_with_range(from, to, None, None).await.unwrap();
+        let trends = db
+            .get_trends_with_range(from, to, None, None)
+            .await
+            .unwrap();
         assert_eq!(trends.session_count.current, 2);
         assert_eq!(trends.total_files_edited.current, 9); // 3 + 6
 
         // Project filter — only proj-x
-        let trends = db.get_trends_with_range(from, to, Some("proj-x"), None).await.unwrap();
+        let trends = db
+            .get_trends_with_range(from, to, Some("proj-x"), None)
+            .await
+            .unwrap();
         assert_eq!(trends.session_count.current, 1);
         assert_eq!(trends.total_files_edited.current, 3);
 
         // Project + branch filter
-        let trends = db.get_trends_with_range(from, to, Some("proj-x"), Some("main")).await.unwrap();
+        let trends = db
+            .get_trends_with_range(from, to, Some("proj-x"), Some("main"))
+            .await
+            .unwrap();
         assert_eq!(trends.session_count.current, 1);
 
         // Project + wrong branch = 0
-        let trends = db.get_trends_with_range(from, to, Some("proj-x"), Some("develop")).await.unwrap();
+        let trends = db
+            .get_trends_with_range(from, to, Some("proj-x"), Some("develop"))
+            .await
+            .unwrap();
         assert_eq!(trends.session_count.current, 0);
         assert_eq!(trends.total_files_edited.current, 0);
     }

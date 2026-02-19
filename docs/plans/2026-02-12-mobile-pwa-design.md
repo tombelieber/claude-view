@@ -70,7 +70,7 @@ Everything else -- fluency score, analytics, pattern discovery -- is nice-to-hav
 Claude Code writes JSONL
     |
     v
-launchd daemon (vibe-recall-server, always running)
+ launchd daemon (vibe-recall, always running)
     |
     v  notify crate detects file change
 Mission Control MONITOR layer (existing Phase A)
@@ -104,7 +104,7 @@ crates/
     └── Cargo.toml
 ```
 
-The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to Fly.io. The local daemon runs the existing `vibe-recall-server` binary with a new relay client module that connects outbound to the relay.
+The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to Fly.io. The local daemon runs the existing `vibe-recall` binary with a new relay client module that connects outbound to the relay.
 
 ---
 
@@ -130,7 +130,45 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 ---
 
-## 6. QR Pairing Flow
+## 6. Push Notification Suppression (Mobile Presence)
+
+### Problem
+
+Without suppression, every `WAITING_FOR_USER` event triggers a push — potentially 10-30 pushes/hour in an active session. This creates notification spam when the user is actively using the mobile PWA.
+
+### Solution: Mobile-side presence detection
+
+The relay suppresses push notifications when the mobile PWA is open and in the foreground. Detection is **mobile-side only** — desktop state is irrelevant.
+
+| Mobile PWA state | Push sent? |
+|------------------|------------|
+| Open + foreground (WebSocket connected, app visible) | ❌ No |
+| Backgrounded / tab hidden / app closed | ✅ Yes |
+
+### Mechanism
+
+```
+Mobile PWA → WebSocket connection → heartbeat every 30s with "presence: active"
+    └── Relay tracks: mobile_last_seen < 60s ago → "mobile is active"
+    
+WAITING_FOR_USER fires:
+    └── Relay checks mobile presence
+    └── Mobile active (WS connected + recent heartbeat)?
+        └── Yes → Skip push (user is looking at the app)
+        └── No → Send push via OneSignal
+```
+
+### Why desktop doesn't factor in
+
+Desktop web app (localhost:47892) already receives real-time state via SSE — it never needs push notifications. Push is exclusively for mobile clients.
+
+### Comparison to messaging apps
+
+This matches WhatsApp/Instagram behavior: if you're viewing the chat, you don't get notified about new messages in that chat. Presence is detected via active WebSocket connection + app visibility.
+
+---
+
+## 7. QR Pairing Flow
 
 ```
 ┌──────────────────────┐         ┌──────────────────┐         ┌───────────────────┐
@@ -172,9 +210,11 @@ The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to 
 
 **Re-pairing:** Desktop UI has a "Remove device" button. Revokes the phone's public key. Phone must scan a new QR code to re-pair.
 
+> **For detailed pairing protocol (QR payload format, security properties, `/pair` and `/pair/claim` endpoints), see section 3 in [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md#3-pairing-protocol).**
+
 ---
 
-## 7. PWA Mobile Phases
+## 8. PWA Mobile Phases
 
 | Phase | Name | Scope | Timeline | Depends on |
 |-------|------|-------|----------|------------|
@@ -206,64 +246,15 @@ Build the relay protocol for M3 from day 1. The WebSocket protocol is bidirectio
 
 ---
 
-## 8. Relay Server Design (crates/relay/)
-
-### Overview
+## 9. Relay Server Design (crates/relay/)
 
 The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is to forward encrypted blobs between paired devices. It stores no session data, logs no message content, and cannot decrypt payloads.
 
-### Endpoints
-
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/ws` | WebSocket | Bidirectional device connection. Authenticated via Ed25519 signed challenge. |
-| `/health` | GET | Health check for Fly.io. Returns 200 if the server is running. |
-| `/pair` | POST | Accept pairing request (one-time token + encrypted phone pubkey). |
-
-### Constraints
-
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| Max connections per device | 10 | Prevent resource exhaustion |
-| Max messages per minute per device | 100 | Rate limiting |
-| Max new connections per minute per IP | 10 | Connection rate limiting |
-| Message queue (offline device) | 100 messages, 5 min TTL | Bounded buffer for brief disconnects, not persistent storage |
-| Max message size | 64 KB | Session summaries, not file contents |
-| Persistent storage | None | Zero-knowledge design. All state is in-memory. Restart = clean slate (devices auto-reconnect and re-auth). |
-
-### Fly.io deployment
-
-```toml
-# fly.toml
-app = "claude-score-relay"
-primary_region = "sjc"  # San Jose, close to west coast users
-
-[build]
-  image = "ghcr.io/myorg/claude-score-relay:latest"
-
-[http_service]
-  internal_port = 8080
-  force_https = true
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-```
-
-Expected cost at scale:
-
-| Users | Concurrent WS | VM size | Cost/mo |
-|-------|--------------|---------|---------|
-| 10 | ~20 | shared-cpu-1x, 256MB | ~$2 |
-| 100 | ~200 | shared-cpu-1x, 256MB | ~$2 |
-| 1,000 | ~2,000 | dedicated-cpu-1x, 512MB | ~$7 |
-| 10,000 | ~20,000 | dedicated-cpu-2x, 1GB | ~$30 |
-
-Rust's async WS handling means a single VM handles thousands of idle connections efficiently. Scale horizontally only when CPU (encryption verification) becomes the bottleneck.
+**For detailed relay server design (endpoints, constraints, deployment config, cost estimates), see [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md).**
 
 ---
 
-## 9. Daemon Design
+## 10. Daemon Design
 
 ### macOS launchd plist
 
@@ -273,10 +264,10 @@ Rust's async WS handling means a single VM handles thousands of idle connections
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude-score.daemon</string>
+    <string>com.vibe-recall.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/claude-score</string>
+        <string>/usr/local/bin/vibe-recall</string>
         <string>--daemon</string>
     </array>
     <key>RunAtLoad</key>
@@ -284,24 +275,24 @@ Rust's async WS handling means a single VM handles thousands of idle connections
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/claude-score-daemon.log</string>
+    <string>/tmp/vibe-recall-daemon.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/claude-score-daemon.err</string>
+    <string>/tmp/vibe-recall-daemon.err</string>
 </dict>
 </plist>
 ```
 
-**Location:** `~/Library/LaunchAgents/com.claude-score.daemon.plist` (UserAgent, no root required).
+**Location:** `~/Library/LaunchAgents/com.vibe-recall.daemon.plist` (UserAgent, no root required).
 
 ### Installation UX (invisible daemon)
 
 There is no "install daemon" step. The user never learns the word "daemon."
 
-1. First `npx claude-view` → starts server, silently writes plist, runs `launchctl load`, opens browser
+1. First `npx claude-view` (npm wrapper) → starts `vibe-recall` binary, silently writes plist, runs `launchctl load`, opens browser
 2. Toast notification: "claude-view is running at localhost:47892"
 3. Every subsequent `npx claude-view` → server already running, just opens browser
 4. Settings page has "Run in background" toggle (default: ON)
-5. `claude-view stop` CLI command for power users
+5. `claude-view stop` CLI command (npm wrapper) for power users
 
 The server IS the daemon. Same binary, always running. No mode switch, no separate process.
 
@@ -326,7 +317,7 @@ The server IS the daemon. Same binary, always running. No mode switch, no separa
 
 ---
 
-## 10. Dependencies on Mission Control
+## 11. Dependencies on Mission Control
 
 | Mission Control Phase | What it provides | PWA Phase that needs it |
 |----------------------|-----------------|----------------------|
@@ -354,7 +345,7 @@ Phase A broadcast channel
 
 ---
 
-## 11. Relationship to GTM Strategy
+## 12. Relationship to GTM Strategy
 
 ### The pivot
 
@@ -403,7 +394,7 @@ Spec-to-code engine customer (future product)
 
 ---
 
-## 12. Future Vision (Deferred)
+## 13. Future Vision (Deferred)
 
 These features build on the remote monitoring foundation but are out of scope for this design.
 
@@ -425,7 +416,25 @@ These features build on the remote monitoring foundation but are out of scope fo
 
 ## Cross-references
 
+- [`docs/plans/2026-02-19-flyio-relay-design.md`](2026-02-19-flyio-relay-design.md) -- End-to-end relay server, daemon client, QR pairing protocol, deployment
+- [`docs/plans/2026-02-19-flyio-relay-implementation.md`](2026-02-19-flyio-relay-implementation.md) -- Step-by-step implementation plan for the relay
+- [`docs/plans/2026-02-16-relay-hosting-adr.md`](2026-02-16-relay-hosting-adr.md) -- Hosting provider decision (Fly.io) and re-evaluation triggers
 - [`docs/plans/mission-control/design.md`](mission-control/design.md) -- Mission Control architecture (Phase A is prerequisite)
 - [`docs/plans/mission-control/phase-a-monitoring.md`](mission-control/phase-a-monitoring.md) -- JSONL watcher, state machine, broadcast channel
 - [`docs/plans/mission-control/phase-f-interactive.md`](mission-control/phase-f-interactive.md) -- Agent SDK sidecar (prerequisite for M3)
 - `docs/plans/2026-02-07-gtm-launch-strategy.md` (on Desktop) -- Original GTM plan this pivots from
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Created `2026-02-19-flyio-relay-design.md` with full relay protocol spec |
+| 2 | Binary name mismatch: plan used `vibe-recall-server` but actual binary is `vibe-recall` | Blocker | Updated lines 73 and 107 to use `vibe-recall` |
+| 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `vibe-recall` naming consistently |
+| 4 | CLI naming unclear: `npx claude-view` vs `vibe-recall` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `vibe-recall` binary (line 257) |
+| 5 | Hook path in phase-a-monitoring differs from actual | Minor | Noted in changelog; phase-a-monitoring.md is a separate plan with its own audit cycle |
+| 6 | Growth loop uses old `claude-score` product name | Minor | Left as-is; this is a conceptual diagram, not code reference. Product naming TBD. |
+| 7 | Push notification spam risk: every WAITING_FOR_USER would trigger push | Blocker | Added section 6 (Push Notification Suppression) with mobile-side presence detection |
+| 8 | Cross-references pointed to non-existent `2026-02-17-*.md` files | Blocker | Updated all references to `2026-02-19-flyio-relay-design.md` |

@@ -13,6 +13,8 @@ pub mod facets;
 mod fluency;
 mod types;
 
+pub use dashboard::ActivityPoint;
+pub use dashboard::SessionFilterParams;
 pub use types::*;
 
 // Re-export _tx functions for indexer_parallel.rs (crate::queries::*_tx paths)

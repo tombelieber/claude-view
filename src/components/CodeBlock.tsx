@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
-import { Highlight, themes } from 'prism-react-renderer'
+import { useState, useCallback, useMemo } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { useExpandContext } from '../contexts/ExpandContext'
 import { useTheme } from '../hooks/use-theme'
+import { useShikiHighlighter } from '../hooks/use-shiki'
+import { resolveLanguage } from '../lib/shiki'
 
 interface CodeBlockProps {
   code: string | null | undefined
@@ -17,11 +18,12 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
   const isExpanded = blockId ? expandedBlocks.has(blockId) : false
   const [copied, setCopied] = useState(false)
   const { resolvedTheme } = useTheme()
-  const codeTheme = resolvedTheme === 'dark' ? themes.nightOwl : themes.github
+  const highlighter = useShikiHighlighter()
 
-  // Null safety: handle null/undefined code
   const safeCode = code || ''
   const safeLanguage = language || ''
+  const shikiLang = resolveLanguage(safeLanguage)
+  const shikiTheme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light'
 
   const lines = safeCode.split('\n')
   const shouldCollapse = lines.length > COLLAPSE_THRESHOLD
@@ -40,22 +42,21 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
     }
   }, [safeCode])
 
-  // Map common language aliases
-  const normalizedLanguage = safeLanguage.toLowerCase()
-  const languageMap: Record<string, string> = {
-    'js': 'javascript',
-    'ts': 'typescript',
-    'tsx': 'tsx',
-    'jsx': 'jsx',
-    'py': 'python',
-    'rb': 'ruby',
-    'sh': 'bash',
-    'shell': 'bash',
-    'zsh': 'bash',
-    'yml': 'yaml',
-    'md': 'markdown',
-  }
-  const prismLanguage = languageMap[normalizedLanguage] || normalizedLanguage || 'text'
+  // Shiki generates HTML from code strings we control (not user-submitted web content).
+  // The input is source code from local JSONL session files, and Shiki's output is
+  // deterministic spans with inline styles — no script injection vector.
+  const highlightedHtml = useMemo(() => {
+    if (!highlighter) return null
+    try {
+      return highlighter.codeToHtml(displayCode, {
+        lang: shikiLang,
+        theme: shikiTheme,
+      })
+    } catch {
+      // Language not loaded or unknown — fall back to plain text
+      return null
+    }
+  }, [highlighter, displayCode, shikiLang, shikiTheme])
 
   return (
     <div className="relative my-3 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
@@ -83,23 +84,17 @@ export function CodeBlock({ code, language, blockId }: CodeBlockProps) {
         </button>
       </div>
 
-      {/* Code */}
-      <Highlight theme={codeTheme} code={displayCode} language={prismLanguage}>
-        {({ className, style, tokens, getLineProps, getTokenProps }) => (
-          <pre
-            className={`${className} p-3 text-sm overflow-x-auto`}
-            style={{ ...style, margin: 0 }}
-          >
-            {tokens.map((line, i) => (
-              <div key={i} {...getLineProps({ line })}>
-                {line.map((token, key) => (
-                  <span key={key} {...getTokenProps({ token })} />
-                ))}
-              </div>
-            ))}
-          </pre>
-        )}
-      </Highlight>
+      {/* Code — Shiki highlighted or plain fallback */}
+      {highlightedHtml ? (
+        <div
+          className="p-3 text-sm overflow-x-auto [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      ) : (
+        <pre className="p-3 text-sm overflow-x-auto bg-gray-50 dark:bg-gray-900 m-0">
+          <code>{displayCode}</code>
+        </pre>
+      )}
 
       {/* Collapse/Expand control */}
       {shouldCollapse && (

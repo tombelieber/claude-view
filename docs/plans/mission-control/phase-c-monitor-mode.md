@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-10
 phase: C
 depends_on: B
@@ -7,7 +7,9 @@ depends_on: B
 
 # Phase C: Monitor Mode - Live Terminal Grid
 
-> A "security camera grid" for Claude Code sessions. Users see multiple sessions' real-time output simultaneously, rendered via xterm.js over WebSocket connections.
+> **Architectural update (2026-02-16):** Monitor mode uses RichPane (HTML) exclusively. xterm.js is deferred to Phase F (Interactive Control) where we own the PTY. See `docs/plans/2026-02-16-monitor-rich-only.md` for rationale.
+
+> A "security camera grid" for Claude Code sessions. Users see multiple sessions' real-time output simultaneously, rendered via RichPane (HTML chat view) over WebSocket connections.
 
 ## Prerequisites
 
@@ -263,98 +265,13 @@ proxy: {
 
 ---
 
-## Step 2: xterm.js Integration (Frontend)
+## Step 2: xterm.js Integration (Frontend) -- DEFERRED TO PHASE F
 
-### 2.1 Add Dependencies
+> **Deferred (2026-02-16):** xterm.js is deferred to Phase F (Interactive Control) where we own the PTY via Agent SDK. Monitor mode reads JSONL (structured data), so HTML rendering via RichPane is strictly better. The WebSocket hook and infrastructure from Step 1 remain and are used by RichPane. See `docs/plans/2026-02-16-monitor-rich-only.md` for rationale.
 
-```bash
-bun add @xterm/xterm @xterm/addon-fit @xterm/addon-webgl
-```
+The TerminalPane component, xterm.js dependencies, and WebGL renderer are not needed for Monitor mode. When Phase F adds interactive control (Agent SDK spawns a process we own), xterm.js will be introduced for bidirectional terminal I/O.
 
-| Package | Purpose | Size |
-|---------|---------|------|
-| `@xterm/xterm` | Terminal emulator core | ~200KB |
-| `@xterm/addon-fit` | Auto-resize terminal to container | ~5KB |
-| `@xterm/addon-webgl` | GPU-accelerated rendering for high throughput | ~50KB |
-
-**Why WebGL renderer:** With 4-8 panes streaming simultaneously, the default canvas renderer can drop frames. WebGL renderer offloads to GPU, maintaining 60fps even with rapid output. Falls back to canvas if WebGL is unavailable.
-
-### 2.2 TerminalPane Component
-
-**File: `src/components/live/TerminalPane.tsx` (new)**
-
-A headless xterm.js wrapper. Handles terminal lifecycle, WebSocket connection, and resize.
-
-```tsx
-interface TerminalPaneProps {
-  sessionId: string;
-  /** JSONL file path for the session (passed to WS endpoint) */
-  sessionPath: string;
-  /** Display mode */
-  mode: 'raw' | 'rich';
-  /** Number of historical lines to load */
-  scrollback?: number;
-  /** Whether this pane is currently visible (for connect/disconnect optimization) */
-  isVisible: boolean;
-  /** Callback when connection state changes */
-  onConnectionChange?: (state: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
-}
-```
-
-**Lifecycle:**
-
-1. `useEffect` on mount: Create `Terminal` instance, load `FitAddon` and `WebGLAddon`.
-2. `useEffect` on `isVisible` change:
-   - `true`: Open WebSocket, send handshake, pipe incoming messages to `terminal.write()`.
-   - `false`: Close WebSocket, clear terminal buffer (free memory).
-3. `useEffect` on container resize: Call `fitAddon.fit()` via `ResizeObserver`.
-4. Cleanup on unmount: Dispose terminal, close WebSocket.
-
-**xterm.js configuration:**
-
-```ts
-const terminal = new Terminal({
-  fontSize: 12,
-  fontFamily: 'JetBrains Mono, Menlo, monospace',
-  theme: {
-    background: '#0D1117',      // Match dark OLED theme from design
-    foreground: '#E6EDF3',
-    cursor: '#58A6FF',
-    selectionBackground: '#264F78',
-  },
-  scrollback: 1000,             // Per-pane limit (see Step 7)
-  cursorBlink: false,           // Read-only terminal, no cursor
-  disableStdin: true,           // Read-only: no user input
-  convertEol: true,             // Handle \n correctly
-  allowProposedApi: true,       // Required for WebGL addon
-});
-```
-
-**Write throttling:**
-
-Buffer incoming WS messages and flush to xterm.js at 60fps using `requestAnimationFrame`:
-
-```ts
-const writeBuffer: string[] = [];
-let rafHandle: number | null = null;
-
-function enqueueWrite(data: string) {
-  writeBuffer.push(data);
-  if (!rafHandle) {
-    rafHandle = requestAnimationFrame(flushWrites);
-  }
-}
-
-function flushWrites() {
-  if (writeBuffer.length > 0) {
-    terminal.write(writeBuffer.join(''));
-    writeBuffer.length = 0;
-  }
-  rafHandle = null;
-}
-```
-
-### 2.3 WebSocket URL Helper
+### 2.3 WebSocket URL Helper (RETAINED)
 
 **File: `src/lib/ws-url.ts` (new)**
 
@@ -378,16 +295,15 @@ export function wsUrl(path: string): string {
 }
 ```
 
-### 2.4 useTerminalSocket Hook
+### 2.4 useTerminalSocket Hook (RETAINED)
 
 **File: `src/hooks/use-terminal-socket.ts` (new)**
 
-Encapsulates WebSocket connection logic with auto-reconnect.
+Encapsulates WebSocket connection logic with auto-reconnect. Used by RichPane to receive structured messages.
 
 ```ts
 interface UseTerminalSocketOptions {
   sessionId: string;
-  mode: 'raw' | 'rich';
   scrollback?: number;
   enabled: boolean;  // false when pane not visible
   onMessage: (data: string) => void;
@@ -631,46 +547,49 @@ interface ExpandedPaneOverlayProps {
 
 ---
 
-## Step 5: Rich vs Raw Toggle
+## Step 5: Verbose Toggle
+
+> **Updated (2026-02-16):** Replaces the original "Rich vs Raw Toggle" section. Monitor mode is RichPane-only (no xterm.js). The toggle now controls verbosity level: chat-only (default) vs. full details.
 
 ### 5.1 RichPane Component
 
 **File: `src/components/live/RichPane.tsx` (new)**
 
-Alternative to `TerminalPane` for rich mode. Renders structured messages as compact React cards, using a virtualized list for performance.
+The sole rendering component for Monitor mode panes. Renders structured messages as compact React cards, using a virtualized list for performance.
 
 ```tsx
 interface RichPaneProps {
   messages: RichMessage[];
   isVisible: boolean;
+  verbose: boolean;
 }
 ```
 
 Uses `react-virtuoso` (already in dependencies) for virtualized scrolling. Each message renders as a compact card:
 
-| Message type | Rendering |
-|--------------|-----------|
-| User prompt | Blue-left-border card, truncated to 2 lines |
-| Assistant text | White text, truncated to 3 lines with "..." expand |
-| Tool use | Orange pill: `Read src/main.rs`, `Edit 5 files`, etc. |
-| Tool result | Gray, collapsed by default (click to expand) |
-| Thinking | Italic gray, collapsed |
-| Error | Red-left-border card |
+| Message type | Chat mode (default) | Verbose mode |
+|--------------|-------------------|-------------|
+| User prompt | Blue-left-border card, truncated to 2 lines | Same |
+| Assistant text | White text, truncated to 3 lines with "..." expand | Same |
+| Tool use | Hidden | Orange pill: `Read src/main.rs`, `Edit 5 files`, etc. |
+| Tool result | Hidden | Gray, collapsed by default (click to expand) |
+| Thinking | Hidden | Italic gray, collapsed |
+| Error | Red-left-border card | Same |
 
 **Auto-scroll:** Pin to bottom when new messages arrive. If user has scrolled up, show "New messages" pill at bottom to jump back.
 
-### 5.2 Mode Toggle Button
+### 5.2 Verbose Toggle Button
 
 Located in the pane header. Simple icon toggle:
 
-- Raw mode icon: `Terminal` (from lucide-react, already in dependencies)
-- Rich mode icon: `MessageSquare` (from lucide-react)
+- Chat mode icon: `MessageSquare` (from lucide-react, already in dependencies)
+- Verbose mode icon: `List` (from lucide-react)
 
-Toggle sends `{ "type": "mode", "mode": "rich" }` over the existing WebSocket. Server switches the format of subsequent messages. Messages already in the buffer are NOT re-sent -- only new lines use the new format.
+Toggle is client-side only -- all message types are always delivered over the WebSocket. The frontend filters what to display based on the verbose flag.
 
-**Default mode:** `'rich'` for new panes. Rationale: in a small grid pane, formatted cards are more readable than raw terminal scrollback. Users who want terminal output switch to raw.
+**Default mode:** Chat (non-verbose) for new panes. Rationale: in a small grid pane, showing only user prompts and assistant responses provides the best scanability. Users who need to see tool calls, thinking, and results toggle to verbose.
 
-**Per-pane persistence:** Stored in `MonitorStore.paneMode` (zustand). Persisted to localStorage so mode preferences survive page reloads.
+**Per-pane persistence:** Stored in `MonitorStore.verboseMode` (zustand). Persisted to localStorage so mode preferences survive page reloads.
 
 ---
 
@@ -872,13 +791,13 @@ Execute these steps sequentially. Each step builds on the previous.
 - [ ] **AC-1: Monitor view accessible.** Monitor Mode appears as a tab in the view switcher (from Phase B). Clicking it shows the grid.
 - [ ] **AC-2: Responsive grid.** Grid adapts to screen size per breakpoint table (1x1 at 375px through 2x4 at 3440px). Verify at each breakpoint.
 - [ ] **AC-3: rows x cols slider.** User can override auto-responsive with manual grid dimensions. Override persists across page reloads (localStorage).
-- [ ] **AC-4: xterm.js renders.** Terminal output renders correctly in panes -- ANSI colors, line wrapping, scrollback. No visual artifacts.
+- [ ] **AC-4: RichPane renders markdown correctly.** Tables, bold, code blocks, and inline code render properly in panes. No raw markdown artifacts.
 - [ ] **AC-5: WebSocket connects.** Opening Monitor Mode connects WebSocket per visible pane. Verify in DevTools Network tab: WS connection established, messages flowing.
 - [ ] **AC-6: WebSocket disconnects.** Closing a pane, hiding it, or navigating away cleanly closes the WebSocket. No orphan connections (verify in DevTools and server logs).
 - [ ] **AC-7: Initial scrollback.** On connect, pane shows last 100 lines of session history before live lines begin streaming.
 - [ ] **AC-8: Live streaming.** When Claude Code writes to a JSONL file, the new content appears in the corresponding pane within 100ms. Measure: write a line to the file, timestamp when it appears on screen.
 - [ ] **AC-9: Double-click expand.** Double-clicking a pane opens it as a full-screen overlay. ESC closes it. Terminal re-fits to the larger size.
-- [ ] **AC-10: Rich/Raw toggle.** Per-pane toggle switches between xterm.js (raw) and React message cards (rich). Default is rich. Toggle persists per pane.
+- [ ] **AC-10: Verbose toggle.** Per-pane toggle shows/hides tool calls, thinking, and results. Default is chat-only. Toggle persists per pane.
 - [ ] **AC-11: Pane selection.** Single-click header selects pane (blue border). Click again deselects. Only one pane selected at a time.
 - [ ] **AC-12: Context menu.** Right-click shows Pin/Hide/Move/Expand options. Each action works correctly.
 - [ ] **AC-13: Auto-reconnect.** Kill the Rust server, restart it. WebSocket reconnects automatically within 5 seconds. Pane shows "Reconnecting..." during gap.

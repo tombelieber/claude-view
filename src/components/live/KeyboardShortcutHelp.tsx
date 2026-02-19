@@ -19,9 +19,9 @@ const navigationShortcuts: ShortcutEntry[] = [
 ]
 
 const viewShortcuts: ShortcutEntry[] = [
-  { keys: ['1'], description: 'Grid view' },
-  { keys: ['2'], description: 'List view' },
-  { keys: ['3'], description: 'Board view' },
+  { keys: ['1'], description: 'Board view' },
+  { keys: ['2'], description: 'Grid view' },
+  { keys: ['3'], description: 'List view' },
   { keys: ['4'], description: 'Monitor view' },
   { keys: ['g', 'g'], description: 'Go to Grid' },
   { keys: ['g', 'l'], description: 'Go to List' },

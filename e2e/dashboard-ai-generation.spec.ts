@@ -16,9 +16,9 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
     // The AI generation section renders if there is token or file data.
-    // Check for either "Token Usage by Model" or "Files Created" as indicators.
+    // Check for either "Token Usage by Model" or "Files Edited" as indicators.
     const tokenUsageByModel = page.locator('text=Token Usage by Model')
-    const filesCreated = page.locator('text=Files Created')
+    const filesCreated = page.locator('text=Files Edited')
 
     const hasTokenSection = await tokenUsageByModel.isVisible({ timeout: 5000 }).catch(() => false)
     const hasFilesCard = await filesCreated.isVisible({ timeout: 2000 }).catch(() => false)
@@ -39,10 +39,10 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
   /**
    * TC-2D-02: Metric Cards Display
    *
-   * Verify that "Files Created" and "Tokens Used" metric cards are rendered
+   * Verify that "Files Edited" and "Tokens Used" metric cards are rendered
    * with values when AI generation data is available.
    */
-  test('TC-2D-02: metric cards display Files Created and Tokens Used', async ({ page }) => {
+  test('TC-2D-02: metric cards display Files Edited and Tokens Used', async ({ page }) => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
 
@@ -50,7 +50,7 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
     // Check if the AI generation section is rendered at all
-    const filesCreatedCard = page.locator('text=Files Created')
+    const filesCreatedCard = page.locator('text=Files Edited')
     const isVisible = await filesCreatedCard.isVisible({ timeout: 5000 }).catch(() => false)
 
     if (!isVisible) {
@@ -59,10 +59,10 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
       return
     }
 
-    // Verify "Files Created" metric card
+    // Verify "Files Edited" metric card
     await expect(filesCreatedCard).toBeVisible()
-    // The sub-value should say "written by AI"
-    await expect(page.locator('text=written by AI')).toBeVisible()
+    // The sub-value should say "modified by AI"
+    await expect(page.locator('text=modified by AI')).toBeVisible()
 
     // Verify "Tokens Used" metric card
     const tokensUsedCard = page.locator('text=Tokens Used')
@@ -117,9 +117,9 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
     const modelCount = await modelEntries.count()
     expect(modelCount).toBeGreaterThan(0)
 
-    // Verify token count suffixes are present (e.g., "1.2M", "450K")
+    // Verify token count suffixes are present (e.g., "1.2M", "450k")
     // These appear as formatted token values next to model names
-    const tokenSuffix = modelContainer.locator('text=/\\d+(\\.\\d+)?[KM]/')
+    const tokenSuffix = modelContainer.locator('text=/\\d+(\\.\\d+)?[kM]/')
     const suffixCount = await tokenSuffix.count()
     expect(suffixCount).toBeGreaterThan(0)
 
@@ -156,7 +156,7 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
     const projectContainer = page.locator('div:has(> h2:has-text("Top Projects by Token Usage"))')
 
     // There should be at least one project entry with a token suffix
-    const tokenSuffix = projectContainer.locator('text=/\\d+(\\.\\d+)?[KM]/')
+    const tokenSuffix = projectContainer.locator('text=/\\d+(\\.\\d+)?[kM]/')
     const suffixCount = await tokenSuffix.count()
     expect(suffixCount).toBeGreaterThan(0)
 
@@ -290,7 +290,7 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
 
     // The AI generation section should NOT be visible (component returns null
     // when hasTokenData=false && hasFileData=false)
-    const filesCreated = page.locator('text=Files Created')
+    const filesCreated = page.locator('text=Files Edited')
     const tokensUsed = page.locator('text=Tokens Used')
     const tokenByModel = page.locator('text=Token Usage by Model')
 

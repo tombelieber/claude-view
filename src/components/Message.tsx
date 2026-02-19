@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import { User, Copy, Check } from 'lucide-react'
 import type { Message as MessageType } from '../hooks/use-session'
 import { ToolBadge } from './ToolBadge'
@@ -158,6 +159,7 @@ export function Message({ message, messageIndex }: MessageProps) {
             <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
                 components={{
                   code: (() => {
                     let blockCounter = 0

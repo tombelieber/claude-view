@@ -17,7 +17,7 @@ interface AIGenerationStatsProps {
  * AI Generation Breakdown component for the dashboard.
  *
  * Displays:
- * 1. Metric cards: Lines Generated, Files Created, Tokens Used
+ * 1. Metric cards: Lines Generated, Files Edited, Tokens Used
  * 2. Token usage by model (progress bars)
  * 3. Top projects by token usage (progress bars)
  */
@@ -82,11 +82,11 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
           />
         )}
 
-        {/* Files Created Card */}
+        {/* Files Edited Card */}
         <MetricCard
-          label="Files Created"
+          label="Files Edited"
           value={stats.filesCreated.toLocaleString()}
-          subValue="written by AI"
+          subValue="modified by AI"
         />
 
         {/* Tokens Used Card */}

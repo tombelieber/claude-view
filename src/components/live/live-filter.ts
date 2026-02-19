@@ -1,11 +1,11 @@
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { GROUP_ORDER } from './types'
 
 export type LiveSortField = 'status' | 'last_active' | 'cost' | 'turns' | 'context' | 'project'
 export type LiveSortDirection = 'asc' | 'desc'
 
 export interface LiveSessionFilters {
-  statuses: string[] // agent state groups to include (needs_you, autonomous, delivered)
+  statuses: string[] // agent state groups to include (needs_you, autonomous)
   projects: string[] // project display names
   branches: string[] // git branch names
   search: string // text search query
@@ -41,7 +41,7 @@ export function sortLiveSessions(
         cmp = a.lastActivityAt - b.lastActivityAt
         break
       case 'cost':
-        cmp = a.cost.totalUsd - b.cost.totalUsd
+        cmp = sessionTotalCost(a) - sessionTotalCost(b)
         break
       case 'turns':
         cmp = a.turnCount - b.turnCount

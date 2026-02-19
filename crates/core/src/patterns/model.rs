@@ -6,10 +6,13 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-use super::{mean, Bucket, best_bucket, relative_improvement, worst_bucket};
+use super::{best_bucket, mean, relative_improvement, worst_bucket, Bucket};
 
 /// Calculate all model patterns from session data.
-pub fn calculate_model_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_model_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = m01_model_task_fit(sessions, time_range_days) {
@@ -79,7 +82,10 @@ fn m01_model_task_fit(sessions: &[SessionInfo], time_range_days: u32) -> Option<
     let mut vars = HashMap::new();
     vars.insert("best_model".to_string(), best.label.clone());
     vars.insert("worst_model".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -100,7 +106,10 @@ fn m01_model_task_fit(sessions: &[SessionInfo], time_range_days: u32) -> Option<
 }
 
 /// M05: Model by Complexity - which model performs best on complex tasks.
-fn m05_model_by_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn m05_model_by_complexity(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0 && s.primary_model.is_some())
@@ -129,7 +138,7 @@ fn m05_model_by_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Op
 
     let computed: Vec<Bucket> = buckets
         .into_iter()
-        .filter(|(_, vals)| vals.len() >= 15)
+        .filter(|(_, vals)| vals.len() >= super::MIN_MODEL_BUCKET)
         .map(|(label, vals)| {
             let avg = mean(&vals).unwrap_or(0.0);
             Bucket::new(label, vals.len() as u32, avg)
@@ -147,7 +156,10 @@ fn m05_model_by_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Op
 
     let mut vars = HashMap::new();
     vars.insert("best_model".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {

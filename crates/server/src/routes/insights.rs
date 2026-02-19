@@ -362,6 +362,9 @@ impl LightSession {
             prompt_word_count: self.prompt_word_count.map(|v| v as u32),
             correction_count: self.correction_count as u32,
             same_file_edit_count: self.same_file_edit_count as u32,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         }
     }
 }

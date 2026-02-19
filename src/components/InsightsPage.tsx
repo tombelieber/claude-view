@@ -12,6 +12,8 @@ import { BenchmarksTab } from './insights/BenchmarksTab'
 import { QualityTab } from './insights/QualityTab'
 import { TimeRangeFilter } from './insights/TimeRangeFilter'
 import { InsightsSkeleton } from './insights/InsightsSkeleton'
+import { ExperimentalBanner } from './ExperimentalBanner'
+import { ExperimentalBadge } from './ExperimentalBadge'
 
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
 const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks', 'quality']
@@ -128,6 +130,8 @@ export function InsightsPage() {
       <div className="max-w-5xl mx-auto px-6 py-6">
         <PageHeader timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
 
+        <ExperimentalBanner />
+
         <div className="space-y-6">
           {/* Hero Insight */}
           <HeroInsight insight={data?.heroInsight ?? null} isLoading={false} />
@@ -190,6 +194,7 @@ function PageHeader({
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Insights
         </h1>
+        <ExperimentalBadge />
       </div>
       <TimeRangeFilter value={timeRange} onChange={onTimeRangeChange} />
     </div>

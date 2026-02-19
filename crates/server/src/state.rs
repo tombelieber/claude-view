@@ -6,9 +6,9 @@ use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
-use crate::live::manager::LiveSessionMap;
+use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
-use crate::live::state_resolver::StateResolver;
+use crate::terminal_state::TerminalConnectionManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -16,6 +16,7 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 use vibe_recall_core::Registry;
 use vibe_recall_db::{Database, ModelPricing};
+use vibe_recall_search::SearchIndex;
 
 /// Type alias for the shared registry holder.
 ///
@@ -46,15 +47,21 @@ pub struct AppState {
     /// Facet ingest progress state (lock-free atomics for SSE streaming).
     pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
-    pub pricing: HashMap<String, ModelPricing>,
-    /// Live session state for Mission Control (in-memory, not persisted).
+    pub pricing: Arc<RwLock<HashMap<String, ModelPricing>>>,
+    /// Live session state for Live Monitor (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
-    /// State resolver for merging hook + JSONL agent state signals.
-    pub state_resolver: StateResolver,
     /// Directory where coaching rule files are stored (~/.claude/rules).
     pub rules_dir: PathBuf,
+    /// WebSocket connection manager for live terminal monitoring.
+    pub terminal_connections: Arc<TerminalConnectionManager>,
+    /// Live session manager (for hook handler to create/remove accumulators).
+    /// `None` in test factories that don't start the manager.
+    pub live_manager: Option<Arc<LiveSessionManager>>,
+    /// Full-text search index (Tantivy).
+    /// `None` until the index is initialized, or if index open failed.
+    pub search_index: Option<Arc<SearchIndex>>,
 }
 
 impl AppState {
@@ -71,14 +78,21 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: None,
         })
     }
 
@@ -94,14 +108,21 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: None,
         })
     }
 
@@ -120,14 +141,21 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new({
+                let mut p = vibe_recall_db::default_pricing();
+                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                p
+            })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: None,
         })
     }
 
