@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
@@ -58,6 +58,25 @@ function formatModel(model: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
+// Resize persistence
+// ---------------------------------------------------------------------------
+
+const PANEL_WIDTH_KEY = 'mc-panel-width'
+const DEFAULT_PANEL_WIDTH = 480
+const MIN_PANEL_WIDTH = 320
+
+function getStoredPanelWidth(): number {
+  try {
+    const stored = localStorage.getItem(PANEL_WIDTH_KEY)
+    if (stored) {
+      const w = parseInt(stored, 10)
+      if (w >= MIN_PANEL_WIDTH && !isNaN(w)) return w
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_PANEL_WIDTH
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -70,6 +89,11 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string; agentType: string; description: string
   } | null>(null)
+
+  // Resizable width (persisted to localStorage)
+  const [panelWidth, setPanelWidth] = useState(getStoredPanelWidth)
+  const panelWidthRef = useRef(panelWidth)
+  const [isResizing, setIsResizing] = useState(false)
 
   // Slide-in animation: mount with translate-x-full, then flip to translate-x-0
   const [isVisible, setIsVisible] = useState(false)
@@ -113,6 +137,32 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
     })
   }, [session.id])
 
+  // Drag-to-resize the left edge
+  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsResizing(true)
+    const startX = e.clientX
+    const startW = panelWidthRef.current
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = startX - ev.clientX
+      const maxWidth = window.innerWidth * 0.9
+      const newWidth = Math.round(Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, startW + delta)))
+      panelWidthRef.current = newWidth
+      setPanelWidth(newWidth)
+    }
+
+    const onUp = () => {
+      setIsResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      try { localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidthRef.current)) } catch { /* ignore */ }
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
+
   // ---- Derived values ----
   const statusLabel = session.status === 'working' ? 'Running' : session.status === 'paused' ? 'Paused' : 'Done'
   const statusColor = session.status === 'working'
@@ -125,15 +175,25 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
   return createPortal(
     <div
       className={cn(
-        'fixed top-0 right-0 h-screen w-[480px] max-w-[45vw] z-50',
+        'fixed top-0 right-0 h-screen z-50',
         'bg-white dark:bg-gray-950',
         'border-l border-gray-200 dark:border-gray-800',
         'shadow-2xl shadow-black/50',
         'flex flex-col',
         'transition-transform duration-200 ease-out',
         isVisible ? 'translate-x-0' : 'translate-x-full',
+        isResizing && 'select-none',
       )}
+      style={{ width: panelWidth }}
     >
+      {/* Resize handle (left edge) */}
+      <div
+        onPointerDown={handleResizeStart}
+        className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize z-10 group"
+      >
+        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
+      </div>
+
       {/* ---------------------------------------------------------------- */}
       {/* Header                                                          */}
       {/* ---------------------------------------------------------------- */}
