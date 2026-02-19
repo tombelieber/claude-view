@@ -4,7 +4,7 @@
 //! JSONL tail parser, and cleanup task to maintain an in-memory map of all
 //! active Claude Code sessions.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock as StdRwLock};
@@ -19,7 +19,7 @@ use vibe_recall_core::pricing::{
 };
 use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
 
-use super::process::{detect_claude_processes, has_running_process, ClaudeProcess};
+use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
 use super::state::{AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionStatus};
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
@@ -227,6 +227,16 @@ impl LiveSessionManager {
         self.process_count.load(Ordering::Relaxed)
     }
 
+    /// Save current PID bindings to disk for restart recovery.
+    pub async fn save_pid_bindings(&self) {
+        let sessions = self.sessions.read().await;
+        let pids: HashMap<String, u32> = sessions
+            .iter()
+            .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+            .collect();
+        save_pid_snapshot(&pid_snapshot_path(), &pids);
+    }
+
     /// Run a one-shot process table scan and store results.
     async fn run_eager_process_scan(&self) {
         let (new_processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
@@ -352,127 +362,84 @@ impl LiveSessionManager {
     /// 1. Scans the process table for running Claude instances → updates PIDs.
     /// 2. For sessions whose process was seen on the previous poll but is now gone
     ///    → mark `session_ended` **immediately** (high confidence: process just died).
-    /// 3. For sessions where we never observed a process + stale >180s + not Done
-    ///    → mark `session_ended` (low-confidence fallback for macOS sysinfo misses).
+    /// Periodic liveness detector using `kill(pid, 0)` on bound PIDs.
     ///
-    /// Does NO state re-derivation. Hooks own all state. This only catches crashes.
+    /// - Bound sessions: `is_pid_alive(pid)` — definitive, no 2-cycle needed.
+    /// - Unbound sessions: skipped — PPID from hook headers is the source of truth.
+    /// - On startup, loads PID snapshot from disk to recover bindings across restarts.
     fn spawn_process_detector(self: &Arc<Self>) {
         let manager = self.clone();
-        const STALE_THRESHOLD_SECS: u64 = 180; // 3 minutes
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
-            // Track session IDs that had a running process on the previous poll cycle.
-            // When a session was in this set last cycle but has no process now, the
-            // process just disappeared → immediate session_ended (no staleness wait).
-            let mut had_process: HashSet<String> = HashSet::new();
+
+            // On startup, load PID snapshot from disk to recover bindings
+            let snapshot = load_pid_snapshot(&pid_snapshot_path());
+            if !snapshot.is_empty() {
+                let mut sessions = manager.sessions.write().await;
+                for (session_id, pid) in &snapshot {
+                    if let Some(session) = sessions.get_mut(session_id) {
+                        if session.pid.is_none() {
+                            session.pid = Some(*pid);
+                        }
+                    }
+                }
+                // Prune stale entries (sessions that no longer exist) and save back.
+                let current_pids: HashMap<String, u32> = sessions
+                    .iter()
+                    .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+                    .collect();
+                if current_pids.len() < snapshot.len() {
+                    save_pid_snapshot(&pid_snapshot_path(), &current_pids);
+                }
+
+                info!(
+                    count = snapshot.len(),
+                    restored = current_pids.len(),
+                    "Restored PID bindings from snapshot"
+                );
+            }
 
             loop {
                 interval.tick().await;
 
-                // Scan process table
-                let (new_processes, total_count) =
-                    tokio::task::spawn_blocking(detect_claude_processes)
-                        .await
-                        .unwrap_or_default();
-
-                manager.process_count.store(total_count, Ordering::Relaxed);
-                {
-                    let mut processes = manager.processes.write().await;
-                    *processes = new_processes;
-                }
-
-                // Check each session: detect crashes via PID binding.
-                //
-                // PID BINDING: once a session is assigned a PID, that PID is locked
-                // for the lifetime of the session entry. The detector checks that
-                // specific PID — not "any Claude process in the same cwd". This
-                // prevents zombie sessions when multiple sessions share a project
-                // directory (a dead session's PID would get overwritten by the
-                // living session's PID, masking the death).
-                //
-                // CWD matching is used ONLY for initial PID discovery when
-                // session.pid is None (e.g. right after hook creation).
                 let mut dead_sessions: Vec<String> = Vec::new();
-                // Build the "has process NOW" set for this cycle, then swap into had_process.
-                let mut has_process_now: HashSet<String> = HashSet::new();
+                let mut snapshot_dirty = false;
                 {
-                    let processes = manager.processes.read().await;
                     let mut sessions = manager.sessions.write().await;
 
-                    // O(1) lookup: is a specific PID alive and still a Claude process?
-                    let alive_pids: HashSet<u32> =
-                        processes.values().map(|p| p.pid).collect();
-
                     for (session_id, session) in sessions.iter_mut() {
-                        let running = if let Some(known_pid) = session.pid {
-                            // Session has a bound PID — check THAT specific PID.
-                            // If the OS recycled the PID for a non-Claude process,
-                            // alive_pids won't contain it (it only has Claude PIDs).
-                            alive_pids.contains(&known_pid)
-                        } else {
-                            // No PID bound yet — discover via cwd matching (one-time).
-                            let (found, pid) =
-                                has_running_process(&processes, &session.project_path);
-                            if found {
-                                session.pid = pid; // Bind PID (locked from now on)
-                            }
-                            found
+                        if session.status == SessionStatus::Done {
+                            continue;
+                        }
+
+                        // Only check sessions with a bound PID.
+                        // PPID is the source of truth — if no PID was delivered,
+                        // the session isn't trackable by the detector. It will
+                        // either get a PID on the next hook event or be cleaned
+                        // up by SessionEnd.
+                        let Some(pid) = session.pid else {
+                            continue;
                         };
 
-                        if running {
-                            // Process is alive — remember it for next cycle
-                            has_process_now.insert(session_id.clone());
-                        } else if session.status != SessionStatus::Done {
-                            // No process. Two cases:
-                            let was_seen = had_process.contains(session_id);
-
-                            if was_seen {
-                                // HIGH CONFIDENCE: we saw the process last cycle, now it's gone.
-                                // Mark session_ended immediately — no staleness wait.
-                                info!(
-                                    session_id = %session_id,
-                                    bound_pid = ?session.pid,
-                                    project = %session.project_path,
-                                    "Bound PID disappeared — marking session ended immediately"
-                                );
-                                session.agent_state = AgentState {
-                                    group: AgentStateGroup::NeedsYou,
-                                    state: "session_ended".into(),
-                                    label: "Session ended (process exited)".into(),
-                                    context: None,
-                                };
-                                session.status = SessionStatus::Done;
-                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                    session: session.clone(),
-                                });
-                                dead_sessions.push(session_id.clone());
-                            } else {
-                                // LOW CONFIDENCE: we never saw a process for this session
-                                // (macOS sysinfo may have missed it). Fall back to the
-                                // 180s stale threshold before marking ended.
-                                let seconds_since =
-                                    seconds_since_modified_from_timestamp(session.last_activity_at);
-                                if seconds_since > STALE_THRESHOLD_SECS {
-                                    info!(
-                                        session_id = %session_id,
-                                        project = %session.project_path,
-                                        stale_seconds = seconds_since,
-                                        "No process ever observed + stale — marking session ended (fallback)"
-                                    );
-                                    session.agent_state = AgentState {
-                                        group: AgentStateGroup::NeedsYou,
-                                        state: "session_ended".into(),
-                                        label: "Session ended (no process)".into(),
-                                        context: None,
-                                    };
-                                    session.status = SessionStatus::Done;
-                                    let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                        session: session.clone(),
-                                    });
-                                    dead_sessions.push(session_id.clone());
-                                }
-                            }
+                        if !is_pid_alive(pid) {
+                            info!(
+                                session_id = %session_id,
+                                pid = pid,
+                                "Bound PID is dead — marking session ended"
+                            );
+                            session.agent_state = AgentState {
+                                group: AgentStateGroup::NeedsYou,
+                                state: "session_ended".into(),
+                                label: "Session ended (process exited)".into(),
+                                context: None,
+                            };
+                            session.status = SessionStatus::Done;
+                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                session: session.clone(),
+                            });
+                            dead_sessions.push(session_id.clone());
+                            snapshot_dirty = true;
                         }
                     }
 
@@ -480,10 +447,16 @@ impl LiveSessionManager {
                     for session_id in &dead_sessions {
                         sessions.remove(session_id);
                     }
-                }
 
-                // Swap: this cycle's "has process" becomes next cycle's "had process"
-                had_process = has_process_now;
+                    // Save PID snapshot if any bindings changed
+                    if snapshot_dirty {
+                        let pids: HashMap<String, u32> = sessions
+                            .iter()
+                            .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+                            .collect();
+                        save_pid_snapshot(&pid_snapshot_path(), &pids);
+                    }
+                }
 
                 // Broadcast completions (outside lock)
                 for session_id in dead_sessions {
@@ -1050,6 +1023,7 @@ fn load_pid_snapshot(path: &Path) -> HashMap<String, u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_extract_session_id() {
@@ -1121,134 +1095,6 @@ mod tests {
         // Future timestamp should return 0
         let seconds = seconds_since_modified_from_timestamp(now + 1000);
         assert_eq!(seconds, 0);
-    }
-
-    /// Simulate the process detector's "had_process" tracking logic.
-    ///
-    /// This tests the core decision without spinning up the full async manager:
-    /// - Cycle 1: session has a running process → recorded in had_process set
-    /// - Cycle 2: session's process is gone → should trigger IMMEDIATE end
-    /// - Separate case: session never had a process → should use stale fallback
-    #[test]
-    fn test_process_disappearance_immediate_detection() {
-        use super::SessionStatus;
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-
-        const STALE_THRESHOLD_SECS: u64 = 300;
-
-        // --- Simulate cycle 1: process is running ---
-        let mut had_process: HashSet<String> = HashSet::new();
-        let session_id = "test-session-1".to_string();
-
-        // Process is running in cycle 1 → add to had_process
-        let process_running_cycle1 = true;
-        if process_running_cycle1 {
-            had_process.insert(session_id.clone());
-        }
-        assert!(had_process.contains(&session_id));
-
-        // --- Simulate cycle 2: process is gone ---
-        let process_running_cycle2 = false;
-        let session_status = SessionStatus::Working; // not Done yet
-        let last_activity_at = now - 10; // only 10 seconds ago — well under stale threshold
-
-        let mut immediate_end = false;
-        let mut stale_end = false;
-
-        if !process_running_cycle2 && session_status != SessionStatus::Done {
-            let was_seen = had_process.contains(&session_id);
-            if was_seen {
-                // HIGH CONFIDENCE: process just disappeared → immediate end
-                immediate_end = true;
-            } else {
-                // LOW CONFIDENCE: never saw process → check staleness
-                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
-                if seconds_since > STALE_THRESHOLD_SECS {
-                    stale_end = true;
-                }
-            }
-        }
-
-        // Session was in had_process → should be immediately ended
-        assert!(
-            immediate_end,
-            "Session with previously-seen process should be ended immediately"
-        );
-        assert!(
-            !stale_end,
-            "Should NOT have used stale fallback for a seen process"
-        );
-    }
-
-    /// Verify that sessions where we never observed a process still use
-    /// the 300s stale threshold (not immediate).
-    #[test]
-    fn test_never_seen_process_uses_stale_fallback() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-
-        const STALE_THRESHOLD_SECS: u64 = 300;
-
-        let had_process: HashSet<String> = HashSet::new(); // empty — never saw a process
-        let session_id = "test-session-2".to_string();
-
-        // --- Case A: not stale enough (activity 10s ago) ---
-        {
-            let last_activity_at = now - 10;
-            let mut immediate_end = false;
-            let mut stale_end = false;
-
-            let was_seen = had_process.contains(&session_id);
-            if was_seen {
-                immediate_end = true;
-            } else {
-                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
-                if seconds_since > STALE_THRESHOLD_SECS {
-                    stale_end = true;
-                }
-            }
-
-            assert!(
-                !immediate_end,
-                "Should NOT immediately end a session we never saw a process for"
-            );
-            assert!(
-                !stale_end,
-                "Session active 10s ago should NOT hit stale threshold"
-            );
-        }
-
-        // --- Case B: stale enough (activity 400s ago) ---
-        {
-            let last_activity_at = now - 400;
-            let mut immediate_end = false;
-            let mut stale_end = false;
-
-            let was_seen = had_process.contains(&session_id);
-            if was_seen {
-                immediate_end = true;
-            } else {
-                let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
-                if seconds_since > STALE_THRESHOLD_SECS {
-                    stale_end = true;
-                }
-            }
-
-            assert!(
-                !immediate_end,
-                "Should NOT immediately end a session we never saw a process for"
-            );
-            assert!(
-                stale_end,
-                "Session inactive for 400s should hit 300s stale threshold"
-            );
-        }
     }
 
     /// Verify that an already-Done session is not re-processed by the detector
@@ -1363,5 +1209,18 @@ mod tests {
 
         let loaded = load_pid_snapshot(&path);
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_is_pid_alive_integration_for_bound_sessions() {
+        use crate::live::process::is_pid_alive;
+
+        // Bound PID that is alive (our own process)
+        let alive_pid = std::process::id();
+        assert!(is_pid_alive(alive_pid));
+
+        // Bound PID that is dead
+        let dead_pid: u32 = 4_000_000;
+        assert!(!is_pid_alive(dead_pid));
     }
 }

@@ -62,6 +62,7 @@ async fn handle_hook(
     let claude_pid = extract_pid_from_header(
         headers.get("x-claude-pid").and_then(|v| v.to_str().ok()),
     );
+    let mut pid_newly_bound = false;
 
     let agent_state = resolve_state_from_hook(&payload);
 
@@ -222,6 +223,7 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
@@ -239,6 +241,7 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
@@ -276,6 +279,7 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
@@ -291,6 +295,7 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
@@ -312,6 +317,7 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
@@ -342,12 +348,20 @@ async fn handle_hook(
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
+                        pid_newly_bound = true;
                     }
                 }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
             }
+        }
+    }
+
+    // Persist PID bindings to disk only when a new binding was created
+    if pid_newly_bound {
+        if let Some(mgr) = &state.live_manager {
+            mgr.save_pid_bindings().await;
         }
     }
 
