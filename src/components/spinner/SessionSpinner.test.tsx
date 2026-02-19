@@ -27,8 +27,7 @@ function createMockMediaQueryList(matches: boolean): MockMediaQueryList {
   }
 }
 
-function renderNeedsYouSpinner() {
-  const now = Math.floor(Date.now() / 1000)
+function renderNeedsYouSpinner(lastCacheHitAt: number | null = Math.floor(Date.now() / 1000) - 30) {
   return render(
     <SessionSpinner
       mode="live"
@@ -38,7 +37,7 @@ function renderNeedsYouSpinner() {
       outputTokens={240}
       agentStateGroup="needs_you"
       spinnerVerb="Working"
-      lastActivityAt={now - 30}
+      lastCacheHitAt={lastCacheHitAt}
     />
   )
 }
@@ -89,5 +88,14 @@ describe('SessionSpinner', () => {
     expect(trigger).toBeInTheDocument()
     // The countdown text should show remaining time (4:30)
     expect(trigger.textContent).toMatch(/\d:\d{2}/)
+  })
+
+  it('shows dash when no cache hit has occurred', () => {
+    renderNeedsYouSpinner(null)
+
+    // Should show the "no cache" indicator
+    const dash = screen.getByTitle('No cache activity yet')
+    expect(dash).toBeInTheDocument()
+    expect(dash.textContent).toContain('–')
   })
 })
