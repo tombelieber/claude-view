@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft, Cpu } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
@@ -462,6 +462,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                 <BarChart3 className="w-4 h-4" />
                 <span className="font-medium">Analytics</span>
               </Link>
+              <span
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
+                  'text-gray-600 dark:text-gray-400'
+                )}
+              >
+                <Cpu className="w-4 h-4" />
+                <span className="font-medium">Agent SDK Studio</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                  Coming Soon
+                </span>
+              </span>
             </>
           )
         })()}
