@@ -32,6 +32,8 @@ interface ContextGaugeProps {
   }
   /** Number of user turns (optional). */
   turnCount?: number
+  /** When true, shows breakdown inline (for side panel). When false, shows in hover tooltip (for cards). */
+  expanded?: boolean
 }
 
 const formatTokens = (n: number) => {
@@ -43,7 +45,14 @@ const formatTokens = (n: number) => {
 const TOOLTIP_W = 256 // w-64
 const MARGIN = 8
 
-export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount }: ContextGaugeProps) {
+// Segment colors for the stacked bar
+const SEGMENT_COLORS = {
+  system: 'bg-slate-400 dark:bg-slate-500',
+  conversation: 'bg-sky-500',
+  buffer: 'bg-amber-400 dark:bg-amber-500',
+}
+
+export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
@@ -58,13 +67,11 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
     if (!container || !tooltip) return
     const rect = container.getBoundingClientRect()
     const tipH = tooltip.offsetHeight
-    // Don't let tooltip render behind the App header (h-12 = 48px + margin)
     const topBoundary = 56
     const spaceAbove = rect.top - topBoundary
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceRight = window.innerWidth - rect.left
 
-    // Prefer below so tooltips near the top don't hide behind the header
     const above = spaceBelow >= tipH + MARGIN ? false
       : spaceAbove >= tipH + MARGIN ? true
       : spaceBelow >= spaceAbove ? false : true
@@ -82,22 +89,22 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
     })
   }, [])
 
-  // Recompute placement every time tooltip mounts
   useLayoutEffect(() => {
     if (isOpen) computePlacement()
   }, [isOpen, computePlacement])
 
   const handleMouseEnter = () => {
+    if (expanded) return // No tooltip in expanded mode
     clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => setIsOpen(true), 200)
   }
 
   const handleMouseLeave = () => {
+    if (expanded) return
     clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => setIsOpen(false), 100)
   }
 
-  // Needs-you sessions get muted grey gauge; autonomous stays colored
   const isInactive = group === 'needs_you'
   const barColor = isInactive
     ? 'bg-zinc-500 opacity-50'
@@ -107,12 +114,120 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         ? 'bg-amber-500'
         : 'bg-sky-500'
 
-  // Estimate breakdown from what we know.
+  // Estimate breakdown
   const systemEstimate = Math.min(20_000, contextWindowTokens)
   const messagesEstimate = Math.max(0, contextWindowTokens - systemEstimate)
   const autocompactBuffer = Math.round(contextLimit * 0.165)
   const freeSpace = Math.max(0, contextLimit - contextWindowTokens - autocompactBuffer)
 
+  // Segment percentages for stacked bar
+  const systemPct = (systemEstimate / contextLimit) * 100
+  const msgPct = (messagesEstimate / contextLimit) * 100
+  const bufferPct = (autocompactBuffer / contextLimit) * 100
+
+  // Cache efficiency percentage
+  const cacheEfficiency = tokens && tokens.totalTokens > 0
+    ? Math.round((tokens.cacheReadTokens / tokens.totalTokens) * 100)
+    : 0
+
+  // ---- Expanded mode: inline breakdown ----
+  if (expanded) {
+    return (
+      <div className="space-y-3">
+        {/* Model + usage header */}
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-500 dark:text-gray-400 font-mono">{model ?? 'unknown'}</span>
+          <span className={`font-mono tabular-nums font-medium ${
+            usedPct > 90 ? 'text-red-500' : usedPct > 75 ? 'text-amber-500' : 'text-gray-900 dark:text-gray-100'
+          }`}>
+            {usedPct.toFixed(1)}% used
+          </span>
+        </div>
+
+        {/* Stacked segmented bar */}
+        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex">
+          {systemPct > 0 && (
+            <div className={`${SEGMENT_COLORS.system} h-full`} style={{ width: `${systemPct}%` }} />
+          )}
+          {msgPct > 0 && (
+            <div className={`${SEGMENT_COLORS.conversation} h-full`} style={{ width: `${msgPct}%` }} />
+          )}
+          {bufferPct > 0 && (
+            <div className={`${SEGMENT_COLORS.buffer} h-full opacity-50`} style={{ width: `${bufferPct}%` }} />
+          )}
+        </div>
+
+        {/* Legend row */}
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.system}`} />
+            System
+          </span>
+          <span className="flex items-center gap-1">
+            <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.conversation}`} />
+            Conversation
+          </span>
+          <span className="flex items-center gap-1">
+            <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.buffer} opacity-50`} />
+            Buffer
+          </span>
+        </div>
+
+        {/* Breakdown rows */}
+        <div className="space-y-1 text-[11px]">
+          <BreakdownRow label="System (prompt + tools)" tokens={systemEstimate} limit={contextLimit} />
+          <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
+          <BreakdownRow label="Autocompact buffer" tokens={autocompactBuffer} limit={contextLimit} />
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+            <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100 text-[11px]">
+              <span>Free space</span>
+              <span className="tabular-nums font-mono">{formatTokens(freeSpace)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Session totals */}
+        {tokens && (
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1 text-[11px]">
+            <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">Session totals</div>
+            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+              <span>Total tokens</span>
+              <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
+            </div>
+            {tokens.cacheReadTokens > 0 && (
+              <div className="flex justify-between text-green-600 dark:text-green-400">
+                <span>Cache read</span>
+                <span className="tabular-nums font-mono">{formatTokens(tokens.cacheReadTokens)} ({cacheEfficiency}%)</span>
+              </div>
+            )}
+            {tokens.cacheCreationTokens > 0 && (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                <span>Cache written</span>
+                <span className="tabular-nums font-mono">{formatTokens(tokens.cacheCreationTokens)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+              <span>Output</span>
+              <span className="tabular-nums font-mono">{formatTokens(tokens.outputTokens)}</span>
+            </div>
+            {turnCount != null && turnCount > 0 && (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                <span>Turns</span>
+                <span className="tabular-nums font-mono">{turnCount}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Hint */}
+        <div className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+          Run <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">/context</span> in session for full breakdown
+        </div>
+      </div>
+    )
+  }
+
+  // ---- Compact mode: bar + hover tooltip (unchanged for session cards) ----
   return (
     <div ref={containerRef} className="relative space-y-1" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
