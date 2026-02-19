@@ -576,7 +576,16 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
 export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false }: RichPaneProps) {
   const displayMessages = useMemo(() => {
     if (verboseMode) return messages
-    return messages.filter((m) => m.type === 'user' || m.type === 'assistant' || m.type === 'error')
+    return messages.filter((m) => {
+      if (m.type === 'user' || m.type === 'error') return true
+      if (m.type === 'assistant') {
+        // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
+        const t = m.content.trim()
+        if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
+        return true
+      }
+      return false
+    })
   }, [messages, verboseMode])
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
