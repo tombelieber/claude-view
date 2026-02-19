@@ -13,7 +13,7 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
 import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
-import { generateMarkdown, generateResumeContext, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
+import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
@@ -58,6 +58,8 @@ export function ConversationView() {
   const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
+  const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
@@ -140,23 +142,26 @@ export function ConversationView() {
   }, [session, projectName, sessionId])
 
   const handleResume = useCallback(async () => {
+    const projectPath = sessionDetail?.projectPath
+    if (projectPath) {
+      try {
+        const res = await fetch(`/api/check-path?path=${encodeURIComponent(projectPath)}`)
+        const data = await res.json()
+        if (!data.exists) {
+          showToast('Project path no longer exists — worktree may have been removed', 4000)
+          return
+        }
+      } catch {
+        // If the check fails (e.g. endpoint doesn't exist yet), proceed anyway
+      }
+    }
     const cmd = `claude --resume ${sessionId}`
     const ok = await copyToClipboard(cmd)
     showToast(
       ok ? 'Resume command copied — paste in terminal' : 'Failed to copy — check browser permissions',
       3000
     )
-  }, [sessionId])
-
-  const handleContinueChat = useCallback(async () => {
-    if (!session || !sessionDetail) return
-    const context = generateResumeContext(session.messages, sessionDetail)
-    const ok = await copyToClipboard(context)
-    showToast(
-      ok ? 'Context copied — paste into a new Claude session' : 'Failed to copy — check browser permissions',
-      3000
-    )
-  }, [session, sessionDetail])
+  }, [sessionId, sessionDetail])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
@@ -172,13 +177,13 @@ export function ConversationView() {
         handleExportPdf()
       } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
-        handleContinueChat()
+        handleResume()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleExportHtml, handleExportPdf, handleContinueChat])
+  }, [handleExportHtml, handleExportPdf, handleResume])
 
   // Close export menu on outside click
   useEffect(() => {
@@ -191,6 +196,18 @@ export function ConversationView() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [exportMenuOpen])
+
+  // Close resume menu on outside click
+  useEffect(() => {
+    if (!resumeMenuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (resumeMenuRef.current && !resumeMenuRef.current.contains(e.target as Node)) {
+        setResumeMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [resumeMenuOpen])
 
   const allMessages = useMemo(
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
@@ -405,21 +422,49 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Primary CTA: Continue This Chat */}
-          <button
-            onClick={handleContinueChat}
-            disabled={!exportsReady || !sessionDetail}
-            aria-label="Copy conversation context to clipboard for continuing in a new session"
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
-              exportsReady && sessionDetail
-                ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
-                : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
+          {/* Continue / Resume dropdown */}
+          <div className="relative" ref={resumeMenuRef}>
+            <button
+              onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
+              disabled={!exportsReady}
+              aria-label="Continue options"
+              aria-expanded={resumeMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+                exportsReady
+                  ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
+              )}
+            >
+              <Terminal className="w-4 h-4" />
+              <span>Continue</span>
+              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", resumeMenuOpen && "rotate-180")} aria-hidden="true" />
+            </button>
+
+            {resumeMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                <button
+                  onClick={() => { handleCopyMarkdown(); setResumeMenuOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Full Transcript
+                </button>
+                <button
+                  onClick={() => { handleResume(); setResumeMenuOpen(false) }}
+                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
+                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span className="flex flex-col items-start">
+                    <span>Resume Command</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
+                  </span>
+                </button>
+              </div>
             )}
-          >
-            <Copy className="w-4 h-4" />
-            <span>Continue This Chat</span>
-          </button>
+          </div>
 
           {/* Export overflow menu */}
           <div className="relative" ref={exportMenuRef}>
@@ -444,17 +489,6 @@ export function ConversationView() {
             {exportMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
-                  onClick={() => { handleResume(); setExportMenuOpen(false) }}
-                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
-                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span className="flex flex-col items-start">
-                    <span>Resume Command</span>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
-                  </span>
-                </button>
-                <button
                   onClick={() => { handleExportHtml(); setExportMenuOpen(false) }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
@@ -474,13 +508,6 @@ export function ConversationView() {
                 >
                   <Download className="w-4 h-4" />
                   Markdown
-                </button>
-                <button
-                  onClick={() => { handleCopyMarkdown(); setExportMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy Full Transcript
                 </button>
               </div>
             )}

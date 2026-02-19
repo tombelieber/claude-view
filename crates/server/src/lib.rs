@@ -25,7 +25,6 @@ pub use indexing_state::{IndexingState, IndexingStatus};
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
-use live::state_resolver::StateResolver;
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
@@ -112,12 +111,12 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         pricing: vibe_recall_db::default_pricing(),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
-        state_resolver: StateResolver::new(),
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
+        live_manager: None,
     });
     api_routes(state)
 }
@@ -134,13 +133,17 @@ pub fn create_app_full(
     static_dir: Option<PathBuf>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
-    // CRITICAL: Create ONE resolver shared between manager and AppState.
-    // The manager's process detector calls resolve() to merge hook+JSONL signals.
-    // AppState's hooks.rs calls update_from_hook() on the same resolver instance.
     let pricing = vibe_recall_db::default_pricing();
-    let resolver = StateResolver::new();
-    let (_manager, live_sessions, live_tx) =
-        live::manager::LiveSessionManager::start(pricing.clone(), resolver.clone());
+    let (manager, live_sessions, live_tx) =
+        live::manager::LiveSessionManager::start(pricing.clone());
+
+    // Register hooks AFTER manager starts, BEFORE building AppState
+    live::hook_registrar::register(
+        std::env::var("CLAUDE_VIEW_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(47892),
+    );
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
@@ -154,12 +157,12 @@ pub fn create_app_full(
         pricing,
         live_sessions,
         live_tx,
-        state_resolver: resolver,  // REPLACES: StateResolver::new() — shares with manager
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
             .join(".claude")
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
+        live_manager: Some(manager),
     });
 
     let mut app = Router::new()

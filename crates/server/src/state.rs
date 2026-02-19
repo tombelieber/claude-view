@@ -6,9 +6,8 @@ use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
-use crate::live::manager::LiveSessionMap;
+use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
-use crate::live::state_resolver::StateResolver;
 use crate::terminal_state::TerminalConnectionManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -52,12 +51,13 @@ pub struct AppState {
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
-    /// State resolver for merging hook + JSONL agent state signals.
-    pub state_resolver: StateResolver,
     /// Directory where coaching rule files are stored (~/.claude/rules).
     pub rules_dir: PathBuf,
     /// WebSocket connection manager for live terminal monitoring.
     pub terminal_connections: Arc<TerminalConnectionManager>,
+    /// Live session manager (for hook handler to create/remove accumulators).
+    /// `None` in test factories that don't start the manager.
+    pub live_manager: Option<Arc<LiveSessionManager>>,
 }
 
 impl AppState {
@@ -77,12 +77,13 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
         })
     }
 
@@ -101,12 +102,13 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
         })
     }
 
@@ -128,12 +130,13 @@ impl AppState {
             pricing: vibe_recall_db::default_pricing(),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
-            state_resolver: StateResolver::new(),
+
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
                 .join(".claude")
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
         })
     }
 
