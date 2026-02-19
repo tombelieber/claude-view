@@ -62,9 +62,11 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
                 output_cost_per_token,
                 cache_creation_cost_per_token,
                 cache_read_cost_per_token,
-                // litellm does not reliably encode Anthropic's 200k tiering.
                 input_cost_per_token_above_200k: None,
                 output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
             },
         );
     }
@@ -98,6 +100,9 @@ pub fn merge_pricing(
                     cache_read_cost_per_token: litellm_pricing.cache_read_cost_per_token,
                     input_cost_per_token_above_200k: existing.input_cost_per_token_above_200k,
                     output_cost_per_token_above_200k: existing.output_cost_per_token_above_200k,
+                    cache_creation_cost_per_token_above_200k: existing.cache_creation_cost_per_token_above_200k,
+                    cache_read_cost_per_token_above_200k: existing.cache_read_cost_per_token_above_200k,
+                    cache_creation_cost_per_token_1hr: existing.cache_creation_cost_per_token_1hr,
                 },
             );
         } else {
@@ -120,6 +125,9 @@ mod tests {
             cache_read_cost_per_token: cache_read,
             input_cost_per_token_above_200k: Some(input * 2.0),
             output_cost_per_token_above_200k: Some(output * 1.5),
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         }
     }
 
@@ -141,6 +149,9 @@ mod tests {
                 cache_read_cost_per_token: 0.4e-6,
                 input_cost_per_token_above_200k: None,
                 output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
             },
         );
 
@@ -166,6 +177,9 @@ mod tests {
                 cache_read_cost_per_token: 0.2e-6,
                 input_cost_per_token_above_200k: None,
                 output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
             },
         );
 
