@@ -27,11 +27,11 @@ function SingularSessionRedirect() {
   return <Navigate to={`/sessions/${sessionId}`} replace />
 }
 
-/** Redirect old /project/:projectId/contributions to flat /contributions?project=... */
+/** Redirect old /project/:projectId/contributions to /analytics?tab=contributions&project=... */
 function OldContributionsRedirect() {
   const { projectId } = useParams()
   const project = projectId ? decodeURIComponent(projectId) : ''
-  return <Navigate to={`/contributions?project=${encodeURIComponent(project)}`} replace />
+  return <Navigate to={`/analytics?tab=contributions&project=${encodeURIComponent(project)}`} replace />
 }
 
 /** Redirect old /project/:projectId to flat /?project=... */
