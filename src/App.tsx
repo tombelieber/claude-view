@@ -11,7 +11,7 @@ import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
-import { DashboardSkeleton, ErrorState, EmptyState } from './components/LoadingStates'
+import { LiveMonitorSkeleton, ErrorState } from './components/LoadingStates'
 import { ColdStartOverlay } from './components/ColdStartOverlay'
 import { AuthBanner } from './components/AuthBanner'
 import { PatternAlert } from './components/PatternAlert'
@@ -42,12 +42,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [openCommandPalette, toggleSidebar])
 
-  // Loading state - show skeleton instead of blank screen
+  // Loading state - show live monitor skeleton (home page is mission control)
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950" role="status" aria-busy="true" aria-label="Loading application">
         <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 animate-pulse" />
-        <DashboardSkeleton />
+        <LiveMonitorSkeleton />
       </div>
     )
   }
@@ -59,23 +59,6 @@ export default function App() {
         <ErrorState
           message={error.message}
           onRetry={() => refetch()}
-        />
-      </div>
-    )
-  }
-
-  // Empty state with descriptive text
-  if (!summaries || summaries.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <EmptyState
-          icon={<FolderOpen className="w-6 h-6 text-gray-400" />}
-          title="No Claude Code sessions found"
-          description="Start using Claude Code in your terminal to see your session history here. Sessions will appear after your first conversation."
-          action={{
-            label: 'Refresh',
-            onClick: () => refetch(),
-          }}
         />
       </div>
     )
