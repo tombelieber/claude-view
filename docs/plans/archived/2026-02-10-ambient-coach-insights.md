@@ -1,3 +1,8 @@
+---
+status: done
+date: 2026-02-10
+---
+
 # Ambient Coach: Facet-Powered Insights v2
 
 > **Status: ✅ FULLY IMPLEMENTED** — All 13 tasks implemented, all tests passing (794/794 frontend, all backend). Audited 2026-02-12.

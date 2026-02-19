@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-17
 phase: Mission Control
 depends_on: Phase B

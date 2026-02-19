@@ -682,21 +682,9 @@ fn detect_warnings(
         });
     }
 
-    // PartialData: Trend data has fewer days than expected for the range
-    let expected_days = match range {
-        TimeRange::Today => 1,
-        TimeRange::Week => 7,
-        TimeRange::Month => 30,
-        TimeRange::NinetyDays => 90,
-        TimeRange::All | TimeRange::Custom => 0, // No expected minimum for these
-    };
-    if expected_days > 0 && trend.len() < expected_days && agg.sessions_count > 0 {
-        // Only warn if we have sessions but gaps in trend data
-        warnings.push(ContributionWarning {
-            code: "PartialData".to_string(),
-            message: "Showing partial data - some days have no recorded sessions".to_string(),
-        });
-    }
+    // NOTE: PartialData warning removed — trend data only includes days with
+    // sessions (GROUP BY date), so gaps are normal (weekends, days off).
+    // The other warnings (GitSyncIncomplete, CostUnavailable) catch real data problems.
 
     warnings
 }

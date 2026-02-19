@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check } from 'lucide-react'
+import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
-import { RichTerminalPane } from './RichTerminalPane'
+import { RichPane } from './RichPane'
+import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { ActionLogTab } from './action-log'
 import { SwimLanes } from './SwimLanes'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
 import { TimelineView } from './TimelineView'
 import { CostBreakdown } from './CostBreakdown'
 import { SubAgentPills } from './SubAgentPills'
 import { ContextGauge } from './ContextGauge'
+import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 
@@ -16,7 +19,7 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'terminal' | 'sub-agents' | 'cost'
+type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'cost'
 
 interface SessionDetailPanelProps {
   session: LiveSession
@@ -30,6 +33,7 @@ interface SessionDetailPanelProps {
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
+  { id: 'log', label: 'Log', icon: ScrollText },
   { id: 'sub-agents', label: 'Sub-Agents', icon: Users },
   { id: 'cost', label: 'Cost', icon: DollarSign },
 ]
@@ -85,7 +89,9 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
 
   // ---- Local state ----
   const [activeTab, setActiveTab] = useState<TabId>('overview')
-  const [verboseMode, setVerboseMode] = useState(false)
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
+  const { messages: richMessages, bufferDone } = useLiveSessionMessages(session.id, true)
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string; agentType: string; description: string
   } | null>(null)
@@ -277,7 +283,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
           <>
             <div className="flex-1" />
             <button
-              onClick={() => setVerboseMode((v) => !v)}
+              onClick={toggleVerbose}
               className={cn(
                 'text-[10px] px-1.5 py-0.5 rounded border mr-3',
                 verboseMode
@@ -416,11 +422,17 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
 
         {/* ---- Terminal tab ---- */}
         {activeTab === 'terminal' && (
-          <RichTerminalPane
-            sessionId={session.id}
+          <RichPane
+            messages={richMessages}
             isVisible={true}
             verboseMode={verboseMode}
+            bufferDone={bufferDone}
           />
+        )}
+
+        {/* ---- Log tab ---- */}
+        {activeTab === 'log' && (
+          <ActionLogTab messages={richMessages} bufferDone={bufferDone} />
         )}
 
         {/* ---- Sub-Agents tab (merged with Timeline) ---- */}

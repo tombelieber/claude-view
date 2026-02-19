@@ -1,3 +1,8 @@
+---
+status: done
+date: 2026-02-06
+---
+
 # Session Discovery Polish Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
