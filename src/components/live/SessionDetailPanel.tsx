@@ -212,7 +212,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
     <div
       className={cn(
         inline
-          ? 'h-full flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
+          ? 'relative h-full flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
           : cn(
               'fixed top-0 right-0 h-screen z-50',
               'bg-white dark:bg-gray-950',
