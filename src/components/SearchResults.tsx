@@ -1,10 +1,8 @@
-import { useMemo, useEffect } from 'react'
-import { useSearchParams, Link, useNavigate } from 'react-router-dom'
-import { X, Loader2 } from 'lucide-react'
-import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
-import { buildSessionUrl } from '../lib/url-utils'
-import { parseQuery, filterSessions } from '../lib/search'
-import { SessionCard } from './SessionCard'
+import { useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { X, Loader2, AlertCircle } from 'lucide-react'
+import { useSearch } from '../hooks/use-search'
+import { SearchResultCard } from './SearchResultCard'
 import { useAppStore } from '../store/app-store'
 
 export function SearchResults() {
@@ -12,11 +10,8 @@ export function SearchResults() {
   const navigate = useNavigate()
   const { addRecentSearch } = useAppStore()
 
-  const { data: summaries } = useProjectSummaries()
-  const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
-  const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
-
   const query = searchParams.get('q') || ''
+  const scope = searchParams.get('scope') || undefined
 
   // Add to recent searches when query changes
   useEffect(() => {
@@ -25,35 +20,16 @@ export function SearchResults() {
     }
   }, [query, addRecentSearch])
 
-  // Build a ProjectInfo-compatible structure for filterSessions
-  const projectsForFilter = useMemo(() => {
-    if (!summaries) return []
-    // Group sessions by project to build a lookup structure
-    const sessionsByProject = new Map<string, typeof allSessions>()
-    for (const s of allSessions) {
-      const list = sessionsByProject.get(s.project) || []
-      list.push(s)
-      sessionsByProject.set(s.project, list)
-    }
-    return summaries.map(p => ({
-      name: p.name,
-      displayName: p.displayName,
-      path: p.path,
-      sessions: sessionsByProject.get(p.name) ?? [],
-    }))
-  }, [summaries, allSessions])
-
-  const results = useMemo(() => {
-    if (!query || allSessions.length === 0) return []
-    const parsed = parseQuery(query)
-    return filterSessions(allSessions, projectsForFilter, parsed)
-  }, [allSessions, projectsForFilter, query])
+  const { data: searchResults, isLoading, error, isDebouncing } = useSearch(query, {
+    scope,
+    limit: 50,
+  })
 
   const handleClearSearch = () => {
     navigate('/')
   }
 
-  if (isLoading) {
+  if (isLoading || isDebouncing) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="flex items-center gap-3 text-gray-500">
@@ -64,46 +40,58 @@ export function SearchResults() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex items-center gap-3 text-red-500 dark:text-red-400">
+          <AlertCircle className="w-5 h-5" />
+          <span>Search failed. Please try again.</span>
+        </div>
+      </div>
+    )
+  }
+
+  const sessions = searchResults?.sessions ?? []
+  const totalSessions = searchResults?.totalSessions ?? 0
+  const totalMatches = searchResults?.totalMatches ?? 0
+  const elapsedMs = searchResults?.elapsedMs ?? 0
+
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Search Results</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {results.length} sessions matching "<span className="font-mono">{query}</span>"
-          </p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Search Results</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {totalSessions} {totalSessions === 1 ? 'session' : 'sessions'}, {totalMatches} {totalMatches === 1 ? 'match' : 'matches'} for &ldquo;<span className="font-mono">{query}</span>&rdquo;
+              <span className="ml-1 text-gray-400 dark:text-gray-500">({elapsedMs}ms)</span>
+            </p>
+          </div>
+          <button
+            onClick={handleClearSearch}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <X className="w-4 h-4" />
+            Clear
+          </button>
         </div>
-        <button
-          onClick={handleClearSearch}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
-        >
-          <X className="w-4 h-4" />
-          Clear
-        </button>
-      </div>
 
-      {results.length > 0 ? (
-        <div className="space-y-3">
-          {results.map((session) => (
-            <Link
-              key={session.id}
-              to={buildSessionUrl(session.id, searchParams)}
-              className="block focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-lg"
-            >
-              <SessionCard
-                session={session}
-                isSelected={false}
+        {sessions.length > 0 ? (
+          <div className="space-y-3">
+            {sessions.map((hit) => (
+              <SearchResultCard
+                key={hit.sessionId}
+                hit={hit}
+                onSelect={() => navigate(`/sessions/${hit.sessionId}`)}
               />
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12 text-gray-500">
-          <p>No sessions match your search.</p>
-          <p className="text-sm mt-1">Try different keywords or filters.</p>
-        </div>
-      )}
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <p>No sessions match your search.</p>
+            <p className="text-sm mt-1">Try different keywords or filters.</p>
+          </div>
+        )}
       </div>
     </div>
   )

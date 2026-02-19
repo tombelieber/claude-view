@@ -169,3 +169,8 @@ export type { SubAgentInfo } from './SubAgentInfo'
 export type { ProgressStatus } from './ProgressStatus'
 export type { ProgressSource } from './ProgressSource'
 export type { ProgressItem } from './ProgressItem'
+
+// Full-text search types
+export type { SearchResponse } from './SearchResponse'
+export type { SessionHit } from './SessionHit'
+export type { MatchHit } from './MatchHit'

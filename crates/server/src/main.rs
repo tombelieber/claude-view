@@ -164,30 +164,52 @@ async fn main() -> Result<()> {
     let indexing = Arc::new(IndexingState::new());
     let registry_holder = Arc::new(RwLock::new(None));
 
-    // Step 3: Build the Axum app with indexing state and registry holder
+    // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
+    let search_index = {
+        let cache_dir = dirs::cache_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("vibe-recall")
+            .join("search-index");
+
+        match vibe_recall_search::SearchIndex::open(&cache_dir) {
+            Ok(idx) => {
+                tracing::info!("Search index opened at {}", cache_dir.display());
+                Some(Arc::new(idx))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to open search index: {}. Search will be unavailable.", e);
+                None
+            }
+        }
+    };
+
+    // Step 4: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
     let app = create_app_full(
         db.clone(),
         indexing.clone(),
         registry_holder.clone(),
+        search_index.clone(),
         static_dir,
     );
 
-    // Step 4: Bind and start the HTTP server IMMEDIATELY (before any indexing)
+    // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
     let port = get_port();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    // Step 5: Resolve the claude dir for indexing
+    // Step 6: Resolve the claude dir for indexing
     let claude_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
         .join(".claude");
 
-    // Step 6: Spawn background indexing task (with registry build in parallel)
+    // Step 7: Spawn background indexing task (with registry build in parallel)
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
     let periodic_registry = registry_holder.clone();
+    let idx_search = search_index.clone();
+    let periodic_search = search_index.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -201,6 +223,7 @@ async fn main() -> Result<()> {
             &claude_dir,
             &idx_db,
             Some(idx_registry),
+            idx_search.as_deref(),
             // on_pass1_done: Pass 1 finished — store project/session counts, transition to DeepIndexing
             move |projects, sessions| {
                 state_for_pass1.set_projects_found(projects);
@@ -266,7 +289,7 @@ async fn main() -> Result<()> {
                                     poisoned.into_inner().clone()
                                 }
                             };
-                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_| {}, |_, _, _| {}).await {
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), periodic_search.as_deref(), |_| {}, |_, _, _| {}).await {
                                 Ok((indexed, _)) => {
                                     if indexed > 0 {
                                         tracing::info!(indexed, "Incremental deep index complete");
@@ -290,7 +313,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Step 7: Spawn TUI progress task (runs concurrently with the server)
+    // Step 8: Spawn TUI progress task (runs concurrently with the server)
     let tui_state = indexing.clone();
     tokio::spawn(async move {
         // Wait for Pass 1 to complete (status transitions out of Idle/ReadingIndexes)
@@ -407,7 +430,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Step 8: Spawn facet ingest background tasks (startup + periodic)
+    // Step 9: Spawn facet ingest background tasks (startup + periodic)
     //
     // Uses a dedicated FacetIngestState for background tasks. The AppState has
     // its own FacetIngestState for user-triggered ingest via the API/SSE endpoint.
@@ -469,7 +492,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Step 9: Serve forever (with graceful shutdown for hook cleanup)
+    // Step 10: Serve forever (with graceful shutdown for hook cleanup)
     let shutdown_port = port; // port is already defined at line 177, capture for closure
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {

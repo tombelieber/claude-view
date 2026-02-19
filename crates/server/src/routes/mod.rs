@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod models;
 pub mod projects;
 pub mod score;
+pub mod search;
 pub mod sessions;
 pub mod stats;
 pub mod status;
@@ -81,6 +82,7 @@ use crate::state::AppState;
 /// - GET  /api/live/summary             - Aggregate live session statistics
 /// - GET  /api/live/pricing             - Model pricing table
 /// - GET /api/sessions/:id/turns - Per-turn breakdown for a session
+/// - GET /api/search?q=...&scope=...&limit=...&offset=... - Full-text search
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -106,6 +108,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api/live", terminal::router())
         .nest("/api", turns::router())
         .nest("/api", hooks::router())
+        .nest("/api", search::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
