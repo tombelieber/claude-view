@@ -23,8 +23,9 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   outputTokens: number
   isStalled?: boolean
   agentStateGroup?: 'needs_you' | 'autonomous'
+  agentStateLabel?: string
   spinnerVerb?: string
-  lastActivityAt?: number
+  lastCacheHitAt?: number | null
   lastTurnTaskSeconds?: number | null
 }
 
@@ -55,8 +56,11 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
   // Determine live-mode specifics via discriminant narrowing (no `as` casts)
   const agentStateGroup = props.mode === 'live' ? props.agentStateGroup ?? 'autonomous' : 'autonomous'
+  const agentStateLabel = props.mode === 'live' ? props.agentStateLabel : undefined
   const isStalled = props.mode === 'live' ? props.isStalled ?? false : false
-  const lastActivityAt = props.mode === 'live' ? props.lastActivityAt ?? 0 : 0
+  const lastCacheHitAt = props.mode === 'live' ? props.lastCacheHitAt ?? null : null
+
+  const isCompacting = agentStateLabel?.toLowerCase().includes('compacting') ?? false
 
   // ---------------------------------------------------------------------------
   // RAF animation — only runs in live + autonomous mode
@@ -129,15 +133,19 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   const shortModel = formatModelShort(model)
 
   // needs_you -> show completed task time if available, else "Awaiting input"
-  // + cache countdown
+  // + cache countdown (only if lastCacheHitAt is set)
   if (agentStateGroup === 'needs_you') {
     const lastTurnTaskSeconds = props.mode === 'live' ? props.lastTurnTaskSeconds : null
     const hasBakedTime = lastTurnTaskSeconds != null && lastTurnTaskSeconds > 0
 
     const CACHE_TTL = 300
-    const lastActivity = lastActivityAt
-    const elapsed = lastActivity > 0 ? Math.floor(Date.now() / 1000) - lastActivity : CACHE_TTL
+    const lastCacheHit = lastCacheHitAt
+    const hasCacheHit = lastCacheHit != null && lastCacheHit > 0
+
+    const elapsed = hasCacheHit ? Math.floor(Date.now() / 1000) - lastCacheHit : CACHE_TTL
     const remaining = Math.max(0, CACHE_TTL - elapsed)
+
+    const showCountdown = hasCacheHit
 
     const countdownText = remaining > 0
       ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
@@ -164,35 +172,49 @@ export function SessionSpinner(props: SessionSpinnerProps) {
             <span className="text-gray-500 dark:text-gray-400">Awaiting input</span>
           </>
         )}
-        <CacheCountdownTooltip remaining={remaining} ttl={CACHE_TTL}>
-          <span
-            className={`font-mono tabular-nums cursor-default ${countdownColor}`}
-            title={remaining > 0 ? 'Cache warm' : 'Cache cold'}
-          >
-            · {countdownText}
+        {showCountdown ? (
+          <CacheCountdownTooltip remaining={remaining} ttl={CACHE_TTL}>
+            <span
+              className={`font-mono tabular-nums cursor-default ${countdownColor}`}
+              title={remaining > 0 ? 'Cache warm' : 'Cache cold'}
+            >
+              · {countdownText}
+            </span>
+          </CacheCountdownTooltip>
+        ) : (
+          <span className="font-mono tabular-nums cursor-default text-gray-400" title="No cache activity yet">
+            · –
           </span>
-        </CacheCountdownTooltip>
+        )}
       </span>
     )
   }
 
   // autonomous (default) -> animated spinner + metrics
-  const verb = spinnerVerb ?? 'Working'
+  const verb = isCompacting ? 'Compacting' : (spinnerVerb ?? 'Working')
   const tokenCount = inputTokens + outputTokens
-  const arrow = inputTokens >= outputTokens ? '↑' : '↓'
+  const arrow = isCompacting ? '↓' : (inputTokens >= outputTokens ? '↑' : '↓')
   const formattedTokens = formatTokensCompact(tokenCount)
   const formattedDuration = formatDurationCompact(durationSeconds)
 
-  // Spinner character: animated frame, or static dot for reduced motion
-  const spinnerChar = prefersReducedMotion ? '·' : frame
+  const spinnerChar = prefersReducedMotion 
+    ? (isCompacting ? '◈' : '·') 
+    : (isCompacting ? '◈' : frame)
 
-  // Color: red when stalled, green otherwise, with 2s CSS transition
-  const spinnerColorClass = isStalled ? 'text-red-500' : 'text-emerald-500'
+  const spinnerColorClass = isStalled 
+    ? 'text-red-500' 
+    : isCompacting 
+      ? 'text-amber-500' 
+      : 'text-emerald-500'
+
+  const animationClass = isCompacting && !prefersReducedMotion
+    ? 'animate-pulse'
+    : ''
 
   return (
     <span className="flex items-center gap-1.5 text-xs">
       <span
-        className={`w-3 text-center inline-block transition-colors duration-[2000ms] ${spinnerColorClass}`}
+        className={`w-3 text-center inline-block transition-colors duration-[2000ms] ${spinnerColorClass} ${animationClass}`}
       >
         {spinnerChar}
       </span>

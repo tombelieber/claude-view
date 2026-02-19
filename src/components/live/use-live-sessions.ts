@@ -44,6 +44,7 @@ export interface LiveSession {
   lastTurnTaskSeconds?: number | null
   subAgents?: SubAgentInfo[]
   progressItems?: ProgressItem[]
+  lastCacheHitAt?: number | null
 }
 
 export interface LiveSummary {
