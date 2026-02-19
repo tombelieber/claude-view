@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 date: 2026-02-17
 phase: D3
 depends_on: D.2

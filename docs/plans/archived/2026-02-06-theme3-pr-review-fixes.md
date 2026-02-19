@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 date: 2026-02-06
 purpose: Fix issues found in Theme 3 PR review — critical before merge, important as fast follow-up
 ---
