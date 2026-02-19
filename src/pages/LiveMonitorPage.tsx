@@ -9,17 +9,17 @@ import { ListView } from '../components/live/ListView'
 import { KanbanView } from '../components/live/KanbanView'
 import { MonitorView } from '../components/live/MonitorView'
 import { LiveFilterBar } from '../components/live/LiveFilterBar'
-import { LiveCommandPalette } from '../components/live/LiveCommandPalette'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { MobileTabBar } from '../components/live/MobileTabBar'
 import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
 import { TerminalOverlay } from '../components/live/TerminalOverlay'
-import { sessionTotalCost, type LiveSummary, type UseLiveSessionsResult } from '../components/live/use-live-sessions'
+import { sessionTotalCost, type LiveSummary, type LiveSession, type UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 import { formatTokenCount } from '../lib/format-utils'
 import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
+import { useLiveCommandStore } from '../store/live-command-context'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -42,8 +42,8 @@ export function LiveMonitorPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [monitorOverlayId, setMonitorOverlayId] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
-  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const setLiveContext = useLiveCommandStore((s) => s.setContext)
 
   // Filters
   const [filters, filterActions] = useLiveSessionFilters(searchParams, setSearchParams)
@@ -70,7 +70,7 @@ export function LiveMonitorPage() {
       totalCostTodayUsd += sessionTotalCost(s)
       totalTokensToday += s.tokens?.totalTokens ?? 0
     }
-    return { needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday }
+    return { needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday, processCount: serverSummary?.processCount ?? sessions.length }
   }, [sessions, serverSummary])
 
   // Available filter options from current (unfiltered) sessions
@@ -115,6 +115,11 @@ export function LiveMonitorPage() {
     setMonitorOverlayId(prev => prev === id ? null : id)
   }, [])
 
+  // Toggle help callback for command palette
+  const handleToggleHelp = useCallback(() => {
+    setShowHelp(prev => !prev)
+  }, [])
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     viewMode,
@@ -124,24 +129,39 @@ export function LiveMonitorPage() {
     onSelect: setSelectedId,
     onExpand: handleExpandSession,
     onFocusSearch: () => searchInputRef.current?.focus(),
-    onToggleHelp: () => setShowHelp(prev => !prev),
-    enabled: !showCommandPalette && !showHelp,
+    onToggleHelp: handleToggleHelp,
+    enabled: !showHelp,
   })
 
-  // Cmd+K handler for command palette (capture phase to override global)
-  const handleCmdK = useCallback((e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      e.preventDefault()
-      e.stopPropagation()
-      setShowCommandPalette(prev => !prev)
-    }
-  }, [])
+  // Register live command context for unified Cmd+K
+  // Use ref to prevent infinite loops from context updates
+  const contextRef = useRef<{ viewMode: LiveViewMode; sessions: LiveSession[] } | null>(null)
+  const commandContext = useMemo(() => ({
+    sessions,
+    viewMode,
+    onViewModeChange: handleViewModeChange,
+    onFilterStatus: filterActions.setStatus,
+    onClearFilters: filterActions.clearAll,
+    onSort: filterActions.setSort,
+    onSelectSession: handleSelectSession,
+    onToggleHelp: handleToggleHelp,
+  }), [sessions, viewMode, handleViewModeChange, handleSelectSession, handleToggleHelp, filterActions.setStatus, filterActions.clearAll, filterActions.setSort])
 
-  // Register Cmd+K in capture phase
   useEffect(() => {
-    document.addEventListener('keydown', handleCmdK, true)
-    return () => document.removeEventListener('keydown', handleCmdK, true)
-  }, [handleCmdK])
+    // Only update if context actually changed (shallow compare key properties)
+    const prev = contextRef.current
+    if (
+      prev?.viewMode !== commandContext.viewMode ||
+      prev?.sessions.length !== commandContext.sessions.length
+    ) {
+      contextRef.current = commandContext
+      setLiveContext(commandContext)
+    }
+  }, [commandContext, setLiveContext])
+
+  useEffect(() => {
+    return () => setLiveContext(null)
+  }, [setLiveContext])
 
   // SSE not connected yet and no sessions — show skeleton instead of blank content
   if (!isConnected && sessions.length === 0) {
@@ -306,21 +326,6 @@ export function LiveMonitorPage() {
 
       {/* Mobile tab bar */}
       <MobileTabBar activeTab={viewMode} onTabChange={handleViewModeChange} />
-
-      {/* Command palette */}
-      <LiveCommandPalette
-        isOpen={showCommandPalette}
-        onClose={() => setShowCommandPalette(false)}
-        viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
-        sessions={sessions}
-        selectedId={selectedId}
-        onSelectSession={handleSelectSession}
-        onFilterStatus={filterActions.setStatus}
-        onClearFilters={filterActions.clearAll}
-        onSort={filterActions.setSort}
-        onToggleHelp={() => { setShowCommandPalette(false); setShowHelp(true) }}
-      />
 
       {/* Keyboard shortcut help */}
       <KeyboardShortcutHelp isOpen={showHelp} onClose={() => setShowHelp(false)} />
