@@ -32,7 +32,7 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   return 'kanban'
 }
 
-export function MissionControlPage() {
+export function LiveMonitorPage() {
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
   const { sessions, summary: serverSummary, isConnected, lastUpdate, stalledSessions, currentTime } = liveSessions
   const [searchParams, setSearchParams] = useSearchParams()
@@ -151,7 +151,7 @@ export function MissionControlPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Mission Control
+                Live Monitor
               </h1>
               <ViewModeSwitcher mode={viewMode} onChange={handleViewModeChange} />
             </div>
