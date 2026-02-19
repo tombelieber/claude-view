@@ -111,6 +111,7 @@ async fn handle_hook(
                 last_turn_task_seconds: None,
                 sub_agents: Vec::new(),
                 progress_items: Vec::new(),
+                last_cache_hit_at: None,
             };
             let mut sessions = state.live_sessions.write().await;
             if !sessions.contains_key(&payload.session_id) {
@@ -172,6 +173,7 @@ async fn handle_hook(
                     last_turn_task_seconds: None,
                     sub_agents: Vec::new(),
                     progress_items: Vec::new(),
+                    last_cache_hit_at: None,
                 };
                 sessions.insert(session.id.clone(), session.clone());
                 drop(sessions); // release lock before async manager call

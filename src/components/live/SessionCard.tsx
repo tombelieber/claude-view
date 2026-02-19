@@ -132,8 +132,9 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
           model={session.model}
           isStalled={stalledSessions?.has(session.id)}
           agentStateGroup={session.agentState.group}
+          agentStateLabel={session.agentState.label}
           spinnerVerb={pickVerb(session.id)}
-          lastActivityAt={session.lastActivityAt}
+          lastCacheHitAt={session.lastCacheHitAt}
           lastTurnTaskSeconds={session.lastTurnTaskSeconds}
         />
       </div>
