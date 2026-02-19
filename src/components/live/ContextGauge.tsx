@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Minimize2 } from 'lucide-react'
 import type { AgentStateGroup } from './types'
 
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
@@ -34,6 +35,8 @@ interface ContextGaugeProps {
   turnCount?: number
   /** When true, shows breakdown inline (for side panel). When false, shows in hover tooltip (for cards). */
   expanded?: boolean
+  /** Current agent state label — used to detect compacting state. */
+  agentLabel?: string
 }
 
 const formatTokens = (n: number) => {
@@ -52,10 +55,25 @@ const SEGMENT_COLORS = {
   buffer: 'bg-amber-400 dark:bg-amber-500',
 }
 
-export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false }: ContextGaugeProps) {
+export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false, agentLabel }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
+
+  // Compacting state detection
+  const isCompacting = agentLabel ? /compacting/i.test(agentLabel) : false
+  const prevLabelRef = useRef(agentLabel)
+  const [justCompacted, setJustCompacted] = useState(false)
+
+  useEffect(() => {
+    const wasCompacting = prevLabelRef.current ? /compacting/i.test(prevLabelRef.current) : false
+    if (wasCompacting && !isCompacting) {
+      setJustCompacted(true)
+      const timer = setTimeout(() => setJustCompacted(false), 5_000)
+      return () => clearTimeout(timer)
+    }
+    prevLabelRef.current = agentLabel
+  }, [agentLabel, isCompacting])
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -144,8 +162,21 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
           </span>
         </div>
 
+        {/* Compacting status */}
+        {isCompacting && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Minimize2 className="h-3 w-3 text-blue-500 dark:text-blue-400 motion-safe:animate-pulse" />
+            <span className="text-blue-500 dark:text-blue-400">compacting...</span>
+          </div>
+        )}
+        {!isCompacting && justCompacted && (
+          <span className="text-xs text-green-500 dark:text-green-400 animate-pulse">
+            compacted
+          </span>
+        )}
+
         {/* Stacked segmented bar */}
-        <div className="h-2.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex">
+        <div className={`h-2.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
           {systemPct > 0 && (
             <div className={`${SEGMENT_COLORS.system} h-full`} style={{ width: `${systemPct}%` }} />
           )}
@@ -230,7 +261,7 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
   // ---- Compact mode: bar + hover tooltip (unchanged for session cards) ----
   return (
     <div ref={containerRef} className="relative space-y-1" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+      <div className={`h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
         {usedPct > 0 && (
           <div
             className={`${barColor} h-full transition-all duration-300`}
@@ -239,7 +270,20 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         )}
       </div>
       <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
-        <span>{formatTokens(contextWindowTokens)}/{formatTokens(contextLimit)} tokens</span>
+        <span className="flex items-center gap-1">
+          {formatTokens(contextWindowTokens)}/{formatTokens(contextLimit)} tokens
+          {isCompacting && (
+            <>
+              <Minimize2 className="h-3 w-3 text-blue-500 dark:text-blue-400 motion-safe:animate-pulse" />
+              <span className="text-blue-500 dark:text-blue-400">compacting...</span>
+            </>
+          )}
+          {!isCompacting && justCompacted && (
+            <span className="text-green-500 dark:text-green-400 animate-pulse">
+              compacted
+            </span>
+          )}
+        </span>
         {usedPct > 75 && (
           <span className={usedPct > 90 ? 'text-red-500' : 'text-amber-500'} title="Context is filling up. Auto-compaction may occur soon.">
             {usedPct.toFixed(0)}% used
