@@ -1,14 +1,13 @@
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use axum::{extract::State, response::Json, routing::post, Router};
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
-    AgentState, AgentStateGroup, LiveSession, SessionEvent,
-    status_from_agent_state,
+    status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
 };
 use crate::state::AppState;
-use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
+use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 #[derive(Debug, Deserialize)]
 pub struct HookPayload {
@@ -34,14 +33,14 @@ pub struct HookPayload {
     pub teammate_name: Option<String>,
     pub team_name: Option<String>,
     pub source: Option<String>,
-    pub prompt: Option<String>,           // UserPromptSubmit
+    pub prompt: Option<String>,            // UserPromptSubmit
     pub notification_type: Option<String>, // Notification
-    pub message: Option<String>,          // Notification
-    pub model: Option<String>,            // SessionStart
+    pub message: Option<String>,           // Notification
+    pub model: Option<String>,             // SessionStart
     pub permission_suggestions: Option<serde_json::Value>, // PermissionRequest
-    pub trigger: Option<String>,                           // PreCompact: "manual" | "auto"
-    pub custom_instructions: Option<String>,               // PreCompact
-    pub name: Option<String>,                              // SubagentStart/Stop name field
+    pub trigger: Option<String>,           // PreCompact: "manual" | "auto"
+    pub custom_instructions: Option<String>, // PreCompact
+    pub name: Option<String>,              // SubagentStart/Stop name field
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -82,7 +81,11 @@ async fn handle_hook(
     // watcher will enrich it with metadata (title, cost, tokens) on the
     // next file event.
     if payload.hook_event_name != "SessionStart" && payload.hook_event_name != "SessionEnd" {
-        let needs_creation = !state.live_sessions.read().await.contains_key(&payload.session_id);
+        let needs_creation = !state
+            .live_sessions
+            .read()
+            .await
+            .contains_key(&payload.session_id);
         if needs_creation {
             let session = LiveSession {
                 id: payload.session_id.clone(),
@@ -95,7 +98,9 @@ async fn handle_hook(
                 git_branch: None,
                 pid: None,
                 title: String::new(),
-                last_user_message: payload.prompt.as_ref()
+                last_user_message: payload
+                    .prompt
+                    .as_ref()
                     .map(|p| p.chars().take(500).collect())
                     .unwrap_or_default(),
                 current_activity: agent_state.label.clone(),
@@ -125,7 +130,9 @@ async fn handle_hook(
                     event = %payload.hook_event_name,
                     "Lazily created session from non-SessionStart hook (was running before server)"
                 );
-                let _ = state.live_tx.send(SessionEvent::SessionDiscovered { session });
+                let _ = state
+                    .live_tx
+                    .send(SessionEvent::SessionDiscovered { session });
             }
         }
     }
@@ -138,7 +145,9 @@ async fn handle_hook(
                 // Session already exists (file watcher got there first, OR resume)
                 existing.agent_state = agent_state.clone();
                 existing.status = status_from_agent_state(&agent_state);
-                if let Some(m) = &payload.model { existing.model = Some(m.clone()); }
+                if let Some(m) = &payload.model {
+                    existing.model = Some(m.clone());
+                }
                 if payload.source.as_deref() == Some("clear") {
                     existing.turn_count = 0;
                     existing.current_turn_started_at = None;
@@ -180,7 +189,9 @@ async fn handle_hook(
                 if let Some(mgr) = &state.live_manager {
                     mgr.create_accumulator_for_hook(&payload.session_id).await;
                 }
-                let _ = state.live_tx.send(SessionEvent::SessionDiscovered { session });
+                let _ = state
+                    .live_tx
+                    .send(SessionEvent::SessionDiscovered { session });
             }
         }
         "UserPromptSubmit" => {
@@ -221,7 +232,9 @@ async fn handle_hook(
             if let Some(mgr) = &state.live_manager {
                 mgr.remove_accumulator(&session_id).await;
             }
-            let _ = state.live_tx.send(SessionEvent::SessionCompleted { session_id });
+            let _ = state
+                .live_tx
+                .send(SessionEvent::SessionCompleted { session_id });
         }
         // ── Metadata-only events ─────────────────────────────────────────
         // Sub-entity lifecycle: update metadata but NEVER touch agent_state.
@@ -320,7 +333,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     context: None,
                 }
             }
-        },
+        }
         "UserPromptSubmit" => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "thinking".into(),
@@ -367,7 +380,10 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 AgentState {
                     group: AgentStateGroup::NeedsYou,
                     state: "interrupted".into(),
-                    label: format!("You interrupted {}", payload.tool_name.as_deref().unwrap_or("tool")),
+                    label: format!(
+                        "You interrupted {}",
+                        payload.tool_name.as_deref().unwrap_or("tool")
+                    ),
                     context: None,
                 }
             } else {
@@ -375,10 +391,13 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     group: AgentStateGroup::NeedsYou,
                     state: "error".into(),
                     label: format!("Failed: {}", payload.tool_name.as_deref().unwrap_or("tool")),
-                    context: payload.error.as_ref().map(|e| serde_json::json!({"error": e})),
+                    context: payload
+                        .error
+                        .as_ref()
+                        .map(|e| serde_json::json!({"error": e})),
                 }
             }
-        },
+        }
         "PermissionRequest" => {
             let tool = payload.tool_name.as_deref().unwrap_or("tool");
             AgentState {
@@ -394,62 +413,76 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             label: "Waiting for your next prompt".into(),
             context: None,
         },
-        "Notification" => {
-            match payload.notification_type.as_deref() {
-                Some("permission_prompt") => AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "needs_permission".into(),
-                    label: "Needs permission".into(),
-                    context: None,
-                },
-                Some("idle_prompt") => AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "idle".into(),
-                    label: "Session idle".into(),
-                    context: None,
-                },
-                Some("elicitation_dialog") => AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "awaiting_input".into(),
-                    label: payload.message.as_deref()
-                        .map(|m| m.chars().take(100).collect::<String>())
-                        .unwrap_or_else(|| "Awaiting input".into()),
-                    context: None,
-                },
-                _ => AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "awaiting_input".into(),
-                    label: "Notification".into(),
-                    context: None,
-                },
-            }
+        "Notification" => match payload.notification_type.as_deref() {
+            Some("permission_prompt") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "needs_permission".into(),
+                label: "Needs permission".into(),
+                context: None,
+            },
+            Some("idle_prompt") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Session idle".into(),
+                context: None,
+            },
+            Some("elicitation_dialog") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "awaiting_input".into(),
+                label: payload
+                    .message
+                    .as_deref()
+                    .map(|m| m.chars().take(100).collect::<String>())
+                    .unwrap_or_else(|| "Awaiting input".into()),
+                context: None,
+            },
+            _ => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "awaiting_input".into(),
+                label: "Notification".into(),
+                context: None,
+            },
         },
         "SubagentStart" => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "delegating".into(),
-            label: format!("Running {} agent", payload.agent_type.as_deref().unwrap_or("sub")),
+            label: format!(
+                "Running {} agent",
+                payload.agent_type.as_deref().unwrap_or("sub")
+            ),
             context: None,
         },
         "SubagentStop" => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "acting".into(),
-            label: format!("{} agent finished", payload.agent_type.as_deref().unwrap_or("Sub")),
+            label: format!(
+                "{} agent finished",
+                payload.agent_type.as_deref().unwrap_or("Sub")
+            ),
             context: None,
         },
         "TeammateIdle" => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "delegating".into(),
-            label: format!("Teammate {} idle", payload.teammate_name.as_deref().unwrap_or("unknown")),
+            label: format!(
+                "Teammate {} idle",
+                payload.teammate_name.as_deref().unwrap_or("unknown")
+            ),
             context: None,
         },
         "TaskCompleted" => AgentState {
             group: AgentStateGroup::NeedsYou,
             state: "task_complete".into(),
-            label: payload.task_subject.clone().unwrap_or_else(|| "Task completed".into()),
+            label: payload
+                .task_subject
+                .clone()
+                .unwrap_or_else(|| "Task completed".into()),
             context: None,
         },
         "PreCompact" => {
-            let trigger = payload.trigger.as_deref()
+            let trigger = payload
+                .trigger
+                .as_deref()
                 .or(payload.source.as_deref())
                 .unwrap_or("auto");
             AgentState {
@@ -483,22 +516,26 @@ fn activity_from_pre_tool(tool_name: &str, tool_input: &Option<serde_json::Value
     let input = tool_input.as_ref();
     match tool_name {
         "Bash" => input
-            .and_then(|v| v.get("command")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("command"))
+            .and_then(|v| v.as_str())
             .map(|cmd| {
                 let truncated: String = cmd.chars().take(60).collect();
                 format!("Running: {}", truncated)
             })
             .unwrap_or_else(|| "Running command".into()),
         "Read" => input
-            .and_then(|v| v.get("file_path")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("file_path"))
+            .and_then(|v| v.as_str())
             .map(|p| format!("Reading {}", short_path(p)))
             .unwrap_or_else(|| "Reading file".into()),
         "Edit" | "Write" => input
-            .and_then(|v| v.get("file_path")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("file_path"))
+            .and_then(|v| v.as_str())
             .map(|p| format!("Editing {}", short_path(p)))
             .unwrap_or_else(|| "Editing file".into()),
         "Grep" => input
-            .and_then(|v| v.get("pattern")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("pattern"))
+            .and_then(|v| v.as_str())
             .map(|pat| {
                 let truncated: String = pat.chars().take(40).collect();
                 format!("Searching: {}", truncated)
@@ -506,7 +543,8 @@ fn activity_from_pre_tool(tool_name: &str, tool_input: &Option<serde_json::Value
             .unwrap_or_else(|| "Searching code".into()),
         "Glob" => "Finding files".into(),
         "Task" => input
-            .and_then(|v| v.get("description")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("description"))
+            .and_then(|v| v.as_str())
             .map(|d| {
                 let truncated: String = d.chars().take(50).collect();
                 format!("Agent: {}", truncated)
@@ -514,7 +552,8 @@ fn activity_from_pre_tool(tool_name: &str, tool_input: &Option<serde_json::Value
             .unwrap_or_else(|| "Dispatching agent".into()),
         "WebFetch" => "Fetching web page".into(),
         "WebSearch" => input
-            .and_then(|v| v.get("query")).and_then(|v| v.as_str())
+            .and_then(|v| v.get("query"))
+            .and_then(|v| v.as_str())
             .map(|q| {
                 let truncated: String = q.chars().take(40).collect();
                 format!("Searching: {}", truncated)

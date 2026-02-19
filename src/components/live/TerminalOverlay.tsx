@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, GitBranch, Copy, Check } from 'lucide-react'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { RichTerminalPane } from './RichTerminalPane'
 import { ContextBar } from './ContextBar'
 import { StatusDot } from './StatusDot'
@@ -56,6 +56,9 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
     100,
     Math.round((session.contextWindowTokens / 200_000) * 100)
   )
+  const totalCost = sessionTotalCost(session)
+  const formattedCost = totalCost === 0 ? '$0.00' : totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`
+  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
   return createPortal(
     <div
@@ -127,7 +130,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {/* Metrics */}
           <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums">
-            ${session.cost.totalUsd.toFixed(2)}
+            {estimatedPrefix}{formattedCost}
           </span>
           <span className="text-xs text-gray-400 dark:text-[#6E7681] tabular-nums">
             Turn {session.turnCount}
