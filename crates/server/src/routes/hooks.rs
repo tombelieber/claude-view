@@ -49,6 +49,7 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn handle_hook(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<HookPayload>,
 ) -> Json<serde_json::Value> {
     // Early return for no-op events (auth_success notification)
@@ -57,6 +58,10 @@ async fn handle_hook(
     {
         return Json(serde_json::json!({ "ok": true }));
     }
+
+    let claude_pid = extract_pid_from_header(
+        headers.get("x-claude-pid").and_then(|v| v.to_str().ok()),
+    );
 
     let agent_state = resolve_state_from_hook(&payload);
 
@@ -96,7 +101,7 @@ async fn handle_hook(
                 status: status_from_agent_state(&agent_state),
                 agent_state: agent_state.clone(),
                 git_branch: None,
-                pid: None,
+                pid: claude_pid,
                 title: String::new(),
                 last_user_message: payload
                     .prompt
@@ -152,6 +157,11 @@ async fn handle_hook(
                     existing.turn_count = 0;
                     existing.current_turn_started_at = None;
                 }
+                if existing.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        existing.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: existing.clone(),
                 });
@@ -166,7 +176,7 @@ async fn handle_hook(
                     status: status_from_agent_state(&agent_state),
                     agent_state: agent_state.clone(),
                     git_branch: None,
-                    pid: None,
+                    pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
                     current_activity: agent_state.label.clone(),
@@ -209,6 +219,11 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -221,6 +236,11 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -253,6 +273,11 @@ async fn handle_hook(
                     }
                 }
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -263,6 +288,11 @@ async fn handle_hook(
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 // Informational only — teammate status in sub_agents list
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -279,6 +309,11 @@ async fn handle_hook(
                     }
                 }
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -304,6 +339,11 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                    }
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: session.clone(),
                 });
@@ -583,6 +623,19 @@ fn short_path(path: &str) -> &str {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(path)
+}
+
+/// Extract and validate a PID from the X-Claude-PID header value.
+///
+/// Returns None if the header is missing, empty, non-numeric, or <= 1
+/// (PID 0 = kernel, PID 1 = init/launchd — indicates reparenting).
+fn extract_pid_from_header(header_value: Option<&str>) -> Option<u32> {
+    let value = header_value?.trim();
+    let pid: u32 = value.parse().ok()?;
+    if pid <= 1 {
+        return None;
+    }
+    Some(pid)
 }
 
 #[cfg(test)]
@@ -883,6 +936,21 @@ mod tests {
         p.task_subject = Some("Fix bug".into());
         let state = resolve_state_from_hook(&p);
         assert_eq!(state.state, "task_complete");
+    }
+
+    #[test]
+    fn test_extract_pid_from_header_valid() {
+        let pid = extract_pid_from_header(Some("12345"));
+        assert_eq!(pid, Some(12345));
+    }
+
+    #[test]
+    fn test_extract_pid_from_header_invalid() {
+        assert_eq!(extract_pid_from_header(None), None);
+        assert_eq!(extract_pid_from_header(Some("")), None);
+        assert_eq!(extract_pid_from_header(Some("abc")), None);
+        assert_eq!(extract_pid_from_header(Some("0")), None);
+        assert_eq!(extract_pid_from_header(Some("1")), None);
     }
 
     #[test]

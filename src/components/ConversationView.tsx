@@ -22,10 +22,30 @@ import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/expo
 import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
+import { useMonitorStore } from '../store/monitor-store'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
+
+/** Rich/JSON toggle for verbose mode header */
+function RichJsonToggle() {
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
+  return (
+    <button
+      onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
+      className={cn(
+        'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+        richRenderMode === 'rich'
+          ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
+          : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+      )}
+    >
+      {richRenderMode === 'rich' ? 'rich' : 'json'}
+    </button>
+  )
+}
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
 const EMPTY_CONTENT = new Set(['(no content)', ''])
@@ -440,6 +460,9 @@ export function ConversationView() {
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {hiddenCount} hidden
             </span>
+          )}
+          {viewMode === 'full' && (
+            <RichJsonToggle />
           )}
         </div>
 
