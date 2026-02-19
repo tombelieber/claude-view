@@ -144,6 +144,8 @@ impl Database {
         let now = Utc::now().timestamp();
         let active_threshold = now - 300;
 
+        // All token/model data is denormalized on the sessions table.
+        // No LEFT JOIN on turns needed.
         let rows: Vec<SessionRow> = sqlx::query_as(
             r#"
             SELECT
@@ -155,12 +157,12 @@ impl Database {
                 s.message_count,
                 COALESCE(s.summary_text, s.summary) AS summary,
                 s.git_branch, s.is_sidechain, s.deep_indexed_at,
-                tok.total_input_tokens,
-                tok.total_output_tokens,
-                tok.total_cache_read_tokens,
-                tok.total_cache_creation_tokens,
-                tok.turn_count_api,
-                tok.primary_model,
+                s.total_input_tokens,
+                s.total_output_tokens,
+                s.cache_read_tokens AS total_cache_read_tokens,
+                s.cache_creation_tokens AS total_cache_creation_tokens,
+                s.api_call_count AS turn_count_api,
+                s.primary_model,
                 s.user_prompt_count, s.api_call_count, s.tool_call_count,
                 s.files_read, s.files_edited,
                 s.files_read_count, s.files_edited_count, s.reedited_files_count,
@@ -174,20 +176,6 @@ impl Database {
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count
             FROM sessions s
-            LEFT JOIN (
-                SELECT session_id,
-                       SUM(input_tokens) as total_input_tokens,
-                       SUM(output_tokens) as total_output_tokens,
-                       SUM(cache_read_tokens) as total_cache_read_tokens,
-                       SUM(cache_creation_tokens) as total_cache_creation_tokens,
-                       COUNT(*) as turn_count_api,
-                       (SELECT model_id FROM turns t2
-                        WHERE t2.session_id = t.session_id
-                        GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
-                       ) as primary_model
-                FROM turns t
-                GROUP BY session_id
-            ) tok ON tok.session_id = s.id
             ORDER BY s.last_message_at DESC
             "#,
         )

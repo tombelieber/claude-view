@@ -329,7 +329,7 @@ async fn stream_classification(
 
     let stream = async_stream::stream! {
         let mut last_classified = 0u64;
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
 
         loop {
             interval.tick().await;

@@ -346,6 +346,7 @@ pub async fn get_contributions(
 
     // Compute per-model cost from ModelStats token data + pricing table
     let mut total_cost_usd = 0.0;
+    let mut used_fallback_pricing = false;
     for ms in &mut by_model {
         let tokens = TokenBreakdown {
             input_tokens: ms.input_tokens,
@@ -356,6 +357,7 @@ pub async fn get_contributions(
         let model_cost = match lookup_pricing(&ms.model, &state.pricing) {
             Some(p) => calculate_cost_usd(&tokens, p),
             None => {
+                used_fallback_pricing = true;
                 let total = (ms.input_tokens + ms.output_tokens
                     + ms.cache_read_tokens + ms.cache_creation_tokens) as f64;
                 total * FALLBACK_COST_PER_TOKEN_USD
@@ -400,6 +402,11 @@ pub async fn get_contributions(
                     let fraction = t.sessions as f64 / total_sessions as f64;
                     t.cost_cents = (total_cost_usd * fraction * 100.0).round() as i64;
                 }
+            } else {
+                tracing::warn!(
+                    total_cost_usd,
+                    "Cost redistribution skipped: no tokens or sessions in trend data"
+                );
             }
         }
     }
@@ -415,7 +422,7 @@ pub async fn get_contributions(
         cost_per_line,
         cost_per_commit,
         cost_trend: cost_trend.clone(),
-        cost_is_estimated: true,
+        cost_is_estimated: used_fallback_pricing || by_model.is_empty(),
         insight: efficiency_insight(cost_per_line, &cost_trend),
     };
 
@@ -426,7 +433,7 @@ pub async fn get_contributions(
     let uncommitted_insight = generate_uncommitted_insight(&uncommitted, total_lines);
 
     // Detect warnings
-    let warnings = detect_warnings(&agg, &uncommitted, &trend, range);
+    let warnings = detect_warnings(&agg, &uncommitted);
 
     // Build response
     let response = ContributionsResponse {
@@ -659,8 +666,6 @@ fn generate_skill_insight(by_skill: &[SkillStats]) -> String {
 fn detect_warnings(
     agg: &AggregatedContributions,
     uncommitted: &[UncommittedWork],
-    trend: &[DailyTrendPoint],
-    range: TimeRange,
 ) -> Vec<ContributionWarning> {
     let mut warnings = Vec::new();
 
@@ -681,10 +686,6 @@ fn detect_warnings(
             message: "Cost metrics unavailable - token data missing from some sessions".to_string(),
         });
     }
-
-    // NOTE: PartialData warning removed — trend data only includes days with
-    // sessions (GROUP BY date), so gaps are normal (weekends, days off).
-    // The other warnings (GitSyncIncomplete, CostUnavailable) catch real data problems.
 
     warnings
 }

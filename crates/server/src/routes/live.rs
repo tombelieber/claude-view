@@ -144,11 +144,7 @@ pub async fn live_stream(
         }
     };
 
-    Sse::new(stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("heartbeat"),
-    )
+    Sse::new(stream)
 }
 
 // =============================================================================
