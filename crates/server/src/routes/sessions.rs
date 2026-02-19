@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use vibe_recall_core::accumulator::SessionAccumulator;
 use vibe_recall_core::{ParsedSession, SessionInfo};
 use vibe_recall_db::git_correlation::GitCommit;
 
@@ -354,6 +355,41 @@ pub async fn get_session_messages_by_id(
     let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
+/// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
+/// rich session data (tokens, cost, cache status, sub-agents, progress items, etc.).
+///
+/// This endpoint bridges historical sessions with the same rich data shape used by
+/// Live Monitor, enabling a unified session detail view.
+pub async fn get_session_rich(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> ApiResult<Json<vibe_recall_core::accumulator::RichSessionData>> {
+    // 1. Look up session file path from DB
+    let file_path = state
+        .db
+        .get_session_file_path(&session_id)
+        .await?
+        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id));
+    }
+
+    // 2. Snapshot the current pricing table (clone inside read lock, then drop lock)
+    let pricing = state.pricing.read().unwrap().clone();
+
+    // 3. Parse JSONL through SessionAccumulator (blocking I/O → spawn_blocking)
+    let rich_data = tokio::task::spawn_blocking(move || {
+        SessionAccumulator::from_file(&path, &pricing)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?
+    .map_err(|e| ApiError::Internal(format!("Parse error: {e}")))?;
+
+    Ok(Json(rich_data))
+}
+
 /// DEPRECATED: Use `GET /api/sessions/:id/parsed` instead.
 /// Kept for backward compatibility. Will be removed in v0.6.
 ///
@@ -446,6 +482,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}", get(get_session_detail))
         .route("/sessions/{id}/parsed", get(get_session_parsed))
         .route("/sessions/{id}/messages", get(get_session_messages_by_id))
+        .route("/sessions/{id}/rich", get(get_session_rich))
         .route("/session/{project_dir}/{session_id}", get(get_session))
         .route("/session/{project_dir}/{session_id}/messages", get(get_session_messages))
         .route("/branches", get(list_branches))
