@@ -17,6 +17,9 @@ import { CompactCodeBlock } from './CompactCodeBlock'
 import { JsonKeyValueChips } from './JsonKeyValueChips'
 import { JsonTree } from './JsonTree'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
+import { toolRendererRegistry } from './ToolRenderers'
+import { useMonitorStore } from '../../store/monitor-store'
+import { cn } from '../../lib/utils'
 
 // --- Types ---
 
@@ -373,12 +376,18 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
 
 function ToolUseMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   const [expanded, setExpanded] = useState(verboseMode)
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const rawName = message.name || 'Tool'
   const { short: label, server } = shortenToolName(rawName)
   const chipColor = toolChipColor(rawName)
   const inputObj = message.inputData
   const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
   const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
+
+  const RichRenderer = toolRendererRegistry[rawName]
+  const effectiveMode = cardOverride ?? richRenderMode
+  const showRich = !!RichRenderer && effectiveMode === 'rich' && isObjectInput
 
   if (isAskUserQuestion && !verboseMode) {
     return (
@@ -402,18 +411,38 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
                 {server}
               </span>
             )}
-            {!expanded && isObjectInput && (
+            {/* Per-card rich/json toggle */}
+            {RichRenderer && (
+              <button
+                onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+                className={cn(
+                  'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+                  effectiveMode === 'json'
+                    ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                    : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+                )}
+                title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+              >
+                {'{ }'}
+              </button>
+            )}
+            {!showRich && !expanded && isObjectInput && (
               <JsonKeyValueChips
                 data={inputObj as Record<string, unknown>}
                 onExpand={() => setExpanded(true)}
                 verboseMode={verboseMode}
               />
             )}
-            {!expanded && !isObjectInput && message.input && (
+            {!showRich && !expanded && !isObjectInput && message.input && (
               <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 break-all">{message.input}</span>
             )}
           </div>
-          {expanded && (
+          {showRich && (
+            <div className="mt-1">
+              <RichRenderer inputData={inputObj as Record<string, unknown>} name={rawName} />
+            </div>
+          )}
+          {!showRich && expanded && (
             <div className="mt-1">
               <button
                 onClick={() => setExpanded(false)}
