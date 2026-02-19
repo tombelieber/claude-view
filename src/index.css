@@ -384,6 +384,19 @@ body {
   animation: timeline-bar-grow 1.5s ease-in-out infinite;
 }
 
+/* Search highlight: <mark> tags from Tantivy snippet generator */
+mark {
+  background: #fef08a;
+  color: #1c1917;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+:where(.dark, .dark *) mark {
+  background: #854d0e;
+  color: #fef9c3;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

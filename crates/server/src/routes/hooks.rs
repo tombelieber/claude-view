@@ -74,6 +74,61 @@ async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
+    // ── Lazy session creation ────────────────────────────────────────────
+    // Sessions that were already running before the server started won't
+    // send a SessionStart hook (that event already happened). When any
+    // subsequent hook arrives for an unknown session, create a skeleton
+    // so the session appears in the live monitor immediately. The JSONL
+    // watcher will enrich it with metadata (title, cost, tokens) on the
+    // next file event.
+    if payload.hook_event_name != "SessionStart" && payload.hook_event_name != "SessionEnd" {
+        let needs_creation = !state.live_sessions.read().await.contains_key(&payload.session_id);
+        if needs_creation {
+            let session = LiveSession {
+                id: payload.session_id.clone(),
+                project: String::new(),
+                project_display_name: extract_project_name(payload.cwd.as_deref()),
+                project_path: payload.cwd.clone().unwrap_or_default(),
+                file_path: payload.transcript_path.clone().unwrap_or_default(),
+                status: status_from_agent_state(&agent_state),
+                agent_state: agent_state.clone(),
+                git_branch: None,
+                pid: None,
+                title: String::new(),
+                last_user_message: payload.prompt.as_ref()
+                    .map(|p| p.chars().take(500).collect())
+                    .unwrap_or_default(),
+                current_activity: agent_state.label.clone(),
+                turn_count: 0,
+                started_at: None,
+                last_activity_at: now,
+                model: payload.model.clone(),
+                tokens: TokenUsage::default(),
+                context_window_tokens: 0,
+                cost: CostBreakdown::default(),
+                cache_status: CacheStatus::Unknown,
+                current_turn_started_at: None,
+                last_turn_task_seconds: None,
+                sub_agents: Vec::new(),
+                progress_items: Vec::new(),
+            };
+            let mut sessions = state.live_sessions.write().await;
+            if !sessions.contains_key(&payload.session_id) {
+                sessions.insert(session.id.clone(), session.clone());
+                drop(sessions);
+                if let Some(mgr) = &state.live_manager {
+                    mgr.create_accumulator_for_hook(&payload.session_id).await;
+                }
+                tracing::info!(
+                    session_id = %payload.session_id,
+                    event = %payload.hook_event_name,
+                    "Lazily created session from non-SessionStart hook (was running before server)"
+                );
+                let _ = state.live_tx.send(SessionEvent::SessionDiscovered { session });
+            }
+        }
+    }
+
     match payload.hook_event_name.as_str() {
         "SessionStart" => {
             let mut sessions = state.live_sessions.write().await;

@@ -152,16 +152,16 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-md"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-xl bg-[#111113] rounded-xl shadow-2xl border border-[#2a2a2e] overflow-hidden">
+      <div className="relative w-full max-w-xl bg-white/90 dark:bg-[#0c0e16]/90 backdrop-blur-xl rounded-xl shadow-2xl shadow-black/20 dark:shadow-black/50 border border-slate-200/80 dark:border-white/[0.06] ring-1 ring-black/5 dark:ring-white/[0.05] overflow-hidden">
         {/* Search input */}
         <form onSubmit={handleSubmit}>
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-[#2a2a2e]">
-            <Search className="w-5 h-5 text-[#6e6e76]" />
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200/80 dark:border-white/[0.06]">
+            <Search className="w-5 h-5 text-slate-400 dark:text-slate-500" />
             <input
               ref={inputRef}
               type="text"
@@ -171,17 +171,17 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
                 setSelectedIndex(0)
               }}
               placeholder="Search sessions..."
-              className="flex-1 bg-transparent text-[#ececef] placeholder-[#6e6e76] outline-none font-mono text-sm"
+              className="flex-1 bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono text-sm"
               spellCheck={false}
               autoComplete="off"
             />
             {showLoading && (
-              <Loader2 className="w-4 h-4 text-[#6e6e76] animate-spin" />
+              <Loader2 className="w-4 h-4 text-slate-400 dark:text-slate-500 animate-spin" />
             )}
             <button
               type="button"
               onClick={onClose}
-              className="p-1 text-[#6e6e76] hover:text-[#ececef] transition-colors"
+              className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -190,7 +190,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
 
         {/* Suggestions (project autocomplete + recent searches) */}
         {suggestions.length > 0 && (
-          <div className="py-2 border-b border-[#2a2a2e]">
+          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
             {suggestions.map((suggestion, i) => {
               const Icon = getIcon(suggestion.type)
               return (
@@ -200,14 +200,14 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
                     selectedIndex === i
-                      ? 'bg-[#1c1c1f] text-[#ececef]'
-                      : 'text-[#9b9ba0] hover:bg-[#1c1c1f] hover:text-[#ececef]'
+                      ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100'
                   )}
                 >
-                  <Icon className="w-4 h-4 text-[#6e6e76]" />
+                  <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <span className="flex-1 truncate font-mono">{suggestion.label}</span>
                   {suggestion.count !== undefined && (
-                    <span className="text-xs text-[#6e6e76] tabular-nums">{suggestion.count}</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{suggestion.count}</span>
                   )}
                 </button>
               )
@@ -217,8 +217,8 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
 
         {/* Live search results from Tantivy */}
         {hasLiveResults && (
-          <div className="py-2 border-b border-[#2a2a2e]">
-            <p className="px-4 py-1 text-xs font-medium text-[#6e6e76] uppercase tracking-wider">
+          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
+            <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               {searchResults.totalSessions} {searchResults.totalSessions === 1 ? 'session' : 'sessions'}, {searchResults.totalMatches} {searchResults.totalMatches === 1 ? 'match' : 'matches'}
               <span className="ml-2 normal-case tracking-normal">({searchResults.elapsedMs}ms)</span>
             </p>
@@ -241,7 +241,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
             {searchResults.totalSessions > searchResults.sessions.length && (
               <button
                 onClick={() => handleSelect(query.trim())}
-                className="w-full px-4 py-2 text-xs text-blue-400 hover:text-blue-300 transition-colors text-center"
+                className="w-full px-4 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors text-center"
               >
                 View all {searchResults.totalSessions} results
               </button>
@@ -251,14 +251,14 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
 
         {/* No results message */}
         {query.trim().length > 0 && !isSearching && !isDebouncing && searchResults && searchResults.sessions.length === 0 && (
-          <div className="py-4 border-b border-[#2a2a2e] text-center">
-            <p className="text-sm text-[#6e6e76]">No sessions match your search.</p>
+          <div className="py-4 border-b border-slate-200/80 dark:border-white/[0.06] text-center">
+            <p className="text-sm text-slate-400 dark:text-slate-500">No sessions match your search.</p>
           </div>
         )}
 
         {/* Filter hints */}
         <div className="px-4 py-3">
-          <p className="text-xs font-medium text-[#6e6e76] uppercase tracking-wider mb-2">
+          <p className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
             Filters
           </p>
           <div className="flex flex-wrap gap-2">
@@ -266,7 +266,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
               <button
                 key={filter}
                 onClick={() => insertFilter(filter)}
-                className="px-2 py-1 text-xs font-mono text-[#7c9885] bg-[#1c1c1f] hover:bg-[#252525] rounded border border-[#2a2a2e] transition-colors"
+                className="px-2 py-1 text-xs font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/[0.15] rounded-md border border-emerald-200/80 dark:border-emerald-500/20 transition-colors"
               >
                 {filter}
               </button>
@@ -275,17 +275,17 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
         </div>
 
         {/* Keyboard hints */}
-        <div className="px-4 py-2 border-t border-[#2a2a2e] flex items-center gap-4 text-xs text-[#6e6e76]">
+        <div className="px-4 py-2 border-t border-slate-200/80 dark:border-white/[0.06] flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-[#1c1c1f] rounded border border-[#2a2a2e]">↑↓</kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-white/[0.06] rounded border border-slate-200 dark:border-white/[0.08]">↑↓</kbd>
             Navigate
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-[#1c1c1f] rounded border border-[#2a2a2e]">Enter</kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-white/[0.06] rounded border border-slate-200 dark:border-white/[0.08]">Enter</kbd>
             Search
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-[#1c1c1f] rounded border border-[#2a2a2e]">Esc</kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-white/[0.06] rounded border border-slate-200 dark:border-white/[0.08]">Esc</kbd>
             Close
           </span>
         </div>
