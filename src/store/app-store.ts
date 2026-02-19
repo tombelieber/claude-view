@@ -12,6 +12,9 @@ interface AppState {
   // Theme state
   theme: Theme
 
+  // Sidebar state
+  sidebarCollapsed: boolean
+
   // Mission Control
   recentLiveCommands: string[]
 
@@ -24,6 +27,7 @@ interface AppState {
   toggleCommandPalette: () => void
   setTheme: (theme: Theme) => void
   cycleTheme: () => void
+  toggleSidebar: () => void
   addRecentLiveCommand: (id: string) => void
 }
 
@@ -36,6 +40,7 @@ export const useAppStore = create<AppState>()(
       recentSearches: [],
       isCommandPaletteOpen: false,
       theme: 'system',
+      sidebarCollapsed: false,
       recentLiveCommands: [],
 
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -67,6 +72,10 @@ export const useAppStore = create<AppState>()(
         const idx = THEME_CYCLE.indexOf(state.theme)
         return { theme: THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] }
       }),
+
+      toggleSidebar: () => set((state) => ({
+        sidebarCollapsed: !state.sidebarCollapsed
+      })),
     }),
     {
       name: 'claude-view-storage',
@@ -74,6 +83,7 @@ export const useAppStore = create<AppState>()(
         recentSearches: state.recentSearches,
         recentLiveCommands: state.recentLiveCommands,
         theme: state.theme,
+        sidebarCollapsed: state.sidebarCollapsed,
       }),
     }
   )
