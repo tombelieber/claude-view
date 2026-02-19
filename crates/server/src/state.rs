@@ -48,7 +48,7 @@ pub struct AppState {
     pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
     pub pricing: Arc<RwLock<HashMap<String, ModelPricing>>>,
-    /// Live session state for Mission Control (in-memory, not persisted).
+    /// Live session state for Live Monitor (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
