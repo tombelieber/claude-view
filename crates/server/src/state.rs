@@ -16,6 +16,7 @@ use std::time::Instant;
 use tokio::sync::broadcast;
 use vibe_recall_core::Registry;
 use vibe_recall_db::{Database, ModelPricing};
+use vibe_recall_search::SearchIndex;
 
 /// Type alias for the shared registry holder.
 ///
@@ -58,6 +59,9 @@ pub struct AppState {
     /// Live session manager (for hook handler to create/remove accumulators).
     /// `None` in test factories that don't start the manager.
     pub live_manager: Option<Arc<LiveSessionManager>>,
+    /// Full-text search index (Tantivy).
+    /// `None` until the index is initialized, or if index open failed.
+    pub search_index: Option<Arc<SearchIndex>>,
 }
 
 impl AppState {
@@ -84,6 +88,7 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
+            search_index: None,
         })
     }
 
@@ -109,6 +114,7 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
+            search_index: None,
         })
     }
 
@@ -137,6 +143,7 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
+            search_index: None,
         })
     }
 
