@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { GROUP_ORDER } from './types'
 import { cleanPreviewText } from '../../utils/get-session-title'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { StatusDot } from './StatusDot'
 import { StateBadge } from './SessionCard'
 import { ContextBar } from './ContextBar'
@@ -37,8 +37,10 @@ function formatRelativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
+function formatCost(session: LiveSession): string {
+  const usd = sessionTotalCost(session)
+  const formatted = usd === 0 ? '$0.00' : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
+  return `${session.cost?.isEstimated ? '~' : ''}${formatted}`
 }
 
 const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] = [
@@ -79,7 +81,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
           cmp = a.turnCount - b.turnCount
           break
         case 'cost':
-          cmp = a.cost.totalUsd - b.cost.totalUsd
+          cmp = sessionTotalCost(a) - sessionTotalCost(b)
           break
         case 'context': {
           const aPct = getContextPercent(a)
@@ -208,7 +210,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 {/* Cost */}
                 <td className="px-2 py-2 w-[70px]">
                   <span className="text-xs text-gray-700 dark:text-gray-300 tabular-nums">
-                    {formatCost(session.cost.totalUsd)}
+                    {formatCost(session)}
                   </span>
                 </td>
 

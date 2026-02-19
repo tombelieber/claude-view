@@ -324,18 +324,38 @@ export function StorageOverview() {
         </div>
       </div>
 
-      {/* Counts Grid - Responsive: 2 cols mobile, 3 cols tablet, 6 cols desktop */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Primary Metrics — count cards */}
+      <div className="grid grid-cols-3 gap-3">
         <StatCard label="Sessions" value={formatNumber(stats?.sessionCount ?? 0)} icon={MessageSquare} />
         <StatCard label="Projects" value={formatNumber(stats?.projectCount ?? 0)} icon={FolderOpen} />
         <StatCard label="Commits" value={formatNumber(stats?.commitCount ?? 0)} icon={GitCommit} />
-        <StatCard
-          label="Oldest Session"
-          value={formatTimestamp(stats?.oldestSessionDate ?? null)}
-          icon={Calendar}
-        />
-        <StatCard label="Index Built" value={formatTimestamp(stats?.lastIndexAt ?? null)} icon={Database} />
-        <StatCard label="Last Git Sync" value={formatTimestamp(stats?.lastGitSyncAt ?? null)} icon={GitBranch} />
+      </div>
+
+      {/* Timestamps — compact inline metadata */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-gray-500 dark:text-gray-400">
+        <span className="inline-flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+          <span>Oldest Session</span>
+          <span className="font-medium text-gray-700 dark:text-gray-200 tabular-nums">
+            {formatTimestamp(stats?.oldestSessionDate ?? null)}
+          </span>
+        </span>
+        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+        <span className="inline-flex items-center gap-1.5">
+          <Database className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+          <span>Index Built</span>
+          <span className="font-medium text-gray-700 dark:text-gray-200 tabular-nums">
+            {formatTimestamp(stats?.lastIndexAt ?? null)}
+          </span>
+        </span>
+        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+        <span className="inline-flex items-center gap-1.5">
+          <GitBranch className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+          <span>Last Git Sync</span>
+          <span className="font-medium text-gray-700 dark:text-gray-200 tabular-nums">
+            {formatTimestamp(stats?.lastGitSyncAt ?? null)}
+          </span>
+        </span>
       </div>
 
       {/* Actions */}
