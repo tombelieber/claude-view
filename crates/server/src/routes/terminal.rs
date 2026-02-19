@@ -1,4 +1,4 @@
-//! WebSocket terminal endpoint for Mission Control.
+//! WebSocket terminal endpoint for Live Monitor.
 //!
 //! Streams JSONL file content to the browser over WebSocket, providing
 //! real-time terminal monitoring for active Claude Code sessions.

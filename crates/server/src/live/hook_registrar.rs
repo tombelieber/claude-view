@@ -1,4 +1,4 @@
-//! Auto-inject and clean up Mission Control hooks in ~/.claude/settings.json.
+//! Auto-inject and clean up Live Monitor hooks in ~/.claude/settings.json.
 //!
 //! Claude Code hooks use a matcher-based nested format:
 //!   hooks[event] → [matcher_group] → hooks → [handler]
@@ -51,7 +51,7 @@ fn make_hook_handler(port: u16, event: &str) -> serde_json::Value {
     let mut handler = serde_json::json!({
         "type": "command",
         "command": command,
-        "statusMessage": "Mission Control"
+        "statusMessage": "Live Monitor"
     });
     // SessionStart is sync (default). All others are async.
     if event != "SessionStart" {
@@ -69,7 +69,7 @@ fn make_matcher_group(port: u16, event: &str) -> serde_json::Value {
     })
 }
 
-/// Check if a matcher group contains any Mission Control hook handlers.
+/// Check if a matcher group contains any Live Monitor hook handlers.
 fn matcher_group_has_sentinel(group: &serde_json::Value) -> bool {
     group
         .get("hooks")
@@ -86,7 +86,7 @@ fn matcher_group_has_sentinel(group: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-/// Remove Mission Control hooks from all event arrays.
+/// Remove Live Monitor hooks from all event arrays.
 /// Handles both the new matcher-group format and the old flat format
 /// (for cleaning up stale hooks from previous versions).
 fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
@@ -109,7 +109,7 @@ fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
 }
 
 /// Register 14 hooks in ~/.claude/settings.json.
-/// Removes any previous Mission Control hooks first (idempotent).
+/// Removes any previous Live Monitor hooks first (idempotent).
 /// Called from create_app_full() on server startup.
 pub fn register(port: u16) {
     let path = settings_path();
@@ -131,7 +131,7 @@ pub fn register(port: u16) {
         settings["hooks"] = serde_json::json!({});
     }
 
-    // Remove previous Mission Control hooks (both old flat format and new matcher format)
+    // Remove previous Live Monitor hooks (both old flat format and new matcher format)
     if let Some(hooks) = settings["hooks"].as_object_mut() {
         remove_our_hooks(hooks);
     }
@@ -160,13 +160,13 @@ pub fn register(port: u16) {
     let tmp_path = path.with_extension("json.tmp");
     if std::fs::write(&tmp_path, &content).is_ok() {
         let _ = std::fs::rename(&tmp_path, &path);
-        tracing::info!("Registered {} Mission Control hooks on port {}", HOOK_EVENTS.len(), port);
+        tracing::info!("Registered {} Live Monitor hooks on port {}", HOOK_EVENTS.len(), port);
     } else {
         tracing::warn!("Failed to write hooks to {:?}", path);
     }
 }
 
-/// Remove Mission Control hooks from ~/.claude/settings.json.
+/// Remove Live Monitor hooks from ~/.claude/settings.json.
 /// Called on graceful server shutdown.
 pub fn cleanup(port: u16) {
     let _ = port; // port param reserved for future multi-instance support
@@ -192,7 +192,7 @@ pub fn cleanup(port: u16) {
     let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
     if std::fs::write(&tmp_path, &serialized).is_ok() {
         let _ = std::fs::rename(&tmp_path, &path);
-        tracing::info!("Cleaned up Mission Control hooks");
+        tracing::info!("Cleaned up Live Monitor hooks");
     }
 }
 
@@ -216,7 +216,7 @@ mod tests {
         let handler = &hooks_arr[0];
         assert_eq!(handler["type"], "command");
         assert!(handler["command"].as_str().unwrap().contains(SENTINEL));
-        assert_eq!(handler["statusMessage"], "Mission Control");
+        assert_eq!(handler["statusMessage"], "Live Monitor");
 
         // SessionStart is sync — no "async" field
         assert!(handler.get("async").is_none());

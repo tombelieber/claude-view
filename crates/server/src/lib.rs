@@ -131,7 +131,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
 /// registry holder, and optional static file serving.
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
-/// delegate to this one. Starts the `LiveSessionManager` for Mission Control.
+/// delegate to this one. Starts the `LiveSessionManager` for Live Monitor.
 pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
