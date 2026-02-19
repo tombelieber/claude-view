@@ -21,6 +21,12 @@ pub struct ModelPricing {
     pub input_cost_per_token_above_200k: Option<f64>,
     /// If set, output tokens above 200k are charged at this rate.
     pub output_cost_per_token_above_200k: Option<f64>,
+    /// If set, cache creation tokens above 200k are charged at this rate.
+    pub cache_creation_cost_per_token_above_200k: Option<f64>,
+    /// If set, cache read tokens above 200k are charged at this rate.
+    pub cache_read_cost_per_token_above_200k: Option<f64>,
+    /// If set, 1-hour ephemeral cache creation tokens use this rate instead of the base cache_creation rate.
+    pub cache_creation_cost_per_token_1hr: Option<f64>,
 }
 
 /// Token breakdown for cost calculation.
@@ -39,6 +45,10 @@ pub struct TokenUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_creation_tokens: u64,
+    /// Cache creation tokens with 5-minute TTL (from JSONL ephemeral_5m_input_tokens).
+    pub cache_creation_5m_tokens: u64,
+    /// Cache creation tokens with 1-hour TTL (from JSONL ephemeral_1h_input_tokens).
+    pub cache_creation_1hr_tokens: u64,
     pub total_tokens: u64,
 }
 
@@ -212,6 +222,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.5e-6,
             input_cost_per_token_above_200k: Some(10e-6),
             output_cost_per_token_above_200k: Some(37.5e-6),
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
 
@@ -224,6 +237,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: Some(6e-6),
             output_cost_per_token_above_200k: Some(22.5e-6),
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
 
@@ -236,6 +252,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: Some(6e-6),
             output_cost_per_token_above_200k: Some(22.5e-6),
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
 
@@ -248,6 +267,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.1e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
 
@@ -261,6 +283,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.5e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -272,6 +297,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 1.5e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -283,6 +311,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 1.5e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -294,6 +325,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: Some(6e-6),
             output_cost_per_token_above_200k: Some(22.5e-6),
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -305,6 +339,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -316,6 +353,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -327,6 +367,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -338,6 +381,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.08e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -349,6 +395,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 1.5e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -360,6 +409,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.3e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
     m.insert(
@@ -371,6 +423,9 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
             cache_read_cost_per_token: 0.03e-6,
             input_cost_per_token_above_200k: None,
             output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
         },
     );
 
@@ -413,10 +468,8 @@ mod tests {
         let pricing = default_pricing();
         let tokens = TokenUsage {
             input_tokens: 500_000,
-            output_tokens: 0,
-            cache_read_tokens: 0,
-            cache_creation_tokens: 0,
             total_tokens: 500_000,
+            ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         assert!((cost.total_usd - 4.0).abs() < 0.01);
@@ -428,10 +481,8 @@ mod tests {
         let pricing = default_pricing();
         let tokens = TokenUsage {
             input_tokens: 1_000_000,
-            output_tokens: 0,
-            cache_read_tokens: 0,
-            cache_creation_tokens: 0,
             total_tokens: 1_000_000,
+            ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("gpt-4o"), &pricing);
         assert!(cost.is_estimated);
@@ -442,11 +493,9 @@ mod tests {
     fn test_fallback_output_uses_higher_rate() {
         let pricing = default_pricing();
         let tokens = TokenUsage {
-            input_tokens: 0,
             output_tokens: 1_000_000,
-            cache_read_tokens: 0,
-            cache_creation_tokens: 0,
             total_tokens: 1_000_000,
+            ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("unknown-model"), &pricing);
         assert!(cost.is_estimated);
@@ -466,11 +515,9 @@ mod tests {
     fn test_cache_savings() {
         let pricing = default_pricing();
         let tokens = TokenUsage {
-            input_tokens: 0,
-            output_tokens: 0,
             cache_read_tokens: 1_000_000,
-            cache_creation_tokens: 0,
             total_tokens: 1_000_000,
+            ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         assert!((cost.cache_read_cost_usd - 0.50).abs() < 1e-9);
