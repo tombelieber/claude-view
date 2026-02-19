@@ -133,6 +133,53 @@ pub fn merge_pricing(
     merged
 }
 
+/// Persist the full pricing map to SQLite for cross-restart durability.
+///
+/// Overwrites any previous cache. Called after successful litellm fetch + merge.
+pub async fn save_pricing_cache(
+    db: &crate::Database,
+    pricing: &HashMap<String, ModelPricing>,
+) -> Result<(), String> {
+    let json = serde_json::to_string(pricing).map_err(|e| format!("serialize: {e}"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO pricing_cache (id, data, fetched_at) VALUES (1, ?, ?)",
+    )
+    .bind(&json)
+    .bind(now)
+    .execute(db.pool())
+    .await
+    .map_err(|e| format!("save pricing cache: {e}"))?;
+
+    Ok(())
+}
+
+/// Load the cached pricing map from SQLite.
+///
+/// Returns `None` if no cache exists (first run). Returns the full map otherwise.
+pub async fn load_pricing_cache(
+    db: &crate::Database,
+) -> Result<Option<HashMap<String, ModelPricing>>, String> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT data FROM pricing_cache WHERE id = 1")
+            .fetch_optional(db.pool())
+            .await
+            .map_err(|e| format!("load pricing cache: {e}"))?;
+
+    match row {
+        Some((json,)) => {
+            let map: HashMap<String, ModelPricing> =
+                serde_json::from_str(&json).map_err(|e| format!("deserialize: {e}"))?;
+            Ok(Some(map))
+        }
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,5 +296,112 @@ mod tests {
         assert_eq!(m.input_cost_per_token_above_200k, Some(11e-6));
         assert_eq!(m.cache_creation_cost_per_token_above_200k, Some(13e-6));
         assert_eq!(m.cache_creation_cost_per_token_1hr, Some(11e-6));
+    }
+
+    #[tokio::test]
+    async fn test_save_and_load_pricing_cache() {
+        let db = crate::Database::new_in_memory().await.unwrap();
+        let mut map = HashMap::new();
+        map.insert(
+            "claude-opus-4-6".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: Some(10e-6),
+                output_cost_per_token_above_200k: Some(37.5e-6),
+                cache_creation_cost_per_token_above_200k: Some(12.5e-6),
+                cache_read_cost_per_token_above_200k: Some(1e-6),
+                cache_creation_cost_per_token_1hr: Some(10e-6),
+            },
+        );
+
+        save_pricing_cache(&db, &map).await.unwrap();
+        let loaded = load_pricing_cache(&db).await.unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.len(), 1);
+        let m = loaded.get("claude-opus-4-6").unwrap();
+        assert_eq!(m.input_cost_per_token, 5e-6);
+        assert_eq!(m.cache_creation_cost_per_token_1hr, Some(10e-6));
+    }
+
+    #[tokio::test]
+    async fn test_load_empty_cache_returns_none() {
+        let db = crate::Database::new_in_memory().await.unwrap();
+        let loaded = load_pricing_cache(&db).await.unwrap();
+        assert!(loaded.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_save_overwrites_previous_cache() {
+        let db = crate::Database::new_in_memory().await.unwrap();
+
+        let mut map1 = HashMap::new();
+        map1.insert("model-a".to_string(), ModelPricing {
+            input_cost_per_token: 1e-6,
+            output_cost_per_token: 5e-6,
+            cache_creation_cost_per_token: 1.25e-6,
+            cache_read_cost_per_token: 0.1e-6,
+            input_cost_per_token_above_200k: None,
+            output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
+        });
+        save_pricing_cache(&db, &map1).await.unwrap();
+
+        let mut map2 = HashMap::new();
+        map2.insert("model-b".to_string(), ModelPricing {
+            input_cost_per_token: 2e-6,
+            output_cost_per_token: 10e-6,
+            cache_creation_cost_per_token: 2.5e-6,
+            cache_read_cost_per_token: 0.2e-6,
+            input_cost_per_token_above_200k: None,
+            output_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_above_200k: None,
+            cache_read_cost_per_token_above_200k: None,
+            cache_creation_cost_per_token_1hr: None,
+        });
+        save_pricing_cache(&db, &map2).await.unwrap();
+
+        let loaded = load_pricing_cache(&db).await.unwrap().unwrap();
+        assert!(!loaded.contains_key("model-a"));
+        assert!(loaded.contains_key("model-b"));
+    }
+
+    #[tokio::test]
+    async fn test_three_tier_fallback_litellm_to_cache() {
+        use vibe_recall_core::pricing::fill_tiering_gaps;
+
+        let db = crate::Database::new_in_memory().await.unwrap();
+
+        // Simulate: litellm succeeded previously, saved to cache
+        let mut original = HashMap::new();
+        original.insert(
+            "claude-opus-4-6".to_string(),
+            ModelPricing {
+                input_cost_per_token: 5e-6,
+                output_cost_per_token: 25e-6,
+                cache_creation_cost_per_token: 6.25e-6,
+                cache_read_cost_per_token: 0.5e-6,
+                input_cost_per_token_above_200k: Some(10e-6),
+                output_cost_per_token_above_200k: Some(37.5e-6),
+                cache_creation_cost_per_token_above_200k: Some(12.5e-6),
+                cache_read_cost_per_token_above_200k: Some(1e-6),
+                cache_creation_cost_per_token_1hr: Some(10e-6),
+            },
+        );
+        save_pricing_cache(&db, &original).await.unwrap();
+
+        // Simulate: litellm fails, load from cache
+        let mut cached = load_pricing_cache(&db).await.unwrap().unwrap();
+        fill_tiering_gaps(&mut cached);
+
+        let m = cached.get("claude-opus-4-6").unwrap();
+        assert_eq!(m.input_cost_per_token, 5e-6);
+        assert_eq!(m.input_cost_per_token_above_200k, Some(10e-6));
+        assert_eq!(m.cache_creation_cost_per_token_1hr, Some(10e-6));
     }
 }
