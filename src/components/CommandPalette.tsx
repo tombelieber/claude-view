@@ -1,16 +1,32 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Search, X, FolderOpen, Clock, Loader2 } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Search, X, FolderOpen, Clock, Loader2, LayoutGrid, List, Columns3, Monitor, Filter, Trash2, HelpCircle } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useAppStore } from '../store/app-store'
 import { useSearch } from '../hooks/use-search'
 import { SearchResultCard } from './SearchResultCard'
 import { cn } from '../lib/utils'
+import { cleanPreviewText } from '../utils/get-session-title'
+import type { LiveSession } from './live/use-live-sessions'
+import type { LiveViewMode } from './live/types'
+import type { LiveSortField } from './live/live-filter'
+
+interface LiveMonitorContext {
+  sessions: LiveSession[]
+  viewMode: LiveViewMode
+  onViewModeChange: (mode: LiveViewMode) => void
+  onFilterStatus: (statuses: string[]) => void
+  onClearFilters: () => void
+  onSort: (field: LiveSortField) => void
+  onSelectSession: (id: string) => void
+  onToggleHelp: () => void
+}
 
 interface CommandPaletteProps {
   isOpen: boolean
   onClose: () => void
   projects: ProjectSummary[]
+  liveContext?: LiveMonitorContext
 }
 
 type SuggestionType = 'project' | 'recent'
@@ -22,7 +38,28 @@ interface Suggestion {
   count?: number
 }
 
-export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProps) {
+type LiveCommandActionType =
+  | 'switch-view'
+  | 'filter-status'
+  | 'sort-by'
+  | 'select-session'
+  | 'clear-filters'
+  | 'toggle-help'
+
+interface LiveCommandItem {
+  id: string
+  label: string
+  description?: string
+  icon: React.ComponentType<{ className?: string }> | null
+  actionType: LiveCommandActionType
+  actionPayload?: any
+  keywords: string[]
+  shortcut?: string
+}
+
+export function CommandPalette({ isOpen, onClose, projects, liveContext }: CommandPaletteProps) {
+  const location = useLocation()
+  const isLiveMonitor = location.pathname === '/' && !!liveContext
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -43,6 +80,87 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
       setSelectedIndex(0)
     }
   }, [isOpen])
+
+  // Generate Live Monitor commands
+  const liveCommands = useMemo<LiveCommandItem[]>(() => {
+    if (!isLiveMonitor || !liveContext) return []
+    const items: LiveCommandItem[] = []
+
+    // View modes
+    const viewModes: {
+      mode: LiveViewMode
+      label: string
+      icon: React.ComponentType<{ className?: string }>
+      shortcut: string
+      extraKeywords: string[]
+    }[] = [
+      { mode: 'grid', label: 'Grid view', icon: LayoutGrid, shortcut: '1', extraKeywords: ['grid'] },
+      { mode: 'list', label: 'List view', icon: List, shortcut: '2', extraKeywords: ['list'] },
+      { mode: 'kanban', label: 'Board view', icon: Columns3, shortcut: '3', extraKeywords: ['board', 'kanban'] },
+      { mode: 'monitor', label: 'Monitor view', icon: Monitor, shortcut: '4', extraKeywords: ['monitor'] },
+    ]
+
+    for (const vm of viewModes) {
+      items.push({
+        id: `view-${vm.mode}`,
+        label: vm.label,
+        icon: vm.icon,
+        actionType: 'switch-view',
+        actionPayload: vm.mode,
+        keywords: ['view', 'switch', ...vm.extraKeywords],
+        shortcut: vm.shortcut,
+      })
+    }
+
+    // Filter actions
+    items.push(
+      { id: 'filter-needs-you', label: 'Show sessions needing you', icon: Filter, actionType: 'filter-status', actionPayload: 'needs_you', keywords: ['filter', 'show', 'needs', 'attention'] },
+      { id: 'filter-autonomous', label: 'Show autonomous sessions', icon: Filter, actionType: 'filter-status', actionPayload: 'autonomous', keywords: ['filter', 'show', 'autonomous'] },
+      { id: 'clear-filters', label: 'Clear all filters', icon: Trash2, actionType: 'clear-filters', keywords: ['clear', 'reset', 'filter', 'remove'] }
+    )
+
+    // Sort actions
+    items.push(
+      { id: 'sort-last-active', label: 'Sort by last active', icon: null, actionType: 'sort-by', actionPayload: 'last_active', keywords: ['sort', 'order', 'active'] },
+      { id: 'sort-cost', label: 'Sort by cost', icon: null, actionType: 'sort-by', actionPayload: 'cost', keywords: ['sort', 'order', 'cost'] },
+      { id: 'sort-turns', label: 'Sort by turns', icon: null, actionType: 'sort-by', actionPayload: 'turns', keywords: ['sort', 'order', 'turns'] }
+    )
+
+    // Help
+    items.push({ id: 'toggle-help', label: 'Keyboard shortcuts', icon: HelpCircle, actionType: 'toggle-help', keywords: ['help', 'keyboard', 'shortcuts', 'keys'] })
+
+    // Sessions (if query matches)
+    if (query.trim()) {
+      const q = query.toLowerCase()
+      for (const session of liveContext.sessions.slice(0, 5)) {
+        const branchLabel = session.gitBranch ?? 'no branch'
+        const projectLabel = session.projectDisplayName || session.project
+        if (projectLabel.toLowerCase().includes(q) || branchLabel.toLowerCase().includes(q)) {
+          items.push({
+            id: `session-${session.id}`,
+            label: `${projectLabel} — ${branchLabel}`,
+            description: cleanPreviewText(session.lastUserMessage).slice(0, 50),
+            icon: null,
+            actionType: 'select-session',
+            actionPayload: session.id,
+            keywords: [session.project, session.gitBranch ?? '', session.id].filter(Boolean),
+          })
+        }
+      }
+    }
+
+    return items
+  }, [isLiveMonitor, liveContext, query])
+
+  // Filter live commands by query
+  const filteredLiveCommands = useMemo(() => {
+    if (!query.trim()) return liveCommands
+    const q = query.toLowerCase()
+    return liveCommands.filter(item => {
+      const allText = [item.label, item.description ?? '', ...item.keywords].join(' ').toLowerCase()
+      return allText.includes(q)
+    }).slice(0, 8)
+  }, [liveCommands, query])
 
   // Generate suggestions based on query (project autocomplete + recent searches)
   const suggestions = useMemo((): Suggestion[] => {
@@ -76,15 +194,48 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
     return results.slice(0, 8)
   }, [query, projects, recentSearches])
 
-  // Total navigable items: suggestions + search result sessions
+  // Total navigable items: live commands + suggestions + search result sessions
   const searchSessionCount = searchResults?.sessions.length ?? 0
-  const totalItems = suggestions.length + searchSessionCount
+  const liveCommandsCount = filteredLiveCommands.length
+  const suggestionsStartIndex = liveCommandsCount
+  const searchResultsStartIndex = liveCommandsCount + suggestions.length
+  const totalItems = liveCommandsCount + suggestions.length + searchSessionCount
 
   const handleSelect = useCallback((searchQuery: string) => {
     addRecentSearch(searchQuery)
     onClose()
     navigate(`/search?q=${encodeURIComponent(searchQuery)}`)
   }, [addRecentSearch, onClose, navigate])
+
+  const handleSelectSearchResult = useCallback((sessionId: string) => {
+    onClose()
+    navigate(`/sessions/${sessionId}`)
+  }, [onClose, navigate])
+
+  const executeLiveCommand = useCallback((item: LiveCommandItem) => {
+    if (!liveContext) return
+    switch (item.actionType) {
+      case 'switch-view':
+        liveContext.onViewModeChange(item.actionPayload as LiveViewMode)
+        break
+      case 'filter-status':
+        liveContext.onFilterStatus([item.actionPayload as string])
+        break
+      case 'sort-by':
+        liveContext.onSort(item.actionPayload as LiveSortField)
+        break
+      case 'select-session':
+        liveContext.onSelectSession(item.actionPayload as string)
+        break
+      case 'clear-filters':
+        liveContext.onClearFilters()
+        break
+      case 'toggle-help':
+        liveContext.onToggleHelp()
+        break
+    }
+    onClose()
+  }, [liveContext, onClose])
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -108,17 +259,27 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
         setSelectedIndex(i => Math.max(i - 1, 0))
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (selectedIndex < suggestions.length && suggestions[selectedIndex]) {
-          handleSelect(suggestions[selectedIndex].query)
-        } else if (selectedIndex >= suggestions.length && searchResults) {
-          // Navigate to the selected search result session
-          const sessionIdx = selectedIndex - suggestions.length
+        // Live commands section
+        if (selectedIndex < liveCommandsCount && filteredLiveCommands[selectedIndex]) {
+          executeLiveCommand(filteredLiveCommands[selectedIndex])
+        }
+        // Suggestions section
+        else if (selectedIndex >= suggestionsStartIndex && selectedIndex < searchResultsStartIndex) {
+          const suggestionIdx = selectedIndex - suggestionsStartIndex
+          if (suggestions[suggestionIdx]) {
+            handleSelect(suggestions[suggestionIdx].query)
+          }
+        }
+        // Search results section
+        else if (selectedIndex >= searchResultsStartIndex && searchResults) {
+          const sessionIdx = selectedIndex - searchResultsStartIndex
           const session = searchResults.sessions[sessionIdx]
           if (session) {
-            onClose()
-            navigate(`/sessions/${session.sessionId}`)
+            handleSelectSearchResult(session.sessionId)
           }
-        } else if (query.trim()) {
+        }
+        // Fallback: search with query
+        else if (query.trim()) {
           handleSelect(query.trim())
         }
       }
@@ -126,7 +287,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose, suggestions, selectedIndex, query, totalItems, searchResults, handleSelect, navigate])
+  }, [isOpen, onClose, filteredLiveCommands, suggestions, selectedIndex, query, totalItems, searchResults, liveCommandsCount, suggestionsStartIndex, searchResultsStartIndex, executeLiveCommand, handleSelect, handleSelectSearchResult])
 
   const insertFilter = useCallback((filter: string) => {
     setQuery(prev => {
@@ -170,7 +331,7 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
                 setQuery(e.target.value)
                 setSelectedIndex(0)
               }}
-              placeholder="Search sessions..."
+              placeholder={isLiveMonitor ? "Search or type a command..." : "Search sessions..."}
               className="flex-1 bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono text-sm"
               spellCheck={false}
               autoComplete="off"
@@ -188,18 +349,69 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
           </div>
         </form>
 
+        {/* Live Monitor commands section */}
+        {isLiveMonitor && filteredLiveCommands.length > 0 && (
+          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
+            <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+              Live Monitor
+            </p>
+            {filteredLiveCommands.map((item, i) => {
+              const Icon = item.icon
+              const itemIndex = i
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => executeLiveCommand(item)}
+                  onMouseEnter={() => setSelectedIndex(itemIndex)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                    selectedIndex === itemIndex
+                      ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100'
+                  )}
+                >
+                  {Icon ? (
+                    <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                  ) : (
+                    <div className="w-4 h-4" />
+                  )}
+                  <span className="flex-1 truncate text-left">{item.label}</span>
+                  {item.description && (
+                    <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[150px]">{item.description}</span>
+                  )}
+                  {item.shortcut && (
+                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/[0.08]">
+                      {item.shortcut}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Global section header (when Live Monitor context is active) */}
+        {isLiveMonitor && (suggestions.length > 0 || hasLiveResults) && (
+          <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
+            Global
+          </p>
+        )}
+
         {/* Suggestions (project autocomplete + recent searches) */}
         {suggestions.length > 0 && (
           <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
             {suggestions.map((suggestion, i) => {
               const Icon = getIcon(suggestion.type)
+              const itemIndex = suggestionsStartIndex + i
               return (
                 <button
                   key={`${suggestion.type}-${suggestion.label}-${i}`}
                   onClick={() => handleSelect(suggestion.query)}
+                  onMouseEnter={() => setSelectedIndex(itemIndex)}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                    selectedIndex === i
+                    selectedIndex === itemIndex
                       ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
                       : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100'
                   )}
@@ -224,16 +436,13 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
             </p>
             <div className="px-3 py-1 space-y-1">
               {searchResults.sessions.map((hit, i) => {
-                const itemIndex = suggestions.length + i
+                const itemIndex = searchResultsStartIndex + i
                 return (
                   <SearchResultCard
                     key={hit.sessionId}
                     hit={hit}
                     isSelected={selectedIndex === itemIndex}
-                    onSelect={() => {
-                      onClose()
-                      navigate(`/sessions/${hit.sessionId}`)
-                    }}
+                    onSelect={() => handleSelectSearchResult(hit.sessionId)}
                   />
                 )
               })}
@@ -250,9 +459,9 @@ export function CommandPalette({ isOpen, onClose, projects }: CommandPaletteProp
         )}
 
         {/* No results message */}
-        {query.trim().length > 0 && !isSearching && !isDebouncing && searchResults && searchResults.sessions.length === 0 && (
+        {query.trim().length > 0 && !isSearching && !isDebouncing && searchResults && searchResults.sessions.length === 0 && filteredLiveCommands.length === 0 && suggestions.length === 0 && (
           <div className="py-4 border-b border-slate-200/80 dark:border-white/[0.06] text-center">
-            <p className="text-sm text-slate-400 dark:text-slate-500">No sessions match your search.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500">No results found.</p>
           </div>
         )}
 
