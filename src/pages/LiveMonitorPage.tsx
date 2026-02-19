@@ -19,6 +19,7 @@ import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 import { formatTokenCount } from '../lib/format-utils'
 import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
+import { LiveMonitorSkeleton } from '../components/LoadingStates'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -141,6 +142,11 @@ export function LiveMonitorPage() {
     document.addEventListener('keydown', handleCmdK, true)
     return () => document.removeEventListener('keydown', handleCmdK, true)
   }, [handleCmdK])
+
+  // SSE not connected yet and no sessions — show skeleton instead of blank content
+  if (!isConnected && sessions.length === 0) {
+    return <LiveMonitorSkeleton />
+  }
 
   return (
     <div className="h-full flex flex-col">
