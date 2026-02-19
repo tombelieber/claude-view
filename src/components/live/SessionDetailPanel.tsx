@@ -77,18 +77,22 @@ function formatModel(model: string | null): string {
 // ---------------------------------------------------------------------------
 
 const PANEL_WIDTH_KEY = 'mc-panel-width'
+const INLINE_PANEL_WIDTH_KEY = 'mc-inline-panel-width'
 const DEFAULT_PANEL_WIDTH = 480
-const MIN_PANEL_WIDTH = 320
+const DEFAULT_INLINE_PANEL_WIDTH = 288 // w-72 — matches left sidenav
+const MIN_PANEL_WIDTH = 288
 
-function getStoredPanelWidth(): number {
+function getStoredPanelWidth(isInline: boolean): number {
+  const key = isInline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY
+  const fallback = isInline ? DEFAULT_INLINE_PANEL_WIDTH : DEFAULT_PANEL_WIDTH
   try {
-    const stored = localStorage.getItem(PANEL_WIDTH_KEY)
+    const stored = localStorage.getItem(key)
     if (stored) {
       const w = parseInt(stored, 10)
       if (w >= MIN_PANEL_WIDTH && !isNaN(w)) return w
     }
   } catch { /* ignore */ }
-  return DEFAULT_PANEL_WIDTH
+  return fallback
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +123,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   } | null>(null)
 
   // Resizable width (persisted to localStorage)
-  const [panelWidth, setPanelWidth] = useState(getStoredPanelWidth)
+  const [panelWidth, setPanelWidth] = useState(() => getStoredPanelWidth(!!inline))
   const panelWidthRef = useRef(panelWidth)
   const [isResizing, setIsResizing] = useState(false)
 
@@ -186,7 +190,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
       setIsResizing(false)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      try { localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidthRef.current)) } catch { /* ignore */ }
+      try { localStorage.setItem(inline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY, String(panelWidthRef.current)) } catch { /* ignore */ }
     }
 
     window.addEventListener('pointermove', onMove)
