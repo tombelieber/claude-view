@@ -31,7 +31,7 @@ function barColor(pct: number): string {
 /** Small inline progress bar for the compact pill. */
 function MiniBar({ percentage }: { percentage: number }) {
   return (
-    <span className="inline-flex w-10 h-1.5 rounded-full bg-gray-700 dark:bg-gray-600 overflow-hidden">
+    <span className="inline-flex w-10 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
       <span
         className={`h-full rounded-full ${barColor(percentage)}`}
         style={{ width: `${Math.min(100, percentage)}%` }}
@@ -43,7 +43,7 @@ function MiniBar({ percentage }: { percentage: number }) {
 /** Full-width progress bar for the tooltip. */
 function ProgressBar({ percentage }: { percentage: number }) {
   return (
-    <div className="w-full h-1.5 rounded-full bg-gray-600 dark:bg-gray-700 overflow-hidden">
+    <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
       <div
         className={`h-full rounded-full transition-all ${barColor(percentage)}`}
         style={{ width: `${Math.min(100, percentage)}%` }}
@@ -57,13 +57,13 @@ function TierRow({ tier }: { tier: UsageTier }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-4">
-        <span className="font-medium text-gray-200 dark:text-gray-300">{tier.label}</span>
-        <span className="tabular-nums text-gray-400 dark:text-gray-500">
+        <span className="font-medium text-gray-700 dark:text-gray-300">{tier.label}</span>
+        <span className="tabular-nums text-gray-500 dark:text-gray-400">
           {Math.round(tier.percentage)}%
         </span>
       </div>
       <ProgressBar percentage={tier.percentage} />
-      <div className="text-[10px] text-gray-400 dark:text-gray-500">
+      <div className="text-[10px] text-gray-500 dark:text-gray-400">
         {tier.spent && <span>{tier.spent} &middot; </span>}
         {formatResetLabel(tier.resetAt)}
       </div>
@@ -80,13 +80,13 @@ export function OAuthUsagePill() {
   const { data, isLoading, error, refetch } = useOAuthUsage()
 
   if (isLoading) {
-    return <span className="text-xs text-gray-500 dark:text-gray-400">Loading usage...</span>
+    return <span className="text-xs text-gray-400 dark:text-gray-500">Loading usage...</span>
   }
 
   if (error) {
     return (
       <span
-        className="text-xs text-gray-500 dark:text-gray-400"
+        className="text-xs text-gray-400 dark:text-gray-500"
         title={error instanceof Error ? error.message : 'Unknown error'}
       >
         Usage unavailable
@@ -105,10 +105,10 @@ export function OAuthUsagePill() {
     <Tooltip.Provider delayDuration={300}>
       <Tooltip.Root onOpenChange={(open) => { if (open) refetch() }}>
         <Tooltip.Trigger asChild>
-          <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums cursor-default">
+          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums cursor-default">
             <MiniBar percentage={sessionTier.percentage} />
             <span>{Math.round(sessionTier.percentage)}%</span>
-            <span className="text-gray-600 dark:text-gray-600">&middot;</span>
+            <span className="text-gray-400 dark:text-gray-500">&middot;</span>
             <span>{formatReset(sessionTier.resetAt)}</span>
           </span>
         </Tooltip.Trigger>
@@ -117,11 +117,11 @@ export function OAuthUsagePill() {
             side="bottom"
             align="end"
             sideOffset={8}
-            className="z-50 w-72 rounded-lg px-4 py-3 bg-gray-900 dark:bg-gray-800 text-xs shadow-xl border border-gray-700 dark:border-gray-700 animate-in fade-in-0 zoom-in-95"
+            className="z-50 w-72 rounded-lg px-4 py-3 bg-white dark:bg-gray-800 text-xs shadow-xl border border-gray-200 dark:border-gray-700 animate-in fade-in-0 zoom-in-95"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-700">
-              <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-400 uppercase tracking-wider">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+              <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                 Usage
               </span>
               {data.plan && (
@@ -138,7 +138,7 @@ export function OAuthUsagePill() {
               ))}
             </div>
 
-            <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-800" />
+            <Tooltip.Arrow className="fill-white dark:fill-gray-800" />
           </Tooltip.Content>
         </Tooltip.Portal>
       </Tooltip.Root>

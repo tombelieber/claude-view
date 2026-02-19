@@ -554,6 +554,12 @@ CREATE TABLE IF NOT EXISTS fluency_scores (
     r#"ALTER TABLE sessions ADD COLUMN total_task_time_seconds INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN longest_task_seconds INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN longest_task_preview TEXT;"#,
+    // Migration 23: Pricing cache for three-tier resolution (litellm → SQLite → defaults)
+    r#"CREATE TABLE IF NOT EXISTS pricing_cache (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+)"#,
 ];
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
@@ -9,15 +9,18 @@ import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNod
 import { useRecentSessions } from '../hooks/use-recent-sessions'
 import { buildSessionUrl } from '../lib/url-utils'
 import { getSessionTitle } from '../utils/get-session-title'
+import { useAppStore } from '../store/app-store'
 
 interface SidebarProps {
   projects: ProjectSummary[]
+  collapsed?: boolean
 }
 
 type ProjectViewMode = 'list' | 'tree'
 
-export function Sidebar({ projects }: SidebarProps) {
+export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const location = useLocation()
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar)
 
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedProjectId = searchParams.get("project")
@@ -349,8 +352,69 @@ export function Sidebar({ projects }: SidebarProps) {
     handleGroupClick,
   ])
 
+  if (collapsed) {
+    return (
+      <aside className="w-14 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center py-2 gap-1">
+        <Link
+          to="/"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+          title="Mission Control"
+        >
+          <Monitor className="w-5 h-5" />
+        </Link>
+        <Link
+          to="/sessions"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname.startsWith('/sessions')
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+          title="Sessions"
+        >
+          <Clock className="w-5 h-5" />
+        </Link>
+        <Link
+          to="/analytics"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/analytics'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+          title="Analytics"
+        >
+          <BarChart3 className="w-5 h-5" />
+        </Link>
+
+        <div className="flex-1" />
+
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1'
+          )}
+          title="Expand sidebar (⌘B)"
+        >
+          <PanelLeft className="w-5 h-5" />
+        </button>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+    <aside className="w-72 bg-gray-50/80 dark:bg-gray-900/80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-all duration-200">
       {/* ─── Zone 1: Navigation Tabs ─── */}
       <nav className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1" aria-label="Main navigation">
         {(() => {
@@ -464,6 +528,19 @@ export function Sidebar({ projects }: SidebarProps) {
               </button>
             </div>
             <div className="flex items-center gap-0.5 ml-auto">
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                title="Collapse sidebar (⌘B)"
+                className={cn(
+                  'p-1 rounded transition-colors',
+                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                )}
+              >
+                <PanelLeftClose className="w-3.5 h-3.5" />
+              </button>
               <button
                 type="button"
                 onClick={handleExpandAll}
