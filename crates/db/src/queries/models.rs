@@ -1,21 +1,17 @@
 // crates/db/src/queries/models.rs
 // Model + Turn CRUD operations (Phase 2B).
 
-use crate::{Database, DbResult};
-use vibe_recall_core::RawTurn;
 use super::row_types::{batch_insert_turns_tx, batch_upsert_models_tx};
 use super::{ModelWithStats, TokenStats};
+use crate::{Database, DbResult};
+use vibe_recall_core::RawTurn;
 
 impl Database {
     /// Batch upsert models: INSERT OR IGNORE + UPDATE last_seen.
     ///
     /// Each `model_id` is parsed via `parse_model_id()` to derive provider/family.
     /// `seen_at` is the unix timestamp when the model was observed.
-    pub async fn batch_upsert_models(
-        &self,
-        model_ids: &[String],
-        seen_at: i64,
-    ) -> DbResult<u64> {
+    pub async fn batch_upsert_models(&self, model_ids: &[String], seen_at: i64) -> DbResult<u64> {
         if model_ids.is_empty() {
             return Ok(0);
         }
@@ -28,11 +24,7 @@ impl Database {
     /// Batch insert turns using INSERT OR IGNORE (UUID PK = free dedup on re-index).
     ///
     /// Returns the number of rows actually inserted.
-    pub async fn batch_insert_turns(
-        &self,
-        session_id: &str,
-        turns: &[RawTurn],
-    ) -> DbResult<u64> {
+    pub async fn batch_insert_turns(&self, session_id: &str, turns: &[RawTurn]) -> DbResult<u64> {
         if turns.is_empty() {
             return Ok(0);
         }
@@ -81,7 +73,7 @@ impl Database {
         let total_input = row.0 as u64;
         let total_cache_read = row.2 as u64;
         let total_cache_creation = row.3 as u64;
-        let denominator = total_input + total_cache_creation;
+        let denominator = total_cache_read + total_cache_creation;
         let cache_hit_ratio = if denominator > 0 {
             total_cache_read as f64 / denominator as f64
         } else {

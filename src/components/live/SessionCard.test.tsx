@@ -41,6 +41,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       cacheReadCostUsd: 0,
       cacheCreationCostUsd: 0,
       cacheSavingsUsd: 0,
+      isEstimated: false,
     },
     cacheStatus: 'warm',
     ...overrides,

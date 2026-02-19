@@ -6,26 +6,22 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
 
-use vibe_recall_core::cost::{
-    self, calculate_live_cost, derive_cache_status, TokenUsage,
+use vibe_recall_core::live_parser::{parse_tail, LineType, TailFinders};
+use vibe_recall_core::pricing::{
+    calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
-use vibe_recall_core::live_parser::{LineType, TailFinders, parse_tail};
 use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
-use vibe_recall_db::ModelPricing;
 
-use super::process::{ClaudeProcess, detect_claude_processes, has_running_process};
-use super::state::{
-    AgentState, AgentStateGroup,
-    LiveSession, SessionEvent, SessionStatus,
-};
-use super::watcher::{FileEvent, initial_scan, start_watcher};
+use super::process::{detect_claude_processes, has_running_process, ClaudeProcess};
+use super::state::{AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionStatus};
+use super::watcher::{initial_scan, start_watcher, FileEvent};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
 pub type LiveSessionMap = Arc<RwLock<HashMap<String, LiveSession>>>;
@@ -101,8 +97,8 @@ struct JsonlMetadata {
     model: Option<String>,
     tokens: TokenUsage,
     context_window_tokens: u64,
-    cost: vibe_recall_core::cost::CostBreakdown,
-    cache_status: vibe_recall_core::cost::CacheStatus,
+    cost: CostBreakdown,
+    cache_status: CacheStatus,
     current_turn_started_at: Option<i64>,
     last_turn_task_seconds: Option<u32>,
     sub_agents: Vec<SubAgentInfo>,
@@ -165,8 +161,8 @@ pub struct LiveSessionManager {
     /// Total number of Claude processes detected (not deduplicated by cwd).
     /// Updated by the eager scan and periodic detector.
     process_count: Arc<AtomicU32>,
-    /// Per-model pricing table for cost calculation (core-level types).
-    pricing: Arc<HashMap<String, cost::ModelPricing>>,
+    /// Per-model pricing table for cost calculation.
+    pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
 }
 
 impl LiveSessionManager {
@@ -175,26 +171,10 @@ impl LiveSessionManager {
     /// Returns the manager, a shared session map for route handlers, and the
     /// broadcast sender for SSE event streaming.
     pub fn start(
-        pricing: HashMap<String, ModelPricing>,
+        pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
-
-        // Convert vibe_recall_db::ModelPricing -> vibe_recall_core::cost::ModelPricing
-        let core_pricing: HashMap<String, cost::ModelPricing> = pricing
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    cost::ModelPricing {
-                        input_cost_per_token: v.input_cost_per_token,
-                        output_cost_per_token: v.output_cost_per_token,
-                        cache_creation_cost_per_token: v.cache_creation_cost_per_token,
-                        cache_read_cost_per_token: v.cache_read_cost_per_token,
-                    },
-                )
-            })
-            .collect();
 
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
@@ -203,7 +183,7 @@ impl LiveSessionManager {
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             processes: Arc::new(RwLock::new(HashMap::new())),
             process_count: Arc::new(AtomicU32::new(0)),
-            pricing: Arc::new(core_pricing),
+            pricing,
         });
 
         // Spawn background tasks
@@ -223,7 +203,9 @@ impl LiveSessionManager {
 
     /// Called by hook handler when SessionStart creates a new session.
     pub async fn create_accumulator_for_hook(&self, session_id: &str) {
-        self.accumulators.write().await
+        self.accumulators
+            .write()
+            .await
             .entry(session_id.to_string())
             .or_insert_with(SessionAccumulator::new);
     }
@@ -250,7 +232,10 @@ impl LiveSessionManager {
         let unique_cwds = new_processes.len();
         let mut processes = self.processes.write().await;
         *processes = new_processes;
-        info!("Process scan: {} Claude processes ({} unique projects)", total_count, unique_cwds);
+        info!(
+            "Process scan: {} Claude processes ({} unique projects)",
+            total_count, unique_cwds
+        );
     }
 
     /// Spawn the file watcher background task.
@@ -282,7 +267,10 @@ impl LiveSessionManager {
                     .unwrap_or_default()
             };
 
-            info!("Initial scan found {} recent JSONL files", initial_paths.len());
+            info!(
+                "Initial scan found {} recent JSONL files",
+                initial_paths.len()
+            );
 
             // Warm up accumulators so that when hooks arrive, metadata is ready.
             // No sessions are created here — hooks are the sole authority.
@@ -344,9 +332,9 @@ impl LiveSessionManager {
                         if sessions.remove(&session_id).is_some() {
                             let mut accumulators = manager.accumulators.write().await;
                             accumulators.remove(&session_id);
-                            let _ = manager.tx.send(SessionEvent::SessionCompleted {
-                                session_id,
-                            });
+                            let _ = manager
+                                .tx
+                                .send(SessionEvent::SessionCompleted { session_id });
                         }
                     }
                 }
@@ -379,9 +367,10 @@ impl LiveSessionManager {
                 interval.tick().await;
 
                 // Scan process table
-                let (new_processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
-                    .await
-                    .unwrap_or_default();
+                let (new_processes, total_count) =
+                    tokio::task::spawn_blocking(detect_claude_processes)
+                        .await
+                        .unwrap_or_default();
 
                 manager.process_count.store(total_count, Ordering::Relaxed);
                 {
@@ -398,8 +387,7 @@ impl LiveSessionManager {
                     let mut sessions = manager.sessions.write().await;
 
                     for (session_id, session) in sessions.iter_mut() {
-                        let (running, pid) =
-                            has_running_process(&processes, &session.project_path);
+                        let (running, pid) = has_running_process(&processes, &session.project_path);
 
                         // Always update PID
                         session.pid = pid;
@@ -434,9 +422,8 @@ impl LiveSessionManager {
                                 // LOW CONFIDENCE: we never saw a process for this session
                                 // (macOS sysinfo may have missed it). Fall back to the
                                 // 180s stale threshold before marking ended.
-                                let seconds_since = seconds_since_modified_from_timestamp(
-                                    session.last_activity_at,
-                                );
+                                let seconds_since =
+                                    seconds_since_modified_from_timestamp(session.last_activity_at);
                                 if seconds_since > STALE_THRESHOLD_SECS {
                                     info!(
                                         session_id = %session_id,
@@ -471,9 +458,9 @@ impl LiveSessionManager {
 
                 // Broadcast completions (outside lock)
                 for session_id in dead_sessions {
-                    let _ = manager.tx.send(SessionEvent::SessionCompleted {
-                        session_id,
-                    });
+                    let _ = manager
+                        .tx
+                        .send(SessionEvent::SessionCompleted { session_id });
                 }
             }
         });
@@ -524,19 +511,15 @@ impl LiveSessionManager {
         // Get the current offset for this session
         let current_offset = {
             let accumulators = self.accumulators.read().await;
-            accumulators
-                .get(&session_id)
-                .map(|a| a.offset)
-                .unwrap_or(0)
+            accumulators.get(&session_id).map(|a| a.offset).unwrap_or(0)
         };
 
         // Parse new lines from the JSONL file (blocking I/O)
         let finders = self.finders.clone();
         let path_owned = path.to_path_buf();
-        let parse_result = tokio::task::spawn_blocking(move || {
-            parse_tail(&path_owned, current_offset, &finders)
-        })
-        .await;
+        let parse_result =
+            tokio::task::spawn_blocking(move || parse_tail(&path_owned, current_offset, &finders))
+                .await;
 
         let (new_lines, new_offset) = match parse_result {
             Ok(Ok((lines, offset))) => (lines, offset),
@@ -569,8 +552,6 @@ impl LiveSessionManager {
                     .as_secs() as i64
             });
 
-        let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
-
         // Update accumulator with new lines
         let mut accumulators = self.accumulators.write().await;
         let acc = accumulators
@@ -590,6 +571,7 @@ impl LiveSessionManager {
                 "File replaced — clearing task progress for clean re-accumulation"
             );
             acc.task_items.clear();
+            acc.tokens = TokenUsage::default();
         }
 
         for line in &new_lines {
@@ -678,12 +660,18 @@ impl LiveSessionManager {
             for spawn in &line.sub_agent_spawns {
                 // Guard against re-processing the same spawn line
                 // (can happen if accumulator reset while file exists, or offset tracking bug)
-                if acc.sub_agents.iter().any(|a| a.tool_use_id == spawn.tool_use_id) {
+                if acc
+                    .sub_agents
+                    .iter()
+                    .any(|a| a.tool_use_id == spawn.tool_use_id)
+                {
                     continue;
                 }
 
                 // Parse timestamp from the JSONL line to get started_at
-                let started_at = line.timestamp.as_deref()
+                let started_at = line
+                    .timestamp
+                    .as_deref()
                     .and_then(parse_timestamp_to_unix)
                     .unwrap_or(last_activity_at); // fallback to file mtime, never epoch-zero
                 acc.sub_agents.push(SubAgentInfo {
@@ -703,7 +691,9 @@ impl LiveSessionManager {
 
             // --- Sub-agent completion tracking ---
             if let Some(ref result) = line.sub_agent_result {
-                if let Some(agent) = acc.sub_agents.iter_mut()
+                if let Some(agent) = acc
+                    .sub_agents
+                    .iter_mut()
                     .find(|a| a.tool_use_id == result.tool_use_id)
                 {
                     agent.status = if result.status == "completed" {
@@ -712,21 +702,26 @@ impl LiveSessionManager {
                         SubAgentStatus::Error
                     };
                     agent.agent_id = result.agent_id.clone();
-                    agent.completed_at = line.timestamp.as_deref()
-                        .and_then(parse_timestamp_to_unix);
+                    agent.completed_at =
+                        line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
                     agent.duration_ms = result.total_duration_ms;
                     agent.tool_use_count = result.total_tool_use_count;
                     agent.current_activity = None; // No longer running, clear activity
-                    // Compute cost from token usage via pricing table
+                                                   // Compute cost from token usage via pricing table
                     if let Some(model) = acc.model.as_deref() {
                         let sub_tokens = TokenUsage {
                             input_tokens: result.usage_input_tokens.unwrap_or(0),
                             output_tokens: result.usage_output_tokens.unwrap_or(0),
                             cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
                             cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
-                            total_tokens: 0, // not used by calculate_live_cost
+                            total_tokens: 0, // not used by calculate_cost
                         };
-                        let sub_cost = calculate_live_cost(&sub_tokens, Some(model), &self.pricing);
+                        let sub_cost = self
+                            .pricing
+                            .read()
+                            .ok()
+                            .map(|p| calculate_cost(&sub_tokens, Some(model), &p))
+                            .unwrap_or_default();
                         if sub_cost.total_usd > 0.0 {
                             agent.cost_usd = Some(sub_cost.total_usd);
                         }
@@ -737,7 +732,9 @@ impl LiveSessionManager {
 
             // --- Sub-agent progress tracking (early agentId + current activity) ---
             if let Some(ref progress) = line.sub_agent_progress {
-                if let Some(agent) = acc.sub_agents.iter_mut()
+                if let Some(agent) = acc
+                    .sub_agents
+                    .iter_mut()
                     .find(|a| a.tool_use_id == progress.parent_tool_use_id)
                 {
                     // Populate agent_id from progress event (available before completion!)
@@ -753,28 +750,39 @@ impl LiveSessionManager {
 
             // --- TodoWrite: full replacement ---
             if let Some(ref todos) = line.todo_write {
-                use vibe_recall_core::progress::{ProgressItem, ProgressStatus, ProgressSource};
-                acc.todo_items = todos.iter().map(|t| {
-                    let status = match t.status.as_str() {
-                        "in_progress" => ProgressStatus::InProgress,
-                        "completed" => ProgressStatus::Completed,
-                        _ => ProgressStatus::Pending,
-                    };
-                    ProgressItem {
-                        id: None,
-                        tool_use_id: None,
-                        title: t.content.clone(),
-                        status,
-                        active_form: if t.active_form.is_empty() { None } else { Some(t.active_form.clone()) },
-                        source: ProgressSource::Todo,
-                    }
-                }).collect();
+                use vibe_recall_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
+                acc.todo_items = todos
+                    .iter()
+                    .map(|t| {
+                        let status = match t.status.as_str() {
+                            "in_progress" => ProgressStatus::InProgress,
+                            "completed" => ProgressStatus::Completed,
+                            _ => ProgressStatus::Pending,
+                        };
+                        ProgressItem {
+                            id: None,
+                            tool_use_id: None,
+                            title: t.content.clone(),
+                            status,
+                            active_form: if t.active_form.is_empty() {
+                                None
+                            } else {
+                                Some(t.active_form.clone())
+                            },
+                            source: ProgressSource::Todo,
+                        }
+                    })
+                    .collect();
             }
 
             // --- TaskCreate: append with dedup guard ---
             for create in &line.task_creates {
-                use vibe_recall_core::progress::{ProgressItem, ProgressStatus, ProgressSource};
-                if acc.task_items.iter().any(|t| t.tool_use_id.as_deref() == Some(&create.tool_use_id)) {
+                use vibe_recall_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
+                if acc
+                    .task_items
+                    .iter()
+                    .any(|t| t.tool_use_id.as_deref() == Some(&create.tool_use_id))
+                {
                     continue; // Already seen this create (replay resilience)
                 }
                 acc.task_items.push(ProgressItem {
@@ -782,14 +790,20 @@ impl LiveSessionManager {
                     tool_use_id: Some(create.tool_use_id.clone()),
                     title: create.subject.clone(),
                     status: ProgressStatus::Pending,
-                    active_form: if create.active_form.is_empty() { None } else { Some(create.active_form.clone()) },
+                    active_form: if create.active_form.is_empty() {
+                        None
+                    } else {
+                        Some(create.active_form.clone())
+                    },
                     source: ProgressSource::Task,
                 });
             }
 
             // --- TaskIdAssignment: assign system ID ---
             for assignment in &line.task_id_assignments {
-                if let Some(task) = acc.task_items.iter_mut()
+                if let Some(task) = acc
+                    .task_items
+                    .iter_mut()
                     .find(|t| t.tool_use_id.as_deref() == Some(&assignment.tool_use_id))
                 {
                     task.id = Some(assignment.task_id.clone());
@@ -799,7 +813,9 @@ impl LiveSessionManager {
             // --- TaskUpdate: modify existing task ---
             for update in &line.task_updates {
                 use vibe_recall_core::progress::ProgressStatus;
-                if let Some(task) = acc.task_items.iter_mut()
+                if let Some(task) = acc
+                    .task_items
+                    .iter_mut()
                     .find(|t| t.id.as_deref() == Some(&update.task_id))
                 {
                     if let Some(ref s) = update.status {
@@ -820,19 +836,23 @@ impl LiveSessionManager {
         }
 
         // Calculate cost from accumulated tokens
-        let cost = calculate_live_cost(
-            &acc.tokens,
-            acc.model.as_deref(),
-            &self.pricing,
-        );
+        let cost = self
+            .pricing
+            .read()
+            .ok()
+            .map(|p| calculate_cost(&acc.tokens, acc.model.as_deref(), &p))
+            .unwrap_or_default();
 
-        // Derive cache status from time since last activity
-        let cache_status = derive_cache_status(Some(seconds_since));
+        // Derive cache status from last cache hit (ground truth from API response tokens).
+        let cache_status = match acc.last_cache_hit_at {
+            Some(ts) => {
+                let secs = seconds_since_modified_from_timestamp(ts);
+                if secs < 300 { CacheStatus::Warm } else { CacheStatus::Cold }
+            }
+            None => CacheStatus::Unknown,
+        };
 
-        let file_path_str = path
-            .to_str()
-            .unwrap_or("")
-            .to_string();
+        let file_path_str = path.to_str().unwrap_or("").to_string();
 
         // Process detector needs PID for this session
         let processes = self.processes.read().await;
@@ -873,7 +893,14 @@ impl LiveSessionManager {
         // the metadata until a hook or recovery creates the session entry.
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&session_id) {
-            apply_jsonl_metadata(session, &metadata, &file_path_str, &project, &project_display_name, &project_path);
+            apply_jsonl_metadata(
+                session,
+                &metadata,
+                &file_path_str,
+                &project,
+                &project_display_name,
+                &project_path,
+            );
         }
         // else: no session in map — accumulator is populated, metadata will be applied
         // when SessionStart hook or startup recovery creates the session entry.
@@ -964,9 +991,7 @@ mod tests {
 
     #[test]
     fn test_extract_project_info_simple() {
-        let path = PathBuf::from(
-            "/home/user/.claude/projects/-tmp/session.jsonl",
-        );
+        let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
         let (encoded, display, decoded) = extract_project_info(&path);
         assert_eq!(encoded, "-tmp");
         assert_eq!(display, "tmp");
@@ -977,9 +1002,8 @@ mod tests {
     fn test_extract_project_info_encoded_path() {
         // Claude Code encodes `/Users/test/my-project` as `-Users-test-my-project`
         // (special chars → `-`), NOT URL-encoding.
-        let path = PathBuf::from(
-            "/home/user/.claude/projects/-Users-test-my-project/session.jsonl",
-        );
+        let path =
+            PathBuf::from("/home/user/.claude/projects/-Users-test-my-project/session.jsonl");
         let (encoded, display, _decoded) = extract_project_info(&path);
         assert_eq!(encoded, "-Users-test-my-project");
         // Display name is the last path component
@@ -1076,8 +1100,14 @@ mod tests {
         }
 
         // Session was in had_process → should be immediately ended
-        assert!(immediate_end, "Session with previously-seen process should be ended immediately");
-        assert!(!stale_end, "Should NOT have used stale fallback for a seen process");
+        assert!(
+            immediate_end,
+            "Session with previously-seen process should be ended immediately"
+        );
+        assert!(
+            !stale_end,
+            "Should NOT have used stale fallback for a seen process"
+        );
     }
 
     /// Verify that sessions where we never observed a process still use
@@ -1110,8 +1140,14 @@ mod tests {
                 }
             }
 
-            assert!(!immediate_end, "Should NOT immediately end a session we never saw a process for");
-            assert!(!stale_end, "Session active 10s ago should NOT hit stale threshold");
+            assert!(
+                !immediate_end,
+                "Should NOT immediately end a session we never saw a process for"
+            );
+            assert!(
+                !stale_end,
+                "Session active 10s ago should NOT hit stale threshold"
+            );
         }
 
         // --- Case B: stale enough (activity 400s ago) ---
@@ -1130,8 +1166,14 @@ mod tests {
                 }
             }
 
-            assert!(!immediate_end, "Should NOT immediately end a session we never saw a process for");
-            assert!(stale_end, "Session inactive for 400s should hit 300s stale threshold");
+            assert!(
+                !immediate_end,
+                "Should NOT immediately end a session we never saw a process for"
+            );
+            assert!(
+                stale_end,
+                "Session inactive for 400s should hit 300s stale threshold"
+            );
         }
     }
 
@@ -1158,7 +1200,9 @@ mod tests {
             would_end = true;
         }
 
-        assert!(!would_end, "Already-Done session must not be re-processed by process detector");
+        assert!(
+            !would_end,
+            "Already-Done session must not be re-processed by process detector"
+        );
     }
-
 }

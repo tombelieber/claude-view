@@ -1,33 +1,37 @@
 // crates/db/src/lib.rs
 // Phase 2: SQLite database for vibe-recall session indexing
-#![allow(clippy::type_complexity, clippy::too_many_arguments, clippy::derivable_impls)]
+#![allow(
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::derivable_impls
+)]
 
-mod migrations;
-mod queries;
+pub mod git_correlation;
 pub mod indexer;
 pub mod indexer_parallel;
-pub mod git_correlation;
-pub mod trends;
-pub mod snapshots;
-pub mod pricing;
 pub mod insights_trends;
+mod migrations;
+pub mod pricing;
+mod queries;
+pub mod snapshots;
+pub mod trends;
 
+pub use queries::facets::{FacetAggregateStats, FacetRow};
 pub use queries::AIGenerationStats;
-pub use queries::BranchCount;
 pub use queries::ActivityPoint;
-pub use queries::SessionFilterParams;
+pub use queries::BranchCount;
+pub use queries::ClassificationStatus;
+pub use queries::HealthStats;
+pub use queries::HealthStatus;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
+pub use queries::SessionFilterParams;
 pub use queries::StatsOverview;
+pub use queries::StorageStats;
+pub use queries::TokenStats;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
-pub use queries::TokenStats;
-pub use queries::StorageStats;
-pub use queries::HealthStats;
-pub use queries::HealthStatus;
-pub use queries::ClassificationStatus;
-pub use queries::facets::{FacetRow, FacetAggregateStats};
 
 // Re-export trends types
 pub use trends::current_week_bounds;
@@ -36,11 +40,14 @@ pub use trends::IndexMetadata;
 pub use trends::TrendMetric;
 pub use trends::WeekTrends;
 
-// Re-export pricing types
-pub use pricing::{
-    calculate_cost_usd, default_pricing, lookup_pricing, ModelPricing, TokenBreakdown,
-    FALLBACK_COST_PER_TOKEN_USD,
+// Re-export unified pricing types (owned by vibe_recall_core::pricing)
+pub use vibe_recall_core::pricing::{
+    calculate_cost, calculate_cost_usd, default_pricing, lookup_pricing, CacheStatus,
+    CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage, FALLBACK_INPUT_COST_PER_TOKEN,
+    FALLBACK_OUTPUT_COST_PER_TOKEN,
 };
+// Re-export DB-owned pricing refresh helpers.
+pub use pricing::{fetch_litellm_pricing, merge_pricing};
 
 // Re-export snapshots types
 pub use snapshots::AggregatedContributions;
@@ -110,7 +117,10 @@ impl Database {
             .connect_with(options)
             .await?;
 
-        let db = Self { pool, db_path: path.to_owned() };
+        let db = Self {
+            pool,
+            db_path: path.to_owned(),
+        };
         db.run_migrations().await?;
 
         info!("Database opened at {}", path.display());
@@ -130,7 +140,10 @@ impl Database {
             .max_connections(4)
             .connect_with(options)
             .await?;
-        let db = Self { pool, db_path: PathBuf::new() };
+        let db = Self {
+            pool,
+            db_path: PathBuf::new(),
+        };
         db.run_migrations().await?;
         Ok(db)
     }
@@ -148,18 +161,14 @@ impl Database {
     /// are only executed once.
     async fn run_migrations(&self) -> DbResult<()> {
         // Ensure the migration-tracking table exists
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)"
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)")
+            .execute(&self.pool)
+            .await?;
 
         // Find the highest version already applied (0 if none)
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(MAX(version), 0) FROM _migrations"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COALESCE(MAX(version), 0) FROM _migrations")
+            .fetch_one(&self.pool)
+            .await?;
         let current_version = row.0 as usize;
 
         // Run only new migrations
@@ -169,9 +178,13 @@ impl Database {
                 // Multi-statement migrations (containing BEGIN/COMMIT) use raw_sql()
                 // which supports executing multiple statements atomically.
                 // Single-statement migrations use query() as before.
-                let is_multi_statement = migration.contains("BEGIN;") || migration.contains("BEGIN\n");
+                let is_multi_statement =
+                    migration.contains("BEGIN;") || migration.contains("BEGIN\n");
                 let result = if is_multi_statement {
-                    sqlx::raw_sql(migration).execute(&self.pool).await.map(|_| ())
+                    sqlx::raw_sql(migration)
+                        .execute(&self.pool)
+                        .await
+                        .map(|_| ())
                 } else {
                     sqlx::query(migration).execute(&self.pool).await.map(|_| ())
                 };
@@ -267,12 +280,10 @@ impl Database {
         column: &str,
         typedef: &str,
     ) -> DbResult<()> {
-        let columns: Vec<(String,)> = sqlx::query_as(&format!(
-            "SELECT name FROM pragma_table_info('{}')",
-            table
-        ))
-        .fetch_all(&self.pool)
-        .await?;
+        let columns: Vec<(String,)> =
+            sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{}')", table))
+                .fetch_all(&self.pool)
+                .await?;
 
         let has_column = columns.iter().any(|(name,)| name == column);
         if !has_column {
@@ -308,7 +319,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_database() {
         // Open in-memory DB, run migrations, verify no errors
-        let db = Database::new_in_memory().await.expect("should create in-memory database");
+        let db = Database::new_in_memory()
+            .await
+            .expect("should create in-memory database");
 
         // Verify sessions table exists by querying it
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
@@ -328,10 +341,14 @@ mod tests {
     #[tokio::test]
     async fn test_migrations_idempotent() {
         // Run migrations twice — should not error
-        let db = Database::new_in_memory().await.expect("first open should succeed");
+        let db = Database::new_in_memory()
+            .await
+            .expect("first open should succeed");
 
         // Run migrations again explicitly
-        db.run_migrations().await.expect("second migration run should succeed");
+        db.run_migrations()
+            .await
+            .expect("second migration run should succeed");
 
         // Still works
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
@@ -346,7 +363,9 @@ mod tests {
         let tmp = tempfile::tempdir().expect("should create temp dir");
         let db_path = tmp.path().join("test.db");
 
-        let db = Database::new(&db_path).await.expect("should create file-based database");
+        let db = Database::new(&db_path)
+            .await
+            .expect("should create file-based database");
 
         // Verify table exists
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
