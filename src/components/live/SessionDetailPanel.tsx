@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check, ScrollText } from 'lucide-react'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { RichPane } from './RichPane'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { ActionLogTab } from './action-log'
@@ -13,6 +13,7 @@ import { SubAgentPills } from './SubAgentPills'
 import { ContextGauge } from './ContextGauge'
 import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
+import { formatTokenCount } from '../../lib/format-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 
 // ---------------------------------------------------------------------------
@@ -42,11 +43,10 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Format token count to human-readable (e.g., 15k, 1.2M) */
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
-  return String(n)
+function formatCostUsd(usd: number): string {
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return `$${usd.toFixed(4)}`
+  return `$${usd.toFixed(2)}`
 }
 
 /** Format model name for display (strip long prefixes) */
@@ -176,6 +176,8 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
     : session.status === 'paused'
       ? 'text-amber-600 dark:text-amber-400'
       : 'text-gray-500 dark:text-gray-400'
+  const totalCostUsd = sessionTotalCost(session)
+  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
   // ---- Render into portal ----
   return createPortal(
@@ -245,7 +247,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
           <div className="flex-1" />
 
           <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-            ${session.cost.totalUsd.toFixed(2)}
+            {estimatedPrefix}{formatCostUsd(totalCostUsd)}
           </span>
           <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
             Turn {session.turnCount}
@@ -317,15 +319,15 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                   <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Cost</span>
                 </div>
                 <div className="text-xl font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
-                  ${session.cost.totalUsd.toFixed(2)}
+                  {estimatedPrefix}{formatCostUsd(totalCostUsd)}
                 </div>
                 <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
-                  <span>In: ${session.cost.inputCostUsd.toFixed(2)}</span>
-                  <span>Out: ${session.cost.outputCostUsd.toFixed(2)}</span>
+                  <span>In: ${(session.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
+                  <span>Out: ${(session.cost?.outputCostUsd ?? 0).toFixed(2)}</span>
                 </div>
-                {session.cost.cacheSavingsUsd > 0 && (
+                {(session.cost?.cacheSavingsUsd ?? 0) > 0 && (
                   <div className="text-[10px] font-mono text-green-600 dark:text-green-400 mt-0.5">
-                    Saved: ${session.cost.cacheSavingsUsd.toFixed(2)}
+                    Saved: ${(session.cost?.cacheSavingsUsd ?? 0).toFixed(2)}
                   </div>
                 )}
               </button>
@@ -351,7 +353,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500 dark:text-gray-500">Tokens</span>
-                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{formatTokens(session.tokens.totalTokens)}</span>
+                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 tabular-nums">{formatTokenCount(session.tokens.totalTokens)}</span>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { GROUP_ORDER } from './types'
 
 export type LiveSortField = 'status' | 'last_active' | 'cost' | 'turns' | 'context' | 'project'
@@ -41,7 +41,7 @@ export function sortLiveSessions(
         cmp = a.lastActivityAt - b.lastActivityAt
         break
       case 'cost':
-        cmp = a.cost.totalUsd - b.cost.totalUsd
+        cmp = sessionTotalCost(a) - sessionTotalCost(b)
         break
       case 'turns':
         cmp = a.turnCount - b.turnCount

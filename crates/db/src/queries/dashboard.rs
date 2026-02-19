@@ -1,14 +1,14 @@
 // crates/db/src/queries/dashboard.rs
 // Dashboard statistics, project summaries, and paginated session queries.
 
+use super::row_types::SessionRow;
+use super::BranchCount;
 use crate::{Database, DbResult};
 use chrono::Utc;
 use vibe_recall_core::{
-    BranchFilter, DashboardStats, DayActivity, ProjectStat, ProjectSummary,
-    SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
+    BranchFilter, DashboardStats, DayActivity, ProjectStat, ProjectSummary, SessionDurationStat,
+    SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
-use super::row_types::SessionRow;
-use super::BranchCount;
 
 /// Parameters for filtered, paginated session queries.
 /// All fields are optional — omitted fields apply no filter.
@@ -24,9 +24,9 @@ pub struct SessionFilterParams {
     pub high_reedit: Option<bool>,
     pub time_after: Option<i64>,
     pub time_before: Option<i64>,
-    pub sort: String,       // "recent", "tokens", "prompts", "files_edited", "duration"
-    pub limit: i64,         // default 30
-    pub offset: i64,        // default 0
+    pub sort: String, // "recent", "tokens", "prompts", "files_edited", "duration"
+    pub limit: i64,   // default 30
+    pub offset: i64,  // default 0
 }
 
 /// A single point in the activity histogram.
@@ -64,16 +64,18 @@ impl Database {
 
         let summaries = rows
             .into_iter()
-            .map(|(name, display_name, path, session_count, active_count, last_activity_at)| {
-                ProjectSummary {
-                    name,
-                    display_name,
-                    path,
-                    session_count: session_count as usize,
-                    active_count: active_count as usize,
-                    last_activity_at,
-                }
-            })
+            .map(
+                |(name, display_name, path, session_count, active_count, last_activity_at)| {
+                    ProjectSummary {
+                        name,
+                        display_name,
+                        path,
+                        session_count: session_count as usize,
+                        active_count: active_count as usize,
+                        last_activity_at,
+                    }
+                },
+            )
             .collect();
 
         Ok(summaries)
@@ -118,12 +120,8 @@ impl Database {
         };
 
         // Count total matching sessions
-        let count_sql = format!(
-            "SELECT COUNT(*) FROM sessions s WHERE {}",
-            where_clause
-        );
-        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql)
-            .bind(project_id);
+        let count_sql = format!("SELECT COUNT(*) FROM sessions s WHERE {}", where_clause);
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql).bind(project_id);
         if let BranchFilter::Named(name) = branch_filter {
             count_query = count_query.bind(*name);
         }
@@ -388,14 +386,12 @@ impl Database {
         let mut count_qb = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM sessions s");
         append_filters(&mut count_qb, params);
 
-        let total: (i64,) = count_qb
-            .build_query_as()
-            .fetch_one(self.pool())
-            .await?;
+        let total: (i64,) = count_qb.build_query_as().fetch_one(self.pool()).await?;
         let total = total.0 as usize;
 
         // --- DATA query ---
-        let mut data_qb = sqlx::QueryBuilder::new(format!("SELECT {} FROM sessions s", select_cols));
+        let mut data_qb =
+            sqlx::QueryBuilder::new(format!("SELECT {} FROM sessions s", select_cols));
         append_filters(&mut data_qb, params);
 
         // ORDER BY (with s.last_message_at DESC tiebreaker for deterministic order)
@@ -413,10 +409,7 @@ impl Database {
         data_qb.push(" OFFSET ");
         data_qb.push_bind(params.offset);
 
-        let rows: Vec<SessionRow> = data_qb
-            .build_query_as()
-            .fetch_all(self.pool())
-            .await?;
+        let rows: Vec<SessionRow> = data_qb.build_query_as().fetch_all(self.pool()).await?;
 
         let sessions = rows
             .into_iter()
@@ -433,10 +426,7 @@ impl Database {
     ///
     /// Returns branches sorted by session count DESC.
     /// Includes sessions with `git_branch = NULL` as a separate entry.
-    pub async fn list_branches_for_project(
-        &self,
-        project_id: &str,
-    ) -> DbResult<Vec<BranchCount>> {
+    pub async fn list_branches_for_project(&self, project_id: &str) -> DbResult<Vec<BranchCount>> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
             SELECT NULLIF(git_branch, '') as branch, COUNT(*) as count
@@ -462,7 +452,12 @@ impl Database {
         &self,
         project: Option<&str>,
         branch: Option<&str>,
-    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+    ) -> DbResult<(
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+    )> {
         let rows: Vec<(String, String, i64)> = sqlx::query_as(
             r#"
             SELECT inv.kind, inv.name, COUNT(*) as cnt
@@ -493,7 +488,12 @@ impl Database {
         to: i64,
         project: Option<&str>,
         branch: Option<&str>,
-    ) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+    ) -> DbResult<(
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+        Vec<SkillStat>,
+    )> {
         let rows: Vec<(String, String, i64)> = sqlx::query_as(
             r#"
             SELECT inv.kind, inv.name, COUNT(*) as cnt
@@ -523,9 +523,20 @@ impl Database {
     ///
     /// Returns heatmap (90 days), top 10 invocables per kind, top 5 projects, tool totals.
     /// Optimized: counts+tools merged (3→1), invocables merged (4→1) = 5 queries total.
-    pub async fn get_dashboard_stats(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<DashboardStats> {
+    pub async fn get_dashboard_stats(
+        &self,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<DashboardStats> {
         // Merged query: session count + project count + tool totals (replaces 3 queries)
-        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        let (total_sessions, total_projects, edit, read, bash, write): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = sqlx::query_as(
             r#"
             SELECT
               COUNT(*),
@@ -619,15 +630,17 @@ impl Database {
 
         let longest_sessions: Vec<SessionDurationStat> = longest_rows
             .into_iter()
-            .map(|(id, preview, project_name, project_display_name, duration_seconds)| {
-                SessionDurationStat {
-                    id,
-                    preview,
-                    project_name,
-                    project_display_name,
-                    duration_seconds: duration_seconds as u32,
-                }
-            })
+            .map(
+                |(id, preview, project_name, project_display_name, duration_seconds)| {
+                    SessionDurationStat {
+                        id,
+                        preview,
+                        project_name,
+                        project_display_name,
+                        duration_seconds: duration_seconds as u32,
+                    }
+                },
+            )
             .collect();
 
         Ok(DashboardStats {
@@ -665,7 +678,14 @@ impl Database {
         let to = to.unwrap_or(i64::MAX);
 
         // Merged query: session count + project count + tool totals (replaces 3 queries)
-        let (total_sessions, total_projects, edit, read, bash, write): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        let (total_sessions, total_projects, edit, read, bash, write): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = sqlx::query_as(
             r#"
             SELECT
               COUNT(*),
@@ -714,8 +734,9 @@ impl Database {
             .collect();
 
         // Merged invocables query with time range: all 4 kinds in one scan (replaces 4 queries)
-        let (top_skills, top_commands, top_mcp_tools, top_agents) =
-            self.all_top_invocables_by_kind_with_range(from, to, project, branch).await?;
+        let (top_skills, top_commands, top_mcp_tools, top_agents) = self
+            .all_top_invocables_by_kind_with_range(from, to, project, branch)
+            .await?;
 
         // Top 5 projects by session count (filtered)
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
@@ -765,15 +786,17 @@ impl Database {
 
         let longest_sessions: Vec<SessionDurationStat> = longest_rows
             .into_iter()
-            .map(|(id, preview, project_name, project_display_name, duration_seconds)| {
-                SessionDurationStat {
-                    id,
-                    preview,
-                    project_name,
-                    project_display_name,
-                    duration_seconds: duration_seconds as u32,
-                }
-            })
+            .map(
+                |(id, preview, project_name, project_display_name, duration_seconds)| {
+                    SessionDurationStat {
+                        id,
+                        preview,
+                        project_name,
+                        project_display_name,
+                        duration_seconds: duration_seconds as u32,
+                    }
+                },
+            )
             .collect();
 
         Ok(DashboardStats {
@@ -799,7 +822,11 @@ impl Database {
     ///
     /// Returns (session_count, total_tokens, total_files_edited, commit_count).
     /// Optimized: 4 queries → 1 via scalar subqueries in a single round-trip.
-    pub async fn get_all_time_metrics(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<(u64, u64, u64, u64)> {
+    pub async fn get_all_time_metrics(
+        &self,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<(u64, u64, u64, u64)> {
         let (session_count, total_tokens, total_files_edited, commit_count): (i64, i64, i64, i64) =
             sqlx::query_as(
                 r#"
@@ -814,7 +841,7 @@ impl Database {
                   (SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions
                      WHERE is_sidechain = 0 AND last_message_at > 0
                      AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
-                  (SELECT COUNT(*) FROM session_commits sc INNER JOIN sessions s ON sc.session_id = s.id
+                  (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc INNER JOIN sessions s ON sc.session_id = s.id
                      WHERE s.is_sidechain = 0 AND s.last_message_at > 0
                      AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
                 "#,
@@ -866,7 +893,7 @@ impl Database {
         // 1. Determine span
         let row: (i64, i64) = sqlx::query_as(
             "SELECT COALESCE(MIN(last_message_at), 0), COALESCE(MAX(last_message_at), 0) \
-             FROM sessions WHERE last_message_at > 0 AND is_sidechain = 0"
+             FROM sessions WHERE last_message_at > 0 AND is_sidechain = 0",
         )
         .fetch_one(self.pool())
         .await?;
@@ -888,9 +915,7 @@ impl Database {
              GROUP BY date ORDER BY date"
         );
 
-        let raw_rows: Vec<(String, i64)> = sqlx::query_as(&sql)
-            .fetch_all(self.pool())
-            .await?;
+        let raw_rows: Vec<(String, i64)> = sqlx::query_as(&sql).fetch_all(self.pool()).await?;
 
         let rows: Vec<ActivityPoint> = raw_rows
             .into_iter()
@@ -904,14 +929,22 @@ impl Database {
 /// Partition (kind, name, count) rows into per-kind top-10 vectors.
 fn partition_invocables_by_kind(
     rows: Vec<(String, String, i64)>,
-) -> DbResult<(Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>, Vec<SkillStat>)> {
+) -> DbResult<(
+    Vec<SkillStat>,
+    Vec<SkillStat>,
+    Vec<SkillStat>,
+    Vec<SkillStat>,
+)> {
     let mut skills = Vec::new();
     let mut commands = Vec::new();
     let mut mcp_tools = Vec::new();
     let mut agents = Vec::new();
 
     for (kind, name, count) in rows {
-        let stat = SkillStat { name, count: count as usize };
+        let stat = SkillStat {
+            name,
+            count: count as usize,
+        };
         let target = match kind.as_str() {
             "skill" => &mut skills,
             "command" => &mut commands,
@@ -1038,7 +1071,11 @@ mod filtered_query_tests {
             let s = make_session(&format!("s-{i}"), "proj", 1700000000 + i);
             db.insert_session(&s, "proj", "Project").await.unwrap();
         }
-        let params = SessionFilterParams { limit: 3, offset: 2, ..default_params() };
+        let params = SessionFilterParams {
+            limit: 3,
+            offset: 2,
+            ..default_params()
+        };
         let (sessions, total) = db.query_sessions_filtered(&params).await.unwrap();
         assert_eq!(total, 10);
         assert_eq!(sessions.len(), 3);
@@ -1055,7 +1092,10 @@ mod filtered_query_tests {
         s2.preview = "Add new feature".to_string();
         db.insert_session(&s2, "proj", "Project").await.unwrap();
 
-        let params = SessionFilterParams { q: Some("auth".to_string()), ..default_params() };
+        let params = SessionFilterParams {
+            q: Some("auth".to_string()),
+            ..default_params()
+        };
         let (sessions, total) = db.query_sessions_filtered(&params).await.unwrap();
         assert_eq!(total, 1);
         assert_eq!(sessions[0].id, "s-1");
@@ -1091,7 +1131,10 @@ mod filtered_query_tests {
         let s2 = make_session("s-2", "proj", 1700000001);
         db.insert_session(&s2, "proj", "Project").await.unwrap();
 
-        let params = SessionFilterParams { has_commits: Some(true), ..default_params() };
+        let params = SessionFilterParams {
+            has_commits: Some(true),
+            ..default_params()
+        };
         let (sessions, total) = db.query_sessions_filtered(&params).await.unwrap();
         assert_eq!(total, 1);
         assert_eq!(sessions[0].id, "s-1");
@@ -1126,7 +1169,10 @@ mod filtered_query_tests {
         s2.duration_seconds = 5000;
         db.insert_session(&s2, "proj", "Project").await.unwrap();
 
-        let params = SessionFilterParams { sort: "duration".to_string(), ..default_params() };
+        let params = SessionFilterParams {
+            sort: "duration".to_string(),
+            ..default_params()
+        };
         let (sessions, _) = db.query_sessions_filtered(&params).await.unwrap();
         assert_eq!(sessions[0].id, "s-2"); // longest first
     }

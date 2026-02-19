@@ -4,7 +4,7 @@ import {
   MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
   Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
 } from 'lucide-react'
-import type { LiveSession } from './use-live-sessions'
+import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
@@ -27,6 +27,12 @@ const COLOR_MAP: Record<string, string> = {
   blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
   orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+}
+
+function formatCostUsd(usd: number): string {
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return `$${usd.toFixed(4)}`
+  return `$${usd.toFixed(2)}`
 }
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
@@ -70,6 +76,8 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
   // Show "last message" only when different from title
   const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
+  const totalCost = sessionTotalCost(session)
+  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
   const cardClassName = "group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors"
 
@@ -104,7 +112,7 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus} subAgents={session.subAgents}>
             <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-              ${session.cost.totalUsd.toFixed(2)}
+              {estimatedPrefix}{formatCostUsd(totalCost)}
             </span>
           </CostTooltip>
         </div>
