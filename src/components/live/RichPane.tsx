@@ -258,25 +258,22 @@ let mdBlockCounter = 0
  * through CompactCodeBlock (Shiki highlighting, copy, collapse) and
  * give inline `code` a distinct visual treatment.
  */
-function MarkdownPre({ children }: { children?: React.ReactNode }) {
-  const verbose = useMonitorStore((s) => s.verboseMode)
-  const codeChild = Array.isArray(children) ? children[0] : children
-  if (codeChild && typeof codeChild === 'object' && 'props' in codeChild) {
-    const { className, children: codeText } = codeChild.props as {
-      className?: string
-      children?: React.ReactNode
-    }
-    const langMatch = /language-(\w+)/.exec(className || '')
-    const lang = langMatch ? langMatch[1] : 'text'
-    const text = String(codeText || '').replace(/\n$/, '')
-    const id = `md-code-${mdBlockCounter++}`
-    return <CompactCodeBlock code={text} language={lang} blockId={id} verboseMode={verbose} />
-  }
-  return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
-}
-
 const markdownComponents: Components = {
-  pre: MarkdownPre as Components['pre'],
+  pre({ children }) {
+    const codeChild = Array.isArray(children) ? children[0] : children
+    if (codeChild && typeof codeChild === 'object' && 'props' in codeChild) {
+      const { className, children: codeText } = codeChild.props as {
+        className?: string
+        children?: React.ReactNode
+      }
+      const langMatch = /language-(\w+)/.exec(className || '')
+      const lang = langMatch ? langMatch[1] : 'text'
+      const text = String(codeText || '').replace(/\n$/, '')
+      const id = `md-code-${mdBlockCounter++}`
+      return <CompactCodeBlock code={text} language={lang} blockId={id} />
+    }
+    return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
+  },
   code({ children, ...rest }) {
     return (
       <code
@@ -330,9 +327,9 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
             verboseMode ? (
-              <JsonTree data={parsedJson} verboseMode={verboseMode} />
+              <JsonTree data={parsedJson} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} verboseMode={verboseMode} />
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
             )
           ) : (
             <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -356,9 +353,9 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
             verboseMode ? (
-              <JsonTree data={parsedJson} verboseMode={verboseMode} />
+              <JsonTree data={parsedJson} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} verboseMode={verboseMode} />
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
             )
           ) : (
             <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -452,9 +449,9 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
                 </button>
               )}
               {isObjectInput ? (
-                <JsonTree data={inputObj} verboseMode={verboseMode} />
+                <JsonTree data={inputObj} />
               ) : (
-                <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} verboseMode={verboseMode} />
+                <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} />
               )}
             </div>
           )}
@@ -488,15 +485,15 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
       {hasContent && (
         jsonDetected && parsedJson !== null ? (
           <div className="mt-0.5 pl-4">
-            <JsonTree data={parsedJson} verboseMode={verboseMode} />
+            <JsonTree data={parsedJson} />
           </div>
         ) : diffLike ? (
           <div className="mt-0.5 pl-4 diff-block">
-            <CompactCodeBlock code={message.content} language="diff" blockId={`result-${index}`} verboseMode={verboseMode} />
+            <CompactCodeBlock code={message.content} language="diff" blockId={`result-${index}`} />
           </div>
         ) : codeLike ? (
           <div className="mt-0.5 pl-4">
-            <CompactCodeBlock code={cleanCode} language={codeLang} blockId={`result-${index}`} verboseMode={verboseMode} />
+            <CompactCodeBlock code={cleanCode} language={codeLang} blockId={`result-${index}`} />
           </div>
         ) : (
           <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
@@ -575,15 +572,15 @@ function Timestamp({ ts }: { ts?: number }) {
 function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   switch (message.type) {
     case 'user':
-      return <UserMessage message={message} index={index} verboseMode={verboseMode} />
+      return <UserMessage message={message} index={index} />
     case 'assistant':
-      return <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
+      return <AssistantMessage message={message} index={index} />
     case 'tool_use':
-      return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
+      return <ToolUseMessage message={message} index={index} />
     case 'tool_result':
-      return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
+      return <ToolResultMessage message={message} index={index} />
     case 'thinking':
-      return <ThinkingMessage message={message} verboseMode={verboseMode} />
+      return <ThinkingMessage message={message} />
     case 'error':
       return <ErrorMessage message={message} index={index} />
     default:
@@ -696,7 +693,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
           atBottomThreshold={30}
           itemContent={(index, message) => (
             <div className="px-2 py-0.5">
-              <MessageCard message={message} index={index} verboseMode={verboseMode} />
+              <MessageCard message={message} index={index} />
             </div>
           )}
           className="h-full"
