@@ -15,7 +15,7 @@ interface AppState {
   // Sidebar state
   sidebarCollapsed: boolean
 
-  // Mission Control
+  // Live Monitor
   recentLiveCommands: string[]
 
   // Actions
