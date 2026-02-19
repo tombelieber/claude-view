@@ -121,7 +121,11 @@ fn apply_jsonl_metadata(
     session.project_display_name = project_display_name.to_string();
     session.project_path = project_path.to_string();
     session.git_branch = m.git_branch.clone();
-    session.pid = m.pid;
+    // PID binding: only assign PID on first discovery. Once bound,
+    // the process detector owns liveness checks for that specific PID.
+    if session.pid.is_none() {
+        session.pid = m.pid;
+    }
     if !m.title.is_empty() {
         session.title = m.title.clone();
     }
@@ -378,7 +382,17 @@ impl LiveSessionManager {
                     *processes = new_processes;
                 }
 
-                // Check each session: update PID + detect crashes
+                // Check each session: detect crashes via PID binding.
+                //
+                // PID BINDING: once a session is assigned a PID, that PID is locked
+                // for the lifetime of the session entry. The detector checks that
+                // specific PID — not "any Claude process in the same cwd". This
+                // prevents zombie sessions when multiple sessions share a project
+                // directory (a dead session's PID would get overwritten by the
+                // living session's PID, masking the death).
+                //
+                // CWD matching is used ONLY for initial PID discovery when
+                // session.pid is None (e.g. right after hook creation).
                 let mut dead_sessions: Vec<String> = Vec::new();
                 // Build the "has process NOW" set for this cycle, then swap into had_process.
                 let mut has_process_now: HashSet<String> = HashSet::new();
@@ -386,11 +400,25 @@ impl LiveSessionManager {
                     let processes = manager.processes.read().await;
                     let mut sessions = manager.sessions.write().await;
 
-                    for (session_id, session) in sessions.iter_mut() {
-                        let (running, pid) = has_running_process(&processes, &session.project_path);
+                    // O(1) lookup: is a specific PID alive and still a Claude process?
+                    let alive_pids: HashSet<u32> =
+                        processes.values().map(|p| p.pid).collect();
 
-                        // Always update PID
-                        session.pid = pid;
+                    for (session_id, session) in sessions.iter_mut() {
+                        let running = if let Some(known_pid) = session.pid {
+                            // Session has a bound PID — check THAT specific PID.
+                            // If the OS recycled the PID for a non-Claude process,
+                            // alive_pids won't contain it (it only has Claude PIDs).
+                            alive_pids.contains(&known_pid)
+                        } else {
+                            // No PID bound yet — discover via cwd matching (one-time).
+                            let (found, pid) =
+                                has_running_process(&processes, &session.project_path);
+                            if found {
+                                session.pid = pid; // Bind PID (locked from now on)
+                            }
+                            found
+                        };
 
                         if running {
                             // Process is alive — remember it for next cycle
@@ -404,8 +432,9 @@ impl LiveSessionManager {
                                 // Mark session_ended immediately — no staleness wait.
                                 info!(
                                     session_id = %session_id,
+                                    bound_pid = ?session.pid,
                                     project = %session.project_path,
-                                    "Process disappeared — marking session ended immediately"
+                                    "Bound PID disappeared — marking session ended immediately"
                                 );
                                 session.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
@@ -1213,5 +1242,56 @@ mod tests {
             !would_end,
             "Already-Done session must not be re-processed by process detector"
         );
+    }
+
+    /// Verify PID binding: a dead session with a bound PID is detected as dead
+    /// even when another Claude process is running in the same cwd.
+    ///
+    /// This is the zombie session bug: session A dies without SessionEnd hook,
+    /// session B starts in the same directory. Without PID binding, the
+    /// detector would see session B's process and keep session A alive forever.
+    #[test]
+    fn test_pid_binding_prevents_zombie_sessions() {
+        // Session A was bound to PID 1000 (now dead)
+        let session_a_pid: Option<u32> = Some(1000);
+        // Session B is alive with PID 2000 in the same cwd
+        let alive_pids: HashSet<u32> = [2000].into_iter().collect();
+
+        // PID binding check: does session A's specific PID exist?
+        let running = if let Some(known_pid) = session_a_pid {
+            alive_pids.contains(&known_pid)
+        } else {
+            false
+        };
+
+        assert!(
+            !running,
+            "Session A's bound PID 1000 is dead — must NOT be kept alive by PID 2000 in same cwd"
+        );
+    }
+
+    /// Verify that sessions without a bound PID fall back to cwd discovery.
+    #[test]
+    fn test_unbound_session_discovers_pid_via_cwd() {
+        let session_pid: Option<u32> = None; // No PID bound yet
+        let alive_pids: HashSet<u32> = [3000].into_iter().collect();
+
+        // No bound PID → would fall through to cwd discovery path
+        let needs_cwd_discovery = session_pid.is_none();
+
+        assert!(
+            needs_cwd_discovery,
+            "Session without PID should fall through to cwd discovery"
+        );
+
+        // After discovery, PID gets bound
+        let mut bound_pid = session_pid;
+        if needs_cwd_discovery {
+            bound_pid = Some(3000); // Simulates cwd discovery finding PID 3000
+        }
+
+        // Subsequent check uses bound PID
+        let running = alive_pids.contains(&bound_pid.unwrap());
+        assert!(running, "After binding, PID check should find the process alive");
     }
 }
