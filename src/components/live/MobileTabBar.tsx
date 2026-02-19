@@ -8,8 +8,8 @@ interface MobileTabBarProps {
 }
 
 const tabs: { label: string; icon: typeof LayoutGrid; mode: LiveViewMode }[] = [
-  { label: 'Grid', icon: LayoutGrid, mode: 'grid' },
   { label: 'Board', icon: Columns3, mode: 'kanban' },
+  { label: 'Grid', icon: LayoutGrid, mode: 'grid' },
   { label: 'List', icon: List, mode: 'list' },
 ]
 

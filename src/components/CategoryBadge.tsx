@@ -22,6 +22,7 @@ interface CategoryBadgeProps {
 /**
  * Renders an AI classification category badge from L1/L2/L3 fields.
  * Displays the L2 category (most useful granularity) with icon.
+ * Marked as experimental — classification accuracy may vary.
  */
 export function CategoryBadge({ l2, className }: CategoryBadgeProps) {
   if (!l2) return null
@@ -38,10 +39,11 @@ export function CategoryBadge({ l2, className }: CategoryBadgeProps) {
         config.borderColor,
         className,
       )}
-      title={`AI classified: ${config.label}`}
+      title={`AI classified: ${config.label} (experimental — may be inaccurate)`}
     >
       <Icon className="w-3 h-3" />
       <span>{config.label}</span>
+      <FlaskConical className="w-2.5 h-2.5 opacity-50" />
     </span>
   )
 }

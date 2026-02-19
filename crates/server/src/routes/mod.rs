@@ -14,14 +14,18 @@ pub mod jobs;
 pub mod live;
 pub mod metrics;
 pub mod models;
+pub mod oauth;
 pub mod projects;
 pub mod score;
+pub mod search;
 pub mod sessions;
 pub mod stats;
 pub mod status;
 pub mod sync;
 pub mod system;
+pub mod terminal;
 pub mod trends;
+pub mod turns;
 
 use std::sync::Arc;
 
@@ -75,8 +79,12 @@ use crate::state::AppState;
 /// - GET  /api/live/sessions            - List all live sessions
 /// - GET  /api/live/sessions/:id        - Get single live session
 /// - GET  /api/live/sessions/:id/messages - Get recent messages for a live session
+/// - WS   /api/live/sessions/:id/terminal - WebSocket terminal stream
 /// - GET  /api/live/summary             - Aggregate live session statistics
 /// - GET  /api/live/pricing             - Model pricing table
+/// - GET /api/sessions/:id/turns - Per-turn breakdown for a session
+/// - GET /api/search?q=...&scope=...&limit=...&offset=... - Full-text search
+/// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -99,7 +107,11 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", score::router())
         .nest("/api", facets::router())
         .nest("/api", live::router())
+        .nest("/api/live", terminal::router())
+        .nest("/api", turns::router())
         .nest("/api", hooks::router())
+        .nest("/api", search::router())
+        .nest("/api", oauth::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)

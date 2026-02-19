@@ -3,17 +3,25 @@ import { Home, Search, HelpCircle, Settings, ChevronRight, Sun, Moon, Monitor } 
 import { useAppStore } from '../store/app-store'
 import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
-import { ScoreBadge } from './ScoreBadge'
 import { AuthPill } from './AuthPill'
+import { NotificationSoundPopover } from './live/NotificationSoundPopover'
+import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 
-export function Header() {
+interface HeaderProps {
+  soundSettings: NotificationSoundSettings
+  onSoundSettingsChange: (patch: Partial<NotificationSoundSettings>) => void
+  onSoundPreview: () => void
+  audioUnlocked: boolean
+}
+
+export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, audioUnlocked }: HeaderProps) {
   const location = useLocation()
   const params = useParams()
   const [searchParams] = useSearchParams()
-  const { openCommandPalette, searchQuery } = useAppStore()
+  const { openCommandPalette } = useAppStore()
   const { theme, cycleTheme } = useTheme()
   const ThemeIcon = THEME_ICONS[theme]
 
@@ -21,16 +29,13 @@ export function Header() {
   const getBreadcrumbs = () => {
     const crumbs: { label: string; path: string }[] = []
 
-    if (location.pathname === '/contributions') {
-      const projectFilter = searchParams.get('project')
-      if (projectFilter) {
-        crumbs.push({
-          label: projectFilter.split('/').pop() || 'Project',
-          path: `/?project=${encodeURIComponent(projectFilter)}`
-        })
-      }
+    if (location.pathname === '/analytics') {
+      const tab = searchParams.get('tab')
+      const tabLabel = tab === 'contributions' ? 'Contributions'
+        : tab === 'insights' ? 'Insights'
+        : 'Overview'
       crumbs.push({
-        label: 'Contributions',
+        label: `Analytics — ${tabLabel}`,
         path: location.pathname + location.search
       })
     } else if (location.pathname.match(/^\/sessions\/[^/]+$/)) {
@@ -77,7 +82,6 @@ export function Header() {
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Claude View</h1>
           <HealthIndicator />
         </Link>
-        <ScoreBadge />
         <AuthPill />
 
         {breadcrumbs.length > 0 && (
@@ -105,17 +109,30 @@ export function Header() {
 
       {/* Right: Search + Actions */}
       <nav className="flex items-center gap-2" aria-label="Main actions">
-        <button
-          onClick={openCommandPalette}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-400 dark:hover:text-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
-          aria-label="Open search (Command K)"
-        >
-          <Search className="w-4 h-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Search</span>
-          <kbd className="hidden sm:inline text-xs text-gray-400 bg-white dark:bg-gray-900 dark:border-gray-600 px-1.5 py-0.5 rounded border border-gray-200" aria-hidden="true">
-            Cmd+K
-          </kbd>
-        </button>
+        {/* Search bar - clicking opens CommandPalette */}
+        <div className="relative flex-1 max-w-md mx-4">
+          <div className="flex items-center">
+            <Search className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden="true" />
+            <input
+              type="text"
+              placeholder="Search sessions..."
+              className="w-full pl-9 pr-12 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 border border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-gray-900 rounded-lg outline-none transition-colors text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 cursor-pointer"
+              onFocus={() => openCommandPalette()}
+              readOnly
+              aria-label="Search sessions (Command K)"
+            />
+            <kbd className="absolute right-3 text-xs text-gray-400 bg-white dark:bg-gray-900 dark:border-gray-600 px-1.5 py-0.5 rounded border border-gray-200 pointer-events-none" aria-hidden="true">
+              &#8984;K
+            </kbd>
+          </div>
+        </div>
+
+        <NotificationSoundPopover
+          settings={soundSettings}
+          onSettingsChange={onSoundSettingsChange}
+          onPreview={onSoundPreview}
+          audioUnlocked={audioUnlocked}
+        />
 
         <button
           onClick={cycleTheme}

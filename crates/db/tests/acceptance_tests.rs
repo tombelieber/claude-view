@@ -184,7 +184,7 @@ async fn ac4_pass2_fills_deep_fields() {
     assert!(!before[0].sessions[0].deep_indexed);
 
     // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     assert_eq!(indexed, 1);
 
     // After Pass 2
@@ -212,7 +212,7 @@ async fn ac7_batch_writes_all_sessions() {
     assert_eq!(sessions, 24, "Should find 24 sessions total");
 
     // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     assert_eq!(indexed, 24, "All 24 sessions should be deep indexed");
 
     // Verify all in DB
@@ -241,7 +241,7 @@ async fn ac8_parallel_processing_completes() {
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
     let start = std::time::Instant::now();
-    let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(indexed, 12, "Should deep-index all 12 sessions");
@@ -278,6 +278,7 @@ async fn ac9_callbacks_fire_correctly() {
         &claude_dir,
         &db,
         None, // no registry holder in tests
+        None, // no search index in tests
         move |projects, sessions| {
             *p1c.lock().unwrap() = true;
             p1p.store(projects, Ordering::Relaxed);
@@ -312,11 +313,11 @@ async fn ac11_second_pass2_returns_zero() {
 
     // First full pipeline
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     assert_eq!(first_run, 1, "First run should index 1 session");
 
     // Second run of Pass 2 — all sessions already deep-indexed
-    let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     assert_eq!(second_run, 0, "Second run should skip all (already indexed)");
 }
 
@@ -330,7 +331,7 @@ async fn ac12_new_schema_fields_end_to_end() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
@@ -373,7 +374,7 @@ async fn ac12_json_serialization_includes_new_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
@@ -401,7 +402,7 @@ async fn multiple_projects_indexed_correctly() {
     assert_eq!(projects, 3);
     assert_eq!(sessions, 6);
 
-    let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
     assert_eq!(indexed, 6);
 
     let db_projects = db.list_projects().await.unwrap();
@@ -423,7 +424,7 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
+    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
         .await
         .unwrap();
 
