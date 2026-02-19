@@ -10,6 +10,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::progress::{RawTaskCreate, RawTaskIdAssignment, RawTaskUpdate, RawTodoItem};
+
 /// Byte offset + timestamp for incremental tailing.
 pub struct TailState {
     pub offset: u64,
@@ -83,6 +85,14 @@ pub struct LiveLine {
     pub sub_agent_result: Option<SubAgentResult>,
     /// If this is a progress line with agent_progress data.
     pub sub_agent_progress: Option<SubAgentProgress>,
+    /// Full replacement todo list from TodoWrite tool_use on this assistant line.
+    pub todo_write: Option<Vec<RawTodoItem>>,
+    /// TaskCreate calls on this assistant line (Vec: one message can create multiple tasks).
+    pub task_creates: Vec<RawTaskCreate>,
+    /// TaskUpdate calls on this assistant line.
+    pub task_updates: Vec<RawTaskUpdate>,
+    /// Task ID assignments from toolUseResult on this user line.
+    pub task_id_assignments: Vec<RawTaskIdAssignment>,
 }
 
 /// Broad classification of a JSONL line.
@@ -115,6 +125,9 @@ pub struct TailFinders {
     pub task_name_key: memmem::Finder<'static>,
     pub tool_use_result_key: memmem::Finder<'static>,
     pub agent_progress_key: memmem::Finder<'static>,
+    pub todo_write_key: memmem::Finder<'static>,
+    pub task_create_key: memmem::Finder<'static>,
+    pub task_update_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -136,6 +149,9 @@ impl TailFinders {
             task_name_key: memmem::Finder::new(b"\"name\":\"Task\""),
             tool_use_result_key: memmem::Finder::new(b"\"toolUseResult\""),
             agent_progress_key: memmem::Finder::new(b"\"agent_progress\""),
+            todo_write_key: memmem::Finder::new(b"\"name\":\"TodoWrite\""),
+            task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
+            task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
         }
     }
 }
@@ -266,6 +282,10 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 sub_agent_spawns: Vec::new(),
                 sub_agent_result: None,
                 sub_agent_progress: None,
+                todo_write: None,
+                task_creates: Vec::new(),
+                task_updates: Vec::new(),
+                task_id_assignments: Vec::new(),
             };
         }
     };
@@ -481,6 +501,106 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         None
     };
 
+    // --- TodoWrite detection (assistant lines with TodoWrite tool_use) ---
+    let todo_write = if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
+        msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()).and_then(|blocks| {
+            blocks.iter().find_map(|b| {
+                if b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                    && b.get("name").and_then(|n| n.as_str()) == Some("TodoWrite")
+                {
+                    b.get("input").and_then(|i| i.get("todos")).and_then(|t| t.as_array()).map(|todos| {
+                        todos.iter().filter_map(|item| {
+                            Some(RawTodoItem {
+                                content: item.get("content").and_then(|v| v.as_str())?.to_string(),
+                                status: item.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string(),
+                                active_form: item.get("activeForm").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            })
+                        }).collect::<Vec<_>>()
+                    })
+                } else {
+                    None
+                }
+            })
+        })
+    } else {
+        None
+    };
+
+    // --- TaskCreate detection (assistant lines with TaskCreate tool_use) ---
+    let mut task_creates = Vec::new();
+    if line_type == LineType::Assistant && finders.task_create_key.find(raw).is_some() {
+        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+            for block in content {
+                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                    && block.get("name").and_then(|n| n.as_str()) == Some("TaskCreate")
+                {
+                    let tool_use_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let input = block.get("input");
+                    if !tool_use_id.is_empty() {
+                        task_creates.push(RawTaskCreate {
+                            tool_use_id,
+                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            description: input.and_then(|i| i.get("description")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // --- TaskUpdate detection (assistant lines with TaskUpdate tool_use) ---
+    let mut task_updates = Vec::new();
+    if line_type == LineType::Assistant && finders.task_update_key.find(raw).is_some() {
+        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+            for block in content {
+                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                    && block.get("name").and_then(|n| n.as_str()) == Some("TaskUpdate")
+                {
+                    let input = block.get("input");
+                    let task_id = input.and_then(|i| i.get("taskId")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if !task_id.is_empty() {
+                        task_updates.push(RawTaskUpdate {
+                            task_id,
+                            status: input.and_then(|i| i.get("status")).and_then(|v| v.as_str()).map(String::from),
+                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).map(String::from),
+                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).map(String::from),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // --- TaskIdAssignment detection (user lines with toolUseResult containing task.id) ---
+    let mut task_id_assignments = Vec::new();
+    if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
+        if let Some(task_id) = parsed.get("toolUseResult")
+            .and_then(|tur| tur.get("task"))
+            .and_then(|t| t.get("id"))
+            .and_then(|v| v.as_str())
+        {
+            let tool_use_id = msg
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|blocks| {
+                    blocks.iter().find_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                });
+            if let Some(tool_use_id) = tool_use_id {
+                task_id_assignments.push(RawTaskIdAssignment {
+                    tool_use_id,
+                    task_id: task_id.to_string(),
+                });
+            }
+        }
+    }
+
     LiveLine {
         line_type,
         role,
@@ -500,6 +620,10 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         sub_agent_spawns,
         sub_agent_result,
         sub_agent_progress,
+        todo_write,
+        task_creates,
+        task_updates,
+        task_id_assignments,
     }
 }
 

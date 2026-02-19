@@ -5,16 +5,11 @@ export type LiveViewMode = 'grid' | 'list' | 'kanban' | 'monitor'
 /** Agent state group — the operator's mental model */
 export type AgentStateGroup = 'needs_you' | 'autonomous'
 
-/** Signal source — how state was determined */
-export type SignalSource = 'hook' | 'jsonl' | 'fallback'
-
 /** The universal agent state — core protocol */
 export interface AgentState {
   group: AgentStateGroup
   state: string           // open string — v1 states listed above, more added over time
   label: string
-  confidence: number
-  source: SignalSource
   context?: Record<string, unknown>
 }
 
@@ -25,11 +20,16 @@ export const KNOWN_STATES: Record<string, { icon: string; color: string }> = {
   awaiting_approval: { icon: 'FileCheck', color: 'amber' },
   needs_permission: { icon: 'Shield', color: 'red' },
   error: { icon: 'AlertTriangle', color: 'red' },
+  interrupted: { icon: 'CirclePause', color: 'orange' },
   idle: { icon: 'Clock', color: 'gray' },
   // Autonomous
   thinking: { icon: 'Sparkles', color: 'green' },
   acting: { icon: 'Terminal', color: 'green' },
   delegating: { icon: 'GitBranch', color: 'green' },
+  // Terminal
+  task_complete: { icon: 'CheckCircle2', color: 'blue' },
+  session_ended: { icon: 'LogOut', color: 'gray' },
+  work_delivered: { icon: 'Package', color: 'blue' },
 }
 
 // Unknown states get a generic icon/color for their group
