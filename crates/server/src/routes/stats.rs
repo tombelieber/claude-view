@@ -123,7 +123,7 @@ pub struct StorageStats {
     /// Size of SQLite database in bytes.
     #[ts(type = "number")]
     pub sqlite_bytes: u64,
-    /// Size of search index in bytes (deep index - not implemented yet, returns 0).
+    /// Size of search index in bytes.
     #[ts(type = "number")]
     pub index_bytes: u64,
     /// Total number of sessions.
@@ -156,6 +156,14 @@ pub struct StorageStats {
     /// Number of repos scanned in last git sync (not currently tracked, returns 0).
     #[ts(type = "number")]
     pub last_git_sync_repo_count: i64,
+    /// Path to JSONL session files (Claude Code data, read-only).
+    pub jsonl_path: Option<String>,
+    /// Path to SQLite database file.
+    pub sqlite_path: Option<String>,
+    /// Path to Tantivy search index directory.
+    pub index_path: Option<String>,
+    /// Parent app data directory — safe to delete, rebuilt on next launch.
+    pub app_data_path: Option<String>,
 }
 
 /// GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.
@@ -348,8 +356,28 @@ pub async fn storage_stats(
         }
     };
 
-    // Search index size (deep index not implemented yet)
-    let index_bytes: u64 = 0;
+    // Search index size — measured from actual directory on disk
+    let index_bytes = match vibe_recall_core::paths::search_index_dir() {
+        Some(dir) if dir.exists() => calculate_directory_size(&dir).await,
+        _ => 0,
+    };
+
+    // Resolve display paths (replace $HOME with ~ for readability)
+    let home = dirs::home_dir().map(|h| h.to_string_lossy().to_string());
+    let shorten = |p: Option<std::path::PathBuf>| -> Option<String> {
+        p.map(|path| {
+            let s = path.to_string_lossy().to_string();
+            match &home {
+                Some(h) if s.starts_with(h.as_str()) => format!("~{}", &s[h.len()..]),
+                _ => s,
+            }
+        })
+    };
+
+    let jsonl_path = shorten(claude_projects_dir().ok());
+    let sqlite_path = shorten(vibe_recall_core::paths::db_path());
+    let index_path = shorten(vibe_recall_core::paths::search_index_dir());
+    let app_data_path = shorten(vibe_recall_core::paths::app_cache_dir());
 
     record_request("storage_stats", "200", start.elapsed());
 
@@ -367,6 +395,10 @@ pub async fn storage_stats(
         last_git_sync_at: metadata.last_git_sync_at,
         last_git_sync_duration_ms: None, // Not tracked currently
         last_git_sync_repo_count: 0,     // Not tracked currently
+        jsonl_path,
+        sqlite_path,
+        index_path,
+        app_data_path,
     }))
 }
 
@@ -420,6 +452,34 @@ async fn calculate_directory_jsonl_size(dir: &Path) -> u64 {
                         tracing::warn!(error = %e, path = %path.display(), "Failed to get metadata for JSONL file");
                     }
                 }
+            }
+        }
+    }
+
+    total
+}
+
+/// Recursively calculate the total size of all files in a directory.
+async fn calculate_directory_size(dir: &Path) -> u64 {
+    let mut total: u64 = 0;
+
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let file_type = match entry.file_type().await {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+
+        if file_type.is_dir() {
+            total += Box::pin(calculate_directory_size(&path)).await;
+        } else if file_type.is_file() {
+            if let Ok(metadata) = tokio::fs::metadata(&path).await {
+                total += metadata.len();
             }
         }
     }
@@ -604,6 +664,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -698,6 +761,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -813,6 +879,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -933,6 +1002,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
 
@@ -1090,6 +1162,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session, "project-range", "Project Range").await.unwrap();
 
@@ -1203,6 +1278,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 
@@ -1308,6 +1386,9 @@ mod tests {
             prompt_word_count: None,
             correction_count: 0,
             same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 

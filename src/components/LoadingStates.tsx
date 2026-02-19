@@ -111,6 +111,89 @@ export function DashboardSkeleton() {
 }
 
 /**
+ * Live Monitor skeleton — matches the mission control board layout
+ * (header + summary bar + filter bar + kanban columns).
+ */
+export function LiveMonitorSkeleton() {
+  return (
+    <div
+      className="h-full flex flex-col"
+      role="status"
+      aria-busy="true"
+      aria-label="Connecting to live monitor"
+    >
+      <span className="sr-only">Connecting to live monitor...</span>
+      <div className="flex-shrink-0 px-6 pt-6 space-y-4 animate-pulse">
+        <div className="max-w-7xl mx-auto space-y-4">
+          {/* Header: title + view switcher + connection status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="h-5 w-28 bg-gray-200 dark:bg-gray-700 rounded" />
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="h-8 w-8 bg-gray-100 dark:bg-gray-800 rounded" />
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+              <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+            </div>
+          </div>
+
+          {/* Summary bar */}
+          <div className="flex gap-6 p-3 rounded-lg bg-gray-100/50 dark:bg-gray-800/50">
+            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+            <div className="h-4 w-28 bg-gray-200 dark:bg-gray-700 rounded" />
+            <div className="ml-auto flex gap-4">
+              <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+              <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+            </div>
+          </div>
+
+          {/* Filter bar */}
+          <div className="flex gap-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-8 w-24 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+            ))}
+            <div className="ml-auto h-8 w-48 bg-gray-100 dark:bg-gray-800 rounded-lg" />
+          </div>
+        </div>
+      </div>
+
+      {/* Kanban columns */}
+      <div className="flex-1 min-h-0 px-6 pt-4 pb-6 animate-pulse">
+        <div className="max-w-7xl mx-auto h-full flex gap-4">
+          {['Needs You', 'Running'].map(title => (
+            <div key={title} className="flex-1 flex flex-col min-h-0">
+              {/* Column header */}
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <div className={`h-2 w-2 rounded-full ${title === 'Needs You' ? 'bg-amber-400/50' : 'bg-green-400/50'}`} />
+                <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+                <div className="h-4 w-4 bg-gray-100 dark:bg-gray-800 rounded-full" />
+              </div>
+              {/* Placeholder cards */}
+              <div className="space-y-3">
+                {[1, 2].map(j => (
+                  <div key={j} className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
+                      <div className="h-5 w-16 bg-gray-100 dark:bg-gray-800 rounded-full" />
+                    </div>
+                    <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded mb-2" />
+                    <div className="h-3 w-2/3 bg-gray-50 dark:bg-gray-800/50 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Empty state component with descriptive text and optional illustration.
  */
 interface EmptyStateProps {

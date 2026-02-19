@@ -6,12 +6,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
 import { buildSessionUrl } from '../lib/url-utils'
 import { NO_BRANCH } from '../lib/constants'
-import { useProjectSummaries, useAllSessions } from '../hooks/use-projects'
+import { useProjectSummaries } from '../hooks/use-projects'
+import { useSessionsInfinite } from '../hooks/use-sessions-infinite'
+import { useDebounce } from '../hooks/use-debounce'
 import { SessionCard } from './SessionCard'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
-import { ActivitySparkline } from './ActivitySparkline'
 import { SessionToolbar } from './SessionToolbar'
+import { ActivitySparkline } from './ActivitySparkline'
 import { ClassifyBanner } from './ClassifyBanner'
 import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
 import type { SessionSort } from '../hooks/use-session-filters'
@@ -80,8 +82,6 @@ function formatSortMetric(session: { durationSeconds?: number; userPromptCount?:
 export function HistoryView() {
   const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
-  const projectIds = useMemo(() => (summaries ?? []).map(s => s.name), [summaries])
-  const { sessions: allSessions, isLoading } = useAllSessions(projectIds)
 
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
@@ -101,8 +101,34 @@ export function HistoryView() {
   })
 
   const [searchText, setSearchText] = useState('')
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  // Debounce search text (300ms) so we don't fire a request per keystroke
+  const debouncedSearch = useDebounce(searchText, 300)
+
+  // Sidebar global filters from URL
+  const sidebarProject = searchParams.get('project') || null
+  const sidebarBranch = searchParams.get('branch') || null
+
+  // Server-side filtered + paginated query
+  const {
+    data,
+    isLoading,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useSessionsInfinite({
+    filters,
+    search: debouncedSearch,
+    timeAfter: timeRange.fromTimestamp ?? undefined,
+    timeBefore: undefined,
+    sidebarProject,
+    sidebarBranch,
+  })
+
+  const sessions = data?.sessions ?? []
+  const total = data?.total ?? 0
 
   // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
   const hasDeepLinkSort = filters.sort !== 'recent'
@@ -116,25 +142,25 @@ export function HistoryView() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Extract unique branches from sessions for the filter popover
-  const availableBranches = useMemo(() => {
-    const set = new Set<string>()
-    for (const s of allSessions) {
-      if (s.gitBranch) set.add(s.gitBranch)
-    }
-    return [...set].sort()
-  }, [allSessions])
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
 
-  // Extract unique models from sessions for the filter popover
-  const availableModels = useMemo(() => {
-    const set = new Set<string>()
-    for (const s of allSessions) {
-      if (s.primaryModel) set.add(s.primaryModel)
-    }
-    return [...set].sort()
-  }, [allSessions])
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { rootMargin: '200px' }
+    )
 
-  // Map session IDs to project display names
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // Map project display names
   const projectDisplayNames = useMemo(() => {
     if (!summaries) return new Map<string, string>()
     const map = new Map<string, string>()
@@ -144,123 +170,29 @@ export function HistoryView() {
     return map
   }, [summaries])
 
-  // Sidebar global filters from URL
-  const sidebarProject = searchParams.get('project') || null
-  const sidebarBranch = searchParams.get('branch') || null
+  // Fetch complete branch list from the server for filter popover
+  const { data: availableBranches = [] } = useQuery({
+    queryKey: ['all-branches'],
+    queryFn: async () => {
+      const res = await fetch('/api/branches')
+      if (!res.ok) return []
+      return res.json() as Promise<string[]>
+    },
+    staleTime: 60_000,
+  })
 
-  // Apply filters and sorting
-  const filteredSessions = useMemo(() => {
-    const cutoff = timeRange.fromTimestamp ?? 0
-    const query = searchText.toLowerCase().trim()
-
-    let filtered = allSessions.filter(s => {
-      // Time filter
-      if (cutoff > 0 && Number(s.modifiedAt) < cutoff) return false
-
-      // Sidebar project filter (global, from URL ?project= param)
-      if (sidebarProject && s.project !== sidebarProject) return false
-
-      // Sidebar branch filter (global, from URL ?branch= param)
-      if (sidebarBranch) {
-        if (sidebarBranch === NO_BRANCH) {
-          if (s.gitBranch) return false // Keep only null-branch sessions
-        } else {
-          if (s.gitBranch !== sidebarBranch) return false
-        }
-      }
-
-      // Date filter (from sparkline click)
-      if (selectedDate) {
-        if (Number(s.modifiedAt) <= 0) return false
-        const d = new Date(Number(s.modifiedAt) * 1000)
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        if (key !== selectedDate) return false
-      }
-
-      // NEW FILTER LOGIC: Branch filter
-      if (filters.branches.length > 0) {
-        const wantNoBranch = filters.branches.includes(NO_BRANCH)
-        const namedBranches = filters.branches.filter(b => b !== NO_BRANCH)
-        const matchesNoBranch = wantNoBranch && !s.gitBranch
-        const matchesNamed = s.gitBranch && namedBranches.includes(s.gitBranch)
-        if (!matchesNoBranch && !matchesNamed) return false
-      }
-
-      // NEW FILTER LOGIC: Model filter
-      if (filters.models.length > 0) {
-        if (!s.primaryModel || !filters.models.includes(s.primaryModel)) return false
-      }
-
-      // NEW FILTER LOGIC: Has commits filter
-      if (filters.hasCommits === 'yes' && (s.commitCount ?? 0) === 0) return false
-      if (filters.hasCommits === 'no' && (s.commitCount ?? 0) > 0) return false
-
-      // NEW FILTER LOGIC: Has skills filter
-      if (filters.hasSkills === 'yes' && (s.skillsUsed ?? []).length === 0) return false
-      if (filters.hasSkills === 'no' && (s.skillsUsed ?? []).length > 0) return false
-
-      // NEW FILTER LOGIC: Minimum duration
-      if (filters.minDuration !== null && (s.durationSeconds ?? 0) < filters.minDuration) return false
-
-      // NEW FILTER LOGIC: Minimum files edited
-      if (filters.minFiles !== null && (s.filesEditedCount ?? 0) < filters.minFiles) return false
-
-      // NEW FILTER LOGIC: Minimum tokens
-      if (filters.minTokens !== null) {
-        const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
-        if (totalTokens < filters.minTokens) return false
-      }
-
-      // NEW FILTER LOGIC: High re-edit rate
-      if (filters.highReedit === true) {
-        const filesEdited = s.filesEditedCount ?? 0
-        const reeditedFiles = s.reeditedFilesCount ?? 0
-        const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
-        if (reeditRate <= 0.2) return false
-      }
-
-      // Text search
-      if (query) {
-        const haystack = [
-          s.preview,
-          s.lastMessage,
-          ...(s.filesTouched ?? []),
-          ...(s.skillsUsed ?? []),
-          s.project,
-        ].join(' ').toLowerCase()
-        return haystack.includes(query)
-      }
-
-      return true
-    })
-
-    // Apply sorting
-    if (filters.sort !== 'recent') {
-      filtered = [...filtered].sort((a, b) => {
-        switch (filters.sort) {
-          case 'tokens': {
-            const aTokens = Number((a.totalInputTokens ?? 0n) + (a.totalOutputTokens ?? 0n))
-            const bTokens = Number((b.totalInputTokens ?? 0n) + (b.totalOutputTokens ?? 0n))
-            return bTokens - aTokens
-          }
-          case 'prompts':
-            return (b.userPromptCount ?? 0) - (a.userPromptCount ?? 0)
-          case 'files_edited':
-            return (b.filesEditedCount ?? 0) - (a.filesEditedCount ?? 0)
-          case 'duration':
-            return (b.durationSeconds ?? 0) - (a.durationSeconds ?? 0)
-          default:
-            return 0
-        }
-      })
+  // Extract models from loaded pages (acceptable for MVP — model diversity is low)
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of sessions) {
+      if (s.primaryModel) set.add(s.primaryModel)
     }
+    return [...set].sort()
+  }, [sessions])
 
-    return filtered
-  }, [allSessions, searchText, sidebarProject, sidebarBranch, timeRange.fromTimestamp, selectedDate, filters])
+  const isFiltered = debouncedSearch || sidebarProject || sidebarBranch || timeRange.preset !== '30d' || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
 
-  const isFiltered = searchText || sidebarProject || sidebarBranch || timeRange.preset !== '30d' || selectedDate || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
-
-  const tooManyToGroup = shouldDisableGrouping(filteredSessions.length);
+  const tooManyToGroup = shouldDisableGrouping(sessions.length);
 
   // Auto-reset groupBy when session count exceeds the limit
   const [groupByAutoReset, setGroupByAutoReset] = useState(false);
@@ -276,11 +208,11 @@ export function HistoryView() {
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
     if (filters.groupBy !== 'none' && !tooManyToGroup) {
-      return groupSessions(filteredSessions, filters.groupBy)
+      return groupSessions(sessions, filters.groupBy)
     }
     // Default behavior: group by date when sort is 'recent', otherwise single group
-    return filters.sort === 'recent' ? groupSessionsByDate(filteredSessions) : [{ label: SORT_LABELS[filters.sort], sessions: filteredSessions }]
-  }, [filteredSessions, filters.groupBy, filters.sort, tooManyToGroup])
+    return filters.sort === 'recent' ? groupSessionsByDate(sessions) : [{ label: SORT_LABELS[filters.sort], sessions }]
+  }, [sessions, filters.groupBy, filters.sort, tooManyToGroup])
 
   // Collapse state for group headers
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -300,7 +232,6 @@ export function HistoryView() {
   function clearAll() {
     setSearchText('')
     setPreset('all')
-    setSelectedDate(null)
     setFilters(DEFAULT_FILTERS)
   }
 
@@ -341,7 +272,7 @@ export function HistoryView() {
                   Filtered
                 </span>
               )}
-              <span className="text-gray-400 tabular-nums">{filteredSessions.length} sessions</span>
+              <span className="text-gray-400 tabular-nums">{total} sessions</span>
             </div>
             <button
               onClick={clearAll}
@@ -353,11 +284,7 @@ export function HistoryView() {
         )}
 
         {/* Activity sparkline chart */}
-        <ActivitySparkline
-          sessions={allSessions}
-          selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
-        />
+        <ActivitySparkline />
 
         {/* Search + Filters bar */}
         <div className="mt-5 space-y-3">
@@ -451,7 +378,7 @@ export function HistoryView() {
               <>
                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
                 <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                  {filteredSessions.length} of {allSessions.length}
+                  {total} sessions
                 </span>
                 <button
                   onClick={clearAll}
@@ -467,7 +394,7 @@ export function HistoryView() {
         {/* Grouping safeguard warning */}
         {tooManyToGroup && groupByAutoReset && (
           <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-            Grouping disabled — {filteredSessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
+            Grouping disabled — {sessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
           </div>
         )}
 
@@ -483,11 +410,11 @@ export function HistoryView() {
 
         {/* Session List or Table */}
         <div className="mt-5">
-          {filteredSessions.length > 0 ? (
+          {sessions.length > 0 ? (
             filters.viewMode === 'table' ? (
               /* Table view */
               <CompactSessionTable
-                sessions={filteredSessions}
+                sessions={sessions}
                 onSort={(column) => {
                   // Map table column to SessionSort
                   const sortMap: Record<SortColumn, SessionSort> = {
@@ -580,6 +507,19 @@ export function HistoryView() {
             )
           ) : (
             <SessionsEmptyState isFiltered={isFiltered} onClearFilters={clearAll} />
+          )}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-4">
+              <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
+            </div>
+          )}
+          {!hasNextPage && sessions.length > 0 && (
+            <div className="text-center py-4 text-xs text-gray-400">
+              All {total} sessions loaded
+            </div>
           )}
         </div>
       </div>

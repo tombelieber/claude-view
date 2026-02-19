@@ -15,7 +15,7 @@
 //! - Metrics: sessions_count, ai_lines_added/removed, commits_count, etc.
 
 use crate::{Database, DbResult};
-use chrono::Local;
+use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -23,6 +23,62 @@ use ts_rs::TS;
 /// Used only by `estimate_cost_cents()` for snapshot generation.
 /// For accurate per-model pricing, use `pricing::calculate_cost_usd()`.
 const BLENDED_COST_PER_TOKEN_CENTS: f64 = 0.00025;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Fill gaps in sparse trend data so every date in [from, to] has an entry.
+/// Days with no sessions get a zero-value DailyTrendPoint.
+/// For unbounded ranges (All) where from..to spans > 366 days, only fills
+/// from the first data point to `to` to avoid generating thousands of empty days.
+fn fill_date_gaps(sparse: Vec<DailyTrendPoint>, from: &str, to: &str) -> Vec<DailyTrendPoint> {
+    if sparse.is_empty() {
+        return sparse;
+    }
+    let Ok(mut start) = NaiveDate::parse_from_str(from, "%Y-%m-%d") else {
+        return sparse;
+    };
+    let Ok(end) = NaiveDate::parse_from_str(to, "%Y-%m-%d") else {
+        return sparse;
+    };
+    if start > end {
+        return sparse;
+    }
+
+    // For very wide ranges (e.g. "All" starting from 1970), only fill from
+    // the first actual data point to avoid thousands of empty entries.
+    let span_days = (end - start).num_days();
+    if span_days > 366 {
+        if let Ok(first) = NaiveDate::parse_from_str(&sparse[0].date, "%Y-%m-%d") {
+            start = first;
+        }
+    }
+
+    // Build a lookup from date string -> existing data point
+    let mut by_date: std::collections::HashMap<String, DailyTrendPoint> = sparse
+        .into_iter()
+        .map(|p| (p.date.clone(), p))
+        .collect();
+
+    let mut result = Vec::new();
+    let mut current = start;
+    while current <= end {
+        let date_str = current.format("%Y-%m-%d").to_string();
+        let point = by_date.remove(&date_str).unwrap_or(DailyTrendPoint {
+            date: date_str,
+            lines_added: 0,
+            lines_removed: 0,
+            commits: 0,
+            sessions: 0,
+            tokens_used: 0,
+            cost_cents: 0,
+        });
+        result.push(point);
+        current += chrono::Duration::days(1);
+    }
+    result
+}
 
 // ============================================================================
 // Types
@@ -989,7 +1045,7 @@ impl Database {
             }
         };
 
-        if let Some(pid) = project_id {
+        let sparse = if let Some(pid) = project_id {
             // Project-filtered: query sessions directly grouped by date
             // (snapshots only have global data)
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
@@ -1017,8 +1073,7 @@ impl Database {
             .fetch_all(self.pool())
             .await?;
 
-            Ok(rows
-                .into_iter()
+            rows.into_iter()
                 .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
                     let cost_cents = estimate_cost_cents(tokens_used);
                     DailyTrendPoint {
@@ -1031,7 +1086,7 @@ impl Database {
                         cost_cents,
                     }
                 })
-                .collect())
+                .collect()
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
@@ -1057,8 +1112,7 @@ impl Database {
             .fetch_all(self.pool())
             .await?;
 
-            Ok(rows
-                .into_iter()
+            rows.into_iter()
                 .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
                     let cost_cents = estimate_cost_cents(tokens_used);
                     DailyTrendPoint {
@@ -1071,7 +1125,7 @@ impl Database {
                         cost_cents,
                     }
                 })
-                .collect())
+                .collect()
         } else {
             // Global: use pre-aggregated snapshots
             let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
@@ -1094,8 +1148,7 @@ impl Database {
             .fetch_all(self.pool())
             .await?;
 
-            Ok(rows
-                .into_iter()
+            rows.into_iter()
                 .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
                     date,
                     lines_added,
@@ -1105,8 +1158,12 @@ impl Database {
                     tokens_used,
                     cost_cents,
                 })
-                .collect())
-        }
+                .collect()
+        };
+
+        // Fill in zero-value entries for days with no sessions so the trend
+        // array covers the full date range (charts render correctly, no gaps).
+        Ok(fill_date_gaps(sparse, &from, &to))
     }
 
     // ========================================================================
@@ -2899,11 +2956,16 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(trend.len(), 3);
-        assert_eq!(trend[0].date, "2026-02-03");
-        assert_eq!(trend[0].lines_added, 200);
-        assert_eq!(trend[2].date, "2026-02-05");
-        assert_eq!(trend[2].sessions, 10);
+        // Gap-filled: Feb 1–10 = 10 days, with zero-value entries for days without data
+        assert_eq!(trend.len(), 10);
+        assert_eq!(trend[0].date, "2026-02-01");
+        assert_eq!(trend[0].sessions, 0); // no data, gap-filled
+        assert_eq!(trend[2].date, "2026-02-03");
+        assert_eq!(trend[2].lines_added, 200); // real data
+        assert_eq!(trend[4].date, "2026-02-05");
+        assert_eq!(trend[4].sessions, 10); // real data
+        assert_eq!(trend[9].date, "2026-02-10");
+        assert_eq!(trend[9].sessions, 0); // no data, gap-filled
     }
 
     #[tokio::test]

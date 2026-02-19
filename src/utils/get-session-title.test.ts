@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { getSessionTitle } from './get-session-title'
+import { getSessionTitle, cleanPreviewText } from './get-session-title'
 
 describe('getSessionTitle', () => {
   test('returns preview when available', () => {
@@ -52,5 +52,27 @@ describe('getSessionTitle', () => {
 
   test('handles summary with whitespace-only gracefully', () => {
     expect(getSessionTitle('', '   ')).toBe('Untitled session')
+  })
+})
+
+describe('cleanPreviewText', () => {
+  test('unescapes \\n to space', () => {
+    expect(cleanPreviewText('Fix bug\\nwith auth')).toBe('Fix bug with auth')
+  })
+
+  test('unescapes \\t to space', () => {
+    expect(cleanPreviewText('col1\\tcol2')).toBe('col1 col2')
+  })
+
+  test('unescapes \\\\" to quote', () => {
+    expect(cleanPreviewText('say \\"hello\\"')).toBe('say "hello"')
+  })
+
+  test('unescapes \\\\\\\\ to single backslash', () => {
+    expect(cleanPreviewText('path\\\\to\\\\file')).toBe('path\\to\\file')
+  })
+
+  test('handles multiple escape sequences together', () => {
+    expect(cleanPreviewText('line1\\nline2\\n\\tindented')).toBe('line1 line2 indented')
   })
 })

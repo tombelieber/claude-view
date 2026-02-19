@@ -13,7 +13,7 @@ jsonlBytes: number,
  */
 sqliteBytes: number, 
 /**
- * Size of search index in bytes (deep index - not implemented yet, returns 0).
+ * Size of search index in bytes.
  */
 indexBytes: number, 
 /**
@@ -55,4 +55,20 @@ lastGitSyncDurationMs: number | null,
 /**
  * Number of repos scanned in last git sync (not currently tracked, returns 0).
  */
-lastGitSyncRepoCount: number, };
+lastGitSyncRepoCount: number, 
+/**
+ * Path to JSONL session files (Claude Code data, read-only).
+ */
+jsonlPath: string | null, 
+/**
+ * Path to SQLite database file.
+ */
+sqlitePath: string | null, 
+/**
+ * Path to Tantivy search index directory.
+ */
+indexPath: string | null, 
+/**
+ * Parent app data directory — safe to delete, rebuilt on next launch.
+ */
+appDataPath: string | null, };

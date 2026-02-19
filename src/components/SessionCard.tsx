@@ -6,6 +6,7 @@ import { WorkTypeBadge } from './WorkTypeBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { ClassifyButton } from './ClassifyButton'
 import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
+import { SessionSpinner, pickPastVerb, formatDurationCompact } from './spinner'
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -149,8 +150,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const projectLabel = projectDisplayName || undefined
 
   // Calculate total tokens (input + output)
-  const totalTokens = ((session?.totalInputTokens ?? 0n) as bigint) + ((session?.totalOutputTokens ?? 0n) as bigint)
-  const hasTokens = totalTokens > 0n
+  const totalTokens = (session?.totalInputTokens ?? 0) + (session?.totalOutputTokens ?? 0)
+  const hasTokens = totalTokens > 0
 
   // New atomic unit metrics
   const prompts = session?.userPromptCount ?? 0
@@ -158,6 +159,9 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const reeditedFiles = session?.reeditedFilesCount ?? 0
   const commitCount = session?.commitCount ?? 0
   const durationSeconds = session?.durationSeconds ?? 0
+
+  // Task time metrics
+  const longestTaskSeconds = session?.longestTaskSeconds ?? 0
 
   // Theme 3: Contribution metrics (optional, populated by deep index)
   const workType = session?.workType ?? null
@@ -236,6 +240,18 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         )}
       </div>
 
+      {/* Spinner: verb + task time + model */}
+      {session.primaryModel && (
+        <div className="mt-1.5">
+          <SessionSpinner
+            mode="historical"
+            model={session.primaryModel}
+            pastTenseVerb={pickPastVerb(session.id)}
+            taskTimeSeconds={session.totalTaskTimeSeconds}
+          />
+        </div>
+      )}
+
       {/* Metrics row: prompts, tokens, files, re-edits */}
       <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
         {prompts > 0 && (
@@ -258,6 +274,12 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         )}
         {reeditedFiles > 0 && (
           <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+        )}
+        {longestTaskSeconds > 0 && (
+          <>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
+          </>
         )}
         {/* Fallback to legacy display if no new metrics */}
         {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
