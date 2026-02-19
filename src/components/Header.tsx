@@ -3,7 +3,6 @@ import { Home, Search, HelpCircle, Settings, ChevronRight, Sun, Moon, Monitor } 
 import { useAppStore } from '../store/app-store'
 import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
-import { ScoreBadge } from './ScoreBadge'
 import { AuthPill } from './AuthPill'
 import { NotificationSoundPopover } from './live/NotificationSoundPopover'
 import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
@@ -83,7 +82,6 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Claude View</h1>
           <HealthIndicator />
         </Link>
-        <ScoreBadge />
         <AuthPill />
 
         {breadcrumbs.length > 0 && (
