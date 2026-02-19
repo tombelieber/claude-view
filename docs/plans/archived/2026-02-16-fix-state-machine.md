@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 date: 2026-02-16
 audit: round 4 — fixed 7 remaining issues (4 important, 3 warning) to reach 100/100 (see Changelog at bottom)
 ---

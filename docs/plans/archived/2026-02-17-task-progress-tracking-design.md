@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 date: 2026-02-17
 depends_on: derived-agent-state (Tasks 1-12 committed at 3aec59a..dead826)
 ---

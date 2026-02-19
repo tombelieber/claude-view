@@ -6,6 +6,7 @@ import { RichTerminalPane } from './RichTerminalPane'
 import { ContextBar } from './ContextBar'
 import { StatusDot } from './StatusDot'
 import { StateBadge } from './SessionCard'
+import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
 
 interface TerminalOverlayProps {
@@ -21,7 +22,8 @@ interface TerminalOverlayProps {
  */
 export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
   const [isVisible, setIsVisible] = useState(false)
-  const [verboseMode, setVerboseMode] = useState(false)
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
   const [copied, setCopied] = useState(false)
 
   // Entrance animation
@@ -136,7 +138,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {/* Verbose toggle */}
           <button
-            onClick={() => setVerboseMode((v) => !v)}
+            onClick={toggleVerbose}
             className={cn(
               'text-[10px] px-2 py-0.5 rounded border transition-colors',
               verboseMode
