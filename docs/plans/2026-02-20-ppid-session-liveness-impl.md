@@ -67,7 +67,7 @@ pub fn is_pid_alive(pid: u32) -> bool {
 }
 ```
 
-Add `use libc;` to the imports at the top of `process.rs` (after the existing `use` statements, but only needed inside the function — no top-level import needed since it's a direct path call, but for clarity add nothing — `libc::kill` works because `libc` is in Cargo.toml).
+No `use` statement is needed — `libc::kill` is used as a fully-qualified path and `libc = "0.2"` is already in `crates/server/Cargo.toml` (line 68).
 
 **Step 4: Run test to verify it passes**
 
@@ -196,7 +196,9 @@ git commit -m "feat(live): add PID snapshot save/load for restart recovery"
 
 **Step 1: Write the failing test**
 
-Add to the existing `#[cfg(test)] mod tests` block in `hook_registrar.rs`:
+Add to the existing `#[cfg(test)] mod tests` block in `hook_registrar.rs`.
+
+> **Note:** `make_matcher_group` takes `(port: u16, event: &str)`. The literal `47892` fits in `u16` so no suffix is needed.
 
 ```rust
 #[test]
@@ -209,7 +211,9 @@ fn test_hook_command_includes_ppid_header() {
         "Hook command must include X-Claude-PID header, got: {}",
         command
     );
-    // $PPID must NOT be inside quotes (shell must expand it)
+    // $PPID must NOT be inside single quotes (shell must expand it).
+    // The format is: -H 'X-Claude-PID: '$PPID
+    // where 'X-Claude-PID: ' is quoted and $PPID is unquoted for expansion.
     assert!(
         command.contains("'$PPID"),
         "PPID must be outside quotes for shell expansion, got: {}",
@@ -355,7 +359,7 @@ Then, in every place where a `LiveSession` is created or updated and `pid: None`
 1. Lazy creation (around line 90-120): change `pid: None,` to `pid: claude_pid,`
 2. SessionStart creation (around line 160-186): change `pid: None,` to `pid: claude_pid,`
 
-And for session updates (when session already exists), add PID binding if not yet set. After each `if let Some(session) = sessions.get_mut(...)` block that updates the session, add:
+And for session updates (when session already exists), add PID binding if not yet set. Insert this **BEFORE** the `state.live_tx.send()` call in each arm (so the broadcast includes the PID):
 
 ```rust
 if session.pid.is_none() {
@@ -365,7 +369,16 @@ if session.pid.is_none() {
 }
 ```
 
-Add this to the SessionStart existing-session branch, UserPromptSubmit, Stop, and the catch-all `_` arm.
+Add this to **every match arm that calls `sessions.get_mut()`**:
+- `SessionStart` existing-session branch (line 144)
+- `UserPromptSubmit` (line 199)
+- `Stop` (line 219)
+- `SubagentStop` (line 244) — metadata-only but still receives hooks
+- `TeammateIdle` (line 263) — metadata-only
+- `TaskCompleted` (line 272) — metadata-only
+- catch-all `_` (line 291)
+
+> **Note:** `SessionEnd` removes the session entirely, so no PID binding needed there.
 
 **Step 6: Run full hook tests**
 
@@ -381,43 +394,64 @@ git commit -m "feat(live): extract PID from X-Claude-PID header and bind to sess
 
 ---
 
-### Task 5: Simplify process detector to use `kill(pid, 0)`
+### Task 5: Replace process detector with `kill(pid, 0)` + PID snapshot
+
+> **Full rewrite of `spawn_process_detector`.** The periodic sysinfo scan is removed.
+> - Bound sessions: `is_pid_alive(pid)` via `kill(pid, 0)` — definitive, no 2-cycle needed.
+> - Unbound sessions: skipped by detector — PPID is the source of truth.
+> - The `processes`/`process_count` fields and `run_eager_process_scan` are **kept** —
+>   they still run at startup for sessions discovered before hooks fire. After startup,
+>   `processes` goes stale, but that's fine: `apply_jsonl_metadata` (line 126) guards
+>   with `if session.pid.is_none()`, so hook-delivered PIDs are never overwritten.
+> - **Note:** `process_count` (exposed via SSE/API) becomes frozen at the startup value.
+>   This is acceptable — the live monitor shows individual sessions, not the raw count.
 
 **Files:**
 - Modify: `crates/server/src/live/manager.rs`
 
-**Step 1: Write the failing test**
+**Step 1: Update the import line**
 
-Add to the `#[cfg(test)]` block in `manager.rs`:
+Change the import at line 22 from:
+
+```rust
+use super::process::{detect_claude_processes, has_running_process, ClaudeProcess};
+```
+
+to:
+
+```rust
+use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
+```
+
+> `detect_claude_processes` stays imported — it's still used by `run_eager_process_scan`.
+> `has_running_process` stays — still used by `process_jsonl_file`.
+
+**Step 2: Write new tests (ADD alongside existing)**
+
+Add to the existing `#[cfg(test)] mod tests` block:
 
 ```rust
 #[test]
-fn test_pid_based_eviction_alive_process() {
-    // Our own PID should be considered alive
-    let our_pid = std::process::id();
-    assert!(super::super::process::is_pid_alive(our_pid));
-}
+fn test_is_pid_alive_integration_for_bound_sessions() {
+    use super::process::is_pid_alive;
 
-#[test]
-fn test_pid_based_eviction_dead_process() {
-    // Very high PID should not exist
-    assert!(!super::super::process::is_pid_alive(4_000_000));
+    // Bound PID that is alive (our own process)
+    let alive_pid = std::process::id();
+    assert!(is_pid_alive(alive_pid));
+
+    // Bound PID that is dead
+    let dead_pid: u32 = 4_000_000;
+    assert!(!is_pid_alive(dead_pid));
 }
 ```
 
-**Step 2: Run test to verify it passes**
+**Step 3: Replace `spawn_process_detector` method body**
 
-Run: `cargo test -p vibe-recall-server pid_based_eviction`
-Expected: PASS (these tests use `is_pid_alive` from Task 1)
-
-**Step 3: Rewrite `spawn_process_detector`**
-
-Replace the entire `spawn_process_detector` method body (manager.rs, approximately lines 359-496) with:
+Replace the entire `spawn_process_detector` method (lines 359-496) with:
 
 ```rust
 fn spawn_process_detector(self: &Arc<Self>) {
     let manager = self.clone();
-    const STALE_THRESHOLD_SECS: u64 = 600; // 10 minutes — generous fallback
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
@@ -433,8 +467,18 @@ fn spawn_process_detector(self: &Arc<Self>) {
                     }
                 }
             }
+            // Prune stale entries (sessions that no longer exist) and save back.
+            let current_pids: HashMap<String, u32> = sessions
+                .iter()
+                .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+                .collect();
+            if current_pids.len() < snapshot.len() {
+                save_pid_snapshot(&pid_snapshot_path(), &current_pids);
+            }
+
             info!(
                 count = snapshot.len(),
+                restored = current_pids.len(),
                 "Restored PID bindings from snapshot"
             );
         }
@@ -452,49 +496,33 @@ fn spawn_process_detector(self: &Arc<Self>) {
                         continue;
                     }
 
-                    if let Some(pid) = session.pid {
-                        // PID bound — definitive check
-                        if !super::process::is_pid_alive(pid) {
-                            info!(
-                                session_id = %session_id,
-                                pid = pid,
-                                "Bound PID is dead — marking session ended"
-                            );
-                            session.agent_state = AgentState {
-                                group: AgentStateGroup::NeedsYou,
-                                state: "session_ended".into(),
-                                label: "Session ended (process exited)".into(),
-                                context: None,
-                            };
-                            session.status = SessionStatus::Done;
-                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
-                            dead_sessions.push(session_id.clone());
-                            snapshot_dirty = true;
-                        }
-                    } else {
-                        // No PID bound — stale fallback (should rarely happen with PPID)
-                        let seconds_since =
-                            seconds_since_modified_from_timestamp(session.last_activity_at);
-                        if seconds_since > STALE_THRESHOLD_SECS {
-                            info!(
-                                session_id = %session_id,
-                                stale_seconds = seconds_since,
-                                "No PID + stale — marking session ended (fallback)"
-                            );
-                            session.agent_state = AgentState {
-                                group: AgentStateGroup::NeedsYou,
-                                state: "session_ended".into(),
-                                label: "Session ended (no process)".into(),
-                                context: None,
-                            };
-                            session.status = SessionStatus::Done;
-                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
-                            dead_sessions.push(session_id.clone());
-                        }
+                    // Only check sessions with a bound PID.
+                    // PPID is the source of truth — if no PID was delivered,
+                    // the session isn't trackable by the detector. It will
+                    // either get a PID on the next hook event or be cleaned
+                    // up by SessionEnd.
+                    let Some(pid) = session.pid else {
+                        continue;
+                    };
+
+                    if !is_pid_alive(pid) {
+                        info!(
+                            session_id = %session_id,
+                            pid = pid,
+                            "Bound PID is dead — marking session ended"
+                        );
+                        session.agent_state = AgentState {
+                            group: AgentStateGroup::NeedsYou,
+                            state: "session_ended".into(),
+                            label: "Session ended (process exited)".into(),
+                            context: None,
+                        };
+                        session.status = SessionStatus::Done;
+                        let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                            session: session.clone(),
+                        });
+                        dead_sessions.push(session_id.clone());
+                        snapshot_dirty = true;
                     }
                 }
 
@@ -524,7 +552,9 @@ fn spawn_process_detector(self: &Arc<Self>) {
 }
 ```
 
-Also add a PID snapshot save call to the hook handler flow. In `manager.rs`, add a new public method:
+**Step 4: Add `save_pid_bindings` public method**
+
+Add to the `impl LiveSessionManager` block (after `process_count()` around line 228):
 
 ```rust
 /// Save current PID bindings to disk for restart recovery.
@@ -538,55 +568,16 @@ pub async fn save_pid_bindings(&self) {
 }
 ```
 
-**Step 4: Remove the old `had_process` / `detect_claude_processes` import from the detector loop**
+**Step 5: Delete obsolete tests, keep relevant ones**
 
-The import at line 22:
-```rust
-use super::process::{detect_claude_processes, has_running_process, ClaudeProcess};
-```
+**Delete** these tests (they test `had_process` two-cycle logic and stale thresholds that no longer exist):
+- `test_process_disappearance_immediate_detection`
+- `test_never_seen_process_uses_stale_fallback`
 
-Keep `has_running_process` and `ClaudeProcess` (still used by `process_jsonl_file` for display), but `detect_claude_processes` is no longer used in the hot loop. It may still be referenced elsewhere — leave the import but add `#[allow(unused_imports)]` if the compiler warns.
-
-Also remove `processes` and `process_count` fields from `LiveSessionManager` struct if they are only used by the old detector. Check all references first — `process_jsonl_file` at line 896 reads `self.processes` so it's still needed for initial PID discovery during JSONL parsing. Leave the fields and the eager scan but they become secondary to hook-delivered PIDs.
-
-**Step 5: Update old tests**
-
-Replace the `test_process_disappearance_immediate_detection` and `test_never_seen_process_uses_stale_fallback` tests (they test the old `had_process` logic) with:
-
-```rust
-#[test]
-fn test_pid_bound_session_eviction_logic() {
-    use super::process::is_pid_alive;
-
-    // Session with a bound PID that is dead
-    let dead_pid: u32 = 4_000_000;
-    assert!(!is_pid_alive(dead_pid));
-
-    // Session with a bound PID that is alive (our own process)
-    let alive_pid = std::process::id();
-    assert!(is_pid_alive(alive_pid));
-}
-
-#[test]
-fn test_stale_fallback_for_sessions_without_pid() {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    const STALE_THRESHOLD_SECS: u64 = 600;
-
-    // Not stale enough (10s ago)
-    let seconds_since = seconds_since_modified_from_timestamp(now - 10);
-    assert!(seconds_since < STALE_THRESHOLD_SECS);
-
-    // Stale enough (700s ago)
-    let seconds_since = seconds_since_modified_from_timestamp(now - 700);
-    assert!(seconds_since > STALE_THRESHOLD_SECS);
-}
-```
-
-Keep the `test_done_session_not_reprocessed` and `test_pid_binding_prevents_zombie_sessions` tests as they are — they still validate relevant behavior.
+**Keep these existing tests unchanged:**
+- `test_done_session_not_reprocessed` — still valid (Done check is first in new code)
+- `test_pid_binding_prevents_zombie_sessions` — concept still valid (PID-specific liveness)
+- `test_unbound_session_discovers_pid_via_cwd` — relevant for startup scan path
 
 **Step 6: Run all manager tests**
 
@@ -597,7 +588,7 @@ Expected: All tests PASS
 
 ```bash
 git add crates/server/src/live/manager.rs
-git commit -m "feat(live): simplify process detector to kill(pid,0) with PID snapshot"
+git commit -m "feat(live): replace sysinfo detector with kill(pid,0) + PID snapshot"
 ```
 
 ---
@@ -607,25 +598,51 @@ git commit -m "feat(live): simplify process detector to kill(pid,0) with PID sna
 **Files:**
 - Modify: `crates/server/src/routes/hooks.rs`
 
-**Step 1: Add snapshot save call after PID binding**
+**Step 1: Track whether a NEW PID binding occurred**
+
+At the top of `handle_hook` (right after `let claude_pid = extract_pid_from_header(...)`,
+around the line from Task 4 Step 5), add a tracking variable:
+
+```rust
+let mut pid_newly_bound = false;
+```
+
+Then, in each PID binding block (the `if session.pid.is_none() { ... }` blocks from Task 4),
+set the flag when a PID is actually bound:
+
+```rust
+if session.pid.is_none() {
+    if let Some(pid) = claude_pid {
+        session.pid = Some(pid);
+        pid_newly_bound = true;
+    }
+}
+```
+
+> **Why not just check `claude_pid.is_some()`?** Hooks fire frequently (PreToolUse,
+> PostToolUse, etc.) and all carry the same PID header. Saving to disk on every hook
+> would mean dozens of writes per second per active session. We only need to save when
+> a PID was NEWLY bound (session.pid was None → Some).
+
+**Step 2: Add snapshot save at the end, guarded by the flag**
 
 At the end of `handle_hook`, before the final `Json(...)` return, add:
 
 ```rust
-// Persist PID bindings to disk when a new PID was bound
-if claude_pid.is_some() {
+// Persist PID bindings to disk only when a new binding was created
+if pid_newly_bound {
     if let Some(mgr) = &state.live_manager {
         mgr.save_pid_bindings().await;
     }
 }
 ```
 
-**Step 2: Run all tests to verify no regressions**
+**Step 3: Run all tests to verify no regressions**
 
 Run: `cargo test -p vibe-recall-server`
 Expected: All tests PASS
 
-**Step 3: Commit**
+**Step 4: Commit**
 
 ```bash
 git add crates/server/src/routes/hooks.rs
@@ -664,6 +681,25 @@ Expected: All tests PASS
 **Step 4: Commit any fixups**
 
 ```bash
-git add -A
+git add crates/server/src/
 git commit -m "fix(live): integration fixups for PPID session liveness"
 ```
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Task 1: Import guidance was confusing ("add nothing — for clarity add nothing") | Minor | Clarified that `libc::kill` works as a fully-qualified path; no `use` statement needed |
+| 2 | Task 3: `make_matcher_group` port type is `u16`, not `u32` as implied | Warning | Added note about `u16` type to Task 3 test step |
+| 3 | Task 3: Test assertion comment lacked explanation of shell quoting trick | Minor | Added comment explaining `'X-Claude-PID: '$PPID` quoting for shell expansion |
+| 4 | Task 4: PID binding only added to 4 match arms, but hooks.rs has 7 session-accessing arms | Warning | Added `SubagentStop`, `TeammateIdle`, `TaskCompleted` to the PID binding list |
+| 5 | Task 5: Stale threshold changed from 180s to 600s without justification (3 conflicting values: 180 prod, 300 test, 600 plan) | **Blocker** | Removed stale threshold entirely — PPID is the source of truth. Sessions without PID are skipped by detector. |
+| 6 | Task 5: `test_unbound_session_discovers_pid_via_cwd` (line 1275) was not in the keep list — would be silently lost | Warning | Added to the explicit keep list |
+| 7 | Task 5: `had_process` two-cycle tracking and `detect_claude_processes` removed but `processes` field still needed | Warning | Confirmed safe: `run_eager_process_scan` populates at startup; `apply_jsonl_metadata` guards with `if session.pid.is_none()` so hook PIDs are never overwritten. Periodic scan intentionally removed. |
+| 8 | Task 5: Clarified that `detect_claude_processes` stays in import (used by `run_eager_process_scan`) | Minor | Updated import change to add `is_pid_alive` without removing existing imports |
+| 9 | Task 4: PID binding insertion point not specified (before/after broadcast send) | Warning | Clarified: insert BEFORE `state.live_tx.send()` so broadcast includes the PID |
+| 10 | Task 6: `save_pid_bindings` called on EVERY hook with PID — excessive disk I/O | **Blocker** | Added `pid_newly_bound` tracking flag; snapshot save only fires when PID was actually newly bound |
+| 11 | Task 5: Startup snapshot load doesn't prune stale entries | Minor | Added snapshot pruning after load — saves back only entries that matched existing sessions |
+| 12 | Task 5: `process_count` becomes frozen at startup value after sysinfo scan removed | Warning | Documented as acceptable — live monitor shows sessions, not raw count |
