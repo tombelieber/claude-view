@@ -65,6 +65,9 @@ async fn handle_hook(
         event = %payload.hook_event_name,
         state = %agent_state.state,
         group = ?agent_state.group,
+        has_context = agent_state.context.is_some(),
+        tool_name = payload.tool_name.as_deref().unwrap_or("-"),
+        has_tool_input = payload.tool_input.is_some(),
         "Hook event received"
     );
 
@@ -290,7 +293,17 @@ async fn handle_hook(
         _ => {
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
-                session.agent_state = agent_state.clone();
+                // Preserve context when re-entering the same state without new context.
+                // e.g., Notification/elicitation_dialog fires after PreToolUse/AskUserQuestion
+                // and would otherwise overwrite the question context with None.
+                let mut new_state = agent_state.clone();
+                if new_state.context.is_none()
+                    && session.agent_state.state == new_state.state
+                    && session.agent_state.context.is_some()
+                {
+                    new_state.context = session.agent_state.context.clone();
+                }
+                session.agent_state = new_state;
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
@@ -343,11 +356,17 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
         "PreToolUse" => {
             let tool_name = payload.tool_name.as_deref().unwrap_or("unknown");
             match tool_name {
-                "AskUserQuestion" => AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "awaiting_input".into(),
-                    label: "Asked you a question".into(),
-                    context: payload.tool_input.clone(),
+                "AskUserQuestion" => {
+                    tracing::warn!(
+                        tool_input = ?payload.tool_input,
+                        "AskUserQuestion PreToolUse — tool_input dump"
+                    );
+                    AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "awaiting_input".into(),
+                        label: "Asked you a question".into(),
+                        context: payload.tool_input.clone(),
+                    }
                 },
                 "ExitPlanMode" => AgentState {
                     group: AgentStateGroup::NeedsYou,
@@ -426,15 +445,22 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 label: "Session idle".into(),
                 context: None,
             },
-            Some("elicitation_dialog") => AgentState {
-                group: AgentStateGroup::NeedsYou,
-                state: "awaiting_input".into(),
-                label: payload
-                    .message
-                    .as_deref()
-                    .map(|m| m.chars().take(100).collect::<String>())
-                    .unwrap_or_else(|| "Awaiting input".into()),
-                context: None,
+            Some("elicitation_dialog") => {
+                tracing::warn!(
+                    message = ?payload.message,
+                    tool_input = ?payload.tool_input,
+                    "Notification/elicitation_dialog — payload dump"
+                );
+                AgentState {
+                    group: AgentStateGroup::NeedsYou,
+                    state: "awaiting_input".into(),
+                    label: payload
+                        .message
+                        .as_deref()
+                        .map(|m| m.chars().take(100).collect::<String>())
+                        .unwrap_or_else(|| "Awaiting input".into()),
+                    context: None,
+                }
             },
             _ => AgentState {
                 group: AgentStateGroup::NeedsYou,
