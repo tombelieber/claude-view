@@ -47,7 +47,7 @@ pub struct AppState {
     /// Facet ingest progress state (lock-free atomics for SSE streaming).
     pub facet_ingest: Arc<FacetIngestState>,
     /// Per-model pricing table for accurate cost calculation.
-    pub pricing: HashMap<String, ModelPricing>,
+    pub pricing: Arc<RwLock<HashMap<String, ModelPricing>>>,
     /// Live session state for Mission Control (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
@@ -78,7 +78,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -104,7 +104,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -133,7 +133,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: vibe_recall_db::default_pricing(),
+            pricing: Arc::new(RwLock::new(vibe_recall_db::default_pricing())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 

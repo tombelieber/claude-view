@@ -1,8 +1,8 @@
 // crates/db/src/queries/ai_generation.rs
 // AI generation statistics queries (token usage by model/project).
 
-use crate::{Database, DbResult};
 use super::{AIGenerationStats, TokensByModel, TokensByProject};
+use crate::{Database, DbResult};
 
 impl Database {
     // ========================================================================
@@ -56,7 +56,7 @@ impl Database {
               AND (?4 IS NULL OR git_branch = ?4)
               AND primary_model IS NOT NULL
             GROUP BY primary_model
-            ORDER BY (input_tokens + output_tokens) DESC
+            ORDER BY (COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0)) DESC
             "#,
         )
         .bind(from)
@@ -90,7 +90,7 @@ impl Database {
               AND (?3 IS NULL OR project_id = ?3)
               AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
-            ORDER BY (input_tokens + output_tokens) DESC
+            ORDER BY (COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0)) DESC
             LIMIT 6
             "#,
         )

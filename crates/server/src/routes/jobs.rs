@@ -71,7 +71,7 @@ mod tests {
             classify: Arc::new(crate::classify_state::ClassifyState::new()),
             facet_ingest: Arc::new(crate::facet_ingest::FacetIngestState::new()),
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
-            pricing: std::collections::HashMap::new(),
+            pricing: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
 

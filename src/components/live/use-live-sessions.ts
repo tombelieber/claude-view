@@ -38,6 +38,7 @@ export interface LiveSession {
     cacheReadCostUsd: number
     cacheCreationCostUsd: number
     cacheSavingsUsd: number
+    isEstimated: boolean
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
   currentTurnStartedAt?: number | null
@@ -64,6 +65,11 @@ export interface UseLiveSessionsResult {
   stalledSessions: Set<string>
   /** Unix epoch seconds, ticks every ~1s for duration computation */
   currentTime: number
+}
+
+export function sessionTotalCost(session: LiveSession): number {
+  const subAgentTotal = session.subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
+  return (session.cost?.totalUsd ?? 0) + subAgentTotal
 }
 
 export function useLiveSessions(): UseLiveSessionsResult {
