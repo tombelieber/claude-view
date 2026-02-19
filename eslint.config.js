@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', '.tmp']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -25,6 +25,10 @@ export default defineConfig([
       react: {
         version: 'detect',
       },
+    },
+    rules: {
+      'react/react-in-jsx-scope': 'off',
+      'react/prop-types': 'off',
     },
   },
 ])

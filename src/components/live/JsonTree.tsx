@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { CompactCodeBlock } from './CompactCodeBlock'
 
@@ -7,6 +7,7 @@ interface JsonTreeProps {
   data: unknown
   defaultExpandDepth?: number
   maxNodes?: number
+  verboseMode?: boolean
 }
 
 const MAX_STRING_INLINE = 120
@@ -14,17 +15,18 @@ const DEFAULT_MAX_NODES = 200
 
 function countNodes(data: unknown): number {
   if (data === null || data === undefined || typeof data !== 'object') return 1
-  if (Array.isArray(data)) return 1 + data.reduce((sum, item) => sum + countNodes(item), 0)
-  return 1 + Object.values(data as Record<string, unknown>).reduce((sum, val) => sum + countNodes(val), 0)
+  if (Array.isArray(data)) return 1 + data.reduce((sum: number, item) => sum + countNodes(item), 0)
+  return 1 + Object.values(data as Record<string, unknown>).reduce((sum: number, val) => sum + countNodes(val), 0)
 }
 
-function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togglePath }: {
+function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togglePath, verboseMode }: {
   value: unknown
   path: string
   depth: number
   defaultExpandDepth: number
   expandedPaths: Set<string>
   togglePath: (p: string) => void
+  verboseMode?: boolean
 }) {
   if (value === null) return <span className="text-gray-500">null</span>
   if (value === undefined) return <span className="text-gray-500">undefined</span>
@@ -75,6 +77,7 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
         expandedPaths={expandedPaths}
         togglePath={togglePath}
         isArray
+        verboseMode={verboseMode}
       />
     )
   }
@@ -92,6 +95,7 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
         defaultExpandDepth={defaultExpandDepth}
         expandedPaths={expandedPaths}
         togglePath={togglePath}
+        verboseMode={verboseMode}
       />
     )
   }
@@ -99,7 +103,7 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
   return <span className="text-gray-500">{String(value)}</span>
 }
 
-function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, path, depth, defaultExpandDepth, expandedPaths, togglePath, isArray }: {
+function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, path, depth, defaultExpandDepth, expandedPaths, togglePath, isArray, verboseMode }: {
   entries: [string, unknown][]
   bracketOpen: string
   bracketClose: string
@@ -110,8 +114,9 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   expandedPaths: Set<string>
   togglePath: (p: string) => void
   isArray?: boolean
+  verboseMode?: boolean
 }) {
-  const autoExpand = depth < defaultExpandDepth && entries.length <= 5
+  const autoExpand = verboseMode ? depth < defaultExpandDepth : (depth < defaultExpandDepth && entries.length <= 5)
   const isExpanded = expandedPaths.has(path) ? true : (!expandedPaths.has(`~${path}`) && autoExpand)
 
   const toggle = () => {
@@ -160,6 +165,7 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
               defaultExpandDepth={defaultExpandDepth}
               expandedPaths={expandedPaths}
               togglePath={togglePath}
+              verboseMode={verboseMode}
             />
             {i < entries.length - 1 && <span className="text-gray-400 dark:text-gray-500">,</span>}
           </div>
@@ -170,9 +176,12 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   )
 }
 
-export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_NODES }: JsonTreeProps) {
+export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_NODES, verboseMode = false }: JsonTreeProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [showFallback, setShowFallback] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const effectiveExpandDepth = verboseMode ? 100 : defaultExpandDepth
 
   const nodeCount = useMemo(() => countNodes(data), [data])
   const isLarge = nodeCount > maxNodes
@@ -180,19 +189,27 @@ export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_
   const togglePath = (path: string) => {
     setExpandedPaths(prev => {
       const next = new Set(prev)
-      // If toggling a collapse marker (~path), handle both
       if (path.startsWith('~')) {
         const realPath = path.slice(1)
         next.delete(realPath)
         next.add(path)
       } else {
-        // Expanding: remove collapse marker, add expand marker
         next.delete(`~${path}`)
         next.add(path)
       }
       return next
     })
   }
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy JSON:', err)
+    }
+  }, [data])
 
   if (isLarge && !showFallback) {
     return (
@@ -224,14 +241,22 @@ export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_
 
   return (
     <Tooltip.Provider delayDuration={200}>
-      <div className="text-[11px] font-mono leading-relaxed">
+      <div className="text-[11px] font-mono leading-relaxed relative">
+        <button
+          onClick={handleCopy}
+          className="absolute top-0 right-0 p-1 rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors z-10"
+          title="Copy JSON"
+        >
+          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+        </button>
         <JsonValue
           value={data}
           path="$"
           depth={0}
-          defaultExpandDepth={defaultExpandDepth}
+          defaultExpandDepth={effectiveExpandDepth}
           expandedPaths={expandedPaths}
           togglePath={togglePath}
+          verboseMode={verboseMode}
         />
       </div>
     </Tooltip.Provider>

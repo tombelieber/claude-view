@@ -2162,7 +2162,7 @@ where
                         (None, None, None)
                     } else {
                         let total: u64 = meta.turn_durations_ms.iter().sum();
-                        let max = *meta.turn_durations_ms.iter().max().unwrap();
+                        let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
                         let avg = total / meta.turn_durations_ms.len() as u64;
                         (Some(avg as i64), Some(max as i64), Some(total as i64))
                     };
@@ -2415,7 +2415,7 @@ async fn write_results_sqlx(
             (None, None, None)
         } else {
             let total: u64 = meta.turn_durations_ms.iter().sum();
-            let max = *meta.turn_durations_ms.iter().max().unwrap();
+            let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
             let avg = total / meta.turn_durations_ms.len() as u64;
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };

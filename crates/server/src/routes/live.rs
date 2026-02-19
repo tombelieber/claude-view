@@ -318,7 +318,7 @@ async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json
 ///
 /// Exposes per-model costs in a frontend-friendly format (cost per million tokens).
 async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let pricing = state.pricing.read().unwrap();
+    let pricing = state.pricing.read().expect("pricing lock poisoned");
     let models: HashMap<String, serde_json::Value> = pricing
         .iter()
         .map(|(name, p)| {

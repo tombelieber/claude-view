@@ -221,7 +221,7 @@ async fn refresh_pricing(
                 tracing::warn!("Failed to cache pricing to SQLite: {e}");
             }
 
-            *pricing.write().unwrap() = merged;
+            *pricing.write().expect("pricing lock poisoned") = merged;
             tracing::info!(models = count, "Pricing refreshed from litellm + cached to SQLite");
         }
         Err(e) => {
@@ -232,7 +232,7 @@ async fn refresh_pricing(
                 Ok(Some(mut cached)) => {
                     vibe_recall_core::pricing::fill_tiering_gaps(&mut cached);
                     let count = cached.len();
-                    *pricing.write().unwrap() = cached;
+                    *pricing.write().expect("pricing lock poisoned") = cached;
                     tracing::info!(models = count, "Pricing loaded from SQLite cache");
                 }
                 Ok(None) => {

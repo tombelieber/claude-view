@@ -29,7 +29,6 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
     // Also stop native propagation for react-router
     e.nativeEvent.stopImmediatePropagation()
 
-    console.log('[ClassifyButton] clicked', sessionId)
     setLastError(null)
 
     const result = await classifySession(sessionId)
@@ -38,8 +37,6 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
       // won't be available synchronously, so use a generic message
       setLastError('Classification failed — check server logs')
       console.error('[ClassifyButton] classify failed for', sessionId)
-    } else {
-      console.log('[ClassifyButton] classify success', sessionId, result)
     }
   }, [sessionId, classifySession])
 
