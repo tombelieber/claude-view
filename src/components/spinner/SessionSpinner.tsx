@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import {
   SPINNER_FRAMES,
@@ -163,7 +164,14 @@ export function SessionSpinner(props: SessionSpinnerProps) {
             <span className="text-gray-500 dark:text-gray-400">Awaiting input</span>
           </>
         )}
-        <span className={`font-mono tabular-nums ${countdownColor}`}>· {countdownText}</span>
+        <CacheCountdownTooltip remaining={remaining} ttl={CACHE_TTL}>
+          <span
+            className={`font-mono tabular-nums cursor-default ${countdownColor}`}
+            title={remaining > 0 ? 'Cache warm' : 'Cache cold'}
+          >
+            · {countdownText}
+          </span>
+        </CacheCountdownTooltip>
       </span>
     )
   }
@@ -201,5 +209,117 @@ export function SessionSpinner(props: SessionSpinnerProps) {
         )}
       </span>
     </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Cache Countdown Tooltip
+// ---------------------------------------------------------------------------
+
+function CacheCountdownTooltip({
+  remaining,
+  ttl,
+  children,
+}: {
+  remaining: number
+  ttl: number
+  children: React.ReactNode
+}) {
+  const progress = remaining / ttl
+  const isWarm = remaining > 0
+  const progressPct = Math.min(progress * 100, 100)
+
+  const barColor = !isWarm
+    ? 'bg-gray-400'
+    : progress < 0.2
+      ? 'bg-red-500'
+      : progress < 0.6
+        ? 'bg-amber-500'
+        : 'bg-green-500'
+
+  const minutes = Math.floor(remaining / 60)
+  const seconds = remaining % 60
+  const timeDisplay = isWarm
+    ? `${minutes}:${String(seconds).padStart(2, '0')}`
+    : 'Expired'
+
+  return (
+    <Tooltip.Provider delayDuration={200}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          {children}
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="bottom"
+            sideOffset={6}
+            className="z-50 w-64 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">
+              Prompt Cache
+            </div>
+
+            {/* Status + countdown */}
+            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 mb-2">
+              <span className={isWarm ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}>
+                {isWarm ? 'Warm' : 'Cold'}
+              </span>
+              <span className="tabular-nums font-mono">{timeDisplay}</span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden mb-3">
+              {progressPct > 0 && (
+                <div
+                  className={`${barColor} h-full transition-all duration-300`}
+                  style={{ width: `${progressPct}%` }}
+                />
+              )}
+            </div>
+
+            {/* Breakdown */}
+            <div className="space-y-0.5 text-[11px]">
+              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">How it works</div>
+              <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                <span>TTL</span>
+                <span className="tabular-nums font-mono">5 min</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                <span>Resets on</span>
+                <span className="font-mono">each API call</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                <span>Cache read</span>
+                <span className="font-mono">90% cheaper</span>
+              </div>
+            </div>
+
+            {/* Explainer */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+              {isWarm
+                ? 'Cache is warm — the next turn reuses cached tokens (faster + cheaper). Respond before it expires to keep the savings.'
+                : 'Cache expired — the next turn will re-cache the system prompt and conversation prefix. First turn back costs more.'}
+            </div>
+
+            {/* Link */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
+              <a
+                href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-sky-500 dark:text-sky-400 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Learn about prompt caching →
+              </a>
+            </div>
+
+            <Tooltip.Arrow className="fill-white dark:fill-gray-900" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
   )
 }

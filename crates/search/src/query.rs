@@ -12,6 +12,19 @@ use tracing::debug;
 use crate::types::{MatchHit, SearchResponse, SessionHit};
 use crate::{SearchError, SearchIndex};
 
+/// Truncate a string to at most `max_bytes` bytes, respecting UTF-8 char boundaries.
+fn truncate_utf8(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    // Find the last char boundary at or before max_bytes
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &s[..end])
+}
+
 /// A parsed qualifier extracted from the query string.
 #[derive(Debug, Clone)]
 struct Qualifier {
@@ -151,17 +164,39 @@ impl SearchIndex {
 
         // Qualifier term queries
         for qual in &qualifiers {
-            let field = match qual.key.as_str() {
-                "project" => self.project_field,
-                "branch" => self.branch_field,
-                "model" => self.model_field,
-                "role" => self.role_field,
-                "skill" => self.skills_field,
+            let (field, is_text) = match qual.key.as_str() {
+                "project" => (self.project_field, false),
+                "branch" => (self.branch_field, false),
+                "model" => (self.model_field, true),  // TEXT field: tokenized, needs lowercase
+                "role" => (self.role_field, false),
+                "skill" => (self.skills_field, false),
                 _ => continue,
             };
-            let term = Term::from_field_text(field, &qual.value);
-            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
-            sub_queries.push((Occur::Must, Box::new(term_query)));
+
+            if is_text {
+                // TEXT fields are tokenized — the value may contain multiple tokens
+                // (e.g. "claude-opus-4-6" → ["claude", "opus", "4", "6"]).
+                // We create a TermQuery for each token, all joined with Must,
+                // so "opus" matches and "claude-opus-4-6" also matches.
+                let lowered = qual.value.to_lowercase();
+                let mut token_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+                // Split on non-alphanumeric to mirror Tantivy's default tokenizer
+                for token in lowered.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()) {
+                    let term = Term::from_field_text(field, token);
+                    let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+                    token_queries.push((Occur::Must, Box::new(term_query)));
+                }
+                if token_queries.len() == 1 {
+                    sub_queries.push(token_queries.pop().unwrap());
+                } else if !token_queries.is_empty() {
+                    sub_queries.push((Occur::Must, Box::new(BooleanQuery::new(token_queries))));
+                }
+            } else {
+                // STRING fields store exact values — single TermQuery
+                let term = Term::from_field_text(field, &qual.value);
+                let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+                sub_queries.push((Occur::Must, Box::new(term_query)));
+            }
         }
 
         // If no query components at all, return empty
@@ -273,19 +308,17 @@ impl SearchIndex {
                 let snippet = match &snippet_gen {
                     Some(gen) => {
                         let snip = gen.snippet_from_doc(&retrieved);
-                        let html = snip.to_html();
+                        // Tantivy's to_html() wraps matches in <b> tags;
+                        // frontend expects <mark> tags for highlight styling
+                        let html = snip.to_html()
+                            .replace("<b>", "<mark>")
+                            .replace("</b>", "</mark>");
                         if html.is_empty() {
                             // If no highlight, fall back to first 200 chars of content
                             retrieved
                                 .get_first(self.content_field)
                                 .and_then(|v| v.as_str())
-                                .map(|s| {
-                                    if s.len() > 200 {
-                                        format!("{}...", &s[..200])
-                                    } else {
-                                        s.to_string()
-                                    }
-                                })
+                                .map(|s| truncate_utf8(s, 200))
                                 .unwrap_or_default()
                         } else {
                             html
@@ -296,13 +329,7 @@ impl SearchIndex {
                         retrieved
                             .get_first(self.content_field)
                             .and_then(|v| v.as_str())
-                            .map(|s| {
-                                if s.len() > 200 {
-                                    format!("{}...", &s[..200])
-                                } else {
-                                    s.to_string()
-                                }
-                            })
+                            .map(|s| truncate_utf8(s, 200))
                             .unwrap_or_default()
                     }
                 };

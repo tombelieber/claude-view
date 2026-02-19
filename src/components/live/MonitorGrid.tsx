@@ -1,5 +1,4 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { Monitor } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { LiveSession } from './use-live-sessions'
 
@@ -110,19 +109,8 @@ export function MonitorGrid({ sessions, gridOverride, compactHeaders, children, 
     }
   }, [gridOverride, isMobile])
 
-  // Empty state
   if (sessions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-        <Monitor className="h-10 w-10 mb-3 text-gray-300 dark:text-gray-600" />
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-          No active sessions to monitor
-        </p>
-        <p className="text-xs mt-1">
-          Start a Claude Code session in your terminal
-        </p>
-      </div>
-    )
+    return null
   }
 
   // Mobile: horizontal scroll-snap layout

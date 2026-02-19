@@ -12,6 +12,7 @@ import type { LiveSession } from './use-live-sessions'
 import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
 import { SubAgentPills } from './SubAgentPills'
+import { cleanPreviewText } from '../../utils/get-session-title'
 
 // --- Helpers ---
 
@@ -342,7 +343,7 @@ function CompactHeader({
 // --- Footer ---
 
 function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => void }) {
-  const activity = session.currentActivity || session.lastUserMessage || ''
+  const activity = session.currentActivity || (session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : '') || ''
   const truncatedActivity = activity.length > 40 ? activity.slice(0, 37) + '...' : activity
 
   return (
