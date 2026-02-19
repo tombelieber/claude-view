@@ -18,6 +18,7 @@ import { sessionTotalCost, type LiveSummary, type UseLiveSessionsResult } from '
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 import { formatTokenCount } from '../lib/format-utils'
+import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -164,6 +165,7 @@ export function MissionControlPage() {
                   Updated {formatRelativeTime(lastUpdate)}
                 </span>
               )}
+              <OAuthUsagePill />
             </div>
           </div>
 
