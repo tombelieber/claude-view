@@ -166,14 +166,12 @@ async fn main() -> Result<()> {
 
     // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
     let search_index = {
-        let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("vibe-recall")
-            .join("search-index");
+        let index_dir = vibe_recall_core::paths::search_index_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
 
-        match vibe_recall_search::SearchIndex::open(&cache_dir) {
+        match vibe_recall_search::SearchIndex::open(&index_dir) {
             Ok(idx) => {
-                tracing::info!("Search index opened at {}", cache_dir.display());
+                tracing::info!("Search index opened at {}", index_dir.display());
                 Some(Arc::new(idx))
             }
             Err(e) => {
@@ -269,7 +267,7 @@ async fn main() -> Result<()> {
                 // Re-read interval from DB each cycle so changes take effect without restart.
                 let mut prev_session_count = idx_db.get_session_count().await.unwrap_or(0);
                 loop {
-                    let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(60);
+                    let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(120);
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
 
@@ -322,7 +320,7 @@ async fn main() -> Result<()> {
             if status != IndexingStatus::Idle && status != IndexingStatus::ReadingIndexes {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         // Print the "Ready" line with Pass 1 results
@@ -439,11 +437,11 @@ async fn main() -> Result<()> {
         let db = db.clone();
         let ingest_state = Arc::new(FacetIngestState::new());
 
-        // Initial ingest (delayed 5s to let indexing finish first)
+        // Initial ingest (delayed 3s to let indexing finish first)
         let db_init = db.clone();
         let state_init = ingest_state.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
             if state_init.is_running() {
                 return;
             }
@@ -461,9 +459,9 @@ async fn main() -> Result<()> {
             }
         });
 
-        // Periodic re-ingest (every 6 hours)
+        // Periodic re-ingest (every 12 hours)
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(6 * 3600));
+            let mut interval = tokio::time::interval(Duration::from_secs(12 * 3600));
             interval.tick().await; // skip immediate tick (startup already handled above)
             loop {
                 interval.tick().await;
