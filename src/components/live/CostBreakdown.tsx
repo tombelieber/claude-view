@@ -12,6 +12,7 @@ export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
   // separate API calls, not in the parent's cumulative token accumulation).
   // True total = parent + all sub-agents.
   const grandTotal = cost.totalUsd + subAgentTotal
+  const estimatedPrefix = cost?.isEstimated ? '~' : ''
 
   return (
     <div className="space-y-4 p-4">
@@ -19,7 +20,7 @@ export function CostBreakdown({ cost, subAgents }: CostBreakdownProps) {
       <div className="flex items-baseline justify-between">
         <span className="text-sm text-gray-500 dark:text-gray-400">Total Cost</span>
         <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">
-          ${grandTotal.toFixed(2)}
+          {estimatedPrefix}{formatCostUsd(grandTotal)}
         </span>
       </div>
 
@@ -55,8 +56,14 @@ function CostRow({ label, value, className }: { label: string; value: number; cl
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-500 truncate mr-4">{label}</span>
       <span className={`font-mono tabular-nums ${className ?? 'text-gray-700 dark:text-gray-300'}`}>
-        ${Math.abs(value).toFixed(2)}
+        {formatCostUsd(Math.abs(value))}
       </span>
     </div>
   )
+}
+
+function formatCostUsd(usd: number): string {
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return `$${usd.toFixed(4)}`
+  return `$${usd.toFixed(2)}`
 }

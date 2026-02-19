@@ -5,6 +5,7 @@ interface JsonKeyValueChipsProps {
   maxChips?: number
   maxValueLen?: number
   onExpand: () => void
+  verboseMode?: boolean
 }
 
 function formatChipValue(value: unknown, maxLen: number): string {
@@ -31,18 +32,20 @@ export function JsonKeyValueChips({
   maxChips = 3,
   maxValueLen = 40,
   onExpand,
+  verboseMode = false,
 }: JsonKeyValueChipsProps) {
   const entries = Object.entries(data)
-  const visible = entries.slice(0, maxChips)
-  const remaining = entries.length - maxChips
+  const visible = verboseMode ? entries : entries.slice(0, maxChips)
+  const remaining = verboseMode ? 0 : entries.length - maxChips
+  const effectiveMaxLen = verboseMode ? 200 : maxValueLen
 
   return (
     <Tooltip.Provider delayDuration={200}>
     <span className="inline-flex items-center gap-1 flex-wrap">
       {visible.map(([key, value]) => {
-        const shortVal = formatChipValue(value, maxValueLen)
+        const shortVal = formatChipValue(value, effectiveMaxLen)
         const fullVal = formatFullValue(value)
-        const needsTooltip = fullVal !== shortVal
+        const needsTooltip = !verboseMode && fullVal !== shortVal
 
         const chip = (
           <span

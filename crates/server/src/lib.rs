@@ -10,9 +10,9 @@ pub mod facet_ingest;
 pub mod file_tracker;
 pub mod git_sync_state;
 pub mod indexing_state;
+pub mod insights;
 pub mod jobs;
 pub mod live;
-pub mod insights;
 pub mod metrics;
 pub mod routes;
 pub mod state;
@@ -22,17 +22,18 @@ pub use error::*;
 pub use facet_ingest::{FacetIngestState, IngestStatus};
 pub use git_sync_state::{GitSyncPhase, GitSyncState};
 pub use indexing_state::{IndexingState, IndexingStatus};
-pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
+pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use state::{AppState, RegistryHolder};
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::Router;
 use axum::http::HeaderValue;
+use axum::Router;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
@@ -59,7 +60,7 @@ fn cors_layer() -> CorsLayer {
         .allow_methods(Any)
         .allow_headers(Any)
 }
-use vibe_recall_db::Database;
+use vibe_recall_db::{Database, ModelPricing};
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
@@ -108,7 +109,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: vibe_recall_db::default_pricing(),
+        pricing: Arc::new(std::sync::RwLock::new(vibe_recall_db::default_pricing())),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -135,7 +136,7 @@ pub fn create_app_full(
     static_dir: Option<PathBuf>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
-    let pricing = vibe_recall_db::default_pricing();
+    let pricing = Arc::new(std::sync::RwLock::new(vibe_recall_db::default_pricing()));
     let (manager, live_sessions, live_tx) =
         live::manager::LiveSessionManager::start(pricing.clone());
 
@@ -168,6 +169,20 @@ pub fn create_app_full(
         search_index,
     });
 
+    // Refresh pricing table from litellm on startup and every 24h.
+    {
+        let pricing = state.pricing.clone();
+        tokio::spawn(async move {
+            refresh_pricing(&pricing).await;
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                refresh_pricing(&pricing).await;
+            }
+        });
+    }
+
     let mut app = Router::new()
         .merge(api_routes(state))
         .layer(CompressionLayer::new())
@@ -180,6 +195,21 @@ pub fn create_app_full(
     }
 
     app
+}
+
+async fn refresh_pricing(pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>) {
+    match vibe_recall_db::fetch_litellm_pricing().await {
+        Ok(litellm) => {
+            let defaults = vibe_recall_db::default_pricing();
+            let merged = vibe_recall_db::merge_pricing(&defaults, &litellm);
+            let count = merged.len();
+            *pricing.write().unwrap() = merged;
+            tracing::info!(models = count, "Pricing table refreshed from litellm");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch litellm pricing (using defaults): {e}");
+        }
+    }
 }
 
 /// Create the Axum application with an external `IndexingState` and optional
@@ -231,7 +261,9 @@ mod tests {
 
     /// Helper: create an in-memory database for tests.
     async fn test_db() -> Database {
-        Database::new_in_memory().await.expect("in-memory DB for tests")
+        Database::new_in_memory()
+            .await
+            .expect("in-memory DB for tests")
     }
 
     /// Helper to make a GET request to the app.
@@ -313,7 +345,10 @@ mod tests {
 
         // Should have an error response
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert!(json.get("error").is_some(), "Expected error field in response");
+        assert!(
+            json.get("error").is_some(),
+            "Expected error field in response"
+        );
     }
 
     #[tokio::test]
@@ -484,7 +519,10 @@ mod tests {
     async fn test_create_app_with_static_some() {
         // Should not panic when a static dir path is provided
         // (even if the path doesn't exist - ServeDir handles this gracefully)
-        let _app = create_app_with_static(test_db().await, Some(std::path::PathBuf::from("/nonexistent")));
+        let _app = create_app_with_static(
+            test_db().await,
+            Some(std::path::PathBuf::from("/nonexistent")),
+        );
     }
 
     #[tokio::test]

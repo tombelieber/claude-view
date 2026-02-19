@@ -72,7 +72,7 @@ export function formatTokens(tokens: number | null | undefined): string {
     return `${(tokens / 1_000_000).toFixed(1)}M`
   }
   if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(0)}K`
+    return `${(tokens / 1_000).toFixed(0)}k`
   }
   return tokens.toString()
 }
