@@ -1,7 +1,7 @@
 # vibe-recall
 
 <p align="center">
-  <strong>Your AI fluency, measured.</strong>
+  <strong>Your AI fluency, measured. Your AI agents, monitored.</strong>
 </p>
 
 <p align="center">
@@ -27,19 +27,26 @@
 
 41% of code is now AI-generated, but most developers have no idea if they're using AI tools effectively or wasting half their tokens on re-prompting.
 
+Meanwhile, power users are running **10-20+ concurrent Claude Code sessions** across multiple terminals with zero unified visibility. No way to see what session #14 is doing without Cmd-Tabbing through windows. No idea how much they're spending across all sessions. No view into sub-agent orchestration happening behind "thinking...".
+
 ## The Solution
 
-**vibe-recall** is a fitness tracker for your AI coding workflow. It analyzes your Claude Code sessions, shows you your patterns, and helps you **measurably improve**.
+**vibe-recall** does two things:
+
+1. **Analytics** — A fitness tracker for your AI coding workflow. It analyzes your Claude Code sessions, shows you your patterns, and helps you measurably improve.
+2. **Mission Control** — A real-time dashboard for all your active Claude Code sessions. See every session's status, cost, context usage, and sub-agent activity from a single browser tab.
 
 ```bash
 npx claude-view
 ```
 
-That's it. Opens in your browser. Your AI fluency, measured.
+That's it. Opens in your browser. Past sessions analyzed, live sessions monitored.
 
 ---
 
-## What You'll Discover
+## What You Get
+
+### Analytics (past sessions)
 
 | Insight | Example |
 |---------|---------|
@@ -50,6 +57,19 @@ That's it. Opens in your browser. Your AI fluency, measured.
 | **Workflow patterns** | "Tuesday mornings are your most effective AI coding sessions" |
 | **Skill effectiveness** | "TDD skill reduces re-edit rate by 65%" |
 
+### Mission Control (live sessions)
+
+| Capability | Description |
+|------------|-------------|
+| **Live session monitoring** | See all active Claude Code sessions across every terminal in real-time |
+| **Sub-agent visualization** | Swim lane view of sub-agent hierarchies with drill-down into conversations |
+| **Cost tracking** | Per-session and aggregate cost with cache savings ("Saved you $18.72") |
+| **Context health** | Context window usage %, cache warm/cold status, compaction warnings |
+| **Multiple views** | Grid, List, Kanban, or Monitor mode (live chat grid) |
+| **Rich tool rendering** | Visual rendering of tool calls — file reads, edits, bash commands, searches |
+| **Command palette** | Cmd+K to jump between sessions and switch views |
+| **Verbose mode** | Toggle between compact chat view and full tool-call detail |
+
 ---
 
 ## How It's Built
@@ -57,6 +77,7 @@ That's it. Opens in your browser. Your AI fluency, measured.
 | | |
 |---|---|
 | **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
+| **Real-time** | File watcher + SSE + WebSocket for sub-second live updates across all sessions |
 | **Tiny footprint** | Single ~15 MB binary. No runtime dependencies, no background daemons |
 | **100% local** | All data stays on your machine. Zero telemetry, zero cloud, zero network requests |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
@@ -96,17 +117,21 @@ Opens at `http://localhost:47892`.
 
 ## How It Compares
 
-Every other tool is a utility (viewer/monitor). None of them coach you to improve.
+Other tools are either viewers (browse history) or monitors (watch live). None combine analytics, coaching, and live monitoring.
 
 ```
                     Individual ←————————→ Team
                          |                  |
-            Utility      |  ccusage         |  Anthropic Analytics
-            (just view)  |  History Viewer  |  GitHub Copilot Reports
-                         |  Claude HUD      |
+            View only    |  ccusage         |  Anthropic Analytics
+                         |  History Viewer  |  GitHub Copilot Reports
+                         |  clog            |
                          |                  |
-            Coach        |  ★ vibe-recall   |  (coming soon)
-            (improve)    |                  |
+            Monitor      |  claude-code-ui  |
+            only         |  Agent Sessions  |
+                         |                  |
+            Analyze +    |  ★ vibe-recall   |  (coming soon)
+            Monitor +    |                  |
+            Coach        |                  |
 ```
 
 ---
