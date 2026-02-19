@@ -104,7 +104,8 @@ impl Database {
             0
         };
 
-        // Index and cache sizes are computed at the server layer via filesystem
+        // Index and cache sizes are intentionally 0 here — computed at the server
+        // layer via filesystem scan (see crates/server/src/routes/stats.rs).
         let index_bytes: u64 = 0;
         let cache_bytes: u64 = 0;
 
