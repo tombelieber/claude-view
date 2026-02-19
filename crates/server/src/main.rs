@@ -469,8 +469,16 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Step 9: Serve forever
-    axum::serve(listener, app).await?;
+    // Step 9: Serve forever (with graceful shutdown for hook cleanup)
+    let shutdown_port = port; // port is already defined at line 177, capture for closure
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c().await.ok();
+            tracing::info!("Shutting down, cleaning up hooks...");
+            // File I/O is blocking but we're shutting down — acceptable.
+            vibe_recall_server::live::hook_registrar::cleanup(shutdown_port);
+        })
+        .await?;
 
     Ok(())
 }

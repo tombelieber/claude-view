@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap } from 'lucide-react'
+import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Cpu, Clock, Zap, Copy, Check } from 'lucide-react'
 import type { LiveSession } from './use-live-sessions'
 import { RichTerminalPane } from './RichTerminalPane'
 import { SwimLanes } from './SwimLanes'
@@ -103,6 +103,15 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
     setDrillDownAgent({ agentId, agentType, description })
   }, [])
 
+  // Copy session ID to clipboard
+  const [copied, setCopied] = useState(false)
+  const copySessionId = useCallback(() => {
+    navigator.clipboard.writeText(session.id).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }, [session.id])
+
   // ---- Derived values ----
   const statusLabel = session.status === 'working' ? 'Running' : session.status === 'paused' ? 'Paused' : 'Done'
   const statusColor = session.status === 'working'
@@ -127,40 +136,54 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
       {/* ---------------------------------------------------------------- */}
       {/* Header                                                          */}
       {/* ---------------------------------------------------------------- */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
-        <span
-          className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate"
-          title={session.projectPath}
-        >
-          {session.projectDisplayName || session.project}
-        </span>
-
-        {session.gitBranch && (
+      <div className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
+        {/* Row 1: Project name + close */}
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
           <span
-            className="inline-flex items-center gap-1 text-xs font-mono text-gray-500 dark:text-gray-500 truncate max-w-[160px]"
-            title={session.gitBranch}
+            className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex-1"
+            title={session.projectPath}
           >
-            <GitBranch className="w-3 h-3 flex-shrink-0" />
-            {session.gitBranch}
+            {session.projectDisplayName || session.project}
           </span>
-        )}
+          <button
+            onClick={onClose}
+            aria-label="Close detail panel"
+            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 flex-shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-        <div className="flex-1" />
+        {/* Row 2: Metadata chips */}
+        <div className="flex items-center gap-2 px-4 pb-2.5 flex-wrap">
+          {session.gitBranch && (
+            <span
+              className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 dark:text-gray-500 truncate max-w-[180px]"
+              title={session.gitBranch}
+            >
+              <GitBranch className="w-3 h-3 flex-shrink-0" />
+              {session.gitBranch}
+            </span>
+          )}
 
-        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-          ${session.cost.totalUsd.toFixed(2)}
-        </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          Turn {session.turnCount}
-        </span>
+          <button
+            onClick={copySessionId}
+            title={`Copy session ID: ${session.id}`}
+            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+            {session.id.slice(0, 8)}
+          </button>
 
-        <button
-          onClick={onClose}
-          aria-label="Close detail panel"
-          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
-        >
-          <X className="w-4 h-4" />
-        </button>
+          <div className="flex-1" />
+
+          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
+            ${session.cost.totalUsd.toFixed(2)}
+          </span>
+          <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+            Turn {session.turnCount}
+          </span>
+        </div>
       </div>
 
       {/* ---------------------------------------------------------------- */}
