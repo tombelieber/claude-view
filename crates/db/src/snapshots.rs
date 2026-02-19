@@ -65,7 +65,7 @@ fn fill_date_gaps(sparse: Vec<DailyTrendPoint>, from: &str, to: &str) -> Vec<Dai
     let mut current = start;
     while current <= end {
         let date_str = current.format("%Y-%m-%d").to_string();
-        let point = by_date.remove(&date_str).unwrap_or_else(|| DailyTrendPoint {
+        let point = by_date.remove(&date_str).unwrap_or(DailyTrendPoint {
             date: date_str,
             lines_added: 0,
             lines_removed: 0,
