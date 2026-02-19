@@ -398,7 +398,7 @@ export function ConversationView() {
               )}
             >
               <Eye className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Smart
+              Compact
             </button>
             <button
               onClick={() => setViewMode('full')}
@@ -411,7 +411,7 @@ export function ConversationView() {
               )}
             >
               <Code className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Full
+              Verbose
             </button>
           </div>
           {viewMode === 'compact' && hiddenCount > 0 && (
