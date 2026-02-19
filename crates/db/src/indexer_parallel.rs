@@ -24,7 +24,9 @@ use crate::Database;
 /// Version 4: LOC estimation, AI contribution tracking, work type classification.
 /// Version 5: Git branch extraction, primary model detection.
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
-pub const CURRENT_PARSE_VERSION: i32 = 6;
+/// Version 7: Search index uses project_display_name instead of encoded project_id.
+/// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
+pub const CURRENT_PARSE_VERSION: i32 = 8;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
@@ -2065,6 +2067,7 @@ where
         branch: Option<String>,
         primary_model: Option<String>,
         messages: Vec<vibe_recall_core::SearchableMessage>,
+        skills: Vec<String>,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
         results
@@ -2076,6 +2079,7 @@ where
                 branch: r.parse_result.git_branch.clone(),
                 primary_model: compute_primary_model(&r.parse_result.turns),
                 messages: r.parse_result.search_messages.clone(),
+                skills: r.parse_result.deep.skills_used.clone(),
             })
             .collect()
     } else {
@@ -2288,7 +2292,7 @@ where
                         content: msg.content.clone(),
                         turn_number: (i + 1) as u64,
                         timestamp: msg.timestamp.unwrap_or(0),
-                        skills: vec![],
+                        skills: batch.skills.clone(),
                     })
                     .collect();
 

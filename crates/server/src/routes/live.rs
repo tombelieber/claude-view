@@ -70,12 +70,14 @@ pub async fn live_stream(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let mut rx = state.live_tx.subscribe();
     let sessions = state.live_sessions.clone();
+    let live_manager = state.live_manager.clone();
 
     let stream = async_stream::stream! {
         // 1. On connect: send current summary + all active sessions
         {
             let map = sessions.read().await;
-            let summary = build_summary(&map);
+            let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
+            let summary = build_summary(&map, pc);
             yield Ok(Event::default().event("summary").data(
                 serde_json::to_string(&summary).unwrap_or_default()
             ));
@@ -121,7 +123,8 @@ pub async fn live_stream(
                             // Re-send full state (same as initial connect) so the
                             // client recovers from any missed discover/complete events.
                             let map = sessions.read().await;
-                            let summary = build_summary(&map);
+                            let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
+                            let summary = build_summary(&map, pc);
                             yield Ok(Event::default().event("summary").data(
                                 serde_json::to_string(&summary).unwrap_or_default()
                             ));
@@ -157,9 +160,11 @@ async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_js
     let map = state.live_sessions.read().await;
     let mut sessions: Vec<_> = map.values().cloned().collect();
     sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    let process_count = state.live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
     Json(serde_json::json!({
         "sessions": sessions,
         "total": sessions.len(),
+        "processCount": process_count,
     }))
 }
 
@@ -300,7 +305,8 @@ async fn kill_session(
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
 async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let summary = build_summary(&map);
+    let process_count = state.live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
+    let summary = build_summary(&map, process_count);
     Json(serde_json::to_value(&summary).unwrap_or_default())
 }
 
@@ -334,7 +340,7 @@ async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Val
 // =============================================================================
 
 /// Build a summary JSON object from the current live sessions map.
-fn build_summary(map: &HashMap<String, LiveSession>) -> serde_json::Value {
+fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serde_json::Value {
     let mut needs_you_count = 0usize;
     let mut autonomous_count = 0usize;
     let mut total_cost = 0.0f64;
@@ -355,5 +361,6 @@ fn build_summary(map: &HashMap<String, LiveSession>) -> serde_json::Value {
         "deliveredCount": 0,
         "totalCostTodayUsd": total_cost,
         "totalTokensToday": total_tokens,
+        "processCount": process_count,
     })
 }

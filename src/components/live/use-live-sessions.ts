@@ -51,6 +51,7 @@ export interface LiveSummary {
   autonomousCount: number
   totalCostTodayUsd: number
   totalTokensToday: number
+  processCount: number
 }
 
 export interface UseLiveSessionsResult {

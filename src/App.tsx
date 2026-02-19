@@ -5,6 +5,8 @@ import { useProjectSummaries } from './hooks/use-projects'
 import { useAppStore } from './store/app-store'
 import { useTheme } from './hooks/use-theme'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
+import { useLiveSessions } from './components/live/use-live-sessions'
+import { useNotificationSound } from './hooks/use-notification-sound'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
@@ -19,6 +21,8 @@ export default function App() {
   const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette } = useAppStore()
   useTheme() // Apply dark class to <html>
   const indexingProgress = useIndexingProgress()
+  const liveSessions = useLiveSessions()
+  const { settings: soundSettings, updateSettings: updateSoundSettings, previewSound, audioUnlocked } = useNotificationSound(liveSessions.sessions)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -76,7 +80,12 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
       <a href="#main" className="skip-to-content">Skip to content</a>
-      <Header />
+      <Header
+        soundSettings={soundSettings}
+        onSoundSettingsChange={updateSoundSettings}
+        onSoundPreview={previewSound}
+        audioUnlocked={audioUnlocked}
+      />
       <AuthBanner />
       <ColdStartOverlay progress={indexingProgress} />
 
@@ -84,7 +93,7 @@ export default function App() {
         <Sidebar projects={summaries} />
 
         <main id="main" className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
-          <Outlet context={{ summaries }} />
+          <Outlet context={{ summaries, liveSessions }} />
         </main>
       </div>
 

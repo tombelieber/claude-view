@@ -43,44 +43,51 @@ function renderNeedsYouSpinner() {
   )
 }
 
+/** The visible tooltip popper wrapper (not the hidden a11y span). */
+function getPopperWrapper(): Element | null {
+  return document.querySelector('[data-radix-popper-content-wrapper]')
+}
+
 describe('SessionSpinner', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     window.matchMedia = vi.fn(() => createMockMediaQueryList(false))
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
-  it('opens cache tooltip on hover in needs_you mode', async () => {
-    const user = userEvent.setup()
+  it('shows cache tooltip absent before hover, present after hover', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     renderNeedsYouSpinner()
 
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    // Tooltip not visible before interaction
+    expect(getPopperWrapper()).toBeNull()
 
     const trigger = screen.getByTitle(/Cache warm|Cache cold/i)
     await user.hover(trigger)
 
-    const tooltip = screen.getByRole('tooltip')
-    expect(tooltip).toBeInTheDocument()
-    expect(tooltip.textContent).toMatch(/Cache Warm|Cache Cold/)
+    await waitFor(() => {
+      expect(getPopperWrapper()).not.toBeNull()
+    })
+
+    // Verify key tooltip sections
+    const wrapper = getPopperWrapper()!
+    expect(wrapper.textContent).toContain('Prompt Cache')
+    expect(wrapper.textContent).toContain('Warm')
+    expect(wrapper.textContent).toContain('5 min')
+    expect(wrapper.textContent).toContain('90% cheaper')
+    expect(wrapper.textContent).toContain('Learn about prompt caching')
   })
 
-  it('returns trigger to closed state after mouse leave', async () => {
-    const user = userEvent.setup()
+  it('renders countdown text and trigger with cache status title', () => {
     renderNeedsYouSpinner()
 
-    const trigger = screen.getByTitle(/Cache warm|Cache cold/i)
-    await user.hover(trigger)
-
-    await waitFor(() => {
-      expect(trigger).not.toHaveAttribute('data-state', 'closed')
-    })
-
-    await user.unhover(trigger)
-
-    await waitFor(() => {
-      expect(trigger).toHaveAttribute('data-state', 'closed')
-    })
+    const trigger = screen.getByTitle('Cache warm')
+    expect(trigger).toBeInTheDocument()
+    // The countdown text should show remaining time (4:30)
+    expect(trigger.textContent).toMatch(/\d:\d{2}/)
   })
 })

@@ -25,11 +25,16 @@ pub struct ClaudeProcess {
 ///
 /// This function does synchronous system calls and should be called from
 /// `tokio::task::spawn_blocking`.
-pub fn detect_claude_processes() -> HashMap<PathBuf, ClaudeProcess> {
+/// Returns `(processes_by_cwd, total_process_count)`.
+///
+/// The map deduplicates by cwd (keeping the newest process per directory).
+/// The total count is the raw number of Claude processes found before dedup.
+pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 
     let mut result = HashMap::new();
+    let mut total_count = 0u32;
     for (pid, process) in sys.processes() {
         let name = process.name().to_string_lossy();
 
@@ -45,15 +50,27 @@ pub fn detect_claude_processes() -> HashMap<PathBuf, ClaudeProcess> {
         if !is_claude {
             continue;
         }
-        if let Some(cwd) = process.cwd() {
+
+        let pid_u32 = pid.as_u32();
+        let start_time = process.start_time();
+
+        // sysinfo can read cwd on Linux but NOT on macOS (returns None due to
+        // security restrictions). Fall back to lsof on macOS when cwd is None.
+        let cwd = process
+            .cwd()
+            .map(|p| p.to_path_buf())
+            .or_else(|| get_cwd_via_lsof(pid_u32));
+
+        if let Some(cwd) = cwd {
+            total_count += 1;
             let cp = ClaudeProcess {
-                pid: pid.as_u32(),
-                cwd: cwd.to_path_buf(),
-                start_time: process.start_time(),
+                pid: pid_u32,
+                cwd: cwd.clone(),
+                start_time,
             };
             // If there's already a process for this cwd, keep the newer one
             result
-                .entry(cwd.to_path_buf())
+                .entry(cwd)
                 .and_modify(|existing: &mut ClaudeProcess| {
                     if cp.start_time > existing.start_time {
                         *existing = cp.clone();
@@ -62,7 +79,31 @@ pub fn detect_claude_processes() -> HashMap<PathBuf, ClaudeProcess> {
                 .or_insert(cp);
         }
     }
-    result
+    (result, total_count)
+}
+
+/// Fallback: get a process's working directory via `lsof`.
+///
+/// On macOS, `sysinfo` cannot read cwd for other processes (security restriction).
+/// `lsof -a -p <pid> -d cwd -Fn` reliably returns the cwd for same-user processes.
+fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
+    let output = std::process::Command::new("lsof")
+        .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // lsof -Fn output: lines starting with 'n' contain the path
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix('n') {
+            if path.starts_with('/') {
+                return Some(PathBuf::from(path));
+            }
+        }
+    }
+    None
 }
 
 /// Check if there is a running Claude process whose cwd matches the given
@@ -107,9 +148,9 @@ mod tests {
     fn test_detect_claude_processes_runs() {
         // Just verify it doesn't panic — we can't guarantee any Claude processes
         // are running during tests.
-        let result = detect_claude_processes();
-        // result could be empty, that's fine
-        let _ = result;
+        let (processes, total_count) = detect_claude_processes();
+        // total_count >= deduplicated map size
+        assert!(total_count as usize >= processes.len());
     }
 
     #[test]

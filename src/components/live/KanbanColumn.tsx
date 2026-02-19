@@ -42,20 +42,17 @@ export function KanbanColumn({
   onCardClick,
 }: KanbanColumnProps) {
   return (
-    <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1">
-      <div className={cn(
-        'bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col',
-        'overflow-hidden'
-      )}>
-        <div className={cn('h-0.5', accentColor)} />
-        <div className="px-3 py-2 flex items-center justify-between">
+    <div className="flex flex-col min-w-[280px] w-[320px] xl:flex-1 h-full min-h-0">
+      <div className="relative bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col h-full min-h-0">
+        <div className={cn('h-0.5 rounded-t-lg flex-shrink-0', accentColor)} />
+        <div className="px-3 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {title}
             {group === 'needs_you' && <NeedsYouSubCount sessions={sessions} />}
           </span>
           <span className="text-xs text-gray-400 dark:text-gray-500">({sessions.length})</span>
         </div>
-        <div className="space-y-3 p-3 max-h-[calc(100vh-220px)] overflow-y-auto">
+        <div className="space-y-3 p-3 flex-1 min-h-0 overflow-y-auto">
           {sessions.length === 0 ? (
             <p className="text-xs text-gray-400 dark:text-gray-500 py-8 text-center">
               {emptyMessage}

@@ -10,6 +10,7 @@ import { CostBreakdown } from './CostBreakdown'
 import { SubAgentPills } from './SubAgentPills'
 import { ContextGauge } from './ContextGauge'
 import { cn } from '../../lib/utils'
+import { cleanPreviewText } from '../../utils/get-session-title'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -300,6 +301,8 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
                 contextWindowTokens={session.contextWindowTokens}
                 model={session.model}
                 group={session.agentState.group}
+                tokens={session.tokens}
+                turnCount={session.turnCount}
               />
             </div>
 
@@ -345,7 +348,7 @@ export function SessionDetailPanel({ session, onClose }: SessionDetailPanelProps
             {session.lastUserMessage && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                 <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Last Prompt</span>
-                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{session.lastUserMessage}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(session.lastUserMessage)}</p>
               </div>
             )}
           </div>
