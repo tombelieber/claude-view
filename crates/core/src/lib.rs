@@ -18,6 +18,7 @@ pub mod paths;
 pub mod patterns;
 pub mod pricing;
 pub mod progress;
+pub mod report;
 pub mod registry;
 pub mod session_index;
 pub mod subagent;
