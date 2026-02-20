@@ -52,8 +52,7 @@ impl Database {
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
                 MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity_at
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at > 0
+            FROM valid_sessions
             GROUP BY project_id
             ORDER BY last_activity_at DESC
             "#,
@@ -98,6 +97,7 @@ impl Database {
         // Bind indices: ?1 = project_id, ?2 = limit, ?3 = offset.
         // ?4 is used only for BranchFilter::Named (a concrete branch name).
         let mut conditions = vec!["s.project_id = ?1".to_string()];
+        conditions.push("s.last_message_at > 0".to_string());
         if !include_sidechains {
             conditions.push("s.is_sidechain = 0".to_string());
         }
@@ -224,8 +224,7 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count
-            FROM sessions s
-            WHERE s.is_sidechain = 0
+            FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
         )
@@ -290,7 +289,7 @@ impl Database {
             qb: &mut sqlx::QueryBuilder<'args, sqlx::Sqlite>,
             params: &'args SessionFilterParams,
         ) {
-            qb.push(" WHERE s.is_sidechain = 0");
+            qb.push(" WHERE 1=1");
 
             // Text search
             if let Some(q) = &params.q {
@@ -383,7 +382,7 @@ impl Database {
         }
 
         // --- COUNT query ---
-        let mut count_qb = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM sessions s");
+        let mut count_qb = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM valid_sessions s");
         append_filters(&mut count_qb, params);
 
         let total: (i64,) = count_qb.build_query_as().fetch_one(self.pool()).await?;
@@ -391,7 +390,7 @@ impl Database {
 
         // --- DATA query ---
         let mut data_qb =
-            sqlx::QueryBuilder::new(format!("SELECT {} FROM sessions s", select_cols));
+            sqlx::QueryBuilder::new(format!("SELECT {} FROM valid_sessions s", select_cols));
         append_filters(&mut data_qb, params);
 
         // ORDER BY (with s.last_message_at DESC tiebreaker for deterministic order)
@@ -430,8 +429,8 @@ impl Database {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
             SELECT NULLIF(git_branch, '') as branch, COUNT(*) as count
-            FROM sessions
-            WHERE project_id = ?1 AND is_sidechain = 0
+            FROM valid_sessions
+            WHERE project_id = ?1
             GROUP BY NULLIF(git_branch, '')
             ORDER BY count DESC
             "#,
@@ -463,9 +462,8 @@ impl Database {
             SELECT inv.kind, inv.name, COUNT(*) as cnt
             FROM invocations i
             JOIN invocables inv ON i.invocable_id = inv.id
-            INNER JOIN sessions s ON i.session_id = s.id
+            INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND s.is_sidechain = 0
               AND (?1 IS NULL OR s.project_id = ?1)
               AND (?2 IS NULL OR s.git_branch = ?2)
             GROUP BY inv.kind, inv.name
@@ -499,9 +497,8 @@ impl Database {
             SELECT inv.kind, inv.name, COUNT(*) as cnt
             FROM invocations i
             JOIN invocables inv ON i.invocable_id = inv.id
-            INNER JOIN sessions s ON i.session_id = s.id
+            INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND s.is_sidechain = 0
               AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
               AND (?3 IS NULL OR s.project_id = ?3)
               AND (?4 IS NULL OR s.git_branch = ?4)
@@ -545,9 +542,8 @@ impl Database {
               COALESCE(SUM(tool_counts_read), 0),
               COALESCE(SUM(tool_counts_bash), 0),
               COALESCE(SUM(tool_counts_write), 0)
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at > 0
-              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            FROM valid_sessions
+            WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             "#,
         )
         .bind(project)
@@ -561,8 +557,8 @@ impl Database {
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
-            FROM sessions
-            WHERE last_message_at >= ?1 AND last_message_at > 0 AND is_sidechain = 0
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
@@ -590,9 +586,8 @@ impl Database {
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
             r#"
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at > 0
-              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            FROM valid_sessions
+            WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -615,9 +610,9 @@ impl Database {
         // Top 5 longest sessions by duration
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
-            FROM sessions
-            WHERE is_sidechain = 0 AND duration_seconds > 0
+            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            FROM valid_sessions
+                        WHERE longest_task_seconds > 0
               AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             ORDER BY duration_seconds DESC
             LIMIT 5
@@ -694,8 +689,8 @@ impl Database {
               COALESCE(SUM(tool_counts_read), 0),
               COALESCE(SUM(tool_counts_bash), 0),
               COALESCE(SUM(tool_counts_write), 0)
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            FROM valid_sessions
+            WHERE last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             "#,
         )
@@ -712,8 +707,8 @@ impl Database {
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
-            FROM sessions
-            WHERE last_message_at >= ?1 AND last_message_at > 0 AND is_sidechain = 0
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
@@ -742,8 +737,8 @@ impl Database {
         let project_rows: Vec<(String, String, i64)> = sqlx::query_as(
             r#"
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
-            FROM sessions
-            WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            FROM valid_sessions
+            WHERE last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY cnt DESC
@@ -769,9 +764,9 @@ impl Database {
         // Top 5 longest sessions by duration (filtered)
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), duration_seconds
-            FROM sessions
-            WHERE is_sidechain = 0 AND duration_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
+            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            FROM valid_sessions
+            WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
             ORDER BY duration_seconds DESC
             LIMIT 5
@@ -831,19 +826,15 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                  (SELECT COUNT(*) FROM sessions
-                     WHERE is_sidechain = 0 AND last_message_at > 0
-                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COUNT(*) FROM valid_sessions
+                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COALESCE(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)), 0)
-                     FROM sessions
-                     WHERE is_sidechain = 0 AND last_message_at > 0
-                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
-                  (SELECT COALESCE(SUM(files_edited_count), 0) FROM sessions
-                     WHERE is_sidechain = 0 AND last_message_at > 0
-                     AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
-                  (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc INNER JOIN sessions s ON sc.session_id = s.id
-                     WHERE s.is_sidechain = 0 AND s.last_message_at > 0
-                     AND (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
+                     FROM valid_sessions
+                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COALESCE(SUM(files_edited_count), 0) FROM valid_sessions
+                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                  (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc INNER JOIN valid_sessions s ON sc.session_id = s.id
+                     WHERE (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
                 "#,
             )
             .bind(project)
@@ -862,7 +853,7 @@ impl Database {
     /// Get the total count of sessions (excluding sidechains).
     pub async fn get_session_count(&self) -> DbResult<i64> {
         let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0")
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
                 .fetch_one(self.pool())
                 .await?;
         Ok(count)
@@ -871,7 +862,7 @@ impl Database {
     /// Get the total count of projects.
     pub async fn get_project_count(&self) -> DbResult<i64> {
         let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0",
+            "SELECT COUNT(DISTINCT project_id) FROM valid_sessions",
         )
         .fetch_one(self.pool())
         .await?;
@@ -885,7 +876,7 @@ impl Database {
         // 1. Determine span
         let row: (i64, i64) = sqlx::query_as(
             "SELECT COALESCE(MIN(last_message_at), 0), COALESCE(MAX(last_message_at), 0) \
-             FROM sessions WHERE last_message_at > 0 AND is_sidechain = 0",
+             FROM valid_sessions",
         )
         .fetch_one(self.pool())
         .await?;
@@ -902,8 +893,7 @@ impl Database {
         // 2. Run grouped count
         let sql = format!(
             "SELECT {group_expr} AS date, COUNT(*) AS count \
-             FROM sessions \
-             WHERE last_message_at > 0 AND is_sidechain = 0 \
+             FROM valid_sessions \
              GROUP BY date ORDER BY date"
         );
 

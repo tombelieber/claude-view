@@ -27,9 +27,8 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0),
                     COALESCE(SUM(total_input_tokens), 0),
                     COALESCE(SUM(total_output_tokens), 0)
-                FROM sessions
-                WHERE is_sidechain = 0
-                  AND last_message_at >= ?1
+                FROM valid_sessions
+                WHERE last_message_at >= ?1
                   AND last_message_at <= ?2
                   AND (?3 IS NULL OR project_id = ?3)
                   AND (?4 IS NULL OR git_branch = ?4)
@@ -48,9 +47,8 @@ impl Database {
                 primary_model,
                 COALESCE(SUM(total_input_tokens), 0) as input_tokens,
                 COALESCE(SUM(total_output_tokens), 0) as output_tokens
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?1
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3)
               AND (?4 IS NULL OR git_branch = ?4)
@@ -83,9 +81,8 @@ impl Database {
                 COALESCE(project_display_name, project_id) as project,
                 COALESCE(SUM(total_input_tokens), 0) as input_tokens,
                 COALESCE(SUM(total_output_tokens), 0) as output_tokens
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?1
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3)
               AND (?4 IS NULL OR git_branch = ?4)
