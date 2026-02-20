@@ -70,7 +70,7 @@ Everything else -- fluency score, analytics, pattern discovery -- is nice-to-hav
 Claude Code writes JSONL
     |
     v
- launchd daemon (vibe-recall, always running)
+ launchd daemon (claude-view, always running)
     |
     v  notify crate detects file change
 Mission Control MONITOR layer (existing Phase A)
@@ -104,7 +104,7 @@ crates/
     └── Cargo.toml
 ```
 
-The relay is a separate binary (`cargo build -p vibe-recall-relay`) deployed to Fly.io. The local daemon runs the existing `vibe-recall` binary with a new relay client module that connects outbound to the relay.
+The relay is a separate binary (`cargo build -p claude-view-relay`) deployed to Fly.io. The local daemon runs the existing `claude-view` binary with a new relay client module that connects outbound to the relay.
 
 ---
 
@@ -264,10 +264,10 @@ The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is 
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.vibe-recall.daemon</string>
+    <string>com.claude-view.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/vibe-recall</string>
+        <string>/usr/local/bin/claude-view</string>
         <string>--daemon</string>
     </array>
     <key>RunAtLoad</key>
@@ -275,20 +275,20 @@ The relay is a minimal Rust Axum binary deployed to Fly.io. Its sole purpose is 
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/vibe-recall-daemon.log</string>
+    <string>/tmp/claude-view-daemon.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/vibe-recall-daemon.err</string>
+    <string>/tmp/claude-view-daemon.err</string>
 </dict>
 </plist>
 ```
 
-**Location:** `~/Library/LaunchAgents/com.vibe-recall.daemon.plist` (UserAgent, no root required).
+**Location:** `~/Library/LaunchAgents/com.claude-view.daemon.plist` (UserAgent, no root required).
 
 ### Installation UX (invisible daemon)
 
 There is no "install daemon" step. The user never learns the word "daemon."
 
-1. First `npx claude-view` (npm wrapper) → starts `vibe-recall` binary, silently writes plist, runs `launchctl load`, opens browser
+1. First `npx claude-view` (npm wrapper) → starts `claude-view` binary, silently writes plist, runs `launchctl load`, opens browser
 2. Toast notification: "claude-view is running at localhost:47892"
 3. Every subsequent `npx claude-view` → server already running, just opens browser
 4. Settings page has "Run in background" toggle (default: ON)
@@ -431,9 +431,9 @@ These features build on the remote monitoring foundation but are out of scope fo
 | # | Issue | Severity | Fix Applied |
 |---|-------|----------|-------------|
 | 1 | Missing cross-reference: `2026-02-17-flyio-relay-design.md` does not exist | Blocker | Created `2026-02-19-flyio-relay-design.md` with full relay protocol spec |
-| 2 | Binary name mismatch: plan used `vibe-recall-server` but actual binary is `vibe-recall` | Blocker | Updated lines 73 and 107 to use `vibe-recall` |
-| 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `vibe-recall` naming consistently |
-| 4 | CLI naming unclear: `npx claude-view` vs `vibe-recall` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `vibe-recall` binary (line 257) |
+| 2 | Binary name mismatch: plan used `claude-view-server` but actual binary is `claude-view` | Blocker | Updated lines 73 and 107 to use `claude-view` |
+| 3 | Daemon plist used old `claude-score` naming | Blocker | Updated plist (lines 229-247) and location (line 251) to use `claude-view` naming consistently |
+| 4 | CLI naming unclear: `npx claude-view` vs `claude-view` | Warning | Clarified that `npx claude-view` is npm wrapper that invokes `claude-view` binary (line 257) |
 | 5 | Hook path in phase-a-monitoring differs from actual | Minor | Noted in changelog; phase-a-monitoring.md is a separate plan with its own audit cycle |
 | 6 | Growth loop uses old `claude-score` product name | Minor | Left as-is; this is a conceptual diagram, not code reference. Product naming TBD. |
 | 7 | Push notification spam risk: every WAITING_FOR_USER would trigger push | Blocker | Added section 6 (Push Notification Suppression) with mobile-side presence detection |

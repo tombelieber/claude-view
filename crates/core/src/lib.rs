@@ -26,7 +26,7 @@ pub mod types;
 pub mod work_type;
 
 pub use branch_filter::*;
-pub use cli::ClaudeCliStatus;
+pub use cli::{resolved_cli_path, ClaudeCliStatus};
 pub use contribution::*;
 pub use discovery::*;
 pub use error::*;

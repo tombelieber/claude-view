@@ -7,8 +7,8 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
-use vibe_recall_core::{DiscoveryError, ParseError};
-use vibe_recall_db::DbError;
+use claude_view_core::{DiscoveryError, ParseError};
+use claude_view_db::DbError;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize, TS)]

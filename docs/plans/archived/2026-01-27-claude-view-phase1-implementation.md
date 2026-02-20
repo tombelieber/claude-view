@@ -3,7 +3,7 @@ status: done
 date: 2026-01-27
 ---
 
-# vibe-recall Phase 1: Backend Foundation (Production-Ready)
+# claude-view Phase 1: Backend Foundation (Production-Ready)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -51,7 +51,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/user/vibe-recall"
+repository = "https://github.com/user/claude-view"
 
 [workspace.dependencies]
 # Async runtime
@@ -96,9 +96,9 @@ assert_json_diff = "2"
 pretty_assertions = "1"
 
 # Internal crates
-vibe-recall-core = { path = "crates/core" }
-vibe-recall-db = { path = "crates/db" }
-vibe-recall-search = { path = "crates/search" }
+claude-view-core = { path = "crates/core" }
+claude-view-db = { path = "crates/db" }
+claude-view-search = { path = "crates/search" }
 
 [profile.release]
 lto = true
@@ -113,7 +113,7 @@ opt-level = 1  # Faster test compilation
 ```toml
 # crates/core/Cargo.toml
 [package]
-name = "vibe-recall-core"
+name = "claude-view-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -154,13 +154,13 @@ pub use error::*;
 ```toml
 # crates/db/Cargo.toml
 [package]
-name = "vibe-recall-db"
+name = "claude-view-db"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-vibe-recall-core = { workspace = true }
+claude-view-core = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
@@ -184,13 +184,13 @@ pub fn placeholder() {}
 ```toml
 # crates/search/Cargo.toml
 [package]
-name = "vibe-recall-search"
+name = "claude-view-search"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-vibe-recall-core = { workspace = true }
+claude-view-core = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -214,19 +214,19 @@ pub fn placeholder() {}
 ```toml
 # crates/server/Cargo.toml
 [package]
-name = "vibe-recall-server"
+name = "claude-view-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "vibe-recall"
+name = "claude-view"
 path = "src/main.rs"
 
 [dependencies]
-vibe-recall-core = { workspace = true }
-vibe-recall-db = { workspace = true }
-vibe-recall-search = { workspace = true }
+claude-view-core = { workspace = true }
+claude-view-db = { workspace = true }
+claude-view-search = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 tower = { workspace = true }
@@ -263,7 +263,7 @@ use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("vibe-recall server - scaffolding complete");
+    println!("claude-view server - scaffolding complete");
     Ok(())
 }
 ```
@@ -429,7 +429,7 @@ mod tests {
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-core`
+Run: `cargo test -p claude-view-core`
 Expected: 3 tests pass
 
 **Step 3: Commit**
@@ -788,7 +788,7 @@ mod tests {
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-core`
+Run: `cargo test -p claude-view-core`
 Expected: All tests pass (should be 12+ tests now)
 
 **Step 3: Commit**
@@ -1317,7 +1317,7 @@ mod tests {
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- --nocapture`
+Run: `cargo test -p claude-view-core -- --nocapture`
 Expected: All tests pass (should be 25+ tests)
 
 **Step 4: Commit**
@@ -1907,7 +1907,7 @@ mod tests {
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- --nocapture`
+Run: `cargo test -p claude-view-core -- --nocapture`
 Expected: All tests pass
 
 **Step 3: Commit**
@@ -1943,7 +1943,7 @@ use axum::{
 };
 use serde::Serialize;
 use thiserror::Error;
-use vibe_recall_core::{DiscoveryError, ParseError};
+use claude_view_core::{DiscoveryError, ParseError};
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -2065,7 +2065,7 @@ mod tests {
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests pass
 
 **Step 3: Commit**
@@ -2186,7 +2186,7 @@ async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse
 // crates/server/src/routes/projects.rs
 use axum::{extract::State, routing::get, Json, Router};
 use std::sync::Arc;
-use vibe_recall_core::{get_projects, ProjectInfo};
+use claude_view_core::{get_projects, ProjectInfo};
 use crate::{error::ApiError, state::AppState};
 
 pub fn routes(state: Arc<AppState>) -> Router {
@@ -2213,7 +2213,7 @@ use axum::{
     Json, Router,
 };
 use std::sync::Arc;
-use vibe_recall_core::{claude_projects_dir, parse_session, ParsedSession};
+use claude_view_core::{claude_projects_dir, parse_session, ParsedSession};
 use crate::{error::ApiError, state::AppState};
 
 pub fn routes(state: Arc<AppState>) -> Router {
@@ -2404,7 +2404,7 @@ async fn main() -> Result<()> {
         ))
         .init();
 
-    let app = vibe_recall_server::create_app();
+    let app = claude_view_server::create_app();
 
     let port = std::env::var("PORT")
         .ok()
@@ -2414,7 +2414,7 @@ async fn main() -> Result<()> {
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr).await?;
 
-    tracing::info!("vibe-recall server running at http://{}", addr);
+    tracing::info!("claude-view server running at http://{}", addr);
     tracing::info!("API endpoints:");
     tracing::info!("  GET /api/health");
     tracing::info!("  GET /api/projects");
@@ -2434,7 +2434,7 @@ Expected: All tests pass (should be 40+ tests across all crates)
 **Step 9: Run the server and test manually**
 
 ```bash
-cargo run -p vibe-recall-server
+cargo run -p claude-view-server
 ```
 
 In another terminal:

@@ -58,7 +58,7 @@ pub async fn get_session_classification(
 }
 ```
 
-Run: `cargo test -p vibe-recall-db`
+Run: `cargo test -p claude-view-db`
 
 Expected: Compiles, existing tests pass.
 
@@ -119,7 +119,7 @@ async fn classify_single_session(
 
     // 4. Classify via Claude CLI
     let provider =
-        vibe_recall_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+        claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
     let request = ClassificationRequest {
         session_id: session_id.clone(),
         first_prompt: preview,
@@ -221,7 +221,7 @@ async fn test_classify_single_session_not_found() {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     let db = Database::new_in_memory().await.unwrap();
     let state = AppState::new(db);
@@ -248,13 +248,13 @@ async fn test_classify_single_session_not_found() {
 
 ### Step 5: Run tests
 
-Run: `cargo test -p vibe-recall-server -- routes::classify`
+Run: `cargo test -p claude-view-server -- routes::classify`
 
 Expected: All existing tests pass + 2 new tests pass.
 
 ### Step 6: Generate TypeScript types
 
-Run: `cargo test -p vibe-recall-server -- --ignored export_bindings 2>/dev/null || true`
+Run: `cargo test -p claude-view-server -- --ignored export_bindings 2>/dev/null || true`
 
 Then verify the generated file exists:
 
@@ -929,7 +929,7 @@ Also invalidate 'facet-badges' so quality dots refresh."
 
 After all tasks are complete, verify end-to-end:
 
-- [ ] `cargo test -p vibe-recall-server -- routes::classify` — all tests pass
+- [ ] `cargo test -p claude-view-server -- routes::classify` — all tests pass
 - [ ] `bun run dev` — frontend compiles with no TypeScript errors
 - [ ] Open Sessions list → classified sessions show CategoryBadge
 - [ ] CompactSessionTable shows "Type" column with badges

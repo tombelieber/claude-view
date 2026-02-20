@@ -399,7 +399,7 @@ Stored in SQLite settings table. Configurable via future Settings UI (`/settings
 
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
-use vibe_recall_core::llm::{CompletionRequest, LlmError, LlmProvider, ResponseFormat};
+use claude_view_core::llm::{CompletionRequest, LlmError, LlmProvider, ResponseFormat};
 
 #[derive(Clone)]
 pub struct SessionStateClassifier {
@@ -1694,7 +1694,7 @@ Before declaring this done, verify:
 - [ ] `LiveSession` struct literal in `process_jsonl_update()` includes `pause_classification: acc.pause_classification.clone()`
 - [ ] `spawn_ai_classification` updates BOTH session map AND accumulator
 - [ ] `SessionEvent::Summary` fields have `#[serde(rename)]` to emit camelCase
-- [ ] Run `cargo test -p vibe-recall-server` — all new + existing tests pass
+- [ ] Run `cargo test -p claude-view-server` — all new + existing tests pass
 
 **Frontend (TypeScript):**
 - [ ] `LiveDisplayStatus` has 3 values: `'working' | 'paused' | 'done'`

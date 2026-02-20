@@ -12,7 +12,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use vibe_recall_search::types::SearchResponse;
+use claude_view_search::types::SearchResponse;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]

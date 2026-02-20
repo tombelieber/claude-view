@@ -77,7 +77,7 @@ async fn test_get_session_file_path() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db -- test_get_session_file_path`
+Run: `cargo test -p claude-view-db -- test_get_session_file_path`
 Expected: FAIL — `get_session_file_path` method doesn't exist
 
 **Step 3: Write minimal implementation**
@@ -102,7 +102,7 @@ pub async fn get_session_file_path(&self, session_id: &str) -> DbResult<Option<S
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db -- test_get_session_file_path`
+Run: `cargo test -p claude-view-db -- test_get_session_file_path`
 Expected: PASS
 
 **Step 5: Commit**
@@ -177,11 +177,11 @@ async fn test_get_session_parsed_success() {
 }
 ```
 
-> **Note:** The success test uses `tempfile::tempdir()` which is already a dev-dependency (used by the existing `test_resolve_path_*` tests). The JSONL format must match what `vibe_recall_core::parse_session` expects — check the actual parser if the format above doesn't work and adjust accordingly.
+> **Note:** The success test uses `tempfile::tempdir()` which is already a dev-dependency (used by the existing `test_resolve_path_*` tests). The JSONL format must match what `claude_view_core::parse_session` expects — check the actual parser if the format above doesn't work and adjust accordingly.
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- test_get_session_parsed`
+Run: `cargo test -p claude-view-server -- test_get_session_parsed`
 Expected: FAIL — route doesn't exist yet
 
 **Step 3: Write minimal implementation**
@@ -208,7 +208,7 @@ pub async fn get_session_parsed(
         return Err(ApiError::SessionNotFound(session_id));
     }
 
-    let session = vibe_recall_core::parse_session(&path).await?;
+    let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
 ```
@@ -221,7 +221,7 @@ Register in the `router()` function — add this line **before** the legacy rout
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p vibe-recall-server -- test_get_session_parsed`
+Run: `cargo test -p claude-view-server -- test_get_session_parsed`
 Expected: All 3 tests PASS (not_in_db, file_gone, success)
 
 > If the success test fails because the JSONL format doesn't match the parser, adjust the fixture data to match. Check `crates/core/src/parser.rs` for the expected line format. Do NOT skip this test — it's the only one that validates the happy path works end-to-end.
@@ -299,7 +299,7 @@ async fn test_get_session_messages_by_id_success() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- test_get_session_messages_by_id`
+Run: `cargo test -p claude-view-server -- test_get_session_messages_by_id`
 Expected: FAIL
 
 **Step 3: Write minimal implementation**
@@ -313,7 +313,7 @@ pub async fn get_session_messages_by_id(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
     let file_path = state
         .db
         .get_session_file_path(&session_id)
@@ -327,7 +327,7 @@ pub async fn get_session_messages_by_id(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
 ```
@@ -340,7 +340,7 @@ Register in the `router()` function — add **before** the legacy routes:
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p vibe-recall-server -- test_get_session_messages_by_id`
+Run: `cargo test -p claude-view-server -- test_get_session_messages_by_id`
 Expected: All 3 tests PASS
 
 **Step 5: Commit**
@@ -664,7 +664,7 @@ pub async fn get_session(
         return Err(ApiError::SessionNotFound(session_id));
     }
 
-    let session = vibe_recall_core::parse_session(&path).await?;
+    let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
 
@@ -677,7 +677,7 @@ pub async fn get_session_messages(
     State(state): State<Arc<AppState>>,
     Path((_project_dir, session_id)): Path<(String, String)>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
     let file_path = state
         .db
         .get_session_file_path(&session_id)
@@ -691,7 +691,7 @@ pub async fn get_session_messages(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
 ```
@@ -737,7 +737,7 @@ These tests validated `resolve_session_path_with_base` which is now deleted. The
 
 **Step 5: Run all tests**
 
-Run: `cargo test -p vibe-recall-server -- routes::sessions`
+Run: `cargo test -p claude-view-server -- routes::sessions`
 Expected: All tests pass (existing tests + new tests from Tasks 2-3, minus the 6 deleted resolve_path tests and the deleted helper)
 
 **Step 6: Commit**
@@ -754,8 +754,8 @@ git commit -m "refactor(api): remove resolve_session_path, migrate legacy endpoi
 **Step 1: Run full test suite**
 
 ```bash
-cargo test -p vibe-recall-server
-cargo test -p vibe-recall-db
+cargo test -p claude-view-server
+cargo test -p claude-view-db
 ```
 
 Both must pass with zero failures.

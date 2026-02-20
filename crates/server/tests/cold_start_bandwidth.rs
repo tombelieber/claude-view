@@ -13,9 +13,9 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
-use vibe_recall_db::Database;
-use vibe_recall_server::indexing_state::{IndexingState, IndexingStatus};
-use vibe_recall_server::create_app_with_indexing;
+use claude_view_db::Database;
+use claude_view_server::indexing_state::{IndexingState, IndexingStatus};
+use claude_view_server::create_app_with_indexing;
 
 /// Helper: create an in-memory database for tests.
 async fn test_db() -> Database {

@@ -59,7 +59,7 @@ mod tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
         use tower::ServiceExt;
-        use vibe_recall_db::Database;
+        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = Arc::new(AppState {
@@ -79,6 +79,7 @@ mod tests {
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         });
 
         let app = Router::new()

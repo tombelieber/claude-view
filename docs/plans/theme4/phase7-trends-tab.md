@@ -1284,7 +1284,7 @@ use chrono::{Duration, Utc};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use vibe_recall_db::insights::TrendsResponse;
+use claude_view_db::insights::TrendsResponse;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1407,7 +1407,7 @@ pub async fn get_trends(
 }
 
 fn calculate_trend_stats(
-    data: &[vibe_recall_db::insights::MetricDataPoint],
+    data: &[claude_view_db::insights::MetricDataPoint],
     metric: &str,
 ) -> (f64, f64, String) {
     if data.is_empty() {
@@ -1489,7 +1489,7 @@ fn generate_metric_insight(metric: &str, trend: f64, range: &str) -> String {
     }
 }
 
-fn generate_category_insight(data: &[vibe_recall_db::insights::CategoryDataPoint]) -> String {
+fn generate_category_insight(data: &[claude_view_db::insights::CategoryDataPoint]) -> String {
     if data.len() < 2 {
         return "Not enough data to determine category trends".to_string();
     }
@@ -1521,7 +1521,7 @@ fn generate_category_insight(data: &[vibe_recall_db::insights::CategoryDataPoint
     }
 }
 
-fn generate_heatmap_insight(data: &[vibe_recall_db::insights::HeatmapCell]) -> String {
+fn generate_heatmap_insight(data: &[claude_view_db::insights::HeatmapCell]) -> String {
     if data.is_empty() {
         return "Not enough activity data to determine patterns".to_string();
     }
@@ -1676,7 +1676,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_trends_default_params() {
-        let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
         let app = crate::create_app(db);
 
         let response = app
@@ -1703,7 +1703,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_trends_invalid_metric() {
-        let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
         let app = crate::create_app(db);
 
         let response = app
@@ -1721,7 +1721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_trends_custom_range() {
-        let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
         let app = crate::create_app(db);
 
         let now = chrono::Utc::now().timestamp();

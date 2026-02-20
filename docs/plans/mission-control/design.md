@@ -111,7 +111,7 @@ A new **Mission Control** page within claude-view that discovers all active Clau
 
 ### 3.1 MONITOR Layer (Rust)
 
-The MONITOR layer is the core of Mission Control. It runs inside the existing `vibe-recall-server` Axum process alongside the historical session browser.
+The MONITOR layer is the core of Mission Control. It runs inside the existing `claude-view-server` Axum process alongside the historical session browser.
 
 #### Components
 

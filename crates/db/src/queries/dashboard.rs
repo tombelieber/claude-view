@@ -5,7 +5,7 @@ use super::row_types::SessionRow;
 use super::BranchCount;
 use crate::{Database, DbResult};
 use chrono::Utc;
-use vibe_recall_core::{
+use claude_view_core::{
     BranchFilter, DashboardStats, DayActivity, ProjectStat, ProjectSummary, SessionDurationStat,
     SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
@@ -964,7 +964,7 @@ fn partition_invocables_by_kind(
 mod filtered_query_tests {
     use super::*;
     use crate::Database;
-    use vibe_recall_core::{SessionInfo, ToolCounts};
+    use claude_view_core::{SessionInfo, ToolCounts};
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

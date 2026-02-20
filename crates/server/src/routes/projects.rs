@@ -9,8 +9,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::{BranchFilter, ProjectSummary, SessionsPage};
-use vibe_recall_db::BranchCount;
+use claude_view_core::{BranchFilter, ProjectSummary, SessionsPage};
+use claude_view_db::BranchCount;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -98,8 +98,8 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_core::{SessionInfo, ToolCounts};
-    use vibe_recall_db::Database;
+    use claude_view_core::{SessionInfo, ToolCounts};
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

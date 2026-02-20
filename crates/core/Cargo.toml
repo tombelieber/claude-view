@@ -1,6 +1,6 @@
 # crates/core/Cargo.toml
 [package]
-name = "vibe-recall-core"
+name = "claude-view-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

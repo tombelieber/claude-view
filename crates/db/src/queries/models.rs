@@ -4,7 +4,7 @@
 use super::row_types::{batch_insert_turns_tx, batch_upsert_models_tx};
 use super::{ModelWithStats, TokenStats};
 use crate::{Database, DbResult};
-use vibe_recall_core::RawTurn;
+use claude_view_core::RawTurn;
 
 impl Database {
     /// Batch upsert models: INSERT OR IGNORE + UPDATE last_seen.

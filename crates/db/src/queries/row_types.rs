@@ -5,7 +5,7 @@
 use crate::DbResult;
 use chrono::Utc;
 use sqlx::Row;
-use vibe_recall_core::{
+use claude_view_core::{
     parse_model_id, ClassificationJob, ClassificationJobStatus, IndexRun, IndexRunStatus,
     IndexRunType, RawTurn, SessionInfo, ToolCounts,
 };

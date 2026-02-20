@@ -1643,7 +1643,7 @@ The sidecar is bundled in the npx-cli package and started on-demand.
 ```
 ~/.cache/claude-view/
 ├── bin/
-│   ├── vibe-recall              ← Rust binary (existing)
+│   ├── claude-view              ← Rust binary (existing)
 │   ├── dist/                    ← Frontend assets (existing)
 │   └── sidecar/                 ← NEW: sidecar JS bundle
 │       ├── index.js             ← Built by tsup (single file)

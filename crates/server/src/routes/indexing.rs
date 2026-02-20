@@ -207,7 +207,7 @@ mod tests {
 
     use crate::indexing_state::IndexingState;
     use crate::create_app_with_indexing;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     #[tokio::test]
     async fn test_sse_endpoint_returns_event_stream() {

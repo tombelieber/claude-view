@@ -42,7 +42,7 @@ Add inside the `#[cfg(test)] mod tests` block (starts at line 1044), before the 
 ```rust
 use super::classifier::SessionStateClassifier;
 use super::state::AgentStateGroup;
-use vibe_recall_core::live_parser::LineType;
+use claude_view_core::live_parser::LineType;
 
 /// Helper to create a LiveLine for agent state derivation tests.
 fn make_test_line(
@@ -247,7 +247,7 @@ fn test_derive_agent_state_single_turn_end_turn_is_task_complete() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- tests::test_derive_agent_state 2>&1 | head -30`
+Run: `cargo test -p claude-view-server -- tests::test_derive_agent_state 2>&1 | head -30`
 Expected: FAIL — `derive_agent_state` function doesn't exist yet.
 
 **Step 3: Write the `derive_agent_state` function**
@@ -339,7 +339,7 @@ fn derive_agent_state(
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p vibe-recall-server -- tests::test_derive_agent_state -v`
+Run: `cargo test -p claude-view-server -- tests::test_derive_agent_state -v`
 Expected: ALL 9 tests PASS.
 
 **Step 5: Commit**
@@ -460,7 +460,7 @@ fn test_handle_transitions_first_discovery_as_paused_computes_task_time() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- tests::test_handle_transitions 2>&1 | head -30`
+Run: `cargo test -p claude-view-server -- tests::test_handle_transitions 2>&1 | head -30`
 Expected: FAIL — `handle_transitions` doesn't exist yet.
 
 **Step 3: Replace `handle_status_change` with `handle_transitions`**
@@ -560,7 +560,7 @@ With:
 
 **Step 5: Run all server tests**
 
-Run: `cargo test -p vibe-recall-server -v 2>&1 | tail -30`
+Run: `cargo test -p claude-view-server -v 2>&1 | tail -30`
 Expected: ALL tests pass (including existing derive_status, derive_activity, classifier tests).
 
 **Step 6: Commit**
@@ -700,7 +700,7 @@ Replace with:
 
 **Step 5: Run full test suite + compile check**
 
-Run: `cargo test -p vibe-recall-server -v && cargo check -p vibe-recall-server`
+Run: `cargo test -p claude-view-server -v && cargo check -p claude-view-server`
 Expected: ALL pass, no compilation errors.
 
 **Step 6: Commit**
@@ -728,7 +728,7 @@ Expected: No errors (no frontend types changed).
 
 **Step 2: Full build verification**
 
-Run: `cargo build -p vibe-recall-server 2>&1 | tail -5`
+Run: `cargo build -p claude-view-server 2>&1 | tail -5`
 Expected: `Finished` with no warnings related to this change.
 
 **Step 3: Commit (if any warnings were fixed)**
@@ -973,7 +973,7 @@ With:
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-server -- tests 2>&1 | tail -10`
+Run: `cargo test -p claude-view-server -- tests 2>&1 | tail -10`
 Expected: All pass.
 
 **Step 4: Commit**
@@ -1019,7 +1019,7 @@ Add to the `#[cfg(test)] mod tests` block (before the closing `}`):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core -- tests::test_progress_line_classified`
+Run: `cargo test -p claude-view-core -- tests::test_progress_line_classified`
 Expected: FAIL — currently classified as `LineType::Assistant`.
 
 **Step 3: Fix the ordering**
@@ -1067,7 +1067,7 @@ With:
 
 **Step 4: Run all core tests**
 
-Run: `cargo test -p vibe-recall-core -v 2>&1 | tail -20`
+Run: `cargo test -p claude-view-core -v 2>&1 | tail -20`
 Expected: ALL pass, including the new test and all existing progress event tests.
 
 **Step 5: Commit**
@@ -1712,7 +1712,7 @@ Add to `state.rs` test module:
 
 **Step 7: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- tests::test_result_line && cargo test -p vibe-recall-core -- tests::test_tool_use_result && cargo test -p vibe-recall-server -- tests::test_derive_status_result`
+Run: `cargo test -p claude-view-core -- tests::test_result_line && cargo test -p claude-view-core -- tests::test_tool_use_result && cargo test -p claude-view-server -- tests::test_derive_status_result`
 Expected: All pass.
 
 **Step 8: Commit**
@@ -1802,7 +1802,7 @@ With:
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- tests::test_parse_tail_resets`
+Run: `cargo test -p claude-view-core -- tests::test_parse_tail_resets`
 Expected: PASS.
 
 **Step 4: Commit**

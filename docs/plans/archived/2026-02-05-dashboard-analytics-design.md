@@ -2474,8 +2474,8 @@ The following items are **system-wide concerns** that affect all features, not j
 | Data Type | Storage | Retention | User Control |
 |-----------|---------|-----------|--------------|
 | JSONL sessions | `~/.claude/projects/` | Forever (owned by Claude Code) | User deletes manually |
-| SQLite metadata | `~/.vibe-recall/db.sqlite` | Forever | "Clear Cache" rebuilds |
-| Tantivy index | `~/.vibe-recall/index/` | Forever | "Clear Cache" clears |
+| SQLite metadata | `~/.claude-view/db.sqlite` | Forever | "Clear Cache" rebuilds |
+| Tantivy index | `~/.claude-view/index/` | Forever | "Clear Cache" clears |
 
 This is acceptable for a **local-only tool** where users manage their own disk space. The Storage Overview (Feature 2E) provides visibility into usage so users can make informed decisions.
 

@@ -75,10 +75,10 @@ tokio-tungstenite = "0.28"
 futures-util = "0.3"
 
 # Internal crates
-vibe-recall-core = { path = "crates/core" }
-vibe-recall-db = { path = "crates/db" }
-vibe-recall-search = { path = "crates/search" }
-vibe-recall-server = { path = "crates/server" }
+claude-view-core = { path = "crates/core" }
+claude-view-db = { path = "crates/db" }
+claude-view-search = { path = "crates/search" }
+claude-view-server = { path = "crates/server" }
 
 [profile.release]
 lto = true

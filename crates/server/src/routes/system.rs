@@ -16,8 +16,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::ClaudeCliStatus;
-use vibe_recall_db::{ClassificationStatus, HealthStats, HealthStatus, StorageStats};
+use claude_view_core::ClaudeCliStatus;
+use claude_view_db::{ClassificationStatus, HealthStats, HealthStatus, StorageStats};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -260,7 +260,7 @@ pub async fn get_system_status(
 
 /// Calculate performance metrics from index metadata and storage stats.
 fn calculate_performance(
-    metadata: &vibe_recall_db::IndexMetadata,
+    metadata: &claude_view_db::IndexMetadata,
     storage: &StorageStats,
 ) -> PerformanceInfo {
     let last_index_duration_ms = metadata.last_index_duration_ms;
@@ -314,7 +314,7 @@ pub async fn clear_cache(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClearCacheResponse>> {
     // Calculate size of search index before clearing
-    let cache_dir = vibe_recall_core::paths::search_index_dir();
+    let cache_dir = claude_view_core::paths::search_index_dir();
 
     let cleared_bytes = if let Some(ref dir) = cache_dir {
         if dir.exists() {
@@ -447,7 +447,7 @@ mod tests {
         http::{Method, Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn test_calculate_performance_with_data() {
-        let metadata = vibe_recall_db::IndexMetadata {
+        let metadata = claude_view_db::IndexMetadata {
             last_indexed_at: Some(1000),
             last_index_duration_ms: Some(2000),
             sessions_indexed: 1000,
@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn test_calculate_performance_empty() {
-        let metadata = vibe_recall_db::IndexMetadata {
+        let metadata = claude_view_db::IndexMetadata {
             last_indexed_at: None,
             last_index_duration_ms: None,
             sessions_indexed: 0,
@@ -833,7 +833,7 @@ mod tests {
 
     #[test]
     fn test_calculate_performance_zero_duration() {
-        let metadata = vibe_recall_db::IndexMetadata {
+        let metadata = claude_view_db::IndexMetadata {
             last_indexed_at: Some(1000),
             last_index_duration_ms: Some(0),
             sessions_indexed: 100,

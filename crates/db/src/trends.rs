@@ -879,8 +879,8 @@ mod tests {
     // Trends with range and project/branch filter tests
     // ========================================================================
 
-    fn make_session(id: &str, project: &str, modified_at: i64) -> vibe_recall_core::SessionInfo {
-        vibe_recall_core::SessionInfo {
+    fn make_session(id: &str, project: &str, modified_at: i64) -> claude_view_core::SessionInfo {
+        claude_view_core::SessionInfo {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
@@ -891,7 +891,7 @@ mod tests {
             last_message: format!("Last message for {}", id),
             files_touched: vec![],
             skills_used: vec![],
-            tool_counts: vibe_recall_core::ToolCounts {
+            tool_counts: claude_view_core::ToolCounts {
                 edit: 5,
                 read: 10,
                 bash: 3,
@@ -957,7 +957,7 @@ mod tests {
         let to = now;
 
         // proj-x session within range
-        let s1 = vibe_recall_core::SessionInfo {
+        let s1 = claude_view_core::SessionInfo {
             git_branch: Some("main".to_string()),
             user_prompt_count: 5,
             files_edited_count: 3,
@@ -967,7 +967,7 @@ mod tests {
         db.insert_session(&s1, "proj-x", "Project X").await.unwrap();
 
         // proj-y session within range
-        let s2 = vibe_recall_core::SessionInfo {
+        let s2 = claude_view_core::SessionInfo {
             git_branch: Some("develop".to_string()),
             user_prompt_count: 10,
             files_edited_count: 6,

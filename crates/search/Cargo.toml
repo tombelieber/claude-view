@@ -1,12 +1,12 @@
 # crates/search/Cargo.toml
 [package]
-name = "vibe-recall-search"
+name = "claude-view-search"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-vibe-recall-core = { workspace = true }
+claude-view-core = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -1,6 +1,6 @@
 //! Integration tests for Database invocable/invocation query methods.
 
-use vibe_recall_db::Database;
+use claude_view_db::Database;
 
 #[tokio::test]
 async fn test_upsert_invocable() {

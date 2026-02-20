@@ -339,7 +339,7 @@ Verify:
 
 ```bash
 bun run build
-cargo build --release -p vibe-recall-server
+cargo build --release -p claude-view-server
 ```
 
 Both must succeed.
@@ -348,9 +348,9 @@ Both must succeed.
 
 ```bash
 mkdir -p /tmp/cv-staging
-cp target/release/vibe-recall /tmp/cv-staging/
+cp target/release/claude-view /tmp/cv-staging/
 cp -r dist /tmp/cv-staging/
-STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/vibe-recall
+STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/claude-view
 # Should start on http://127.0.0.1:47892
 ```
 
@@ -411,7 +411,7 @@ Should download, verify checksum, start server on :47892.
 ## Release Checklist (For Every Future Release)
 
 ```
-[ ] Tests pass: cargo test -p vibe-recall-db && cargo test -p vibe-recall-server
+[ ] Tests pass: cargo test -p claude-view-db && cargo test -p claude-view-server
 [ ] Frontend builds: bun run build
 [ ] Version bumped: bun run release:bump X.Y.Z
 [ ] Committed: git commit -m "chore: prepare vX.Y.Z release"

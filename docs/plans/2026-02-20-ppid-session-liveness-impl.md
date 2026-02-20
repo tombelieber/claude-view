@@ -45,7 +45,7 @@ fn test_is_pid_alive_rejects_zero_and_one() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server is_pid_alive`
+Run: `cargo test -p claude-view-server is_pid_alive`
 Expected: FAIL — `is_pid_alive` not found
 
 **Step 3: Write minimal implementation**
@@ -71,7 +71,7 @@ No `use` statement is needed — `libc::kill` is used as a fully-qualified path 
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server is_pid_alive`
+Run: `cargo test -p claude-view-server is_pid_alive`
 Expected: 3 tests PASS
 
 **Step 5: Commit**
@@ -130,7 +130,7 @@ fn test_pid_snapshot_corrupt_file() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server pid_snapshot`
+Run: `cargo test -p claude-view-server pid_snapshot`
 Expected: FAIL — `save_pid_snapshot` and `load_pid_snapshot` not found
 
 **Step 3: Write minimal implementation**
@@ -177,7 +177,7 @@ fn load_pid_snapshot(path: &Path) -> HashMap<String, u32> {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server pid_snapshot`
+Run: `cargo test -p claude-view-server pid_snapshot`
 Expected: 3 tests PASS
 
 **Step 5: Commit**
@@ -224,7 +224,7 @@ fn test_hook_command_includes_ppid_header() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server hook_command_includes_ppid`
+Run: `cargo test -p claude-view-server hook_command_includes_ppid`
 Expected: FAIL — assertion fails (no X-Claude-PID in current command)
 
 **Step 3: Write minimal implementation**
@@ -254,11 +254,11 @@ let command = format!(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server hook_command_includes_ppid`
+Run: `cargo test -p claude-view-server hook_command_includes_ppid`
 Expected: PASS
 
 Also run all existing hook_registrar tests to ensure no regressions:
-Run: `cargo test -p vibe-recall-server hook_registrar`
+Run: `cargo test -p claude-view-server hook_registrar`
 Expected: All existing tests PASS
 
 **Step 5: Commit**
@@ -298,7 +298,7 @@ fn test_extract_pid_from_header_invalid() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server extract_pid_from_header`
+Run: `cargo test -p claude-view-server extract_pid_from_header`
 Expected: FAIL — `extract_pid_from_header` not found
 
 **Step 3: Write minimal implementation**
@@ -322,7 +322,7 @@ fn extract_pid_from_header(header_value: Option<&str>) -> Option<u32> {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server extract_pid_from_header`
+Run: `cargo test -p claude-view-server extract_pid_from_header`
 Expected: 2 tests PASS
 
 **Step 5: Now wire the header extraction into `handle_hook`**
@@ -382,7 +382,7 @@ Add this to **every match arm that calls `sessions.get_mut()`**:
 
 **Step 6: Run full hook tests**
 
-Run: `cargo test -p vibe-recall-server routes::hooks`
+Run: `cargo test -p claude-view-server routes::hooks`
 Expected: All tests PASS
 
 **Step 7: Commit**
@@ -581,7 +581,7 @@ pub async fn save_pid_bindings(&self) {
 
 **Step 6: Run all manager tests**
 
-Run: `cargo test -p vibe-recall-server live::manager`
+Run: `cargo test -p claude-view-server live::manager`
 Expected: All tests PASS
 
 **Step 7: Commit**
@@ -639,7 +639,7 @@ if pid_newly_bound {
 
 **Step 3: Run all tests to verify no regressions**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests PASS
 
 **Step 4: Commit**
@@ -655,17 +655,17 @@ git commit -m "feat(live): trigger PID snapshot save on hook PID binding"
 
 **Step 1: Build the project**
 
-Run: `cargo build -p vibe-recall-server`
+Run: `cargo build -p claude-view-server`
 Expected: Compiles without errors or warnings
 
 **Step 2: Run full test suite**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests PASS
 
 **Step 3: Manual verification**
 
-1. Start the server: `cargo run -p vibe-recall-server`
+1. Start the server: `cargo run -p claude-view-server`
 2. Check that hooks are re-registered with the new header:
    `cat ~/.claude/settings.json | grep X-Claude-PID`
    Expected: Every hook command contains `-H 'X-Claude-PID: '$PPID`

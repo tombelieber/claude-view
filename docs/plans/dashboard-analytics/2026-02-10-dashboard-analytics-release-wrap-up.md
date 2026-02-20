@@ -80,9 +80,9 @@ The `feature/dashboard-analytics` branch delivers **52 commits across 141 files,
 
 | Suite | Tests Passing |
 |-------|---------------|
-| `vibe-recall-core` | 318 |
-| `vibe-recall-db` | 342 |
-| `vibe-recall-server` | 209 |
+| `claude-view-core` | 318 |
+| `claude-view-db` | 342 |
+| `claude-view-server` | 209 |
 | Frontend (vitest) | 779 |
 | **Total** | **1,648** |
 

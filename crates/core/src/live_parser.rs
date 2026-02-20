@@ -38,6 +38,15 @@ pub struct SubAgentProgress {
     pub current_tool: Option<String>,
 }
 
+/// Extracted from a `<task-notification>` on a user line (background agent completion).
+#[derive(Debug, Clone)]
+pub struct SubAgentNotification {
+    /// The agent ID from `<task-id>`.
+    pub agent_id: String,
+    /// The completion status: "completed", "failed", or "killed".
+    pub status: String,
+}
+
 /// Extracted from a toolUseResult on a user line (Task completion).
 #[derive(Debug, Clone)]
 pub struct SubAgentResult {
@@ -87,6 +96,8 @@ pub struct LiveLine {
     pub sub_agent_result: Option<SubAgentResult>,
     /// If this is a progress line with agent_progress data.
     pub sub_agent_progress: Option<SubAgentProgress>,
+    /// If this user line contains a `<task-notification>` for a background agent.
+    pub sub_agent_notification: Option<SubAgentNotification>,
     /// Full replacement todo list from TodoWrite tool_use on this assistant line.
     pub todo_write: Option<Vec<RawTodoItem>>,
     /// TaskCreate calls on this assistant line (Vec: one message can create multiple tasks).
@@ -130,6 +141,7 @@ pub struct TailFinders {
     pub todo_write_key: memmem::Finder<'static>,
     pub task_create_key: memmem::Finder<'static>,
     pub task_update_key: memmem::Finder<'static>,
+    pub task_notification_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -154,6 +166,7 @@ impl TailFinders {
             todo_write_key: memmem::Finder::new(b"\"name\":\"TodoWrite\""),
             task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
+            task_notification_key: memmem::Finder::new(b"<task-notification>"),
         }
     }
 }
@@ -286,6 +299,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 sub_agent_spawns: Vec::new(),
                 sub_agent_result: None,
                 sub_agent_progress: None,
+                sub_agent_notification: None,
                 todo_write: None,
                 task_creates: Vec::new(),
                 task_updates: Vec::new(),
@@ -329,6 +343,17 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         false
     };
+
+    // --- Background agent completion notification ---
+    // Format: <task-notification>\n<task-id>AGENT_ID</task-id>\n<status>STATUS</status>\n...
+    // Parse from the full content (not content_preview) because the notification
+    // can appear deep into the content string, well past the 200-char preview limit.
+    let sub_agent_notification =
+        if line_type == LineType::User && finders.task_notification_key.find(raw).is_some() {
+            extract_task_notification(content_source)
+        } else {
+            None
+        };
 
     let model = if finders.model_key.find(raw).is_some() {
         parsed
@@ -632,6 +657,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         sub_agent_spawns,
         sub_agent_result,
         sub_agent_progress,
+        sub_agent_notification,
         todo_write,
         task_creates,
         task_updates,
@@ -679,6 +705,57 @@ fn extract_content_and_tools(
     }
 
     (preview, tool_names, has_tool_result)
+}
+
+/// Extract a `<task-notification>` from the full content JSON value.
+///
+/// Walks the content field (string or array of text blocks) looking for
+/// `<task-id>` and `<status>` XML tags within a `<task-notification>` block.
+fn extract_task_notification(content_source: &serde_json::Value) -> Option<SubAgentNotification> {
+    // Collect the full text from content (string or first text block in array)
+    let full_text = match content_source.get("content") {
+        Some(serde_json::Value::String(s)) => s.as_str(),
+        Some(serde_json::Value::Array(blocks)) => {
+            // Find the text block containing <task-notification>
+            blocks
+                .iter()
+                .filter_map(|b| {
+                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        b.get("text").and_then(|t| t.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .find(|text| text.contains("<task-notification>"))?
+        }
+        _ => return None,
+    };
+
+    // Find <task-notification> and extract <task-id> and <status> after it
+    let tn_start = full_text.find("<task-notification>")?;
+    let after_tn = &full_text[tn_start..];
+
+    let agent_id = {
+        let start = after_tn.find("<task-id>")? + "<task-id>".len();
+        let end = start + after_tn[start..].find("</task-id>")?;
+        let id = after_tn[start..end].trim();
+        if id.is_empty() {
+            return None;
+        }
+        id.to_string()
+    };
+
+    let status = {
+        let start = after_tn.find("<status>")? + "<status>".len();
+        let end = start + after_tn[start..].find("</status>")?;
+        let s = after_tn[start..end].trim();
+        if s.is_empty() {
+            return None;
+        }
+        s.to_string()
+    };
+
+    Some(SubAgentNotification { agent_id, status })
 }
 
 /// Token counts extracted from a `usage` sub-object.
@@ -1187,6 +1264,112 @@ mod tests {
             lines[0].has_system_prefix,
             "Expected has_system_prefix = true for <task-notification>"
         );
+    }
+
+    #[test]
+    fn test_task_notification_extracts_agent_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notif_completed.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<task-notification>\n<task-id>ab897bc</task-id>\n<status>completed</status>\n<summary>Agent done</summary>\n</task-notification>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].has_system_prefix);
+        let notif = lines[0].sub_agent_notification.as_ref().unwrap();
+        assert_eq!(notif.agent_id, "ab897bc");
+        assert_eq!(notif.status, "completed");
+    }
+
+    #[test]
+    fn test_task_notification_failed_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notif_failed.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<task-notification>\n<task-id>afailed1</task-id>\n<status>failed</status>\n<summary>Agent errored</summary>\n</task-notification>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        let notif = lines[0].sub_agent_notification.as_ref().unwrap();
+        assert_eq!(notif.agent_id, "afailed1");
+        assert_eq!(notif.status, "failed");
+    }
+
+    #[test]
+    fn test_task_notification_deep_in_content() {
+        // Notification appearing after 300+ chars of prefix content
+        // (past the 200-char content_preview truncation limit)
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notif_deep.jsonl");
+        let mut f = File::create(&path).unwrap();
+        let prefix = "x".repeat(400); // 400 chars of padding before notification
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"{prefix}<task-notification>\n<task-id>adeep01</task-id>\n<status>completed</status>\n<summary>Deep agent done</summary>\n</task-notification>"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        let notif = lines[0]
+            .sub_agent_notification
+            .as_ref()
+            .expect("notification must be extracted even past 200-char preview limit");
+        assert_eq!(notif.agent_id, "adeep01");
+        assert_eq!(notif.status, "completed");
+    }
+
+    #[test]
+    fn test_task_notification_in_content_array() {
+        // Notification inside a content array (text block), not a plain string
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notif_array.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":[{{"type":"text","text":"<task-notification>\n<task-id>aarray1</task-id>\n<status>killed</status>\n<summary>Killed agent</summary>\n</task-notification>"}}]}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        let notif = lines[0]
+            .sub_agent_notification
+            .as_ref()
+            .expect("notification must be extracted from content array");
+        assert_eq!(notif.agent_id, "aarray1");
+        assert_eq!(notif.status, "killed");
+    }
+
+    #[test]
+    fn test_task_notification_not_on_regular_user_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("normal.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Hello world"}}}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert!(lines[0].sub_agent_notification.is_none());
     }
 
     #[test]

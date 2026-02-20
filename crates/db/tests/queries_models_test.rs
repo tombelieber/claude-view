@@ -1,6 +1,6 @@
 //! Integration tests for Database model/stats query methods.
 
-use vibe_recall_db::Database;
+use claude_view_db::Database;
 
 mod queries_shared;
 use queries_shared::make_session;

@@ -20,20 +20,20 @@ jobs:
         include:
           - platform: darwin-arm64
             os: macos-latest
-            binary: vibe-recall
+            binary: claude-view
             artifact: claude-view-darwin-arm64.tar.gz
           - platform: darwin-x64
             os: macos-15-intel
-            binary: vibe-recall
+            binary: claude-view
             artifact: claude-view-darwin-x64.tar.gz
           # Linux and Windows builds deferred (v2.1 and v2.2 respectively)
           # - platform: linux-x64
           #   os: ubuntu-latest
-          #   binary: vibe-recall
+          #   binary: claude-view
           #   artifact: claude-view-linux-x64.tar.gz
           # - platform: win32-x64
           #   os: windows-latest
-          #   binary: vibe-recall.exe
+          #   binary: claude-view.exe
           #   artifact: claude-view-win32-x64.zip
 
     runs-on: ${{ matrix.os }}
@@ -79,7 +79,7 @@ jobs:
         run: bun run build
 
       - name: Build Rust binary
-        run: cargo build --release -p vibe-recall-server
+        run: cargo build --release -p claude-view-server
 
       - name: Package (unix)
         if: runner.os != 'Windows'

@@ -229,7 +229,7 @@ async fn get_live_session_messages(
             .into_response();
     }
 
-    match vibe_recall_core::parse_session(path).await {
+    match claude_view_core::parse_session(path).await {
         Ok(session) => {
             let total = session.messages.len();
             let limit = params.limit.min(total);

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
-use vibe_recall_db::{InvocableWithCount, StatsOverview, TokenStats};
+use claude_view_db::{InvocableWithCount, StatsOverview, TokenStats};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -54,7 +54,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     /// Helper: create an in-memory database for tests.
     async fn test_db() -> Database {
@@ -162,7 +162,7 @@ mod tests {
         let db = test_db().await;
 
         // Insert a session
-        use vibe_recall_core::{SessionInfo, ToolCounts};
+        use claude_view_core::{SessionInfo, ToolCounts};
         let session = SessionInfo {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),

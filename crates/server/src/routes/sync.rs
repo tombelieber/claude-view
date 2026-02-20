@@ -20,7 +20,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::git_sync_state::GitSyncPhase;
 use crate::metrics::record_sync;
 use crate::state::AppState;
-use vibe_recall_db::git_correlation::GitSyncProgress;
+use claude_view_db::git_correlation::GitSyncProgress;
 
 /// Global mutex to prevent concurrent git syncs.
 /// Uses a lazy static pattern via std::sync::OnceLock.
@@ -116,7 +116,7 @@ pub async fn trigger_git_sync(
                 let start = Instant::now();
 
                 tracing::info!("Git sync triggered via API");
-                match vibe_recall_db::git_correlation::run_git_sync(&db, on_progress).await {
+                match claude_view_db::git_correlation::run_git_sync(&db, on_progress).await {
                     Ok(result) => {
                         let duration = start.elapsed();
                         tracing::info!(
@@ -326,7 +326,7 @@ pub async fn trigger_deep_index(
                 // Step 2: Run deep indexing pass with progress wired to IndexingState
                 let indexing_start = indexing.clone();
                 let indexing_cb = indexing.clone();
-                let result = vibe_recall_db::indexer_parallel::pass_2_deep_index(
+                let result = claude_view_db::indexer_parallel::pass_2_deep_index(
                     &db,
                     None, // No registry needed for rebuild
                     search_index.as_deref(), // Pass search index for Tantivy indexing
@@ -403,7 +403,7 @@ mod tests {
         http::{Method, Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

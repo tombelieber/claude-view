@@ -116,9 +116,9 @@ Wave 4: Phase 6 + Phase 7 + Phase 8      ✅ (parallel)
 
 | Crate | Tests |
 |-------|-------|
-| vibe-recall-core | 388 |
-| vibe-recall-db | 269 |
-| vibe-recall-server | 203 |
+| claude-view-core | 388 |
+| claude-view-db | 269 |
+| claude-view-server | 203 |
 | **Total** | **860 pass, 0 fail** |
 
 ## Notes

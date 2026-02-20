@@ -1,4 +1,4 @@
-//! API route handlers for the vibe-recall server.
+//! API route handlers for the claude-view server.
 
 pub mod classify;
 pub mod coaching;
@@ -123,7 +123,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_api_routes_creation() {
-        let db = vibe_recall_db::Database::new_in_memory().await.expect("in-memory DB");
+        let db = claude_view_db::Database::new_in_memory().await.expect("in-memory DB");
         let state = AppState::new(db);
         let _router = api_routes(state);
     }
