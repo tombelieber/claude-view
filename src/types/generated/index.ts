@@ -48,6 +48,7 @@ export type { SyncStatus } from './SyncStatus'
 export type { StorageStats } from './StorageStats'
 
 // AI Generation types (Phase 3)
+export type { AggregateCostBreakdown } from './AggregateCostBreakdown'
 export type { AIGenerationStats } from './AIGenerationStats'
 export type { TokensByModel } from './TokensByModel'
 export type { TokensByProject } from './TokensByProject'

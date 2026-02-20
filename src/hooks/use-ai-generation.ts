@@ -68,11 +68,17 @@ export function useAIGenerationStats(timeRange?: TimeRangeParams | null, project
  */
 export function formatTokens(tokens: number | null | undefined): string {
   if (tokens === null || tokens === undefined) return '--'
+  if (tokens >= 1_000_000_000) {
+    const b = tokens / 1_000_000_000
+    return `${b >= 10 ? b.toFixed(1) : b.toFixed(2)}B`
+  }
   if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
+    const m = tokens / 1_000_000
+    return `${m >= 100 ? m.toFixed(1) : m.toFixed(1)}M`
   }
   if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(0)}k`
+    const k = tokens / 1_000
+    return `${k >= 100 ? k.toFixed(0) : k >= 10 ? k.toFixed(0) : k.toFixed(1)}k`
   }
   return tokens.toString()
 }
