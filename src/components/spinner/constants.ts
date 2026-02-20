@@ -84,6 +84,10 @@ export function pickPastVerb(sessionId: string): string {
  */
 export function formatTokensCompact(n: number): string {
   if (!Number.isFinite(n) || n < 0) return '0'
+  if (n >= 1_000_000_000) {
+    const b = n / 1_000_000_000
+    return `${b >= 10 ? b.toFixed(1) : b.toFixed(2)}B`
+  }
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return `${n}`

@@ -131,6 +131,19 @@ pub struct TokensByProject {
     pub output_tokens: i64,
 }
 
+/// Aggregate cost breakdown in USD (computed from per-model token data + pricing engine).
+#[derive(Debug, Clone, Default, serde::Serialize, TS)]
+#[ts(export, export_to = "../../../src/types/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateCostBreakdown {
+    pub total_cost_usd: f64,
+    pub input_cost_usd: f64,
+    pub output_cost_usd: f64,
+    pub cache_read_cost_usd: f64,
+    pub cache_creation_cost_usd: f64,
+    pub cache_savings_usd: f64,
+}
+
 /// AI Generation statistics (for GET /api/stats/ai-generation).
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
@@ -146,8 +159,14 @@ pub struct AIGenerationStats {
     pub total_input_tokens: i64,
     #[ts(type = "number")]
     pub total_output_tokens: i64,
+    #[ts(type = "number")]
+    pub cache_read_tokens: i64,
+    #[ts(type = "number")]
+    pub cache_creation_tokens: i64,
     pub tokens_by_model: Vec<TokensByModel>,
     pub tokens_by_project: Vec<TokensByProject>,
+    /// Aggregate cost breakdown (computed server-side using pricing engine).
+    pub cost: AggregateCostBreakdown,
 }
 
 /// Storage statistics for the system page.

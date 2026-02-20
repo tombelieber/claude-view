@@ -1,7 +1,7 @@
 // crates/db/src/queries/ai_generation.rs
 // AI generation statistics queries (token usage by model/project).
 
-use super::{AIGenerationStats, TokensByModel, TokensByProject};
+use super::{AggregateCostBreakdown, AIGenerationStats, TokensByModel, TokensByProject};
 use crate::{Database, DbResult};
 
 impl Database {
@@ -20,13 +20,15 @@ impl Database {
         let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
-        let (files_created, total_input_tokens, total_output_tokens): (i64, i64, i64) =
+        let (files_created, total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens): (i64, i64, i64, i64, i64) =
             sqlx::query_as(
                 r#"
                 SELECT
                     COALESCE(SUM(files_edited_count), 0),
                     COALESCE(SUM(total_input_tokens), 0),
-                    COALESCE(SUM(total_output_tokens), 0)
+                    COALESCE(SUM(total_output_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0),
+                    COALESCE(SUM(cache_creation_tokens), 0)
                 FROM valid_sessions
                 WHERE last_message_at >= ?1
                   AND last_message_at <= ?2
@@ -139,8 +141,54 @@ impl Database {
             files_created,
             total_input_tokens,
             total_output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
             tokens_by_model,
             tokens_by_project,
+            cost: AggregateCostBreakdown::default(),
         })
+    }
+
+    /// Get per-model token breakdown with ALL 4 token types for cost computation.
+    pub async fn get_per_model_token_breakdown(
+        &self,
+        from: Option<i64>,
+        to: Option<i64>,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<Vec<(String, i64, i64, i64, i64)>> {
+        let from = from.unwrap_or(1);
+        let to = to.unwrap_or(i64::MAX);
+
+        let rows: Vec<(Option<String>, i64, i64, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                primary_model,
+                COALESCE(SUM(total_input_tokens), 0),
+                COALESCE(SUM(total_output_tokens), 0),
+                COALESCE(SUM(cache_read_tokens), 0),
+                COALESCE(SUM(cache_creation_tokens), 0)
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
+              AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3)
+              AND (?4 IS NULL OR git_branch = ?4)
+              AND primary_model IS NOT NULL
+            GROUP BY primary_model
+            "#,
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|(model, input, output, cache_read, cache_create)| {
+                model.map(|m| (m, input, output, cache_read, cache_create))
+            })
+            .collect())
     }
 }
