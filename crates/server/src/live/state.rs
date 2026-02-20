@@ -4,7 +4,7 @@
 //! file modification time, and process presence.
 
 use serde::{Deserialize, Serialize};
-use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 /// The universal agent state — driven by hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,15 +99,38 @@ pub struct LiveSession {
     /// Sub-agents spawned via the Task tool in this session.
     /// Empty vec if no sub-agents have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
+    pub sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
     /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
     /// Empty vec if no progress items have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    pub progress_items: Vec<claude_view_core::progress::ProgressItem>,
     /// Unix timestamp when the last cache hit or creation occurred.
     /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
     pub last_cache_hit_at: Option<i64>,
+    /// Hook lifecycle events captured for the event log.
+    /// Skipped in SSE serialization (too large); streamed via WS only.
+    #[serde(skip_serializing)]
+    pub hook_events: Vec<HookEvent>,
+}
+
+/// A single hook lifecycle event, captured for the event log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookEvent {
+    /// Unix timestamp (seconds).
+    pub timestamp: i64,
+    /// Hook event name: "PreToolUse", "PostToolUse", "Stop", etc.
+    pub event_name: String,
+    /// Tool name, if applicable.
+    pub tool_name: Option<String>,
+    /// Human-readable label (from resolve_state_from_hook).
+    pub label: String,
+    /// Agent state group: "autonomous", "needs_you", or "delivered".
+    pub group: String,
+    /// Optional context JSON (tool_input, error, prompt snippet, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
 }
 
 /// Events broadcast over the SSE channel to connected Live Monitor clients.

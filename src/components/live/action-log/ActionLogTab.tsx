@@ -6,27 +6,31 @@ import { useActionItems } from './use-action-items'
 import { ActionFilterChips } from './ActionFilterChips'
 import { ActionRow } from './ActionRow'
 import { TurnSeparatorRow } from './TurnSeparatorRow'
-import { isTurnSeparator } from './types'
-import type { ActionCategory } from './types'
+import { HookEventRow } from './HookEventRow'
+import { isTurnSeparator, isHookEvent } from './types'
+import type { ActionCategory, HookEventItem } from './types'
 
 interface ActionLogTabProps {
   messages: RichMessage[]
   bufferDone: boolean
+  hookEvents?: HookEventItem[]
 }
 
-export function ActionLogTab({ messages, bufferDone }: ActionLogTabProps) {
-  const allItems = useActionItems(messages)
+export function ActionLogTab({ messages, bufferDone, hookEvents }: ActionLogTabProps) {
+  const allItems = useActionItems(messages, hookEvents)
   const [activeFilter, setActiveFilter] = useState<ActionCategory | 'all'>('all')
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [showNewIndicator, setShowNewIndicator] = useState(false)
   const prevCountRef = useRef(0)
 
-  // Category counts (actions only, not turn separators)
+  // Category counts (actions + hooks only, not turn separators)
   const counts = useMemo(() => {
-    const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0 }
+    const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0, hook: 0 }
     for (const item of allItems) {
-      if (!isTurnSeparator(item)) {
+      if (isHookEvent(item)) {
+        c.hook++
+      } else if (!isTurnSeparator(item)) {
         c[item.category]++
       }
     }
@@ -38,6 +42,7 @@ export function ActionLogTab({ messages, bufferDone }: ActionLogTabProps) {
     if (activeFilter === 'all') return allItems
     return allItems.filter((item) => {
       if (isTurnSeparator(item)) return true // always show turn separators
+      if (isHookEvent(item)) return activeFilter === 'hook'
       return item.category === activeFilter
     })
   }, [allItems, activeFilter])
@@ -84,6 +89,8 @@ export function ActionLogTab({ messages, bufferDone }: ActionLogTabProps) {
             itemContent={(_, item) =>
               isTurnSeparator(item) ? (
                 <TurnSeparatorRow role={item.role} content={item.content} />
+              ) : isHookEvent(item) ? (
+                <HookEventRow event={item} />
               ) : (
                 <ActionRow action={item} />
               )

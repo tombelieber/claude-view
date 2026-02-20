@@ -1,7 +1,7 @@
 // crates/db/examples/bench_indexing.rs
 // Performance benchmark for the two-pass indexing pipeline.
 //
-// Run with: cargo run --example bench_indexing -p vibe-recall-db --release
+// Run with: cargo run --example bench_indexing -p claude-view-db --release
 //
 // Measures against real ~/.claude directory:
 //   Pass 1 (read sessions-index.json): target <10ms for ~10 projects
@@ -22,16 +22,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    println!("=== vibe-recall indexing benchmark ===");
+    println!("=== claude-view indexing benchmark ===");
     println!("Claude dir: {}", claude_dir.display());
     println!();
 
     // Use in-memory DB for clean benchmarks (no disk I/O overhead)
-    let db = vibe_recall_db::Database::new_in_memory().await?;
+    let db = claude_view_db::Database::new_in_memory().await?;
 
     // --- Pass 1 benchmark ---
     let start = Instant::now();
-    let (projects, sessions) = vibe_recall_db::indexer_parallel::pass_1_read_indexes(&claude_dir, &db)
+    let (projects, sessions) = claude_view_db::indexer_parallel::pass_1_read_indexes(&claude_dir, &db)
         .await
         .map_err(|e| format!("Pass 1 failed: {}", e))?;
     let pass1_elapsed = start.elapsed();
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Pass 2 benchmark ---
     let start = Instant::now();
-    let (indexed, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |indexed, total, _| {
+    let (indexed, _) = claude_view_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |indexed, total, _| {
         if indexed % 50 == 0 || indexed == total {
             eprint!("\r  Pass 2: {}/{}", indexed, total);
         }
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Subsequent launch benchmark (Pass 2 should skip all) ---
     let start = Instant::now();
-    let (indexed2, _) = vibe_recall_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+    let (indexed2, _) = claude_view_db::indexer_parallel::pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
         .await
         .map_err(|e| format!("Pass 2 rerun failed: {}", e))?;
     let rerun_elapsed = start.elapsed();

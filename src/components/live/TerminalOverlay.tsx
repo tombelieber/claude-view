@@ -6,6 +6,7 @@ import { RichTerminalPane } from './RichTerminalPane'
 import { ContextBar } from './ContextBar'
 import { StatusDot } from './StatusDot'
 import { StateBadge } from './SessionCard'
+import { ViewModeControls } from './ViewModeControls'
 import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
 
@@ -23,9 +24,6 @@ interface TerminalOverlayProps {
 export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
   const [isVisible, setIsVisible] = useState(false)
   const verboseMode = useMonitorStore((s) => s.verboseMode)
-  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
-  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
-  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
   const [copied, setCopied] = useState(false)
 
   // Entrance animation
@@ -141,33 +139,8 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             <ContextBar percent={contextPercent} />
           </div>
 
-          {/* Verbose toggle */}
-          <button
-            onClick={toggleVerbose}
-            className={cn(
-              'text-[10px] px-2 py-0.5 rounded border transition-colors',
-              verboseMode
-                ? 'border-blue-500 dark:border-[#1F6FEB] text-blue-600 dark:text-[#79C0FF]'
-                : 'border-gray-300 dark:border-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]',
-            )}
-          >
-            {verboseMode ? 'verbose' : 'compact'}
-          </button>
-
-          {/* Rich render toggle — only visible in verbose mode */}
-          {verboseMode && (
-            <button
-              onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
-              className={cn(
-                'text-[10px] px-2 py-0.5 rounded border transition-colors',
-                richRenderMode === 'rich'
-                  ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                  : 'border-gray-300 dark:border-[#30363D] text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]',
-              )}
-            >
-              {richRenderMode === 'rich' ? 'rich' : 'json'}
-            </button>
-          )}
+          {/* Chat / Debug + Rich / JSON */}
+          <ViewModeControls />
 
           {/* Close */}
           <button

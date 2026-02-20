@@ -10,8 +10,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 use tracing::{info, warn};
-use vibe_recall_core::facets::{default_facet_cache_path, scan_facet_cache};
-use vibe_recall_db::{Database, FacetRow};
+use claude_view_core::facets::{default_facet_cache_path, scan_facet_cache};
+use claude_view_db::{Database, FacetRow};
 
 /// Status of the current facet ingest job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

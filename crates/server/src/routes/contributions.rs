@@ -25,7 +25,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_db::{
+use claude_view_db::{
     calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
     DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
     TokenBreakdown, UncommittedWork, FALLBACK_INPUT_COST_PER_TOKEN, FALLBACK_OUTPUT_COST_PER_TOKEN,
@@ -764,7 +764,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

@@ -1,5 +1,5 @@
 // crates/db/src/lib.rs
-// Phase 2: SQLite database for vibe-recall session indexing
+// Phase 2: SQLite database for claude-view session indexing
 #![allow(
     clippy::type_complexity,
     clippy::too_many_arguments,
@@ -17,6 +17,7 @@ pub mod snapshots;
 pub mod trends;
 
 pub use queries::facets::{FacetAggregateStats, FacetRow};
+pub use queries::hook_events::{self as hook_events_queries, HookEventRow};
 pub use queries::AIGenerationStats;
 pub use queries::ActivityPoint;
 pub use queries::BranchCount;
@@ -40,8 +41,8 @@ pub use trends::IndexMetadata;
 pub use trends::TrendMetric;
 pub use trends::WeekTrends;
 
-// Re-export unified pricing types (owned by vibe_recall_core::pricing)
-pub use vibe_recall_core::pricing::{
+// Re-export unified pricing types (owned by claude_view_core::pricing)
+pub use claude_view_core::pricing::{
     calculate_cost, calculate_cost_usd, default_pricing, lookup_pricing, CacheStatus,
     CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage, FALLBACK_INPUT_COST_PER_TOKEN,
     FALLBACK_OUTPUT_COST_PER_TOKEN,
@@ -148,7 +149,7 @@ impl Database {
         Ok(db)
     }
 
-    /// Open the database at the default location: `~/.cache/vibe-recall/vibe-recall.db`
+    /// Open the database at the default location: `~/.cache/claude-view/claude-view.db`
     pub async fn open_default() -> DbResult<Self> {
         let path = default_db_path()?;
         Self::new(&path).await
@@ -307,9 +308,9 @@ impl Database {
     }
 }
 
-/// Returns the default database path: `~/.cache/vibe-recall/vibe-recall.db`
+/// Returns the default database path: `~/.cache/claude-view/claude-view.db`
 pub fn default_db_path() -> DbResult<PathBuf> {
-    vibe_recall_core::paths::db_path().ok_or(DbError::NoCacheDir)
+    claude_view_core::paths::db_path().ok_or(DbError::NoCacheDir)
 }
 
 #[cfg(test)]
@@ -380,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn test_default_db_path() {
         let path = default_db_path().expect("should resolve default path");
-        assert!(path.to_string_lossy().contains("vibe-recall"));
-        assert!(path.to_string_lossy().ends_with("vibe-recall.db"));
+        assert!(path.to_string_lossy().contains("claude-view"));
+        assert!(path.to_string_lossy().ends_with("claude-view.db"));
     }
 }

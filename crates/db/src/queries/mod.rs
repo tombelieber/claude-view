@@ -1,9 +1,10 @@
 // crates/db/src/queries/mod.rs
-// Session CRUD operations for the vibe-recall SQLite database.
+// Session CRUD operations for the claude-view SQLite database.
 
 pub(crate) mod row_types;
 mod classification;
 mod dashboard;
+pub mod hook_events;
 mod invocables;
 mod models;
 mod sessions;

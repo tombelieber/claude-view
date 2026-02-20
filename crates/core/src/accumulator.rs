@@ -211,31 +211,38 @@ impl SessionAccumulator {
                 .iter_mut()
                 .find(|a| a.tool_use_id == result.tool_use_id)
             {
-                agent.status = if result.status == "completed" {
-                    SubAgentStatus::Complete
+                // Background agents return "async_launched" immediately — they're
+                // still running, so only capture the agentId and keep Running status.
+                if result.status == "async_launched" {
+                    agent.agent_id = result.agent_id.clone();
                 } else {
-                    SubAgentStatus::Error
-                };
-                agent.agent_id = result.agent_id.clone();
-                agent.completed_at = line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
-                agent.duration_ms = result.total_duration_ms;
-                agent.tool_use_count = result.total_tool_use_count;
-                agent.current_activity = None;
-
-                // Compute cost from sub-agent token usage via pricing table
-                if let Some(model) = self.model.as_deref() {
-                    let sub_tokens = TokenUsage {
-                        input_tokens: result.usage_input_tokens.unwrap_or(0),
-                        output_tokens: result.usage_output_tokens.unwrap_or(0),
-                        cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
-                        cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
-                        cache_creation_5m_tokens: 0,
-                        cache_creation_1hr_tokens: 0,
-                        total_tokens: 0, // not used by calculate_cost
+                    agent.status = if result.status == "completed" {
+                        SubAgentStatus::Complete
+                    } else {
+                        SubAgentStatus::Error
                     };
-                    let sub_cost = calculate_cost(&sub_tokens, Some(model), pricing);
-                    if sub_cost.total_usd > 0.0 {
-                        agent.cost_usd = Some(sub_cost.total_usd);
+                    agent.agent_id = result.agent_id.clone();
+                    agent.completed_at =
+                        line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
+                    agent.duration_ms = result.total_duration_ms;
+                    agent.tool_use_count = result.total_tool_use_count;
+                    agent.current_activity = None;
+
+                    // Compute cost from sub-agent token usage via pricing table
+                    if let Some(model) = self.model.as_deref() {
+                        let sub_tokens = TokenUsage {
+                            input_tokens: result.usage_input_tokens.unwrap_or(0),
+                            output_tokens: result.usage_output_tokens.unwrap_or(0),
+                            cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
+                            cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
+                            cache_creation_5m_tokens: 0,
+                            cache_creation_1hr_tokens: 0,
+                            total_tokens: 0, // not used by calculate_cost
+                        };
+                        let sub_cost = calculate_cost(&sub_tokens, Some(model), pricing);
+                        if sub_cost.total_usd > 0.0 {
+                            agent.cost_usd = Some(sub_cost.total_usd);
+                        }
                     }
                 }
             }
@@ -257,6 +264,26 @@ impl SessionAccumulator {
                 if agent.status == SubAgentStatus::Running {
                     agent.current_activity = progress.current_tool.clone();
                 }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Background agent completion via <task-notification>
+        // -----------------------------------------------------------------
+        if let Some(ref notif) = line.sub_agent_notification {
+            if let Some(agent) = self
+                .sub_agents
+                .iter_mut()
+                .find(|a| a.agent_id.as_deref() == Some(&notif.agent_id))
+            {
+                agent.status = if notif.status == "completed" {
+                    SubAgentStatus::Complete
+                } else {
+                    // "failed", "killed", or any other terminal status
+                    SubAgentStatus::Error
+                };
+                agent.completed_at = line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
+                agent.current_activity = None;
             }
         }
 
@@ -489,6 +516,7 @@ mod tests {
             sub_agent_spawns: Vec::new(),
             sub_agent_result: None,
             sub_agent_progress: None,
+            sub_agent_notification: None,
             todo_write: None,
             task_creates: Vec::new(),
             task_updates: Vec::new(),
@@ -711,6 +739,182 @@ mod tests {
         assert_eq!(data.sub_agents[0].agent_id.as_deref(), Some("a951849"));
         assert_eq!(data.sub_agents[0].duration_ms, Some(60000));
         assert_eq!(data.sub_agents[0].tool_use_count, Some(15));
+    }
+
+    #[test]
+    fn test_sub_agent_async_launched_stays_running() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Spawn
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
+            tool_use_id: "toolu_01BG".to_string(),
+            agent_type: "general-purpose".to_string(),
+            description: "Backend work".to_string(),
+        });
+        acc.process_line(&spawn_line, 0, &pricing);
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+
+        // Background launch result (async_launched)
+        let mut result_line = empty_line();
+        result_line.line_type = LineType::User;
+        result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01BG".to_string(),
+            agent_id: Some("ab897bc".to_string()),
+            status: "async_launched".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&result_line, 0, &pricing);
+
+        // Should stay Running, not Error
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+        // But agent_id should be captured
+        assert_eq!(acc.sub_agents[0].agent_id.as_deref(), Some("ab897bc"));
+        // Completion fields should remain None
+        assert_eq!(acc.sub_agents[0].completed_at, None);
+        assert_eq!(acc.sub_agents[0].duration_ms, None);
+    }
+
+    #[test]
+    fn test_sub_agent_background_notification_completed() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Spawn
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
+            tool_use_id: "toolu_01BG2".to_string(),
+            agent_type: "general-purpose".to_string(),
+            description: "Backend work".to_string(),
+        });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        // async_launched (captures agentId)
+        let mut launch_line = empty_line();
+        launch_line.line_type = LineType::User;
+        launch_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01BG2".to_string(),
+            agent_id: Some("ab897bc".to_string()),
+            status: "async_launched".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&launch_line, 0, &pricing);
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+        assert_eq!(acc.sub_agents[0].agent_id.as_deref(), Some("ab897bc"));
+
+        // <task-notification> completed
+        let mut notif_line = empty_line();
+        notif_line.line_type = LineType::User;
+        notif_line.timestamp = Some("2026-02-20T11:00:00Z".to_string());
+        notif_line.sub_agent_notification =
+            Some(crate::live_parser::SubAgentNotification {
+                agent_id: "ab897bc".to_string(),
+                status: "completed".to_string(),
+            });
+        acc.process_line(&notif_line, 0, &pricing);
+
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Complete);
+        assert!(acc.sub_agents[0].completed_at.is_some());
+        assert_eq!(acc.sub_agents[0].current_activity, None);
+    }
+
+    #[test]
+    fn test_sub_agent_background_notification_failed() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Spawn + async_launched
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
+            tool_use_id: "toolu_01FAIL".to_string(),
+            agent_type: "general-purpose".to_string(),
+            description: "Failing work".to_string(),
+        });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        let mut launch_line = empty_line();
+        launch_line.line_type = LineType::User;
+        launch_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01FAIL".to_string(),
+            agent_id: Some("afailed1".to_string()),
+            status: "async_launched".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&launch_line, 0, &pricing);
+
+        // <task-notification> failed
+        let mut notif_line = empty_line();
+        notif_line.line_type = LineType::User;
+        notif_line.sub_agent_notification =
+            Some(crate::live_parser::SubAgentNotification {
+                agent_id: "afailed1".to_string(),
+                status: "failed".to_string(),
+            });
+        acc.process_line(&notif_line, 0, &pricing);
+
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
+    }
+
+    #[test]
+    fn test_sub_agent_background_notification_killed() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Spawn + async_launched
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
+            tool_use_id: "toolu_01KILL".to_string(),
+            agent_type: "general-purpose".to_string(),
+            description: "Killed work".to_string(),
+        });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        let mut launch_line = empty_line();
+        launch_line.line_type = LineType::User;
+        launch_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01KILL".to_string(),
+            agent_id: Some("akilled1".to_string()),
+            status: "async_launched".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&launch_line, 0, &pricing);
+
+        // <task-notification> killed
+        let mut notif_line = empty_line();
+        notif_line.line_type = LineType::User;
+        notif_line.sub_agent_notification =
+            Some(crate::live_parser::SubAgentNotification {
+                agent_id: "akilled1".to_string(),
+                status: "killed".to_string(),
+            });
+        acc.process_line(&notif_line, 0, &pricing);
+
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
     }
 
     #[test]

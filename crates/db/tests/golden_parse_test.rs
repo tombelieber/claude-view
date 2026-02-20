@@ -2,7 +2,7 @@
 // These verify that JSONL parsing produces expected ParseResult/ExtendedMetadata
 // across a variety of inputs: empty, single message, multi-turn, truncation, and invalid data.
 
-use vibe_recall_db::indexer_parallel::parse_bytes;
+use claude_view_db::indexer_parallel::parse_bytes;
 
 #[test]
 fn golden_empty_file() {
@@ -329,7 +329,7 @@ fn golden_phase3_complete_metrics() {
 
 #[test]
 fn golden_phase3_derived_metrics() {
-    use vibe_recall_core::metrics::{
+    use claude_view_core::metrics::{
         tokens_per_prompt, reedit_rate, tool_density, edit_velocity, read_to_edit_ratio
     };
 
