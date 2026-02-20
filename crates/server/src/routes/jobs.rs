@@ -24,12 +24,25 @@ async fn stream_jobs(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.jobs.subscribe();
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         let mut rx = rx;
-        while let Ok(progress) = rx.recv().await {
-            let json = serde_json::to_string(&progress).unwrap_or_default();
-            yield Ok(Event::default().data(json));
+        loop {
+            tokio::select! {
+                result = rx.recv() => {
+                    match result {
+                        Ok(progress) => {
+                            let json = serde_json::to_string(&progress).unwrap_or_default();
+                            yield Ok(Event::default().data(json));
+                        }
+                        Err(_) => break,
+                    }
+                }
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
+                }
+            }
         }
     };
 
@@ -78,7 +91,8 @@ mod tests {
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: None,
+            search_index: Arc::new(std::sync::RwLock::new(None)),
+            shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         });
 
