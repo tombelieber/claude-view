@@ -1,6 +1,6 @@
 {
   "name": "claude-view",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Browse and export Claude Code sessions as beautiful HTML",
   "type": "module",
   "files": [
