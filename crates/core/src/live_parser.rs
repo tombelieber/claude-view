@@ -144,7 +144,6 @@ pub struct TailFinders {
     pub task_create_key: memmem::Finder<'static>,
     pub task_update_key: memmem::Finder<'static>,
     pub task_notification_key: memmem::Finder<'static>,
-    pub skill_name_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -170,7 +169,6 @@ impl TailFinders {
             task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
-            skill_name_key: memmem::Finder::new(b"\"name\":\"Skill\""),
         }
     }
 }
