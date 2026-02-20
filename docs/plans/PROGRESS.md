@@ -1,584 +1,101 @@
 # claude-view — Progress Dashboard
 
-> Single source of truth. Replaces scanning 12 plan files.
+> Session-start file. What's active, what's done, what's next.
 >
-> **Last updated:** 2026-02-20
+> **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
+>
+> **Last updated:** 2026-02-21
 
 ---
 
-## Product Evolution
+## Current Focus
 
-The product has evolved through 4 stages. Each builds on the previous.
+- Mission Control Phase E+ (custom layout, interactive features)
+- Full-Text Search (Phase 6 — Tantivy)
+- Action Log Tab
 
-```
-Stage 1: SESSION VIEWER (v0.1–v0.3)               ✅ SHIPPED
-  "Browse and search Claude Code conversation history"
-  └── Session browsing, JSONL parsing, search, export
+## Recently Completed
 
-Stage 2: AI FLUENCY COACH (v0.4–v0.5)             ✅ SHIPPED
-  "Your AI fluency, measured"
-  └── AI Fluency Score, metrics dashboard, analytics, insights
-
-Stage 3: MISSION CONTROL (v0.5–v0.7)              🔧 IN PROGRESS
-  "Watch and control your AI agents"
-  └── Live session monitoring across all terminals
-  └── Cost tracking, context usage, sub-agent visualization
-  └── Resume sessions from web dashboard (Agent SDK)
-  └── Grid/List/Kanban/Monitor views
-
-Stage 4: REDACTED — AI AGENT RUNTIME (v1.0+)      📐 DESIGNED
-  "The iPhone for AI agents"
-  └── Plan Runner: plan files → parallel agents → PRs with screenshots
-  └── 3-layer verification: deterministic → AI review → human decision
-  └── Provider-agnostic orchestration (Claude, GPT, Gemini)
-  └── Plugin marketplace + SDLC vertical
-  └── Mobile command & control
-  └── Rename: claude-view → redacted
-```
-
-**Each stage expands the TAM:**
-
-| Stage | Target User | Value Prop | TAM |
-|-------|------------|------------|-----|
-| Session Viewer | Claude Code user curious about history | "See your past sessions" | ~100K devs |
-| AI Fluency Coach | Dev wanting to improve their AI workflow | "Get better at AI-assisted coding" | ~500K devs |
-| Mission Control | Power user running 10-20+ concurrent agents | "Watch and control your AI workforce" | ~50K power users |
-| redacted | Non-technical users harnessing AI agents | "The iPhone for AI agents" | ~10M+ users |
-
----
-
-## Business Model: Open-Core
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Free Tier (Open Source)                                │
-│  - Browse, search, export sessions                      │
-│  - Full metrics: atomic units, derived stats, trends    │
-│  - Git correlation (ultra-conservative, provable only)  │
-│  - Mission Control: monitor all active sessions         │
-│  - Cost tracking, context usage, sub-agent viz          │
-│  - Resume sessions from web dashboard                   │
-│  - BYO Claude CLI classification (user's own quota)     │
-│  - `npx claude-view` — zero friction install            │
-│                                                         │
-│  ══════════════════════════════════════════════════════ │
-│                                                         │
-│  Pro Tier (Paid — Individual)                           │
-│  - Hosted LLM classification (we pay for API calls)    │
-│  - Bulk classify all sessions (1-click)                 │
-│  - Auto-classify new sessions on ingest                 │
-│  - BYO API key (Anthropic, OpenAI, Google, Ollama)     │
-│  - Advanced cross-session pattern analysis              │
-│                                                         │
-│  ══════════════════════════════════════════════════════ │
-│                                                         │
-│  Enterprise Tier (Paid — Team)                          │
-│  - Team aggregation (multi-user data)                   │
-│  - Manager dashboards & admin controls                  │
-│  - AI fluency scoring across employees                  │
-│  - Multi-agent orchestration policies                   │
-│  - Cost budgets & alerts per team/project               │
-│  - Export for HR/compliance/audits                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Strategy:** Build all analytics features (enterprise-grade quality) in Free tier first. Pro tier adds **LLM-powered classification** (slow + expensive = natural paywall). Enterprise tier adds the **team aggregation layer** on top. Mission Control monitoring is Free tier; hosted classification is Pro; orchestration policies and team cost budgets are Enterprise.
-
----
-
-## redacted: Module Roadmap
-
-> Vision doc: `docs/plans/2026-02-16-redacted-vision.md`
-
-The product identity is shifting from **viewer → analyst → runtime**:
-
-```
-claude-view (viewer)  →  claude-score (analyst)  →  redacted (runtime)
-   "看"                    "評分"                     "控制"
-```
-
-### Active Modules (dogfood-first)
-
-```
-M1 (Agent Dashboard) → M2 (Interactive Control) → M4 (Plan Runner)
-     Phase C,D,E            Phase F + spawning         Plan files → PRs
-     "Watch"                "Act"                       "Automate"
-```
-
-| Module | Milestone | Scope | Status |
-|--------|-----------|-------|--------|
-| **M1: Agent Dashboard** | MS1: Watch | Phase C (live terminal grid, xterm.js, WebSocket), Phase D (sub-agent viz, Agent Teams), Phase E (react-mosaic custom layout) | Phase C in progress (worktree) |
-| **M2: Interactive Control** | MS2: Act | Phase F (Agent SDK sidecar, resume, dashboard chat, permissions), agent spawning from dashboard, cost tracking | Not started |
-| **M4: Plan Runner** | MS3: Automate | Plan file → dependency DAG → git worktrees → parallel agents → Layer 1 (lint/test, max 2 retries) → Layer 2 (AI audit to 100/100) → Layer 3 (human approve) → PR with screenshots/demos. Crash recovery via pipeline.json | Not started |
-
-### Deferred Modules
-
-| Module | Why deferred | Revisit when |
-|--------|-------------|--------------|
-| **M3: Provider Layer** | Claude Code only for dogfooding. Provider trait designed but not needed yet | After M4, before public launch |
-| **M5: Plugin System** | Plan Runner IS the SDLC workflow for now. Formal plugin engine when packaging for others | After M4 ships, before marketplace |
-| **M6: Marketplace** | No users yet. Build the product first | After public launch + user demand |
-| **M7: Mobile** | Web-first. Dogfood at desk. Mobile adds PWA/relay complexity | After M1-M4 shippable on web |
-| **M8: Analytics** | Already shipped (fluency score, coaching). Good enough for now | When specific gaps identified |
-| **M9: Verticals** | SDLC is just the first Plan Runner workflow, not a separate module | Becomes M5 plugin when marketplace ships |
+- Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown)
+- AI Fluency Score (merged)
+- Process-Gated Discovery, Page Reorganization
+- Session Sort Redesign, Command Palette Redesign, Notification Sound Design
+- Hook Events + Terminal View Modes
+- Rename: vibe-recall → claude-view
 
 ---
 
 ## At a Glance
 
-| Phase | Status | Progress | Tier |
-|-------|--------|----------|------|
-| **Phase 1: Foundation** | **DONE** | 8/8 tasks | Personal |
-| **Phase 2A-1: Parallel Indexing** | **DONE** | 11/11 steps | Personal |
-| **Phase 2A-2: Invocable Registry** | **DONE** | 12/12 steps | Personal |
-| **Phase 2B: Token & Model Tracking** | **DONE** | 12/12 steps | Personal |
-| **Phase 2C: API Split + UX Polish** | **DONE** | 24/24 steps | Personal |
-| Phase 2D: Session Health | Merged into Phase 3 | — | — |
-| **Phase 3: Metrics Engine** | **DONE** | 48/48 steps — atomic units, derived metrics, git correlation, trends, export | Personal |
-| **Phase 3.5: Full JSONL Parser** | **DONE** | 10/10 tasks — full 7-type extraction, ParseDiagnostics, parse_version re-index | Personal |
-| **Phase 4: Distribution (npx)** | **DONE** | 7/7 tasks — checksum, OIDC publish, version guard, 3 releases shipped | Personal |
-| **Phase 4B: Session Parser + UI Wiring** | **DONE** | 4/4 tasks — 7-type parser rewrite, TS types, compact/full toggle, Track 4 wiring | Personal |
-| **Hardening: Security + Robustness** | **DONE** | 7/7 fixes — DOMPurify, XSS, ErrorBoundary, nesting cap, null safety, useEffect cleanup | Personal |
-| **Thread Visualization & Dark Mode** | **DONE** | 5/5 tasks — buildThreadMap, ConversationView wiring, hover highlighting, dark mode, plan status | Personal |
-| Phase 5: Enterprise Team Layer | Not started | — | **Enterprise** |
-| **Deep Index Perf (Tasks 1-3)** | **DONE** | 3/3 tasks — tx batching, SIMD pre-filter, mtime re-index | Personal |
-| **Deep Index Perf Instrumentation** | **DONE** | Timing breakdown (parse/write phase) in debug builds | Personal |
-| **Deep Index Perf: rusqlite write phase** | **DONE** | 4/4 tasks — rusqlite dep, db_path, SQL constants, spawn_blocking write | Personal |
-| **Session Loading Perf** | **DONE** | Paginated messages endpoint, tail-first loading | Personal |
-| **Export Markdown** | **DONE** | Download + clipboard copy for context resumption | Personal |
-| **Security Audit** | **DONE** | Critical/medium/low fixes — README accuracy, deps, unsafe code | Personal |
-| **Session Discovery & Navigation** | **DONE** | 6/6 phases (A-F) — sidebar tree, project view, branch filters, expand/collapse, 438 tests | Personal |
-| **Theme 2: Dashboard Analytics** | **DONE** | 5/5 features — time range filter, heatmap tooltips, sync redesign, AI generation breakdown, storage overview + responsive + observability + feature flags | Personal |
-| **GTM Launch** | **In Progress** | README rewrite done, GTM strategy doc done, AI Fluency Score in progress (separate branch) | Personal |
-| **Cold Start UX** | **DONE** | 7/7 tasks — bandwidth progress bar (TUI + frontend SSE overlay), auto-open browser | Personal |
-| **Phase 6: Search (Tantivy)** | **Approved** | Design complete — Tantivy embedded, Cmd+K, scoped search bar | Both |
-| Phase 7: Multi-Tool Providers | Draft | Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline | Both |
-| App-Wide UI/UX Polish | Deferred | a11y, i18n, responsive, dark mode audit | Personal |
-| **Theme 4: Chat Insights** | **DONE** | 8/8 phases, 39/39 tasks — classification, patterns, insights page shipped | Personal |
-| **Ambient Coach (Insights v2)** | **DONE** | 13/13 tasks — facet cache ingest, fluency score, ambient coaching surfaces, all tests green | Personal |
-| **Rename to redacted** | Deferred | Target changed from claude-score to redacted (see vision doc). 60+ files mapped — deferred until M1-M4 complete | Personal |
-| **Mission Control** | **In Progress** | Phases A-D done (monitoring, views, monitor mode, sub-agent viz). Phases E-J pending (custom layout, interactive, Codex integration). 13 phase files | Personal |
-| **Mobile PWA** | **Deferred (M7)** | 3 phases (M1-M3) — remote session monitoring via E2E encrypted relay + PWA. Deferred until M1-M4 shippable on web | Personal |
-| **Epic A: Smart Rules Engine** | **Draft** | Pattern insights → 1-click apply → `.claude/rules/` files → Claude auto-follows coaching. 6 tasks: backend API, PatternCard button, budget indicator, rules panel, tests, wiring | Personal |
-| **Epic B: Prompt Coach** | **Draft (Deferred)** | 4 phases: `/coach` skill (30min), Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts BEFORE they hit Claude | Personal |
-| **Epic C: Trusted Marketplace** | **Draft (Deferred)** | 4 phases: static curated list, dynamic data, 1-click install with safety preview, community submissions. Security trust badges (verified/community/unvetted/flagged) | Personal |
-| **Paid: LLM Classification** | **Draft (Deferred)** | 3 provider options: BYO Claude CLI (shipped), hosted API (paid), BYO API key. Free tier = user's own CLI. Pro tier = hosted bulk classify + auto-classify + BYO key. `LlmProvider` trait already extensible | **Pro** |
-| **Full-Chat AI Fluency Score** | **Draft (Deferred → Next Phase)** | 7-dimension per-session scoring (Prompt Clarity, Task Scoping, Course Correction, Tool Leverage, Iteration Efficiency, Outcome Quality, Context Economy). Conversation digest preprocessor, local + AI scoring, Anthropic API + OpenAI-compat providers. Plan fully audited (22 issues fixed). Deferred to next phase so current branch can merge | Personal |
-| **Action Log Tab** | **Pending** | 5th "Log" tab in SessionDetailPanel — filterable action timeline with paired tool_use/tool_result rows, timing, expandable raw JSON. 9 tasks: extract useSessionMessages hook, ActionItem types, filter chips, ActionRow, TurnSeparatorRow, ActionLogTab, wiring, edge cases, verification | Personal |
-
-**Current focus:** Mission Control Phase E+ (custom layout, interactive features) + Full-Text Search (Phase 6) + Action Log Tab
-
-**Recently completed:** Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown), AI Fluency Score (merged), Process-Gated Discovery, Page Reorganization (MC as home, analytics consolidated), Search Qualifier Fixes, Command Palette Redesign, Session Sort Redesign, Notification Sound Design
-
-**Pre-release:** Privacy scrub complete — all personal identifiers removed from code, tests, docs, config. Archived plans deleted. Repo ready for public visibility.
-
-**Code compiles:** Yes (cargo check passes, 548+ backend tests green, 794 frontend tests green, TypeScript compiles cleanly)
+| Phase | Status | Tier |
+|-------|--------|------|
+| Phase 1: Foundation | **DONE** | Personal |
+| Phase 2A-1: Parallel Indexing | **DONE** | Personal |
+| Phase 2A-2: Invocable Registry | **DONE** | Personal |
+| Phase 2B: Token & Model Tracking | **DONE** | Personal |
+| Phase 2C: API Split + UX Polish | **DONE** | Personal |
+| Phase 3: Metrics Engine | **DONE** | Personal |
+| Phase 3.5: Full JSONL Parser | **DONE** | Personal |
+| Phase 4: Distribution (npx) | **DONE** | Personal |
+| Phase 4B: Session Parser + UI Wiring | **DONE** | Personal |
+| Hardening: Security + Robustness | **DONE** | Personal |
+| Thread Visualization & Dark Mode | **DONE** | Personal |
+| Deep Index Perf (all tracks) | **DONE** | Personal |
+| Session Loading Perf | **DONE** | Personal |
+| Export Markdown | **DONE** | Personal |
+| Security Audit | **DONE** | Personal |
+| Session Discovery & Navigation | **DONE** | Personal |
+| Theme 2: Dashboard Analytics | **DONE** | Personal |
+| Theme 3: Git AI Contribution | **DONE** | Personal |
+| Theme 4: Chat Insights | **DONE** | Personal |
+| Ambient Coach (Insights v2) | **DONE** | Personal |
+| Cold Start UX | **DONE** | Personal |
+| GTM Launch | **In Progress** | Personal |
+| **Phase 6: Search (Tantivy)** | **Approved** | Both |
+| **Mission Control** | **In Progress** | Personal |
+| **Action Log Tab** | **Pending** | Personal |
+| Phase 5: Enterprise Team Layer | Not started | **Enterprise** |
 
 ---
 
-## Phase 2A-1: Parallel Indexing — DONE
+## Active Plan Index
 
-All steps complete and working in production (491 sessions, 0.1s Pass 1, 1.8s Pass 2).
+Plans in `docs/plans/` (active work only):
 
-| # | Step | Status | Notes |
-|---|------|--------|-------|
-| 1 | Fix discovery.rs compilation | **DONE** | Project compiles |
-| 6 | `session_index.rs` — parse sessions-index.json | **DONE** | Both formats supported |
-| 7 | `indexer_parallel.rs` — pass_1_read_indexes | **DONE** | Working in production |
-| 8 | `indexer_parallel.rs` — read_file_fast + parse_bytes | **DONE** | mmap + SIMD |
-| 9 | `indexer_parallel.rs` — pass_2_deep_index (pipeline) | **DONE** | Parallel JSONL parsing works |
-| 10 | `indexer_parallel.rs` — run_background_index | **DONE** | Orchestrator working |
-| 11 | IndexingState + AppState | **DONE** | Lock-free atomics |
-| 12 | `main.rs` — server-first startup | **DONE** | Server ready before indexing |
-| 13 | SSE `/api/indexing/progress` | **DONE** | Streaming events |
-| 15 | TUI progress display | **DONE** | indicatif spinners |
-| 16 | Acceptance tests | **DONE** | Integration tests pass |
-| 17 | Performance benchmarks | **DONE** | Benchmark tool exists |
+| File | Status | Description |
+|------|--------|-------------|
+| `2026-02-18-full-text-search-design.md` | approved | Phase 6: Tantivy search, Cmd+K, scoped search |
+| `2026-02-19-action-log-tab-design.md` | approved | Filterable action timeline in SessionDetailPanel |
+| `2026-02-19-action-log-tab-impl.md` | pending | 9 tasks for action log implementation |
+| `2026-02-19-notification-sound-design.md` | approved | Audio notifications for session events |
+| `2026-02-19-notification-sound-impl.md` | pending | Implementation plan for notification sounds |
+| `2026-02-19-pricing-engine-overhaul.md` | pending | Pricing engine redesign |
+| `2026-02-19-sessions-infinite-scroll.md` | pending | Infinite scroll for session lists |
+| `2026-02-19-restore-sparkline-stats-grid.md` | pending | Restore sparkline stats grid |
+| `2026-02-19-oauth-usage-pill-design.md` | pending | OAuth usage pill feature |
+| `2026-02-20-*` (8 files) | various | Recent active designs (pricing, liveness, history, renderers, etc.) |
+| `mission-control/` | in-progress | Phases A-D done, E-J pending (see `mission-control/PROGRESS.md`) |
 
----
-
-## Phase 2A-2: Invocable Registry — DONE
-
-Tracks which skills, commands, agents, and MCP tools get used. Includes perf fixes for existing indexer.
-
-All 12 steps complete. 284 tests pass across workspace.
-
-| # | Step | Status | Notes |
-|---|------|--------|-------|
-| P1 | Fix `read_file_fast()` — zero-copy mmap | **DONE** | Removed `.to_vec()`, parse directly from mmap |
-| P2 | Fix `parse_bytes()` — hoist Finders | **DONE** | All Finders hoisted, passed by &ref |
-| 2 | `registry.rs` — parse plugins, scan dirs | **DONE** | Registry struct + lookup maps + 20 built-in tools |
-| 4 | Migration 5 — invocables/invocations tables | **DONE** | Schema + 3 indexes |
-| 3 | `invocation.rs` — classify_tool_use | **DONE** | Skill/Task/MCP/builtin classification + 28 tests |
-| 5 | `queries.rs` — invocable + invocation CRUD + batch | **DONE** | 5 new methods + batch writes + stats overview |
-| 9 | Extend `parse_bytes()` → ParseResult | **DONE** | RawInvocation extraction with SIMD pre-filter |
-| 9b | Integrate invocations into pass_2_deep_index | **DONE** | Classify + batch insert in pipeline |
-| 10b | Update `run_background_index` — tokio::join! | **DONE** | Pass 1 ∥ Registry build |
-| 11b | Update AppState — `RwLock<Option<Registry>>` | **DONE** | RegistryHolder type alias |
-| 12b | Update main.rs — registry holder | **DONE** | Registry passed to background + API |
-| 14 | Routes: `/api/invocables`, `/api/stats/overview` | **DONE** | Two new GET endpoints |
+**Other locations:**
+- `docs/plans/backlog/` — 25 deferred/draft plans (epics, marketplace, mobile PWA, etc.)
+- `docs/plans/archived/` — All completed phase plans and theme work
 
 ---
 
-## Phase 2B: Token & Model Tracking — DONE
-
-Tracks per-API-call token usage and model identity. 2 new endpoints, extended session responses.
-
-| # | Step | Status | Notes |
-|---|------|--------|-------|
-| 1 | `RawTurn` type + extend `ParseResult` | **DONE** | `types.rs` |
-| 2 | Migration 6: `models` + `turns` tables | **DONE** | Schema + indexes |
-| 3 | `batch_upsert_models` + `batch_insert_turns` | **DONE** | Transaction-batched writes |
-| 4 | `parse_model_id()` helper | **DONE** | Provider/family extraction |
-| 5 | SIMD turn extraction in `parse_bytes()` | **DONE** | `usage_finder` pre-filter |
-| 6 | Integrate into `pass_2_deep_index()` | **DONE** | Models + turns batch insert |
-| 7 | `get_all_models()` + `get_token_stats()` | **DONE** | Aggregate queries |
-| 8 | `GET /api/models` route | **DONE** | Models with usage counts |
-| 9 | `GET /api/stats/tokens` route | **DONE** | Token economics |
-| 10 | Session queries with token LEFT JOIN | **DONE** | 6 new fields on SessionInfo |
-| 11 | Golden parse test fixtures | **DONE** | Turn data in fixtures |
-| 12 | Acceptance test: full pipeline | **DONE** | AC-13 token verification |
-
----
-
-## Phase 2C: API Split + UX Polish — DONE
-
-All 24 steps complete. Shipped in commit `4c12be4`.
-
-**Part A — Backend (10 steps):** `ProjectSummary[]` API, paginated `/api/projects/:id/sessions`, `/api/stats/dashboard`, Migration 7 indexes, 30+ tests.
-
-**Part B — Frontend (14 steps):** Full a11y pass (focus-visible, aria-labels, skip link, reduced motion), new API hooks, VSCode-style sidebar with tree roles + arrow-key nav, human-readable session URLs via slug utility.
-
----
-
-## Phase 3: Metrics Engine — DONE (Personal Tier, Enterprise-Grade)
-
-Pure facts, no judgment. Collect atomic units, compute derived metrics, let users interpret.
-
-**Part A — Backend (28 steps):** Migration 8, atomic unit extraction (user prompts, API calls, tool calls, files read/edited, re-edits, duration), skill invocation detection, pipeline integration, derived metrics (tokens/prompt, re-edit rate, tool density, edit velocity, read-to-edit ratio), git correlation (Tier 1-2), trends (week-over-week), index metadata, 7 new API routes (filter/sort, export, status, git sync), golden tests, edge case tests.
-
-**Part B — Frontend (20 steps):** TypeScript type exports, 5 new hooks (useTrends, useExport, useStatus, useGitSync, extended useDashboardStats), MetricCard + DashboardMetricsGrid (6 cards with trends), RecentCommits, SessionMetricsBar, FilesTouchedPanel, CommitsPanel, SessionCard metrics row + time range, FilterSortBar with URL persistence, Settings page, StatusBar data freshness footer, loading states (Skeleton/ErrorState/EmptyState), accessibility audit (WCAG, Lucide icons, aria-labels, focus-visible), 6 E2E test files.
-
-**15 commits, 224 backend tests passing, TypeScript compiles cleanly.**
-
-**Key design decisions:**
-- **No health labels** — Show metrics, not judgment (Smooth/Turbulent removed)
-- **Atomic units** — Measure smallest provable units (prompts, files, tokens)
-- **Derived on read** — Store atomic units, compute metrics in API layer
-- **Ultra-conservative git** — Only Tier 1-2 (provable evidence), no fuzzy matching
-- **UI/UX Pro Max** — Data-dense dashboard style, Fira fonts, Lucide icons
-
-See `docs/plans/archived/2026-01-28-phase3-metrics-engine.md` for full plan.
-
----
-
-## Phase 3.5: Full JSONL Parser — DONE
-
-Full 7-type extraction (assistant, result, tool_use, tool_result, system, user, summary) with ParseDiagnostics and parse_version-triggered re-indexing. Extended `update_session_deep_fields` from 21 to 39 parameters.
-
-See `docs/plans/archived/2026-01-29-full-jsonl-parser.md` for full plan.
-
----
-
-## Phase 4B: Session Parser + UI Wiring — DONE
-
-Upgraded session parser to emit all 7 JSONL line types and wired to frontend conversation UI with compact/full toggle.
-
-5 commits, 239 backend tests passing, 0 TypeScript errors in changed files.
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1 | Extend Role enum + Message struct | **DONE** | 7 Role variants, uuid/parent_uuid/metadata fields |
-| 2 | Rewrite parse_session() | **DONE** | serde_json::Value dispatch, all 7 types, 14 new tests |
-| 3 | Regenerate TypeScript types | **DONE** | ts-rs auto-generated Role.ts + Message.ts |
-| 4 | Wire frontend + compact/full toggle | **DONE** | Segmented control, filterMessages, Track 4 cards, dark mode |
-
-See `docs/plans/archived/2026-01-31-session-parser-ui-wiring.md` for full plan.
-
----
-
-## Hardening: Security + Robustness — DONE
-
-7 TDD-first fixes across security, error handling, and robustness. 578 frontend tests green.
-
-| # | Fix | Status | Notes |
-|---|-----|--------|-------|
-| 1 | DOMPurify + StructuredDataCard | **DONE** | `ALLOWED_TAGS: []`, `<pre>` rendering, 9 tests |
-| 2 | UntrustedData XSS | **DONE** | Plaintext-only via DOMPurify |
-| 3 | AgentProgressCard XSS | **DONE** | React auto-escape verified, JSDoc |
-| 4 | ErrorBoundary integration | **DONE** | Wraps each MessageTyped in ConversationView Virtuoso list |
-| 5 | Max nesting depth warning | **DONE** | Caps at 5 levels, `console.warn` on overflow |
-| 6 | Null/undefined handling (10 components) | **DONE** | All card components handle missing data |
-| 7 | useEffect cleanup | **DONE** | Listener cleanup on unmount verified |
-
-See `docs/plans/archived/2026-02-02-hardening-final.md` for consolidated plan.
-
----
-
-## Phase 4: Distribution (npx) — DONE
-
-Ship `npx claude-view` with checksum verification, automated npm publish, and provenance attestation.
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| — | Human setup: npm account + token + GitHub secret | **DONE** | OIDC trusted publisher configured |
-| 1 | Add SHA256 checksum generation to CI | **DONE** | `checksums.txt` in GitHub Release |
-| 2 | Add checksum verification to npx wrapper | **DONE** | SHA256 verify before execute |
-| 3 | Add automated npm publish to CI | **DONE** | `--provenance --access public` |
-| 4 | Add version sync check to CI | **DONE** | Tag vs package.json guard, `shell: bash` for Windows |
-| 5 | Update release script message | **DONE** | Reflects auto npm publish |
-| 6 | Dry run validation | **DONE** | `npm pack --dry-run` verified |
-| 7 | First release | **DONE** | v0.2.0 → v0.2.3 shipped via OIDC trusted publisher |
-
-See `docs/plans/archived/2026-01-29-phase4-npx-release.md` for full plan.
-
----
-
-## GTM Launch — In Progress
-
-Repositioning from "session browser" to "AI fluency tracker" for public launch.
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1 | README rewrite with new positioning | **DONE** | "Your AI fluency, measured" tagline, METR study hook, competitor matrix |
-| 2 | GTM strategy document | **DONE** | Positioning, content calendar, Show HN draft (plan file archived) |
-| 3 | AI Fluency Score (backend) | **DONE** | Merged `feature/fluency-score` — weighted score from 5 components |
-| 4 | AI Fluency Score (frontend) | **DONE** | Merged `feature/fluency-score` — hero card on dashboard |
-| 5 | Demo GIF | Pending | 30-second walkthrough for README + social |
-| 6 | Launch blog post | Pending | "What I Learned from Analyzing 676 Claude Code Sessions" |
-| 7 | Show HN post | Pending | Draft in strategy doc, needs timing |
-| 8 | Twitter/X pre-launch content | Pending | Data insight threads, teaser charts |
-
-GTM strategy plan has been archived.
-
----
-
-## Phase 5: Enterprise Team Layer — Not Started
-
-Multi-user aggregation and admin features. Transforms single-user analytics into team-wide insights.
-
-**Scope:**
-- Team/organization model (users belong to teams)
-- Aggregated dashboards (team-wide health, commits, skills)
-- Admin controls (who can see what)
-- Manager views (employee AI fluency scoring)
-- Compliance exports (CSV/PDF for HR audits)
-- License validation (paid tier enforcement)
-
-**Enterprise use cases:**
-- "How is my team using Claude Code?"
-- "Who are the most effective AI-assisted developers?"
-- "What's the ROI on our Claude Pro seats?"
-- "Export usage data for quarterly reviews"
-
-Plan file: TBD (will be created when Phase 5 begins)
-
----
-
-## Deferred: Analytical Database (Pre-Aggregation / DuckDB)
-
-**Decision: Keep current SQLite approach. Revisit when building Enterprise tier.**
-
-**Context (2026-02-03):** During deep index performance work, we evaluated whether to pre-aggregate session metrics (reduce ~168k turn/invocation rows → ~800 session-level rows) or switch to DuckDB for analytical queries.
-
-**Current performance (release mode, 1.2 GB / 676 sessions):**
-- Parse phase: 170ms
-- Write phase: 290ms
-- Total: 460ms
-- Incremental re-index: <100ms
-
-**Projections (release mode, linear extrapolation):**
-
-| Dataset | Sessions | Parse | Write | Total |
-|---------|----------|-------|-------|-------|
-| 1.2 GB (personal) | 676 | 170ms | 290ms | 460ms |
-| 12 GB (work machine) | ~6,700 | ~1.7s | ~2.9s | ~4.6s |
-| 50 GB (power user) | ~28,000 | ~7s | ~12s | ~19s |
-| 100 GB (extreme) | ~56,000 | ~14s | ~24s | ~38s |
-
-**Why defer:**
-1. **Incremental indexing already solves the common case** — day-to-day re-index is <100ms regardless of total data size
-2. **Full re-index is rare** — only on first run or `parse_version` bump (monthly at most)
-3. **Cold start UX solves the perception problem** — 38s with a progress bar showing `2.7 GB/s` is acceptable; 38s with no feedback is not
-4. **Pre-aggregation is a schema migration** — touches 6+ queries, changes data model. Better to design this into Enterprise tier from the start
-5. **DuckDB adds a dependency** — separate engine, more binary size, more complexity for marginal gain at current scale
-6. **SQLite handles up to 280 TB** — we're 1000x below the threshold where database choice matters
-
-**When to revisit:**
-- Enterprise tier design (Phase 5) — multi-user aggregation naturally requires pre-aggregated views
-- If incremental re-index degrades (unlikely — it only touches changed files)
-- If query latency on session list / dashboard becomes noticeable (currently <10ms)
-
----
-
-## Deferred: App-Wide UI/UX Polish
-
-**Decision: Batch all cross-cutting UI/UX concerns into a single phase after feature work completes.**
-
-**Context (2026-02-05):** During Theme 3 design review, identified UI/UX polish items that apply across all features. Rather than address piecemeal per-feature, defer to a dedicated polish pass.
-
-**Deferred items:**
-
-| Category | Scope | Notes |
-|----------|-------|-------|
-| **Accessibility (a11y)** | App-wide | WCAG 2.1 AA audit, color contrast, screen reader, keyboard nav |
-| **Internationalization (i18n)** | App-wide | Extract hardcoded strings, locale files, insight templates |
-| **Responsive design** | App-wide | Mobile/tablet breakpoints, touch targets |
-| **Dark mode audit** | App-wide | Verify all new components respect theme |
-| **Loading states** | App-wide | Consistent skeleton/spinner patterns |
-| **Error states** | App-wide | Consistent error message UX |
-
-**When to execute:**
-- After Themes 1-4 feature work ships
-- Before v1.0 release
-- Single dedicated phase with checklist
-
-**Why batch:**
-1. Avoids context-switching during feature dev
-2. Ensures consistency across all features
-3. More efficient to audit once vs per-feature
-4. Can test holistically (e.g., full a11y audit)
-
----
-
-## Mobile PWA — Deferred (Module M7)
-
-Remote session monitoring and control from mobile devices via Progressive Web App + E2E encrypted relay.
-
-**Deferred until M1-M4 are shippable on web.** Web-first, dogfood at desk. Mobile adds PWA/relay/push notification complexity.
-
-**Phases (when resumed):**
-
-| Phase | Name | Status | Description | Depends On |
-|-------|------|--------|-------------|------------|
-| M1 | Status Monitor | `deferred` | Push notifications, session status cards, basic cost tracking on mobile | Mission Control Phase A |
-| M2 | Read-Only Dashboard | `deferred` | Full dashboard experience adapted for mobile, responsive charts/metrics | M1 |
-| M3 | Interactive Control | `deferred` | Resume/pause sessions, send prompts from mobile via Agent SDK relay | Mission Control Phase F |
-
-Plan file: `2026-02-12-mobile-pwa-design.md`
-
----
-
-## Plan File Index
-
-Clean 3-tier structure: active work only in main folder.
-
-### Active Plans (in `/docs/plans/`)
-
-| File | Status | Role |
-|------|--------|------|
-| `claude-view-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
-| `2026-01-27-claude-view-analytics-design.md` | draft | **Analytics/Insights** — CLI stats, circle-back detection, insights generation (partially shipped via Phase 3, needs consolidation with skills PRD) |
-| `2026-01-27-skills-usage-analytics-prd.md` | draft | **Skills analytics PRD** — to be consolidated into analytics design |
-| `2026-01-27-export-pdf-design.md` | pending | **PDF export** — browser print-to-PDF, zero deps, ~30 lines |
-| `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
-| `2026-02-03-readme-media-guide.md` | pending | **README media** — screenshot + demo GIF preparation guide |
-| `2026-02-04-session-discovery-design.md` | pending | **Theme 1** — Session discovery & navigation enhancements |
-| `2026-02-05-e2e-test-plan.md` | pending | **E2E Test Plan** — end-to-end testing strategy |
-| `2026-02-05-theme4-chat-insights-design.md` | approved | **Theme 4** — Chat insights & pattern discovery (see `theme4/PROGRESS.md` for detailed tracking) |
-| `2026-02-06-dashboard-analytics-pr-fixes.md` | pending | **Dashboard Analytics PR Fixes** — PR review fix items for dashboard analytics |
-| `2026-02-06-theme3-pr-review-fixes.md` | pending | **Theme 3 PR Fixes** — PR review fix items for git contribution feature |
-| `2026-02-07-navigation-restructure-design.md` | approved | **Navigation Restructure** — sidebar and routing redesign |
-| `2026-02-07-rename-to-claude-score.md` | superseded | **Rename** — original plan: claude-view → claude-score. Superseded by redacted vision (target now `redacted`). 60+ file rename plan still useful as template |
-| `2026-02-07-stacked-trend-by-project-design.md` | draft | **Stacked Trend by Project** — per-project trend visualization |
-| `2026-02-09-sidebar-ux-overhaul.md` | pending | **Sidebar UX Overhaul** — sidebar navigation improvements |
-| `2026-02-10-dashboard-project-branch-filter.md` | pending | **Dashboard Project/Branch Filter** — project and branch filtering for dashboard |
-| `2026-02-10-large-file-split-refactor.md` | pending | **Large File Split Refactor** — split oversized source files |
-| `2026-02-10-merge-system-into-settings.md` | pending | **Merge System into Settings** — consolidate System and Settings pages |
-| `2026-02-10-multi-tool-provider-design.md` | draft | **Phase 7** — Provider trait for Cursor, OpenCode, Aider, Windsurf, Cline support |
-| `2026-02-10-tech-debt-audit-and-remediation.md` | pending | **Tech Debt Audit** — technical debt identification and remediation |
-| `2026-02-10-unify-time-range-filters.md` | pending | **Unify Time Range Filters** — consistent time range filtering across views |
-| `mission-control/` | in-progress | **Mission Control** — Phases A-D done, Phases E-J pending (13 phase files, see `mission-control/PROGRESS.md`) |
-| `2026-02-12-mobile-pwa-design.md` | approved | **Mobile PWA** — remote session monitoring via E2E encrypted relay + PWA (3 phases: M1 Status Monitor, M2 Read-Only Dashboard, M3 Interactive Control). Decisions finalized: same React SPA (mobile-first), silent daemon (no install step), QR pairing (WhatsApp model), open source everything, cloud relay = paid tier. Depends on Mission Control Phase A (M1) and Phase F (M3) |
-| `2026-02-12-resume-session-button.md` | pending | **Resume Session Button** — resume Claude Code sessions from web dashboard |
-| `2026-02-15-classify-single-session.md` | approved | **Classify Single Session** — on-demand session classification via Claude CLI |
-| `2026-02-15-epic-a-smart-rules-engine.md` | draft | **Epic A: Smart Rules Engine** — 1-click apply coaching rules to `~/.claude/rules/`. 6 tasks: REST API, PatternCard button, budget system (8 max), rules panel, tests. Uses official `.claude/rules/` mechanism, not CLAUDE.md modification |
-| `2026-02-15-epic-b-prompt-coach.md` | draft | **Epic B: Prompt Coach (Deferred)** — 4 phases: `/coach` skill, Prompt Lab page, pre-prompt hook, autocomplete. Optimizes prompts before execution |
-| `2026-02-15-epic-c-trusted-marketplace.md` | draft | **Epic C: Trusted Marketplace (Deferred)** — 4 phases: curated list, dynamic GitHub data, 1-click install with safety preview, community submissions. Trust badge system (verified/community/unvetted/flagged) |
-| `2026-02-15-paid-llm-classification.md` | draft | **Paid: LLM Classification (Deferred)** — Session classification as Pro tier feature. 3 provider options: BYO Claude CLI (free, shipped), hosted API (paid), BYO API key (power user). `LlmProvider` trait already extensible. Blocked on GTM launch + user demand validation |
-| `2026-02-15-full-chat-fluency-score.md` | draft | **Full-Chat AI Fluency Score (Deferred → Next Phase)** — 7-dimension per-session scoring via conversation digest + LLM analysis. Anthropic API + OpenAI-compat providers. Plan audited (22 fixes applied). Deferred so current branch can merge first |
-| `2026-02-15-agent-state-hooks-design.md` | approved | **Agent State Hooks** — replacement for intelligent session states design |
-| `2026-02-15-llm-provider-research.md` | in-progress | **LLM Provider Research** — Full-session classification cost analysis. Scanned 3,060 sessions (168M tokens). Compared 25+ models across 6 providers. Recommendation: Gemini 2.0 Flash ($12 total, 1M context fits 99.4% of sessions). Runner-up: DeepSeek V3 ($12, but 128K context loses 35% of tokens). Open questions: quality benchmarks, rate limits, prompt caching |
-| `2026-02-16-redacted-vision.md` | draft | **redacted Vision** — North star. Provider-agnostic AI workforce manager. 3 moats: plugin marketplace, mobile-first UX, orchestration layer. MVP: Agent Dashboard (M1) → Interactive Control (M2) → Plan Runner (M4). See "redacted: Module Roadmap" section above |
-| `2026-02-16-relay-hosting-adr.md` | approved | **Relay Hosting ADR** — architecture decision record for relay server hosting |
-| `2026-02-16-spinner-ux-session-cards.md` | draft | **Spinner UX for Session Cards** — loading state UX for session cards |
-| `2026-02-16-task-time-metrics.md` | draft | **Task Time Metrics** — time tracking metrics for agent tasks |
-| `2026-02-17-unified-session-detail-panel.md` | draft | **Unified Session Detail Panel** — consolidated session detail view |
-| `2026-02-17-derived-agent-state.md` | pending | **Derived Agent State** — compute agent state from message stream |
-| `2026-02-17-task-progress-tracking-design.md` | draft | **Task Progress Tracking** — track task completion progress |
-| `2026-02-18-full-text-search-design.md` | approved | **Phase 6: Full-Text Search** — Tantivy embedded search engine, Cmd+K global search, scoped search bar, BM25 ranking, fuzzy matching, faceted filters. 3 phases: index pipeline, search UI, advanced features |
-| `2026-02-19-action-log-tab-design.md` | approved | **Action Log Tab Design** — developer-focused action timeline for SessionDetailPanel, filterable by category (skill/mcp/builtin/agent/error), paired tool_use/tool_result rows with timing and expandable JSON |
-| `2026-02-19-action-log-tab-impl.md` | pending | **Action Log Tab Implementation** — 9 tasks: extract useSessionMessages hook, ActionItem types + useActionItems transform, ActionFilterChips, ActionRow, TurnSeparatorRow, ActionLogTab with react-virtuoso, wire into SessionDetailPanel, edge cases, verification |
-| `2026-02-19-notification-sound-design.md` | approved | **Notification Sound Design** — audio notifications for session events |
-| `2026-02-19-notification-sound-impl.md` | pending | **Notification Sound Implementation** — implementation plan for notification sounds |
-| `mission-control/phase-d-subagent-viz.md` | done | **MC Phase D: Sub-Agent Viz** — sub-agent visualization (swimlane view) |
-| `mission-control/phase-d2-subagent-drilldown.md` | done | **MC Phase D2: Sub-Agent Drilldown** — detailed sub-agent inspection |
-| `mission-control/phase-d3-realtime-subagent-progress.md` | done | **MC Phase D3: Realtime Sub-Agent Progress** — live sub-agent progress tracking |
-| `mission-control/phase-g-codex-foundation.md` | pending | **MC Phase G: Codex Foundation** — Codex integration foundation |
-| `mission-control/phase-h-codex-historical-sessions.md` | pending | **MC Phase H: Codex Historical Sessions** — historical session support for Codex |
-| `mission-control/phase-i-codex-live-mission-control.md` | pending | **MC Phase I: Codex Live Mission Control** — live Codex session monitoring |
-| `mission-control/phase-j-codex-hardening-rollout.md` | pending | **MC Phase J: Codex Hardening & Rollout** — production hardening for Codex integration |
-
-### Reference Plans (in `/docs/plans/archived/`)
-
-All phases completed. Keep for reference only — do not modify.
-
-| File | Phase |
-|------|-------|
-| `2026-01-27-claude-view-phase1-implementation.md` | Phase 1 |
-| `2026-01-27-phase2-parallel-indexing-and-registry.md` | Phase 2A |
-| `2026-01-28-phase2b-token-model-tracking.md` | Phase 2B |
-| `2026-01-28-phase2c-api-split-ux-polish.md` | Phase 2C |
-| `2026-01-28-phase3-metrics-engine.md` | Phase 3 |
-| `2026-01-29-phase3b-git-sync-orchestrator.md` | Phase 3B |
-| `2026-01-29-full-jsonl-parser.md` | Phase 3.5 |
-| `2026-01-29-jsonl-parser-spec.md` | Phase 3.5 |
-| `2026-01-28-session-view-ux-polish.md` | UX |
-| `2026-01-28-xml-card-full-coverage-design.md` | UX |
-| `2026-01-28-rust-ts-type-sync-design.md` | Type Sync |
-| `2026-01-27-history-view-date-grouping-design.md` | UX |
-| `2026-01-29-pre-release-privacy-scrub.md` | Release Prep |
-| `2026-01-29-HARDENING-IMPLEMENTATION-PLAN-V2-FINAL.md` | Hardening |
-| `2026-02-02-hardening-final.md` | Hardening (consolidated) |
-| `2026-01-29-phase4-npx-release.md` | Phase 4 Distribution |
-| `2026-01-29-CONVERSATION-UI-COMPREHENSIVE-REDESIGN.md` | UI Redesign (superseded) |
-| `2026-02-02-thread-visualization-polish.md` | Thread Visualization |
-| `2026-01-31-session-parser-ui-wiring.md` | Phase 4B Parser |
-| `2026-01-31-export-markdown.md` | Export |
-| `2026-02-02-security-audit-critical.md` | Security Audit |
-| `2026-02-02-security-audit-medium.md` | Security Audit |
-| `2026-02-02-security-audit-low.md` | Security Audit |
-| `2026-02-03-session-loading-perf.md` | Session Loading Perf |
-| `2026-02-03-deep-index-perf.md` | Deep Index Perf |
-| `2026-02-03-rusqlite-write-phase.md` | Perf: rusqlite Write |
-| `2026-01-27-path-resolution-dfs-design.md` | Path Resolution |
-| `2026-02-03-cold-start-ux.md` | Cold Start UX |
-| `2026-02-04-brainstorm-checkpoint.md` | Brainstorm Checkpoint |
-| `2026-02-05-dashboard-analytics-design.md` | Theme 2: Dashboard Analytics |
-| `2026-02-05-theme3-git-ai-contribution-design.md` | Theme 3: Git AI Contribution |
-| `2026-02-06-session-discovery-polish.md` | Session Discovery Polish |
-| `2026-02-06-theme4-pr-review-fixes.md` | Theme 4 PR Review Fixes |
-| `2026-02-10-ambient-coach-insights.md` | Ambient Coach Insights |
-| `2026-02-10-future-proof-model-names.md` | Future-Proof Model Names |
-| `2026-02-10-git-sync-sse-progress.md` | Git Sync SSE Progress |
-| `2026-02-12-continue-chat-feature.md` | Continue This Chat |
-| `2026-02-12-session-endpoint-unification.md` | Session Endpoint Unification |
-| `2026-02-16-fix-state-machine.md` | Mission Control State Machine Fix |
-| `2026-02-16-2-group-state-model.md` | Mission Control 2-Group State Model |
-| `2026-02-16-indicator-simplification.md` | Mission Control Indicator Simplification |
-| `2026-02-16-session-sort-redesign.md` | Session Sort Redesign |
-| `2026-02-16-monitor-rich-only.md` | Monitor Rich-Only Mode |
-| `2026-02-18-hook-primary-state-refactor.md` | Hook Primary State Refactor |
-| `2026-02-19-process-gated-discovery-design.md` | Process-Gated Discovery Design |
-| `2026-02-19-process-gated-discovery.md` | Process-Gated Discovery Implementation |
-| `2026-02-19-page-reorg-design.md` | Page Reorganization Design |
-| `2026-02-19-page-reorg-impl.md` | Page Reorganization Implementation |
-| `2026-02-19-search-qualifier-bugfixes.md` | Search Qualifier Bugfixes |
+## Code Health
+
+- **Compiles:** Yes (cargo check passes)
+- **Backend tests:** 548+
+- **Frontend tests:** 794
+- **TypeScript:** Clean
 
 ---
 
 ## How to Use This File
 
-- **Starting a session:** Read this file first. It tells you exactly where you are.
-- **Checking Phase N design:** See `/archived/` for the completed implementation spec.
-- **Adding new work:** Create plan in main folder, add entry to "At a Glance", then move to `/archived/` when done.
+- **Starting a session:** Read this file first. Check "Current Focus" and "At a Glance".
+- **Product context:** Read `docs/VISION.md` for product evolution and business model.
+- **What's next:** Read `docs/ROADMAP.md` for module roadmap and priorities.
+- **Specific phase design:** Check `archived/` for the completed implementation spec.
+- **Deferred ideas:** Check `backlog/` for draft/deferred plans.
+- **Adding new work:** Create plan in `docs/plans/`, add to "Active Plan Index", move to `archived/` when done.
