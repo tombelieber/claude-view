@@ -3,6 +3,7 @@
 use chrono::Utc;
 use claude_view_core::SessionInfo;
 use claude_view_db::Database;
+use sqlx::Executor;
 
 mod queries_shared;
 use queries_shared::make_session;
@@ -213,6 +214,12 @@ async fn test_get_dashboard_stats_with_project_filter() {
     };
     db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
 
+    // Set longest_task_seconds (not written by insert_session, only by parallel indexer)
+    sqlx::query("UPDATE sessions SET longest_task_seconds = 400 WHERE id = 'sess-filter-a'")
+        .execute(db.pool()).await.unwrap();
+    sqlx::query("UPDATE sessions SET longest_task_seconds = 200 WHERE id = 'sess-filter-b'")
+        .execute(db.pool()).await.unwrap();
+
     // No filter — should see both
     let stats = db.get_dashboard_stats(None, None).await.unwrap();
     assert_eq!(stats.total_sessions, 2);
@@ -239,7 +246,7 @@ async fn test_get_dashboard_stats_with_project_filter() {
     let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
     assert_eq!(stats.tool_totals.edit, 5); // make_session sets edit=5
 
-    // Longest sessions should be filtered (duration_seconds > 0, so they appear)
+    // Longest tasks should be filtered (longest_task_seconds > 0, so they appear)
     let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
     assert_eq!(stats.longest_sessions.len(), 1, "only proj-x's session");
     assert_eq!(stats.longest_sessions[0].id, "sess-filter-a");
