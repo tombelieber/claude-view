@@ -1,7 +1,7 @@
 # claude-view
 
 <p align="center">
-  <strong>Your AI fluency, measured. Your AI agents, monitored.</strong>
+  <strong>Live monitor & co-pilot for Claude Code power users.</strong>
 </p>
 
 <p align="center">
@@ -21,52 +21,120 @@
 
 ## The Problem
 
-92% of developers use AI coding tools. A [METR study](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/) found they're actually **19% slower**. The problem isn't the tools — it's that nobody teaches you how to use them well.
+You have 3 projects open. Each project has multiple git worktrees. Each worktree has multiple Claude Code sessions running. Some are thinking, some are waiting for you, some are about to hit context limits, and one finished 10 minutes ago but you forgot about it.
 
-41% of code is now AI-generated, but most developers have no idea if they're using AI tools effectively or wasting half their tokens on re-prompting.
+You Cmd-Tab through 15 terminal windows trying to remember which session was doing what. You burn tokens because a cache expired while you weren't looking. You lose flow because there's no single place to see everything. And behind that "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it.
 
-Meanwhile, power users are running **10-20+ concurrent Claude Code sessions** across multiple terminals with zero unified visibility. No way to see what session #14 is doing without Cmd-Tabbing through windows. No idea how much they're spending across all sessions. No view into sub-agent orchestration happening behind "thinking...".
+**Claude Code is incredibly powerful. But flying 10+ concurrent sessions without a dashboard is like driving without a speedometer.**
 
 ## The Solution
 
-**claude-view** does two things:
-
-1. **Analytics** — A fitness tracker for your AI coding workflow. It analyzes your Claude Code sessions, shows you your patterns, and helps you measurably improve.
-2. **Mission Control** — A real-time dashboard for all your active Claude Code sessions. See every session's status, cost, context usage, and sub-agent activity from a single browser tab.
+**claude-view** is a real-time dashboard that sits alongside your Claude Code sessions. One browser tab, every session visible, full context at a glance.
 
 ```bash
 npx claude-view
 ```
 
-That's it. Opens in your browser. Past sessions analyzed, live sessions monitored.
+That's it. Opens in your browser. All your sessions — live and past — in one workspace.
 
 ---
 
 ## What You Get
 
-### Analytics (past sessions)
+### Live Monitor
 
-| Insight | Example |
-|---------|---------|
-| **AI Fluency Score** | A single number (0-100) that tracks how effectively you use AI |
-| **Token efficiency** | "You waste 34% of tokens on re-prompting" |
-| **Prompt clarity** | "Your re-edit rate dropped 54% over 3 months" |
-| **Model fit** | "Opus is 42% better for refactoring, but you use it for everything" |
-| **Workflow patterns** | "Tuesday mornings are your most effective AI coding sessions" |
-| **Skill effectiveness** | "TDD skill reduces re-edit rate by 65%" |
+| Feature | Why it matters |
+|---------|---------------|
+| **Session cards with last message** | Instantly remember what each long-running session is working on |
+| **Notification sounds** | Get pinged when a session finishes or needs your input — stop polling terminals |
+| **Context gauge** | Real-time context window usage per session — see which ones are in the danger zone |
+| **Cache warm countdown** | Know exactly when prompt cache expires so you can time your next message to save tokens |
+| **Cost tracking** | Per-session and aggregate spend with cache savings breakdown |
+| **Sub-agent visualization** | See the full agent tree — sub-agents, their status, and what tools they're calling |
+| **Multiple views** | Grid, List, or Monitor mode (live chat grid) — pick what fits your workflow |
 
-### Mission Control (live sessions)
+### Rich Chat History
 
-| Capability | Description |
-|------------|-------------|
-| **Live session monitoring** | See all active Claude Code sessions across every terminal in real-time |
-| **Sub-agent visualization** | Swim lane view of sub-agent hierarchies with drill-down into conversations |
-| **Cost tracking** | Per-session and aggregate cost with cache savings ("Saved you $18.72") |
-| **Context health** | Context window usage %, cache warm/cold status, compaction warnings |
-| **Multiple views** | Grid, List, Kanban, or Monitor mode (live chat grid) |
-| **Rich tool rendering** | Visual rendering of tool calls — file reads, edits, bash commands, searches |
-| **Command palette** | Cmd+K to jump between sessions and switch views |
-| **Verbose mode** | Toggle between compact chat view and full tool-call detail |
+| Feature | Why it matters |
+|---------|---------------|
+| **Full conversation browser** | Every session, every message, fully rendered with markdown and code blocks |
+| **Tool call visualization** | See file reads, edits, bash commands, MCP calls, skill invocations — not just text |
+| **Compact / verbose toggle** | Skim the conversation or drill into every tool call |
+| **Thread view** | Follow agent conversations with sub-agent hierarchies |
+| **Export** | Markdown export for context resumption or sharing |
+
+### Advanced Search
+
+| Feature | Why it matters |
+|---------|---------------|
+| **Full-text search** | Search across all sessions — messages, tool calls, file paths |
+| **Project & branch filters** | Scope to the project you're working on right now |
+| **Command palette** | Cmd+K to jump between sessions, switch views, find anything |
+
+### Agent Internals — See What's Hidden
+
+Claude Code does a lot behind `"thinking..."` that never shows in your terminal. claude-view exposes all of it.
+
+| Feature | Why it matters |
+|---------|---------------|
+| **Sub-agent conversations** | See the full tree of spawned agents, their prompts, and their outputs |
+| **MCP server calls** | See which MCP tools are being invoked and their results |
+| **Skill / hook / plugin tracking** | Know which skills fired, which hooks ran, what plugins are active |
+| **Hook event recording** | Every hook event is captured and browsable — go back and check what fired and when. *(Requires claude-view to be running while sessions are active; cannot trace historical events retroactively)* |
+| **Tool use timeline** | Action log of every tool_use/tool_result pair with timing |
+| **Error surfacing** | Errors bubble up to the session card — no more buried failures |
+| **Raw message inspector** | Drill into any message's raw JSON when you need the full picture |
+
+### Analytics
+
+A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but deeper.
+
+**Dashboard Overview**
+
+| Feature | Description |
+|---------|-------------|
+| **Week-over-week metrics** | Session count, token usage, cost — compared to your previous period |
+| **Activity heatmap** | 90-day GitHub-style grid showing your daily Claude Code usage intensity |
+| **Top skills / commands / MCP tools / agents** | Leaderboards of your most-used invocables — click any to search matching sessions |
+| **Most active projects** | Bar chart of projects ranked by session count |
+| **Tool usage breakdown** | Total edits, reads, and bash commands across all sessions |
+| **Longest sessions** | Quick access to your marathon sessions with duration |
+
+**AI Contributions**
+
+| Feature | Description |
+|---------|-------------|
+| **Code output tracking** | Lines added/removed, files touched, commit count — across all sessions |
+| **Cost ROI metrics** | Cost per commit, cost per session, cost per line of AI output — with trend charts |
+| **Model comparison** | Side-by-side breakdown of output and efficiency by model (Opus, Sonnet, Haiku) |
+| **Learning curve** | Re-edit rate over time — see yourself getting better at prompting |
+| **Branch breakdown** | Collapsible per-branch view with session drill-down |
+| **Skill effectiveness** | Which skills actually improve your output vs which ones don't |
+
+**Insights** *(experimental)*
+
+| Feature | Description |
+|---------|-------------|
+| **Pattern detection** | Behavioral patterns discovered from your session history |
+| **Then vs Now benchmarks** | Compare your first month to recent usage |
+| **Category breakdown** | Treemap of what you use Claude for — refactoring, features, debugging, etc. |
+| **AI Fluency Score** | Single 0-100 number tracking your overall effectiveness |
+
+> **Note:** Insights and Fluency Score are in early experimental stage. Treat as directional, not definitive.
+
+---
+
+## Built for Flow
+
+claude-view is designed for the developer who:
+
+- Runs **3+ projects simultaneously**, each with multiple worktrees
+- Has **10-20 Claude Code sessions** open at any time
+- Needs to context-switch fast without losing track of what's running
+- Wants to **optimize token spend** by timing messages around cache windows
+- Gets frustrated by Cmd-Tabbing through terminals to check on agents
+
+One browser tab. All sessions. Stay in flow.
 
 ---
 
@@ -94,8 +162,7 @@ Opens at `http://localhost:47892`.
 
 | Env Variable | Default | Description |
 |-------------|---------|-------------|
-| `CLAUDE_VIEW_PORT` | `47892` | Override the default port |
-| `PORT` | `47892` | Alternative port override |
+| `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
 
 ---
 
@@ -109,27 +176,26 @@ Opens at `http://localhost:47892`.
 
 ### Requirements
 
-- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we analyze
+- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we monitor
 
 ---
 
 ## How It Compares
 
-Other tools are either viewers (browse history) or monitors (watch live). None combine analytics, coaching, and live monitoring.
+Other tools are either viewers (browse history) or simple monitors. None combine real-time monitoring, rich chat history, debugging tools, and advanced search in a single workspace.
 
 ```
-                    Individual ←————————→ Team
+                    Passive ←————————————→ Active
                          |                  |
-            View only    |  ccusage         |  Anthropic Analytics
-                         |  History Viewer  |  GitHub Copilot Reports
+            View only    |  ccusage         |
+                         |  History Viewer  |
                          |  clog            |
                          |                  |
             Monitor      |  claude-code-ui  |
             only         |  Agent Sessions  |
                          |                  |
-            Analyze +    |  ★ claude-view   |  (coming soon)
-            Monitor +    |                  |
-            Coach        |                  |
+            Full         |  ★ claude-view   |
+            workspace    |                  |
 ```
 
 ---
@@ -142,7 +208,7 @@ Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature re
 
 ## Like this project?
 
-If **claude-view** helps you level up your AI coding, consider giving it a star. It helps others discover this tool.
+If **claude-view** helps you fly Claude Code, consider giving it a star. It helps others discover this tool.
 
 <p align="center">
   <a href="https://github.com/tombelieber/claude-view/stargazers">
@@ -213,8 +279,8 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 |----------|--------|
 | macOS (Apple Silicon) | Available |
 | macOS (Intel) | Available |
-| Linux (x64) | Planned (v2.1) |
-| Windows (x64) | Planned (v2.2) |
+| Linux (x64) | Planned |
+| Windows (x64) | Planned |
 
 ---
 
