@@ -36,6 +36,10 @@ pub struct ContextDigest {
     pub top_tools: Vec<String>,
     pub top_skills: Vec<String>,
     pub summary_line: String,
+    #[serde(default)]
+    pub total_input_tokens: u64,
+    #[serde(default)]
+    pub total_output_tokens: u64,
 }
 
 /// Per-project context within the digest.
@@ -194,6 +198,7 @@ mod tests {
             top_tools: vec!["Read".to_string(), "Edit".to_string(), "Bash".to_string()],
             top_skills: vec!["/commit".to_string(), "/review-pr".to_string()],
             summary_line: "3 sessions across 2 projects".to_string(),
+            ..Default::default()
         }
     }
 
