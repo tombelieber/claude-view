@@ -326,6 +326,8 @@ async fn build_context_digest(
         top_tools,
         top_skills,
         summary_line: format!("{total_sessions} sessions across {total_projects} projects"),
+        total_input_tokens: 0,
+        total_output_tokens: 0,
     })
 }
 

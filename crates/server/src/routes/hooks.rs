@@ -477,10 +477,10 @@ async fn handle_hook(
         }
     }
 
-    // Persist PID bindings to disk only when a new binding was created
+    // Persist session snapshot to disk when a new PID binding was created
     if pid_newly_bound {
         if let Some(mgr) = &state.live_manager {
-            mgr.save_pid_bindings().await;
+            mgr.save_session_snapshot_from_state().await;
         }
     }
 

@@ -238,14 +238,37 @@ impl LiveSessionManager {
         self.process_count.load(Ordering::Relaxed)
     }
 
-    /// Save current PID bindings to disk for restart recovery.
-    pub async fn save_pid_bindings(&self) {
+    /// Save the extended session snapshot to disk for crash recovery.
+    pub async fn save_session_snapshot_from_state(&self) {
         let sessions = self.sessions.read().await;
-        let pids: HashMap<String, u32> = sessions
+        let entries: HashMap<String, SnapshotEntry> = sessions
             .iter()
-            .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+            .filter(|(_, s)| s.status != SessionStatus::Done)
+            .filter_map(|(id, s)| {
+                s.pid.map(|pid| {
+                    (
+                        id.clone(),
+                        SnapshotEntry {
+                            pid,
+                            status: match s.status {
+                                SessionStatus::Working => "working".to_string(),
+                                SessionStatus::Paused => "paused".to_string(),
+                                SessionStatus::Done => "done".to_string(),
+                            },
+                            agent_state: s.agent_state.clone(),
+                            last_activity_at: s.last_activity_at,
+                        },
+                    )
+                })
+            })
             .collect();
-        save_pid_snapshot(&pid_snapshot_path(), &pids);
+        save_session_snapshot(
+            &pid_snapshot_path(),
+            &SessionSnapshot {
+                version: 2,
+                sessions: entries,
+            },
+        );
     }
 
     /// Run a one-shot process table scan and store results.
@@ -384,29 +407,32 @@ impl LiveSessionManager {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
 
-            // On startup, load PID snapshot from disk to recover bindings
-            let snapshot = load_pid_snapshot(&pid_snapshot_path());
-            if !snapshot.is_empty() {
+            // On startup, load session snapshot from disk to recover bindings
+            let snapshot = load_session_snapshot(&pid_snapshot_path());
+            if !snapshot.sessions.is_empty() {
                 let mut sessions = manager.sessions.write().await;
-                for (session_id, pid) in &snapshot {
+                for (session_id, entry) in &snapshot.sessions {
                     if let Some(session) = sessions.get_mut(session_id) {
                         if session.pid.is_none() {
-                            session.pid = Some(*pid);
+                            session.pid = Some(entry.pid);
                         }
                     }
                 }
-                // Prune stale entries (sessions that no longer exist) and save back.
-                let current_pids: HashMap<String, u32> = sessions
+                // Prune stale entries and save back
+                let current_count = sessions
                     .iter()
-                    .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
-                    .collect();
-                if current_pids.len() < snapshot.len() {
-                    save_pid_snapshot(&pid_snapshot_path(), &current_pids);
+                    .filter(|(_, s)| s.pid.is_some())
+                    .count();
+                if current_count < snapshot.sessions.len() {
+                    drop(sessions);
+                    manager.save_session_snapshot_from_state().await;
+                } else {
+                    drop(sessions);
                 }
 
                 info!(
-                    count = snapshot.len(),
-                    restored = current_pids.len(),
+                    count = snapshot.sessions.len(),
+                    restored = current_count,
                     "Restored PID bindings from snapshot"
                 );
             }
@@ -459,14 +485,11 @@ impl LiveSessionManager {
                         sessions.remove(session_id);
                     }
 
-                    // Save PID snapshot if any bindings changed
-                    if snapshot_dirty {
-                        let pids: HashMap<String, u32> = sessions
-                            .iter()
-                            .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
-                            .collect();
-                        save_pid_snapshot(&pid_snapshot_path(), &pids);
-                    }
+                }
+
+                // Save session snapshot if any bindings changed (outside lock)
+                if snapshot_dirty {
+                    manager.save_session_snapshot_from_state().await;
                 }
 
                 // Broadcast completions (outside lock)
