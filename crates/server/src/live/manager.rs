@@ -20,7 +20,10 @@ use claude_view_core::pricing::{
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
 use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
-use super::state::{AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionStatus};
+use super::state::{
+    AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionSnapshot, SessionStatus,
+    SnapshotEntry,
+};
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
@@ -1093,6 +1096,62 @@ fn load_pid_snapshot(path: &Path) -> HashMap<String, u32> {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
+/// Save the extended session snapshot to disk atomically.
+fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
+    let content = match serde_json::to_string(snapshot) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to serialize session snapshot: {}", e);
+            return;
+        }
+    };
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, &content).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Load the session snapshot from disk, handling v1→v2 migration.
+fn load_session_snapshot(path: &Path) -> SessionSnapshot {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return SessionSnapshot { version: 2, sessions: HashMap::new() },
+    };
+    load_session_snapshot_from_str(&content)
+}
+
+/// Parse a snapshot string, auto-detecting v1 (bare pid map) vs v2 (structured).
+fn load_session_snapshot_from_str(content: &str) -> SessionSnapshot {
+    // Try v2 first
+    if let Ok(snapshot) = serde_json::from_str::<SessionSnapshot>(content) {
+        return snapshot;
+    }
+    // Fall back to v1: { "session_id": pid, ... }
+    if let Ok(v1) = serde_json::from_str::<HashMap<String, u32>>(content) {
+        let sessions = v1
+            .into_iter()
+            .map(|(id, pid)| {
+                (
+                    id,
+                    SnapshotEntry {
+                        pid,
+                        status: "working".to_string(),
+                        agent_state: AgentState {
+                            group: AgentStateGroup::Autonomous,
+                            state: "recovered".into(),
+                            label: "Recovered from restart".into(),
+                            context: None,
+                        },
+                        last_activity_at: 0,
+                    },
+                )
+            })
+            .collect();
+        return SessionSnapshot { version: 2, sessions };
+    }
+    SessionSnapshot { version: 2, sessions: HashMap::new() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1282,6 +1341,51 @@ mod tests {
 
         let loaded = load_pid_snapshot(&path);
         assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_v2_round_trip() {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionSnapshot, SnapshotEntry};
+        use std::collections::HashMap;
+
+        let mut entries = HashMap::new();
+        entries.insert("session-1".to_string(), SnapshotEntry {
+            pid: 12345,
+            status: "working".to_string(),
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            last_activity_at: 1708500000,
+        });
+        let snapshot = SessionSnapshot { version: 2, sessions: entries };
+
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let parsed: SessionSnapshot = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.version, 2);
+        assert_eq!(parsed.sessions.len(), 1);
+        let entry = &parsed.sessions["session-1"];
+        assert_eq!(entry.pid, 12345);
+        assert_eq!(entry.status, "working");
+        assert_eq!(entry.agent_state.group, AgentStateGroup::Autonomous);
+        assert_eq!(entry.last_activity_at, 1708500000);
+    }
+
+    #[test]
+    fn test_snapshot_v1_migration() {
+        // Legacy format: { "session-id": 12345 }
+        let v1_json = r#"{"session-abc": 12345, "session-def": 67890}"#;
+        let snapshot = load_session_snapshot_from_str(v1_json);
+
+        assert_eq!(snapshot.version, 2);
+        assert_eq!(snapshot.sessions.len(), 2);
+        let entry = &snapshot.sessions["session-abc"];
+        assert_eq!(entry.pid, 12345);
+        // v1 migration: default agent_state is Autonomous/recovered
+        assert_eq!(entry.agent_state.state, "recovered");
     }
 
     #[test]
