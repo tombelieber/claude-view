@@ -60,6 +60,8 @@ export interface UseLiveSessionsResult {
   sessions: LiveSession[]
   summary: LiveSummary | null
   isConnected: boolean
+  /** True after the first SSE summary event arrives (server has done its initial scan) */
+  isInitialized: boolean
   lastUpdate: Date | null
   /** Session IDs with no SSE event for >3 seconds */
   stalledSessions: Set<string>
@@ -76,6 +78,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
   const [sessions, setSessions] = useState<Map<string, LiveSession>>(new Map())
   const [summary, setSummary] = useState<LiveSummary | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const lastEventTimes = useRef<Map<string, number>>(new Map())
   const [stalledSessions, setStalledSessions] = useState<Set<string>>(new Set())
@@ -146,6 +149,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
           const data = JSON.parse(e.data)
           // Backend always sends summary fields at top level (needsYouCount, etc.)
           setSummary(data)
+          setIsInitialized(true)
           setLastUpdate(new Date())
 
           // After a lag recovery, the server re-sends all active sessions
@@ -210,5 +214,5 @@ export function useLiveSessions(): UseLiveSessionsResult {
     [sessions]
   )
 
-  return { sessions: sessionList, summary, isConnected, lastUpdate, stalledSessions, currentTime }
+  return { sessions: sessionList, summary, isConnected, isInitialized, lastUpdate, stalledSessions, currentTime }
 }
