@@ -48,6 +48,9 @@ e2e/screenshots/*
 tmp/
 temp/
 
+# Screenshots (temporary verification artifacts)
+*.png
+
 # Git worktrees
 .worktrees/
 
