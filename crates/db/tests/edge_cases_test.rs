@@ -3,15 +3,15 @@
 // These tests verify robustness of the parsing and correlation pipeline
 // when encountering malformed, missing, or unusual data.
 
-use vibe_recall_db::indexer_parallel::{
+use claude_view_db::indexer_parallel::{
     extract_commit_skill_invocations, parse_bytes, pass_1_read_indexes, pass_2_deep_index,
     CommitSkillInvocation, RawInvocation,
 };
-use vibe_recall_db::git_correlation::{
+use claude_view_db::git_correlation::{
     scan_repo_commits, tier1_match, tier2_match, GitCommit,
 };
-use vibe_recall_db::Database;
-use vibe_recall_core::metrics::{
+use claude_view_db::Database;
+use claude_view_core::metrics::{
     edit_velocity, read_to_edit_ratio, reedit_rate, tokens_per_prompt, tool_density,
 };
 
@@ -479,7 +479,7 @@ async fn a10_5_session_deleted_cascades_session_commits() {
     .unwrap();
 
     // Insert a commit and link it
-    let commit = vibe_recall_db::git_correlation::GitCommit {
+    let commit = claude_view_db::git_correlation::GitCommit {
         hash: "a".repeat(40),
         repo_path: "/repo".to_string(),
         message: "Test commit".to_string(),
@@ -492,11 +492,11 @@ async fn a10_5_session_deleted_cascades_session_commits() {
     };
     db.batch_upsert_commits(&[commit]).await.unwrap();
 
-    let correlation = vibe_recall_db::git_correlation::CorrelationMatch {
+    let correlation = claude_view_db::git_correlation::CorrelationMatch {
         session_id: "sess-1".to_string(),
         commit_hash: "a".repeat(40),
         tier: 1,
-        evidence: vibe_recall_db::git_correlation::CorrelationEvidence {
+        evidence: claude_view_db::git_correlation::CorrelationEvidence {
             rule: "commit_skill".to_string(),
             skill_ts: Some(1706400100),
             commit_ts: Some(1706400100),

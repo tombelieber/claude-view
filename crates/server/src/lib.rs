@@ -1,7 +1,7 @@
 // crates/server/src/lib.rs
-//! Vibe-recall server library.
+//! Claude View server library.
 //!
-//! This crate provides the Axum-based HTTP server for the vibe-recall application.
+//! This crate provides the Axum-based HTTP server for the claude-view application.
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
 pub mod classify_state;
@@ -60,7 +60,7 @@ fn cors_layer() -> CorsLayer {
         .allow_methods(Any)
         .allow_headers(Any)
 }
-use vibe_recall_db::{Database, ModelPricing};
+use claude_view_db::{Database, ModelPricing};
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
@@ -110,8 +110,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
         pricing: Arc::new(std::sync::RwLock::new({
-            let mut p = vibe_recall_db::default_pricing();
-            vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+            let mut p = claude_view_db::default_pricing();
+            claude_view_core::pricing::fill_tiering_gaps(&mut p);
             p
         })),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
@@ -123,6 +123,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: None,
         search_index: None,
+        hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
     api_routes(state)
 }
@@ -136,12 +137,12 @@ pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
-    search_index: Option<Arc<vibe_recall_search::SearchIndex>>,
+    search_index: Option<Arc<claude_view_search::SearchIndex>>,
     static_dir: Option<PathBuf>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
-    let mut initial_pricing = vibe_recall_db::default_pricing();
-    vibe_recall_core::pricing::fill_tiering_gaps(&mut initial_pricing);
+    let mut initial_pricing = claude_view_db::default_pricing();
+    claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
     let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
     let (manager, live_sessions, live_tx) =
         live::manager::LiveSessionManager::start(pricing.clone());
@@ -173,6 +174,7 @@ pub fn create_app_full(
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: Some(manager),
         search_index,
+        hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
@@ -209,15 +211,15 @@ async fn refresh_pricing(
     db: &Database,
 ) {
     // Tier 1: Try litellm fetch
-    match vibe_recall_db::fetch_litellm_pricing().await {
+    match claude_view_db::fetch_litellm_pricing().await {
         Ok(litellm) => {
-            let defaults = vibe_recall_db::default_pricing();
-            let mut merged = vibe_recall_db::merge_pricing(&defaults, &litellm);
-            vibe_recall_core::pricing::fill_tiering_gaps(&mut merged);
+            let defaults = claude_view_db::default_pricing();
+            let mut merged = claude_view_db::merge_pricing(&defaults, &litellm);
+            claude_view_core::pricing::fill_tiering_gaps(&mut merged);
             let count = merged.len();
 
             // Persist to SQLite for cross-restart durability
-            if let Err(e) = vibe_recall_db::save_pricing_cache(db, &merged).await {
+            if let Err(e) = claude_view_db::save_pricing_cache(db, &merged).await {
                 tracing::warn!("Failed to cache pricing to SQLite: {e}");
             }
 
@@ -228,9 +230,9 @@ async fn refresh_pricing(
             tracing::warn!("litellm fetch failed: {e}");
 
             // Tier 2: Try SQLite cache
-            match vibe_recall_db::load_pricing_cache(db).await {
+            match claude_view_db::load_pricing_cache(db).await {
                 Ok(Some(mut cached)) => {
-                    vibe_recall_core::pricing::fill_tiering_gaps(&mut cached);
+                    claude_view_core::pricing::fill_tiering_gaps(&mut cached);
                     let count = cached.len();
                     *pricing.write().expect("pricing lock poisoned") = cached;
                     tracing::info!(models = count, "Pricing loaded from SQLite cache");

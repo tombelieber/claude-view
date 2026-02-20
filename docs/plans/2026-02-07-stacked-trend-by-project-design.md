@@ -101,7 +101,7 @@ Or add a dedicated endpoint: `GET /api/contributions/trend?range=week&groupBy=pr
    - Pivot `ProjectTrendPoint[]` into chart-ready format:
      ```ts
      // Input: [{ date, projectId, linesAdded }, ...]
-     // Output: [{ date, "claude-view": 500, "vibe-recall": 300 }, ...]
+     // Output: [{ date, "claude-view": 500, "claude-view": 300 }, ...]
      ```
 
 ### Color Palette for Projects

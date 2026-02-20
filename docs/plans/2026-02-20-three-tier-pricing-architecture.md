@@ -6,7 +6,7 @@
 
 **Architecture:** litellm is the single source of truth, fetched at startup and cached to SQLite for durability. Hardcoded defaults shrink to 4 base rates per model (cold-start safety net only). A `fill_tiering_gaps()` pass derives tiering fields from Anthropic's known pricing multipliers when litellm doesn't provide them explicitly. The SQLite cache means defaults are almost never needed in practice.
 
-**Tech Stack:** Rust — `vibe_recall_core` (pricing engine), `vibe_recall_db` (SQLite cache + litellm fetch), `vibe_recall_server` (startup orchestration)
+**Tech Stack:** Rust — `claude_view_core` (pricing engine), `claude_view_db` (SQLite cache + litellm fetch), `claude_view_server` (startup orchestration)
 
 ---
 
@@ -31,11 +31,11 @@ to:
 pub struct ModelPricing {
 ```
 
-`serde` is already a dependency of `vibe_recall_core` (used by `TokenUsage`, `CostBreakdown`).
+`serde` is already a dependency of `claude_view_core` (used by `TokenUsage`, `CostBreakdown`).
 
 **Step 2: Verify compilation**
 
-Run: `cargo check -p vibe-recall-core`
+Run: `cargo check -p claude-view-core`
 Expected: Compiles with no errors.
 
 **Step 3: Commit**
@@ -69,12 +69,12 @@ This stores the full merged pricing map as a single JSON blob. One row, one upse
 
 **Step 2: Verify compilation**
 
-Run: `cargo check -p vibe-recall-db`
+Run: `cargo check -p claude-view-db`
 Expected: Compiles.
 
 **Step 3: Run DB tests to verify migration applies cleanly**
 
-Run: `cargo test -p vibe-recall-db -- --test-threads=1`
+Run: `cargo test -p claude-view-db -- --test-threads=1`
 Expected: All existing tests pass (in-memory DB runs all migrations including the new one).
 
 **Step 4: Commit**
@@ -173,7 +173,7 @@ async fn test_save_overwrites_previous_cache() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-db -- pricing::tests::test_save`
+Run: `cargo test -p claude-view-db -- pricing::tests::test_save`
 Expected: FAIL — functions don't exist.
 
 **Step 3: Implement save/load functions**
@@ -241,7 +241,7 @@ pub use pricing::{fetch_litellm_pricing, merge_pricing, save_pricing_cache, load
 
 **Step 5: Run tests**
 
-Run: `cargo test -p vibe-recall-db -- pricing`
+Run: `cargo test -p claude-view-db -- pricing`
 Expected: ALL pass.
 
 **Step 6: Commit**
@@ -317,7 +317,7 @@ fn test_fill_tiering_gaps_preserves_explicit_values() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-core -- pricing::tests::test_fill_tiering`
+Run: `cargo test -p claude-view-core -- pricing::tests::test_fill_tiering`
 Expected: FAIL — function doesn't exist.
 
 **Step 3: Add constants and derivation function**
@@ -369,7 +369,7 @@ pub fn fill_tiering_gaps(pricing: &mut HashMap<String, ModelPricing>) {
 
 **Step 4: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- pricing`
+Run: `cargo test -p claude-view-core -- pricing`
 Expected: ALL pass.
 
 **Step 5: Commit**
@@ -463,7 +463,7 @@ Then replace every `default_pricing()` call in tests with `test_pricing()`.
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- pricing`
+Run: `cargo test -p claude-view-core -- pricing`
 Expected: ALL pass. The derived values from multipliers match the previously hardcoded values exactly (since the hardcoded values WERE those multiplied values).
 
 **Step 4: Verify the derived values match**
@@ -512,14 +512,14 @@ async:   resolve_pricing(db) → write to RwLock
 Change line 139 from:
 
 ```rust
-let pricing = Arc::new(std::sync::RwLock::new(vibe_recall_db::default_pricing()));
+let pricing = Arc::new(std::sync::RwLock::new(claude_view_db::default_pricing()));
 ```
 
 to:
 
 ```rust
-let mut initial_pricing = vibe_recall_db::default_pricing();
-vibe_recall_core::pricing::fill_tiering_gaps(&mut initial_pricing);
+let mut initial_pricing = claude_view_db::default_pricing();
+claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
 let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
 ```
 
@@ -533,15 +533,15 @@ async fn refresh_pricing(
     db: &Database,
 ) {
     // Tier 1: Try litellm fetch
-    match vibe_recall_db::fetch_litellm_pricing().await {
+    match claude_view_db::fetch_litellm_pricing().await {
         Ok(litellm) => {
-            let defaults = vibe_recall_db::default_pricing();
-            let mut merged = vibe_recall_db::merge_pricing(&defaults, &litellm);
-            vibe_recall_core::pricing::fill_tiering_gaps(&mut merged);
+            let defaults = claude_view_db::default_pricing();
+            let mut merged = claude_view_db::merge_pricing(&defaults, &litellm);
+            claude_view_core::pricing::fill_tiering_gaps(&mut merged);
             let count = merged.len();
 
             // Persist to SQLite for cross-restart durability
-            if let Err(e) = vibe_recall_db::save_pricing_cache(db, &merged).await {
+            if let Err(e) = claude_view_db::save_pricing_cache(db, &merged).await {
                 tracing::warn!("Failed to cache pricing to SQLite: {e}");
             }
 
@@ -552,9 +552,9 @@ async fn refresh_pricing(
             tracing::warn!("litellm fetch failed: {e}");
 
             // Tier 2: Try SQLite cache
-            match vibe_recall_db::load_pricing_cache(db).await {
+            match claude_view_db::load_pricing_cache(db).await {
                 Ok(Some(mut cached)) => {
-                    vibe_recall_core::pricing::fill_tiering_gaps(&mut cached);
+                    claude_view_core::pricing::fill_tiering_gaps(&mut cached);
                     let count = cached.len();
                     *pricing.write().unwrap() = cached;
                     tracing::info!(models = count, "Pricing loaded from SQLite cache");
@@ -598,8 +598,8 @@ These factory methods in `crates/server/src/state.rs` also call `default_pricing
 
 ```rust
 pricing: Arc::new(RwLock::new({
-    let mut p = vibe_recall_db::default_pricing();
-    vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+    let mut p = claude_view_db::default_pricing();
+    claude_view_core::pricing::fill_tiering_gaps(&mut p);
     p
 })),
 ```
@@ -636,7 +636,7 @@ Add to the tests:
 ```rust
 #[tokio::test]
 async fn test_three_tier_fallback_litellm_to_cache() {
-    use vibe_recall_core::pricing::fill_tiering_gaps;
+    use claude_view_core::pricing::fill_tiering_gaps;
 
     let db = crate::Database::new_in_memory().await.unwrap();
 
@@ -671,7 +671,7 @@ async fn test_three_tier_fallback_litellm_to_cache() {
 
 **Step 3: Run all pricing tests**
 
-Run: `cargo test -p vibe-recall-db -- pricing && cargo test -p vibe-recall-core -- pricing`
+Run: `cargo test -p claude-view-db -- pricing && cargo test -p claude-view-core -- pricing`
 Expected: ALL pass.
 
 **Step 4: Commit**
@@ -695,7 +695,7 @@ Expected: Clean compilation across all crates.
 
 **Step 2: Run full test suite**
 
-Run: `cargo test -p vibe-recall-core -- pricing && cargo test -p vibe-recall-db -- pricing && cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-core -- pricing && cargo test -p claude-view-db -- pricing && cargo test -p claude-view-server`
 Expected: ALL pass.
 
 **Step 3: Delete the old implementation plan**

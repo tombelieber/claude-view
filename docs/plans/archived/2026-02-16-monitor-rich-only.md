@@ -598,7 +598,7 @@ NaN ago
 
 **Step 4: Run tests**
 
-Run: `cd /Users/user/dev/@myorg/claude-view/.worktrees/mission-control-cde && cargo test -p vibe-recall-server -- routes::terminal`
+Run: `cd /Users/user/dev/@myorg/claude-view/.worktrees/mission-control-cde && cargo test -p claude-view-server -- routes::terminal`
 
 **Step 5: Commit**
 

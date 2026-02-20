@@ -420,6 +420,110 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-view-core"
+version = "0.5.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dirs",
+ "memchr",
+ "pretty_assertions",
+ "regex-lite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
+name = "claude-view-db"
+version = "0.5.0"
+dependencies = [
+ "axum 0.8.8",
+ "chrono",
+ "claude-view-core",
+ "claude-view-search",
+ "claude-view-server",
+ "dirs",
+ "memchr",
+ "memmap2",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tower",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
+name = "claude-view-search"
+version = "0.5.0"
+dependencies = [
+ "chrono",
+ "claude-view-core",
+ "serde",
+ "tantivy",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
+name = "claude-view-server"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "assert-json-diff",
+ "async-stream",
+ "axum 0.8.8",
+ "axum-test",
+ "chrono",
+ "claude-view-core",
+ "claude-view-db",
+ "claude-view-search",
+ "dirs",
+ "futures-util",
+ "indicatif",
+ "libc",
+ "memchr",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "notify",
+ "open",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-tungstenite",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "ts-rs",
+ "urlencoding",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3372,110 +3476,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vibe-recall-core"
-version = "0.5.0"
-dependencies = [
- "async-trait",
- "chrono",
- "dirs",
- "memchr",
- "pretty_assertions",
- "regex-lite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-test",
- "tracing",
- "ts-rs",
-]
-
-[[package]]
-name = "vibe-recall-db"
-version = "0.5.0"
-dependencies = [
- "axum 0.8.8",
- "chrono",
- "dirs",
- "memchr",
- "memmap2",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-test",
- "tower",
- "tracing",
- "ts-rs",
- "vibe-recall-core",
- "vibe-recall-search",
- "vibe-recall-server",
-]
-
-[[package]]
-name = "vibe-recall-search"
-version = "0.5.0"
-dependencies = [
- "chrono",
- "serde",
- "tantivy",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-test",
- "tracing",
- "ts-rs",
- "vibe-recall-core",
-]
-
-[[package]]
-name = "vibe-recall-server"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "assert-json-diff",
- "async-stream",
- "axum 0.8.8",
- "axum-test",
- "chrono",
- "dirs",
- "futures-util",
- "indicatif",
- "libc",
- "memchr",
- "metrics",
- "metrics-exporter-prometheus",
- "notify",
- "open",
- "pretty_assertions",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tokio-tungstenite",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "ts-rs",
- "urlencoding",
- "vibe-recall-core",
- "vibe-recall-db",
- "vibe-recall-search",
-]
 
 [[package]]
 name = "walkdir"

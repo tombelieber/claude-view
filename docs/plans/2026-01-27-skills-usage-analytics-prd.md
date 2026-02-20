@@ -832,7 +832,7 @@ Tie-breakers: higher usage count, then more recent usage.
 
 ## 13. Mapping to v2 Development Phases
 
-This PRD spans **v2 Phases 2 and 3** (see `2026-01-27-vibe-recall-v2-design.md` Section 9):
+This PRD spans **v2 Phases 2 and 3** (see `2026-01-27-claude-view-v2-design.md` Section 9):
 
 ### v2 Phase 2: Data Pipeline (this PRD, core)
 
@@ -869,7 +869,7 @@ This PRD spans **v2 Phases 2 and 3** (see `2026-01-27-vibe-recall-v2-design.md` 
 - [ ] Co-occurrence / pairing analysis
 - [ ] Skill effectiveness correlation with session health
 - [ ] Trend detection
-- [ ] CLI `vibe-recall stats` integration
+- [ ] CLI `claude-view stats` integration
 - [ ] Multi-AI support: Codex CLI parser + registry
 - [ ] Multi-AI support: Gemini CLI parser + registry
 
@@ -905,8 +905,8 @@ This PRD spans **v2 Phases 2 and 3** (see `2026-01-27-vibe-recall-v2-design.md` 
 
 | Document | Relationship |
 |----------|-------------|
-| `2026-01-27-vibe-recall-v2-design.md` | This PRD implements v2 Phase 2 (Data Pipeline) and Phase 3 (Metrics & Analytics) |
-| `2026-01-27-vibe-recall-analytics-design.md` | Phase 3 metrics (session health, git correlation) are defined there; this PRD provides the validated data foundation |
+| `2026-01-27-claude-view-v2-design.md` | This PRD implements v2 Phase 2 (Data Pipeline) and Phase 3 (Metrics & Analytics) |
+| `2026-01-27-claude-view-analytics-design.md` | Phase 3 metrics (session health, git correlation) are defined there; this PRD provides the validated data foundation |
 
 The `skills_used` JSON field in the existing `sessions` table (from v2 design) will be populated by this system's validated invocation data rather than regex extraction.
 

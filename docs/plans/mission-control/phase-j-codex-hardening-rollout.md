@@ -54,7 +54,7 @@ Add tests asserting each fixture:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core codex_fixture_contract -- --nocapture`
+Run: `cargo test -p claude-view-core codex_fixture_contract -- --nocapture`
 Expected: FAIL because fixture files/tests do not exist.
 
 **Step 3: Add fixtures + contract test harness**
@@ -64,7 +64,7 @@ Expected: FAIL because fixture files/tests do not exist.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core codex_fixture_contract -- --nocapture`
+Run: `cargo test -p claude-view-core codex_fixture_contract -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -92,7 +92,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db migration_source_backfill_idempotent -- --nocapture`
+Run: `cargo test -p claude-view-db migration_source_backfill_idempotent -- --nocapture`
 Expected: FAIL before hardening assertions are added.
 
 **Step 3: Implement migration guards**
@@ -103,7 +103,7 @@ Expected: FAIL before hardening assertions are added.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db migration_source_backfill_idempotent -- --nocapture`
+Run: `cargo test -p claude-view-db migration_source_backfill_idempotent -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -139,7 +139,7 @@ Test behaviors:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server system_reindex_sources -- --nocapture`
+Run: `cargo test -p claude-view-server system_reindex_sources -- --nocapture`
 Expected: FAIL because endpoint does not accept source scope.
 
 **Step 3: Implement source-scoped reindex contract**
@@ -150,7 +150,7 @@ Expected: FAIL because endpoint does not accept source scope.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server system_reindex_sources -- --nocapture`
+Run: `cargo test -p claude-view-server system_reindex_sources -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -180,7 +180,7 @@ Add tests asserting counters are emitted with labels:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server metrics_source_labels -- --nocapture`
+Run: `cargo test -p claude-view-server metrics_source_labels -- --nocapture`
 Expected: FAIL because labels/counters do not exist.
 
 **Step 3: Implement source-labeled metrics/logging**
@@ -195,7 +195,7 @@ And structured logs that include `source`, `session_id`, and parser path.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server metrics_source_labels -- --nocapture`
+Run: `cargo test -p claude-view-server metrics_source_labels -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -223,7 +223,7 @@ Define baseline expectations:
 
 **Step 2: Run benchmark to capture current baseline**
 
-Run: `cargo run -p vibe-recall-db --example bench_codex_indexing`
+Run: `cargo run -p claude-view-db --example bench_codex_indexing`
 Expected: emits structured benchmark output.
 
 **Step 3: Implement benchmark harness**
@@ -233,7 +233,7 @@ Expected: emits structured benchmark output.
 
 **Step 4: Re-run benchmark and record baseline**
 
-Run: `cargo run -p vibe-recall-db --example bench_codex_indexing`
+Run: `cargo run -p claude-view-db --example bench_codex_indexing`
 Expected: outputs stable numbers and no panics.
 
 **Step 5: Commit**
@@ -262,7 +262,7 @@ Add tests for feature flag behavior:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server codex_flag_config -- --nocapture`
+Run: `cargo test -p claude-view-server codex_flag_config -- --nocapture`
 Expected: FAIL before env flag support is implemented.
 
 **Step 3: Implement flags + docs**
@@ -279,7 +279,7 @@ Expected: FAIL before env flag support is implemented.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server codex_flag_config -- --nocapture`
+Run: `cargo test -p claude-view-server codex_flag_config -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -301,10 +301,10 @@ git commit -m "docs(ops): add codex rollout flags and operational playbook"
 ## Verification Checklist
 
 Run:
-- `cargo test -p vibe-recall-core codex_fixture_contract`
-- `cargo test -p vibe-recall-db migration_source_backfill_idempotent`
-- `cargo test -p vibe-recall-server system_reindex_sources metrics_source_labels codex_flag_config`
-- `cargo run -p vibe-recall-db --example bench_codex_indexing`
+- `cargo test -p claude-view-core codex_fixture_contract`
+- `cargo test -p claude-view-db migration_source_backfill_idempotent`
+- `cargo test -p claude-view-server system_reindex_sources metrics_source_labels codex_flag_config`
+- `cargo run -p claude-view-db --example bench_codex_indexing`
 
 Expected:
 - Full test pass.

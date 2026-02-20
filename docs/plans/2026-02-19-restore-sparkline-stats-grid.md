@@ -42,7 +42,7 @@ async fn test_session_activity_histogram() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db -- test_session_activity_histogram -v`
+Run: `cargo test -p claude-view-db -- test_session_activity_histogram -v`
 Expected: FAIL — `session_activity_histogram` not defined
 
 **Step 3: Write implementation**
@@ -100,7 +100,7 @@ pub struct ActivityPoint {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db -- test_session_activity_histogram -v`
+Run: `cargo test -p claude-view-db -- test_session_activity_histogram -v`
 Expected: PASS
 
 **Step 5: Commit**
@@ -133,7 +133,7 @@ pub use dashboard::ActivityPoint;
 
 **Step 2: Verify it compiles**
 
-Run: `cargo check -p vibe-recall-db`
+Run: `cargo check -p claude-view-db`
 Expected: no errors
 
 **Step 3: Commit**
@@ -177,7 +177,7 @@ async fn test_session_activity() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server -- test_session_activity -v`
+Run: `cargo test -p claude-view-server -- test_session_activity -v`
 Expected: FAIL — handler doesn't exist
 
 **Step 3: Write implementation**
@@ -189,7 +189,7 @@ Add response struct near `SessionsListResponse`:
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionActivityResponse {
-    pub activity: Vec<vibe_recall_db::ActivityPoint>,
+    pub activity: Vec<claude_view_db::ActivityPoint>,
     pub bucket: String,
 }
 ```
@@ -214,7 +214,7 @@ Add route to `router()` fn (after the `/branches` line):
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server -- test_session_activity -v`
+Run: `cargo test -p claude-view-server -- test_session_activity -v`
 Expected: PASS
 
 **Step 5: Commit**
@@ -420,12 +420,12 @@ git commit -m "feat(ui): restore 6-card stats grid in StorageOverview"
 
 **Step 1: Build backend**
 
-Run: `cargo build -p vibe-recall-server`
+Run: `cargo build -p claude-view-server`
 Expected: compiles clean
 
 **Step 2: Run all backend tests**
 
-Run: `cargo test -p vibe-recall-db -p vibe-recall-server`
+Run: `cargo test -p claude-view-db -p claude-view-server`
 Expected: all pass
 
 **Step 3: Run frontend type check**

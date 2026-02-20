@@ -444,7 +444,7 @@ mod tests {
     use super::*;
     use axum::{body::Body, http::{Method, Request, StatusCode}, Router};
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
     use crate::state::AppState;
     use tempfile::TempDir;
     use std::sync::Arc;

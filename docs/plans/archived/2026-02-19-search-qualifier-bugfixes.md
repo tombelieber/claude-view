@@ -77,7 +77,7 @@ fn test_schema_version_mismatch_triggers_rebuild() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-search -- test_schema_version_mismatch`
+Run: `cargo test -p claude-view-search -- test_schema_version_mismatch`
 Expected: FAIL — `SEARCH_SCHEMA_VERSION` not defined
 
 **Step 3: Implement schema versioning in `SearchIndex::open`**
@@ -146,7 +146,7 @@ pub fn open(path: &Path) -> Result<Self, SearchError> {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-search -- test_schema_version`
+Run: `cargo test -p claude-view-search -- test_schema_version`
 Expected: PASS
 
 **Step 5: Commit**
@@ -217,7 +217,7 @@ fn test_search_model_partial_match() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-search -- test_search_model_partial_match`
+Run: `cargo test -p claude-view-search -- test_search_model_partial_match`
 Expected: FAIL — `model:opus` returns 0 sessions
 
 **Step 3: Change model schema to TEXT and lowercase qualifier values**
@@ -263,7 +263,7 @@ Bump `SEARCH_SCHEMA_VERSION` to 2 (already set in Task 1).
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-search -- test_search_model_partial_match`
+Run: `cargo test -p claude-view-search -- test_search_model_partial_match`
 Expected: PASS
 
 **Step 5: Commit**
@@ -288,7 +288,7 @@ The existing test `test_search_with_skill_qualifier` in `crates/search/src/lib.r
 
 Verify the existing test passes (it uses hand-constructed `SearchDocument` with skills):
 
-Run: `cargo test -p vibe-recall-search -- test_search_with_skill_qualifier`
+Run: `cargo test -p claude-view-search -- test_search_with_skill_qualifier`
 Expected: PASS (this tests the search layer, which works — the bug is in the indexer wiring)
 
 **Step 2: Fix the SearchBatch struct and wiring**
@@ -301,7 +301,7 @@ struct SearchBatch {
     project: String,
     branch: Option<String>,
     primary_model: Option<String>,
-    messages: Vec<vibe_recall_core::SearchableMessage>,
+    messages: Vec<claude_view_core::SearchableMessage>,
     skills: Vec<String>,  // NEW: from parse_result.deep.skills_used
 }
 ```
@@ -331,7 +331,7 @@ skills: batch.skills.clone(),
 
 **Step 3: Verify compilation**
 
-Run: `cargo check -p vibe-recall-db`
+Run: `cargo check -p claude-view-db`
 Expected: Clean compilation
 
 **Step 4: Commit**
@@ -402,7 +402,7 @@ fn test_search_project_qualifier_with_display_name() {
 
 **Step 2: Run test**
 
-Run: `cargo test -p vibe-recall-search -- test_search_project_qualifier_with_display_name`
+Run: `cargo test -p claude-view-search -- test_search_project_qualifier_with_display_name`
 Expected: PASS (the search layer already does exact STRING matching — this verifies display names work)
 
 **Step 3: Also add a qualifier-only test (no text query)**
@@ -447,7 +447,7 @@ fn test_search_qualifier_only_no_text() {
 
 **Step 4: Run all qualifier tests**
 
-Run: `cargo test -p vibe-recall-search -- test_search`
+Run: `cargo test -p claude-view-search -- test_search`
 Expected: ALL PASS
 
 **Step 5: Commit**
@@ -466,7 +466,7 @@ Verify the full stack works with a fresh Tantivy index.
 **Step 1: Delete the stale Tantivy index**
 
 ```bash
-rm -rf ~/Library/Caches/vibe-recall/search-index
+rm -rf ~/Library/Caches/claude-view/search-index
 ```
 
 **Step 2: Restart the dev server**

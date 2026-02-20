@@ -10,7 +10,7 @@
 //! - **Schema**: 9 fields per document (see `build_schema`)
 //! - **Write path**: `indexer::SearchDocument` -> `SearchIndex::index_session` -> `commit`
 //! - **Read path**: `SearchIndex::search` -> qualifier parsing -> BooleanQuery -> snippets
-//! - **Storage**: On-disk at `<cache_dir>/vibe-recall/search-index/` or in-RAM for tests
+//! - **Storage**: On-disk at `<cache_dir>/claude-view/search-index/` or in-RAM for tests
 
 pub mod indexer;
 pub mod query;

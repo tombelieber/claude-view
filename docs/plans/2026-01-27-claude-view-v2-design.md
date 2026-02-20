@@ -3,7 +3,7 @@ status: approved
 date: 2026-01-27
 ---
 
-# vibe-recall v2 - Design Specification
+# claude-view v2 - Design Specification
 
 > Local web server for browsing and searching Claude Code chat history
 
@@ -15,7 +15,7 @@ date: 2026-01-27
 
 | Topic | Decision | Alternatives Rejected |
 |-------|----------|----------------------|
-| **Project name** | vibe-recall | claude-view (generic) |
+| **Project name** | claude-view | claude-view (generic) |
 | **Distribution** | `npx` + `brew` | cargo install (users need Rust) |
 | **Binary hosting** | Cloudflare R2 | GitHub Releases (rate limits) |
 | **Runtime** | Localhost web server | Tauri desktop (v3.0 maybe) |
@@ -121,7 +121,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ### 4.1 Crate Structure (4 crates, Lapce pattern)
 
 ```
-vibe-recall/
+claude-view/
 ├── crates/
 │   ├── core/           # Shared types, JSONL parser, skill extraction
 │   │   └── src/
@@ -267,7 +267,7 @@ Browser → GET /api/search?q=...
 ### Search Query Parameters
 
 ```
-GET /api/search?q=react+hooks&project=vibe-recall&skills=commit&after=2026-01-01
+GET /api/search?q=react+hooks&project=claude-view&skills=commit&after=2026-01-01
 ```
 
 | Param | Type | Description |
@@ -386,24 +386,24 @@ npx-cli/
 
 | Platform | Arch | Binary |
 |----------|------|--------|
-| darwin | arm64 | `vibe-recall-macos-arm64.zip` |
-| darwin | x64 | `vibe-recall-macos-x64.zip` |
-| linux | x64 | `vibe-recall-linux-x64.zip` (v2.1) |
-| win32 | x64 | `vibe-recall-windows-x64.zip` (v2.2) |
+| darwin | arm64 | `claude-view-macos-arm64.zip` |
+| darwin | x64 | `claude-view-macos-x64.zip` |
+| linux | x64 | `claude-view-linux-x64.zip` (v2.1) |
+| win32 | x64 | `claude-view-windows-x64.zip` (v2.2) |
 
 ### Cache location
 
 ```
-~/.cache/vibe-recall/{version}/{platform}/vibe-recall
+~/.cache/claude-view/{version}/{platform}/claude-view
 ```
 
 ### R2 bucket structure
 
 ```
-vibe-recall-releases/
+claude-view-releases/
 ├── 0.1.0/
-│   ├── vibe-recall-macos-arm64.zip
-│   └── vibe-recall-macos-x64.zip
+│   ├── claude-view-macos-arm64.zip
+│   └── claude-view-macos-x64.zip
 ├── 0.2.0/
 │   └── ...
 └── latest.json  # {"version": "0.1.0"}
@@ -488,7 +488,7 @@ vibe-recall-releases/
 | Autocomplete | server, frontend | Fuzzy skill search |
 | Dashboard frontend | frontend | Usage overview, top skills, health breakdown |
 
-> **Design docs:** [`2026-01-27-skills-usage-analytics-prd.md`](2026-01-27-skills-usage-analytics-prd.md), [`2026-01-27-vibe-recall-analytics-design.md`](2026-01-27-vibe-recall-analytics-design.md)
+> **Design docs:** [`2026-01-27-skills-usage-analytics-prd.md`](2026-01-27-skills-usage-analytics-prd.md), [`2026-01-27-claude-view-analytics-design.md`](2026-01-27-claude-view-analytics-design.md)
 
 **Milestone: Dashboard shows real analytics with validated data**
 
@@ -509,10 +509,10 @@ vibe-recall-releases/
 ### Phase 5: Distribution
 | Task | Location | Deliverable |
 |------|----------|-------------|
-| Build binary | CI | vibe-recall-macos-arm64 |
+| Build binary | CI | claude-view-macos-arm64 |
 | npx wrapper | npx-cli | Downloads + runs binary |
 | R2 upload | CI | Binaries on R2 |
-| Test npx | local | `npx vibe-recall` works |
+| Test npx | local | `npx claude-view` works |
 
 **Milestone: Users can install via npx**
 
@@ -534,7 +534,7 @@ vibe-recall-releases/
 - [ ] Skill autocomplete shows usage counts
 - [ ] Dashboard shows top skills with usage trends
 - [ ] Tags persist after restart
-- [ ] `npx vibe-recall` downloads binary and opens browser
+- [ ] `npx claude-view` downloads binary and opens browser
 
 ---
 

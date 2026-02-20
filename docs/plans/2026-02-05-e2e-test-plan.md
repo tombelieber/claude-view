@@ -14,7 +14,7 @@ theme: "Theme 2: Dashboard & Analytics Enhancements"
 - **Config:** `/playwright.config.ts`
 - **Test Directory:** `/e2e/`
 - **Base URL:** `http://localhost:47892`
-- **Server:** `cargo run -p vibe-recall-server`
+- **Server:** `cargo run -p claude-view-server`
 - **Timeout:** 180s (accounts for filesystem scanning)
 
 ## Test Data Requirements

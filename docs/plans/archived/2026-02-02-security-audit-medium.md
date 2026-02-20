@@ -136,7 +136,7 @@ Verify with `cargo audit` after the change.
 
 **File:** `Cargo.toml:10`
 
-**Problem:** `repository = "https://github.com/user/vibe-recall"` — this is a placeholder that was never updated. The actual repo is `https://github.com/anonymous-dev/claude-view`.
+**Problem:** `repository = "https://github.com/user/claude-view"` — this is a placeholder that was never updated. The actual repo is `https://github.com/anonymous-dev/claude-view`.
 
 **Fix:**
 ```toml

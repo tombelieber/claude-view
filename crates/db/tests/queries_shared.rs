@@ -1,4 +1,4 @@
-use vibe_recall_core::{SessionInfo, ToolCounts};
+use claude_view_core::{SessionInfo, ToolCounts};
 
 /// Helper to create a test SessionInfo with sensible defaults.
 pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {

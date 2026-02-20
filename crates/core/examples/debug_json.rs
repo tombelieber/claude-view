@@ -1,4 +1,4 @@
-use vibe_recall_core::{SessionInfo, ToolCounts};
+use claude_view_core::{SessionInfo, ToolCounts};
 
 fn main() {
     let session = SessionInfo {

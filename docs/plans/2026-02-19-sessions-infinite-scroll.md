@@ -236,7 +236,7 @@ pub async fn query_sessions_filtered(
 
 **Step 3: Run existing tests to verify no regression**
 
-Run: `cargo test -p vibe-recall-db`
+Run: `cargo test -p claude-view-db`
 Expected: All existing tests pass (new code is additive, no existing code modified).
 
 **Step 4: Commit**
@@ -262,7 +262,7 @@ Add to the test module in `crates/db/` (or create `crates/db/src/queries/dashboa
 mod filtered_query_tests {
     use super::*;
     use crate::Database;
-    use vibe_recall_core::{SessionInfo, ToolCounts};
+    use claude_view_core::{SessionInfo, ToolCounts};
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -466,7 +466,7 @@ mod filtered_query_tests {
 
 **Step 2: Run the new tests**
 
-Run: `cargo test -p vibe-recall-db -- filtered_query_tests`
+Run: `cargo test -p claude-view-db -- filtered_query_tests`
 Expected: All tests pass.
 
 **Step 3: Commit**
@@ -553,7 +553,7 @@ pub async fn list_sessions(
         _ => None,
     };
 
-    let params = vibe_recall_db::SessionFilterParams {
+    let params = claude_view_db::SessionFilterParams {
         q: query.q,
         branches: query.branches.map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
         models: query.models.map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
@@ -595,12 +595,12 @@ pub use queries::dashboard::SessionFilterParams;
 
 **Step 5: Run tests**
 
-Run: `cargo test -p vibe-recall-server -- routes::sessions`
+Run: `cargo test -p claude-view-server -- routes::sessions`
 Expected: Existing tests pass. The `test_list_sessions_pagination` test should still work since `limit` and `offset` are preserved.
 
 **Step 6: Regenerate TypeScript types**
 
-Run: `cargo test -p vibe-recall-server` (ts-rs generates types on test)
+Run: `cargo test -p claude-view-server` (ts-rs generates types on test)
 Then verify `src/types/generated/SessionsListResponse.ts` includes `hasMore: boolean`.
 
 **Step 7: Commit**
@@ -1041,8 +1041,8 @@ Checklist:
 
 **Step 3: Run all existing tests**
 
-Run: `cargo test -p vibe-recall-server -- routes::sessions`
-Run: `cargo test -p vibe-recall-db`
+Run: `cargo test -p claude-view-server -- routes::sessions`
+Run: `cargo test -p claude-view-db`
 
 Expected: All tests pass.
 

@@ -1,4 +1,4 @@
-export type ActionCategory = 'skill' | 'mcp' | 'builtin' | 'agent' | 'error'
+export type ActionCategory = 'skill' | 'mcp' | 'builtin' | 'agent' | 'error' | 'hook'
 
 export interface ActionItem {
   id: string
@@ -20,8 +20,23 @@ export interface TurnSeparator {
   timestamp?: number
 }
 
-export type TimelineItem = ActionItem | TurnSeparator
+export interface HookEventItem {
+  id: string
+  timestamp: number
+  type: 'hook_event'
+  eventName: string
+  toolName?: string
+  label: string
+  group: 'autonomous' | 'needs_you' | 'delivered'
+  context?: string
+}
+
+export type TimelineItem = ActionItem | TurnSeparator | HookEventItem
 
 export function isTurnSeparator(item: TimelineItem): item is TurnSeparator {
   return 'type' in item && (item as TurnSeparator).type === 'turn'
+}
+
+export function isHookEvent(item: TimelineItem): item is HookEventItem {
+  return 'type' in item && (item as HookEventItem).type === 'hook_event'
 }

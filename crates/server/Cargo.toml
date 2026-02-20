@@ -1,12 +1,12 @@
 # crates/server/Cargo.toml
 [package]
-name = "vibe-recall-server"
+name = "claude-view-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "vibe-recall"
+name = "claude-view"
 path = "src/main.rs"
 
 # Feature Flags for Safe Rollback
@@ -37,9 +37,9 @@ ai-generation = []
 storage-overview = []
 
 [dependencies]
-vibe-recall-core = { workspace = true }
-vibe-recall-db = { workspace = true }
-vibe-recall-search = { workspace = true }
+claude-view-core = { workspace = true }
+claude-view-db = { workspace = true }
+claude-view-search = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 tower = { workspace = true }

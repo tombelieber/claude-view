@@ -1,8 +1,8 @@
 //! Integration tests for Database dashboard/analytics query methods.
 
 use chrono::Utc;
-use vibe_recall_core::SessionInfo;
-use vibe_recall_db::Database;
+use claude_view_core::SessionInfo;
+use claude_view_db::Database;
 
 mod queries_shared;
 use queries_shared::make_session;

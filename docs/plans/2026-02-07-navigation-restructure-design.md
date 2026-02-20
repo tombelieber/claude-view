@@ -105,7 +105,7 @@ Current navigation has inconsistent structure:
 │ 📊 Contributions       │ (navigation)
 ├─────────────────────────┤
 │ 📂 Projects            │ (filtering)
-│   > vibe-recall  [42]  │
+│   > claude-view  [42]  │
 │   > claude-view  [230] │
 │   v my-app       [15]  │ (expanded, selected when ?project=my-app)
 │     ├ main       [10]  │ (clickable, adds ?branches=main)
@@ -157,8 +157,8 @@ Current navigation has inconsistent structure:
 
 **Example URLs:**
 
-- `/?project=vibe-recall` - Fluency for vibe-recall project (all branches)
-- `/?project=vibe-recall&branches=main` - Fluency for vibe-recall main branch only
+- `/?project=claude-view` - Fluency for claude-view project (all branches)
+- `/?project=claude-view&branches=main` - Fluency for claude-view main branch only
 
 #### 2. Sessions Page (`HistoryView`)
 
@@ -178,8 +178,8 @@ Current navigation has inconsistent structure:
 
 **Example URLs:**
 
-- `/sessions?project=vibe-recall` - Sessions for vibe-recall
-- `/sessions?project=vibe-recall&branches=main&sort=recent` - Filtered by project + branch + sort
+- `/sessions?project=claude-view` - Sessions for claude-view
+- `/sessions?project=claude-view&branches=main&sort=recent` - Filtered by project + branch + sort
 
 #### 3. Contributions Page (`ContributionsPage`)
 
@@ -200,7 +200,7 @@ Current navigation has inconsistent structure:
 **Example URLs:**
 
 - `/contributions` - Global contributions
-- `/contributions?project=vibe-recall&range=month` - vibe-recall contributions for last month
+- `/contributions?project=claude-view&range=month` - claude-view contributions for last month
 
 #### 4. Session Detail Page (`ConversationView`)
 
@@ -242,14 +242,14 @@ Current navigation has inconsistent structure:
 
 **Example flow:**
 
-1. User on Fluency, clicks "vibe-recall" project
-    - URL: `/?project=vibe-recall`
+1. User on Fluency, clicks "claude-view" project
+    - URL: `/?project=claude-view`
 2. User expands project, clicks "main" branch
-    - URL: `/?project=vibe-recall&branches=main`
+    - URL: `/?project=claude-view&branches=main`
 3. User clicks "Sessions" in sidebar
-    - URL: `/sessions?project=vibe-recall&branches=main`
+    - URL: `/sessions?project=claude-view&branches=main`
     - Sessions page shows filtered results
-4. User clicks "vibe-recall" project again (deselect)
+4. User clicks "claude-view" project again (deselect)
     - URL: `/sessions` (both project and branches cleared)
 
 ## Implementation Plan

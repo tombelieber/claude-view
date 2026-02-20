@@ -24,7 +24,7 @@ import { cn } from '../../lib/utils'
 // --- Types ---
 
 export interface RichMessage {
-  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | 'error'
+  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | 'error' | 'hook'
   content: string
   name?: string // tool name for tool_use
   input?: string // tool input summary for tool_use
@@ -318,6 +318,7 @@ function toolChipColor(name: string): string {
 // --- Message Card Components ---
 
 function UserMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -326,7 +327,7 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
         <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
-            verboseMode ? (
+            verboseMode && richRenderMode === 'rich' ? (
               <JsonTree data={parsedJson} />
             ) : (
               <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
@@ -344,6 +345,7 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
 }
 
 function AssistantMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
@@ -352,7 +354,7 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
         <Bot className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           {parsedJson !== null ? (
-            verboseMode ? (
+            verboseMode && richRenderMode === 'rich' ? (
               <JsonTree data={parsedJson} />
             ) : (
               <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
@@ -448,10 +450,10 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
                   [ Collapse ]
                 </button>
               )}
-              {isObjectInput ? (
+              {isObjectInput && effectiveMode !== 'json' ? (
                 <JsonTree data={inputObj} />
               ) : (
-                <CompactCodeBlock code={message.input} language="json" blockId={`tool-input-${index}`} />
+                <CompactCodeBlock code={isObjectInput ? JSON.stringify(inputObj, null, 2) : (message.input ?? '')} language="json" blockId={`tool-input-${index}`} />
               )}
             </div>
           )}
@@ -463,6 +465,7 @@ function ToolUseMessage({ message, index, verboseMode = false }: { message: Rich
 }
 
 function ToolResultMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const hasContent = message.content.length > 0
   const jsonDetected = hasContent && isJsonContent(message.content)
   const diffLike = hasContent && !jsonDetected && isDiffContent(message.content)
@@ -485,7 +488,11 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
       {hasContent && (
         jsonDetected && parsedJson !== null ? (
           <div className="mt-0.5 pl-4">
-            <JsonTree data={parsedJson} />
+            {richRenderMode === 'json' ? (
+              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`result-${index}`} />
+            ) : (
+              <JsonTree data={parsedJson} />
+            )}
           </div>
         ) : diffLike ? (
           <div className="mt-0.5 pl-4 diff-block">
@@ -557,6 +564,36 @@ function ErrorMessage({ message, index }: { message: RichMessage; index: number 
   )
 }
 
+function HookMessage({ message }: { message: RichMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasContext = !!message.input
+  return (
+    <div className="border-l-2 border-amber-500/30 pl-2 py-0.5">
+      <button
+        onClick={() => hasContext && setExpanded((v) => !v)}
+        className={cn(
+          'flex items-center gap-1.5 w-full text-left',
+          hasContext && 'cursor-pointer group',
+        )}
+      >
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-amber-400" />
+        <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex-shrink-0">
+          {message.name || 'hook'}
+        </span>
+        <span className="text-[10px] text-gray-600 dark:text-gray-400 font-mono truncate flex-1 min-w-0">
+          {message.content}
+        </span>
+        <Timestamp ts={message.ts} />
+      </button>
+      {expanded && message.input && (
+        <pre className="text-[10px] font-mono text-amber-300/80 bg-gray-900 rounded p-2 mt-1 ml-5 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+          {(() => { try { return JSON.stringify(JSON.parse(message.input!), null, 2) } catch { return message.input } })()}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 function Timestamp({ ts }: { ts?: number }) {
   const label = formatTimestamp(ts)
   if (!label) return null
@@ -572,17 +609,19 @@ function Timestamp({ ts }: { ts?: number }) {
 function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   switch (message.type) {
     case 'user':
-      return <UserMessage message={message} index={index} />
+      return <UserMessage message={message} index={index} verboseMode={verboseMode} />
     case 'assistant':
-      return <AssistantMessage message={message} index={index} />
+      return <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_use':
-      return <ToolUseMessage message={message} index={index} />
+      return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_result':
-      return <ToolResultMessage message={message} index={index} />
+      return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
     case 'thinking':
-      return <ThinkingMessage message={message} />
+      return <ThinkingMessage message={message} verboseMode={verboseMode} />
     case 'error':
       return <ErrorMessage message={message} index={index} />
+    case 'hook':
+      return <HookMessage message={message} />
     default:
       return null
   }
@@ -693,7 +732,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
           atBottomThreshold={30}
           itemContent={(index, message) => (
             <div className="px-2 py-0.5">
-              <MessageCard message={message} index={index} />
+              <MessageCard message={message} index={index} verboseMode={verboseMode} />
             </div>
           )}
           className="h-full"

@@ -883,7 +883,7 @@ async fn backfill_contribution_metrics(session: &mut Session, jsonl_path: &Path)
 **Backfill triggers:**
 
 1. **Automatic:** Next scheduled deep index after upgrade
-2. **Manual:** `vibe-recall reindex --backfill-contributions`
+2. **Manual:** `claude-view reindex --backfill-contributions`
 
 **Progress tracking:**
 
@@ -1179,7 +1179,7 @@ Session contribution fields (`ai_lines_added`, `work_type`) follow existing sess
 
 | Warning Code | User Message |
 |--------------|--------------|
-| `GIT_SYNC_INCOMPLETE` | "Some commit data unavailable — run `vibe-recall sync` to update" |
+| `GIT_SYNC_INCOMPLETE` | "Some commit data unavailable — run `claude-view sync` to update" |
 | `COST_UNAVAILABLE` | "Cost metrics unavailable — token data missing from some sessions" |
 | `PARTIAL_DATA` | "Showing partial data — some sessions still indexing" |
 

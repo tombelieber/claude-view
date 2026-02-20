@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, Eye, Code, FileX, Terminal, PanelRight } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, FileX, Terminal, PanelRight } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useSession, isNotFoundError } from '../hooks/use-session'
@@ -14,6 +14,7 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { CommitsPanel } from './CommitsPanel'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
+import { ViewModeControls } from './live/ViewModeControls'
 import { RichPane } from './live/RichPane'
 import { messagesToRichMessages } from '../lib/message-to-rich'
 import { historyToPanelData } from './live/session-panel-data'
@@ -38,42 +39,6 @@ function HistoryRichPane({ messages }: { messages: import('./live/RichPane').Ric
       verboseMode={verboseMode}
       bufferDone={true}
     />
-  )
-}
-
-/** Verbose + Rich/JSON toggles — matches terminal view controls */
-function TerminalViewToggles() {
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
-  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
-  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
-  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
-  return (
-    <>
-      <button
-        onClick={toggleVerbose}
-        className={cn(
-          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-          verboseMode
-            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-            : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
-        )}
-      >
-        {verboseMode ? 'verbose' : 'compact'}
-      </button>
-      {verboseMode && (
-        <button
-          onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
-          className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-            richRenderMode === 'rich'
-              ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
-              : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
-          )}
-        >
-          {richRenderMode === 'rich' ? 'rich' : 'json'}
-        </button>
-      )}
-    </>
   )
 }
 
@@ -110,7 +75,7 @@ export function ConversationView() {
   const project = summaries.find(p => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
-  const [viewMode, setViewMode] = useState<'compact' | 'full'>('compact')
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
@@ -274,8 +239,8 @@ export function ConversationView() {
   const totalMessages = pagesData?.pages[0]?.total ?? 0
 
   const filteredMessages = useMemo(
-    () => allMessages.length > 0 ? filterMessages(allMessages, viewMode) : [],
-    [allMessages, viewMode]
+    () => allMessages.length > 0 ? filterMessages(allMessages, 'compact') : [],
+    [allMessages]
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
@@ -457,42 +422,11 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View mode toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
-            <button
-              onClick={() => setViewMode('compact')}
-              aria-pressed={viewMode === 'compact'}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
-                viewMode === 'compact'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer'
-              )}
-            >
-              <Eye className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Compact
-            </button>
-            <button
-              onClick={() => setViewMode('full')}
-              aria-pressed={viewMode === 'full'}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200',
-                viewMode === 'full'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer'
-              )}
-            >
-              <Code className="w-3.5 h-3.5 inline mr-1.5" aria-hidden="true" />
-              Verbose
-            </button>
-          </div>
-          {viewMode === 'compact' && hiddenCount > 0 && (
+          <ViewModeControls />
+          {!verboseMode && hiddenCount > 0 && (
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {hiddenCount} hidden
             </span>
-          )}
-          {viewMode === 'full' && (
-            <TerminalViewToggles />
           )}
         </div>
 
@@ -609,7 +543,7 @@ export function ConversationView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages */}
         <div className="flex-1 min-w-0">
-          {viewMode === 'compact' ? (
+          {!verboseMode ? (
             <ThreadHighlightProvider>
             <ExpandProvider>
               <Virtuoso
@@ -657,7 +591,7 @@ export function ConversationView() {
                       <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                         {totalMessages} messages
                         {hiddenCount > 0 && (
-                          <> &bull; {hiddenCount} hidden in compact view</>
+                          <> &bull; {hiddenCount} hidden in chat view</>
                         )}
                         {sessionInfo && sessionInfo.toolCallCount > 0 && (
                           <> &bull; {sessionInfo.toolCallCount} tool calls</>

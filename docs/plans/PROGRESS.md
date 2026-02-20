@@ -1,4 +1,4 @@
-# vibe-recall — Progress Dashboard
+# claude-view — Progress Dashboard
 
 > Single source of truth. Replaces scanning 12 plan files.
 >
@@ -467,8 +467,8 @@ Clean 3-tier structure: active work only in main folder.
 
 | File | Status | Role |
 |------|--------|------|
-| `vibe-recall-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
-| `2026-01-27-vibe-recall-analytics-design.md` | draft | **Analytics/Insights** — CLI stats, circle-back detection, insights generation (partially shipped via Phase 3, needs consolidation with skills PRD) |
+| `claude-view-v2-design.md` | approved | **Master roadmap** — 5-phase architecture |
+| `2026-01-27-claude-view-analytics-design.md` | draft | **Analytics/Insights** — CLI stats, circle-back detection, insights generation (partially shipped via Phase 3, needs consolidation with skills PRD) |
 | `2026-01-27-skills-usage-analytics-prd.md` | draft | **Skills analytics PRD** — to be consolidated into analytics design |
 | `2026-01-27-export-pdf-design.md` | pending | **PDF export** — browser print-to-PDF, zero deps, ~30 lines |
 | `2026-01-29-UI-TESTING-STRATEGY.md` | pending | **Testing reference** — Jest + RTL framework for 20+ components |
@@ -525,7 +525,7 @@ All phases completed. Keep for reference only — do not modify.
 
 | File | Phase |
 |------|-------|
-| `2026-01-27-vibe-recall-phase1-implementation.md` | Phase 1 |
+| `2026-01-27-claude-view-phase1-implementation.md` | Phase 1 |
 | `2026-01-27-phase2-parallel-indexing-and-registry.md` | Phase 2A |
 | `2026-01-28-phase2b-token-model-tracking.md` | Phase 2B |
 | `2026-01-28-phase2c-api-split-ux-polish.md` | Phase 2C |

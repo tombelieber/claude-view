@@ -38,7 +38,7 @@ Also strip when launching the server from a Claude Code terminal:
 
 ```bash
 env -u CLAUDECODE -u CLAUDE_CODE_SSE_PORT -u CLAUDE_CODE_ENTRYPOINT \
-  nohup ./target/debug/vibe-recall > /tmp/server.log 2>&1 &
+  nohup ./target/debug/claude-view > /tmp/server.log 2>&1 &
 ```
 
 `dev:server` script must start with `unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT`.
@@ -86,7 +86,7 @@ Also: `process.cmd()` returns empty on macOS, so Node.js-based install check (`c
 let project_path = urlencoding::decode(&encoded_name).to_string();
 
 // RIGHT
-let resolved = vibe_recall_core::discovery::resolve_project_path(&encoded_name);
+let resolved = claude_view_core::discovery::resolve_project_path(&encoded_name);
 let project_path = resolved.full_path;
 ```
 
@@ -111,7 +111,7 @@ let subscriber = FmtSubscriber::builder()
     .finish();
 ```
 
-Scope RUST_LOG: `RUST_LOG=warn,vibe_recall_server=info,vibe_recall_core=info`
+Scope RUST_LOG: `RUST_LOG=warn,claude_view_server=info,claude_view_core=info`
 
 ---
 

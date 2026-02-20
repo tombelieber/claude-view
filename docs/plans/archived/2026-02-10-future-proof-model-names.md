@@ -561,7 +561,7 @@ if let Some(models_str) = &query.models {
 
 **Step 2: Run Rust tests**
 
-Run: `cd /Users/user/dev/@myorg/claude-view/.worktrees/dashboard-analytics && cargo test -p vibe-recall-server -- routes::sessions`
+Run: `cd /Users/user/dev/@myorg/claude-view/.worktrees/dashboard-analytics && cargo test -p claude-view-server -- routes::sessions`
 
 Expected: All existing tests pass. Note: the model filter test is currently skipped (commented out) due to `insert_session()` not persisting `primary_model`. This is a pre-existing issue — don't block on it.
 
@@ -647,7 +647,7 @@ for space-constrained chart labels."
 ```bash
 cd /Users/user/dev/@myorg/claude-view/.worktrees/dashboard-analytics
 bun test
-cargo test -p vibe-recall-server
+cargo test -p claude-view-server
 ```
 
 Expected: All tests pass.

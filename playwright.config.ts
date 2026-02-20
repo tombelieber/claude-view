@@ -20,7 +20,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'cargo run -p vibe-recall-server',
+    command: 'cargo run -p claude-view-server',
     url: 'http://localhost:47892/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

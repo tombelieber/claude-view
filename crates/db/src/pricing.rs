@@ -1,7 +1,7 @@
 //! Pricing data management: litellm fetch + merge with defaults.
 
 use std::collections::HashMap;
-use vibe_recall_core::pricing::ModelPricing;
+use claude_view_core::pricing::ModelPricing;
 
 const LITELLM_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
@@ -373,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_three_tier_fallback_litellm_to_cache() {
-        use vibe_recall_core::pricing::fill_tiering_gaps;
+        use claude_view_core::pricing::fill_tiering_gaps;
 
         let db = crate::Database::new_in_memory().await.unwrap();
 

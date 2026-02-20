@@ -828,7 +828,7 @@ Execute these steps sequentially. Each step builds on the previous.
 
 ### Unit Tests (Rust)
 
-Run with `cargo test -p vibe-recall-core -- tail` and `cargo test -p vibe-recall-server -- routes::terminal`.
+Run with `cargo test -p claude-view-core -- tail` and `cargo test -p claude-view-server -- routes::terminal`.
 
 | Test | Location |
 |------|----------|
@@ -868,6 +868,6 @@ Run with `bun run test:e2e`.
 
 1. **Should the WebSocket endpoint require the JSONL file path or just the session ID?** If session ID, the server must resolve it to a path via the database or in-memory session registry from Phase A. If file path, the client must know it (available from Phase A's session list API). **Recommendation:** Session ID only. Server resolves path. Cleaner API, no path leakage to client.
 
-2. **Should rich mode parse JSON on the server or client?** Server-side parsing means less bandwidth (send structured JSON, not raw JSONL lines). Client-side parsing means simpler server. **Recommendation:** Server-side for rich mode (leverage the existing `vibe-recall-core` parser). Raw mode sends lines verbatim.
+2. **Should rich mode parse JSON on the server or client?** Server-side parsing means less bandwidth (send structured JSON, not raw JSONL lines). Client-side parsing means simpler server. **Recommendation:** Server-side for rich mode (leverage the existing `claude-view-core` parser). Raw mode sends lines verbatim.
 
 3. **How to handle JSONL files that are being actively compacted by Claude Code?** Claude Code may rewrite session files during auto-compaction. The file watcher will see a modify event, and the position tracker may be invalid. **Recommendation:** Detect file truncation (new size < tracked position), reset position to 0, and re-send the last N lines as a fresh buffer with a `{ "type": "reset" }` event so the client clears its terminal.

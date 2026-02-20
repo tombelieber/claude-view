@@ -468,7 +468,7 @@ pub async fn trigger_git_sync(
                 let _guard = guard;
 
                 tracing::info!("Git sync triggered via API");
-                match vibe_recall_db::git_correlation::run_git_sync(&db).await {
+                match claude_view_db::git_correlation::run_git_sync(&db).await {
                     Ok(result) => {
                         tracing::info!(
                             "Git sync complete: {} repos, {} commits, {} links, {} errors",
@@ -508,9 +508,9 @@ pub async fn trigger_git_sync(
 - On error, the guard still drops (Rust's RAII), so the mutex is always released
 - No race condition: `try_lock()` is atomic, and only one `spawn` can succeed at a time
 
-**Also update imports at top of file (line 1-17) — add `vibe_recall_db::git_correlation`:**
+**Also update imports at top of file (line 1-17) — add `claude_view_db::git_correlation`:**
 
-The import `vibe_recall_db::git_correlation::run_git_sync` is used inline as a fully-qualified path in the spawn block. No new `use` import needed at module level — the `vibe_recall_db` crate is already a dependency of `vibe_recall_server`.
+The import `claude_view_db::git_correlation::run_git_sync` is used inline as a fully-qualified path in the spawn block. No new `use` import needed at module level — the `claude_view_db` crate is already a dependency of `claude_view_server`.
 
 **Also update the State parameter (line 44) — change `State(_state)` to `State(state)`:**
 
@@ -551,7 +551,7 @@ Replace with:
                 // `git log` per repo (~200ms each). Total: ~2 seconds for 10 projects.
                 // Acceptable as a post-indexing background task.
                 tracing::info!("Starting auto git sync...");
-                match vibe_recall_db::git_correlation::run_git_sync(&idx_db).await {
+                match claude_view_db::git_correlation::run_git_sync(&idx_db).await {
                     Ok(sync_result) => {
                         tracing::info!(
                             "Auto git sync complete: {} repos, {} commits, {} links",
@@ -972,7 +972,7 @@ Replace with:
 
 **Also add a `use` import for `chrono` in the test module (if not already present):**
 
-Check if `chrono::Utc` is available. Since `trends.rs` uses `Utc::now()`, the `chrono` crate is already a dependency of `vibe_recall_db`. The test module can use it directly.
+Check if `chrono::Utc` is available. Since `trends.rs` uses `Utc::now()`, the `chrono` crate is already a dependency of `claude_view_db`. The test module can use it directly.
 
 **Verification:** `cargo test -p db -- git_correlation` — all new and existing tests should pass.
 

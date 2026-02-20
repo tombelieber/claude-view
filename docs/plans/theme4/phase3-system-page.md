@@ -875,7 +875,7 @@ impl Database {
     /// Calculate the size of the Tantivy index directory.
     async fn calculate_index_size(&self) -> u64 {
         let cache_dir = match dirs::cache_dir() {
-            Some(d) => d.join("vibe-recall").join("index"),
+            Some(d) => d.join("claude-view").join("index"),
             None => return 0,
         };
 
@@ -1159,7 +1159,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::ClaudeCliStatus;
+use claude_view_core::ClaudeCliStatus;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;

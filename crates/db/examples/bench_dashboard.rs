@@ -1,7 +1,7 @@
 // crates/db/examples/bench_dashboard.rs
 // Performance benchmark for dashboard query optimizations.
 //
-// Run with: cargo run --example bench_dashboard -p vibe-recall-db --release
+// Run with: cargo run --example bench_dashboard -p claude-view-db --release
 //
 // Seeds an in-memory DB with ~500 sessions (with turns, commits, invocations)
 // then measures each dashboard query function 10× and reports avg/min/max.
@@ -13,7 +13,7 @@
 //   get_dashboard_stats_with_range: <10ms for 500 sessions
 
 use std::time::Instant;
-use vibe_recall_db::Database;
+use claude_view_db::Database;
 
 const NUM_SESSIONS: usize = 500;
 const NUM_PROJECTS: usize = 10;
@@ -233,7 +233,7 @@ impl BenchResult {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== vibe-recall dashboard query benchmark ===");
+    println!("=== claude-view dashboard query benchmark ===");
     println!();
 
     let db = Database::new_in_memory().await?;

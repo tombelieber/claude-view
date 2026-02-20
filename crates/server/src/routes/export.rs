@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::SessionInfo;
+use claude_view_core::SessionInfo;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -218,8 +218,8 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_core::ToolCounts;
-    use vibe_recall_db::Database;
+    use claude_view_core::ToolCounts;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

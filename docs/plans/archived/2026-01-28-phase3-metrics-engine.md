@@ -1128,7 +1128,7 @@ Conversation is the main focus; metrics panel on the right.
 │                    │                                                                │
 │                    │  ┌─────────────────────────────────────────────────────────┐   │
 │                    │  │ ABOUT                                                    │   │
-│                    │  │  Vibe Recall v0.2.0                                      │   │
+│                    │  │  Claude View v0.2.0                                      │   │
 │                    │  │  Cmd+K  Command palette   Cmd+Shift+E  Export HTML       │   │
 │                    │  │  Cmd+/  Focus search      Cmd+Shift+P  Export PDF        │   │
 │                    │  └─────────────────────────────────────────────────────────┘   │

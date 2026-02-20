@@ -24,7 +24,7 @@ Currently each session's `update_session_deep_fields` is an implicit transaction
 **Files:**
 - Modify: `crates/db/src/indexer_parallel.rs:799-1055` (pass_2_deep_index)
 - Modify: `crates/db/src/queries.rs:485-615` (add transaction-accepting variants)
-- Test: `cargo test -p vibe-recall-db -- indexer_parallel`
+- Test: `cargo test -p claude-view-db -- indexer_parallel`
 
 **Step 1: Write the failing test**
 
@@ -46,7 +46,7 @@ This test is identical to the existing `test_run_background_index_full_pipeline`
 
 **Step 2: Run existing tests to establish green baseline**
 
-Run: `cargo test -p vibe-recall-db -- indexer_parallel`
+Run: `cargo test -p claude-view-db -- indexer_parallel`
 Expected: All tests pass (current baseline).
 
 **Step 3: Refactor pass_2_deep_index — collect-then-write pattern**
@@ -104,7 +104,7 @@ Do the same for `batch_insert_invocations_tx`, `batch_upsert_models_tx`, `batch_
 
 **Step 5: Run tests to verify**
 
-Run: `cargo test -p vibe-recall-db -- indexer_parallel`
+Run: `cargo test -p claude-view-db -- indexer_parallel`
 Expected: All tests pass.
 
 **Step 6: Commit**
@@ -127,7 +127,7 @@ Eliminates ~2000 implicit fsyncs on first run (658 sessions × 3-4 txns each)."
 
 **Files:**
 - Modify: `crates/db/src/indexer_parallel.rs:253-516` (parse_bytes)
-- Test: `cargo test -p vibe-recall-db -- indexer_parallel`
+- Test: `cargo test -p claude-view-db -- indexer_parallel`
 
 **Step 1: Write the failing test**
 
@@ -182,7 +182,7 @@ fn test_simd_prefilter_matches_full_parse() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db -- test_simd_prefilter_matches_full_parse`
+Run: `cargo test -p claude-view-db -- test_simd_prefilter_matches_full_parse`
 Expected: FAIL — `json_parse_attempts` will be 11, not 2 (currently parses every line).
 
 **Step 3: Implement SIMD pre-filter in parse_bytes**
@@ -263,12 +263,12 @@ let value: serde_json::Value = match serde_json::from_slice(line) { ... };
 
 **Step 4: Run tests to verify**
 
-Run: `cargo test -p vibe-recall-db -- indexer_parallel`
+Run: `cargo test -p claude-view-db -- indexer_parallel`
 Expected: All tests pass, including the new `test_simd_prefilter_matches_full_parse`.
 
 **Step 5: Run the existing golden fixture tests**
 
-Run: `cargo test -p vibe-recall-db -- golden`
+Run: `cargo test -p claude-view-db -- golden`
 Expected: All pass. The golden fixtures should produce identical results whether lines are SIMD-skipped or full-parsed.
 
 **Step 6: Commit**
@@ -296,7 +296,7 @@ Currently, once a session has `deep_indexed_at` set, it's never re-indexed even 
 - Modify: `crates/db/src/queries.rs:619-630` (update get_sessions_needing_deep_index)
 - Modify: `crates/db/src/queries.rs:485-527` (update update_session_deep_fields to store file size/mtime)
 - Modify: `crates/db/src/indexer_parallel.rs:838-878` (pass file metadata to write phase)
-- Test: `cargo test -p vibe-recall-db -- indexer_parallel`
+- Test: `cargo test -p claude-view-db -- indexer_parallel`
 
 **Step 1: Write the failing test**
 
@@ -313,7 +313,7 @@ async fn test_modified_session_gets_reindexed() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db -- test_modified_session_gets_reindexed`
+Run: `cargo test -p claude-view-db -- test_modified_session_gets_reindexed`
 Expected: FAIL — session is NOT re-indexed because `deep_indexed_at IS NOT NULL` and `parse_version` hasn't changed.
 
 **Step 3: Add migration**
@@ -346,7 +346,7 @@ This approach avoids changing the SQL query to do the comparison (which would re
 
 **Step 6: Run tests**
 
-Run: `cargo test -p vibe-recall-db -- indexer_parallel`
+Run: `cargo test -p claude-view-db -- indexer_parallel`
 Expected: All pass, including the new test.
 
 **Step 7: Bump CURRENT_PARSE_VERSION**

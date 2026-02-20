@@ -39,7 +39,7 @@ In `process_jsonl_update`, replace the session-map update block (lines 805-845) 
 
 **Step 2: Run tests to verify nothing breaks**
 
-Run: `cargo test -p vibe-recall-server -- manager`
+Run: `cargo test -p claude-view-server -- manager`
 Expected: All existing tests pass (they test helper functions, not session creation).
 
 **Step 3: Commit**
@@ -82,7 +82,7 @@ Add this method to the `impl LiveSessionManager` block, after `remove_accumulato
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-server -- manager`
+Run: `cargo test -p claude-view-server -- manager`
 Expected: PASS (new method, not yet called).
 
 **Step 3: Commit**
@@ -160,7 +160,7 @@ Add to `mod tests` at the bottom of `manager.rs`:
 ```rust
     #[test]
     fn test_recovered_session_is_paused() {
-        use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
+        use claude_view_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
 
         let metadata = JsonlMetadata {
             git_branch: Some("main".into()),
@@ -197,7 +197,7 @@ Add to `mod tests` at the bottom of `manager.rs`:
 
 **Step 3: Run test**
 
-Run: `cargo test -p vibe-recall-server -- manager::tests::test_recovered_session_is_paused`
+Run: `cargo test -p claude-view-server -- manager::tests::test_recovered_session_is_paused`
 Expected: PASS
 
 **Step 4: Commit**
@@ -281,10 +281,10 @@ Replace lines 234-264 (inside the `tokio::spawn` block, from `// Initial scan` t
                             .map(|d| d.as_secs() as i64)
                             .unwrap_or(0);
                         let seconds_since = seconds_since_modified_from_timestamp(last_activity_at);
-                        let cost = vibe_recall_core::cost::calculate_live_cost(
+                        let cost = claude_view_core::cost::calculate_live_cost(
                             &acc.tokens, acc.model.as_deref(), &manager.pricing,
                         );
-                        let cache_status = vibe_recall_core::cost::derive_cache_status(Some(seconds_since));
+                        let cache_status = claude_view_core::cost::derive_cache_status(Some(seconds_since));
                         let processes = manager.processes.read().await;
                         let (_, pid) = has_running_process(&processes, &project_path);
                         drop(processes);
@@ -369,7 +369,7 @@ In the `FileEvent::Modified` handler (lines 313-335), `process_jsonl_update` no 
 
 **Step 4: Run full server tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests pass.
 
 **Step 5: Commit**
@@ -395,7 +395,7 @@ Dead sessions no longer appear as 'running' after server restart."
 
 **Step 1: Build the server**
 
-Run: `cargo build -p vibe-recall-server`
+Run: `cargo build -p claude-view-server`
 Expected: Compiles without warnings.
 
 **Step 2: Start the dev server**
