@@ -6,6 +6,7 @@ import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'analytics', element: <AnalyticsPage /> },
+      { path: 'reports', element: <ReportsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {

@@ -162,10 +162,10 @@ describe('SubAgentPills', () => {
     expect(screen.getByText('E')).toBeInTheDocument() // First letter of "Explore"
   })
 
-  it('shows tooltip with agent type and description', () => {
+  it('shows aria-label with agent type and description', () => {
     const { container } = render(<SubAgentPills subAgents={[mockRunningAgent]} />)
-    const pill = container.querySelector('[title]')
-    expect(pill).toHaveAttribute('title', 'Explore: Searching for files')
+    const pill = container.querySelector('[aria-label]')
+    expect(pill).toHaveAttribute('aria-label', 'Explore: Searching for files')
   })
 
   it('handles edge case: agent type is empty string', () => {
