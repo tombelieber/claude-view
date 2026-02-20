@@ -1514,7 +1514,10 @@ pub async fn get_benchmarks(
 
     let report_row: (i64, i64, i64) = sqlx::query_as(
         r#"
-        SELECT COUNT(*), COALESCE(SUM(commit_count), 0),
+        SELECT COUNT(*),
+               (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
+                INNER JOIN sessions s2 ON sc.session_id = s2.id
+                WHERE s2.last_message_at >= ?1),
                COALESCE(SUM(total_input_tokens + total_output_tokens), 0)
         FROM sessions WHERE last_message_at >= ?1
         "#,

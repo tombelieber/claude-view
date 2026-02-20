@@ -156,9 +156,10 @@ impl Database {
         end_ts: i64,
     ) -> DbResult<Vec<(String, i64)>> {
         let rows = sqlx::query_as(
-            r#"SELECT s.project_display_name, COALESCE(SUM(s.commit_count), 0)
+            r#"SELECT s.project_display_name, COUNT(DISTINCT sc.commit_hash)
                FROM sessions s
-               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
+               INNER JOIN session_commits sc ON sc.session_id = s.id
+               WHERE s.first_message_at >= ?1 AND s.first_message_at <= ?2
                GROUP BY s.project_display_name"#,
         )
         .bind(start_ts)
