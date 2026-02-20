@@ -1011,6 +1011,42 @@ fn parse_timestamp_to_unix(ts: &str) -> Option<i64> {
         })
 }
 
+/// Path to the PID snapshot file for server restart recovery.
+fn pid_snapshot_path() -> PathBuf {
+    dirs::home_dir()
+        .expect("home dir exists")
+        .join(".claude")
+        .join("live-monitor-pids.json")
+}
+
+/// Save the session-to-PID mapping to disk atomically.
+///
+/// Written as `{ "session_id": pid, ... }`. Uses tmp+rename for crash safety.
+fn save_pid_snapshot(path: &Path, pids: &HashMap<String, u32>) {
+    let content = match serde_json::to_string(pids) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to serialize PID snapshot: {}", e);
+            return;
+        }
+    };
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, &content).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Load the session-to-PID mapping from disk.
+///
+/// Returns an empty map if the file is missing or corrupt.
+fn load_pid_snapshot(path: &Path) -> HashMap<String, u32> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1293,5 +1329,39 @@ mod tests {
         // Subsequent check uses bound PID
         let running = alive_pids.contains(&bound_pid.unwrap());
         assert!(running, "After binding, PID check should find the process alive");
+    }
+
+    #[test]
+    fn test_pid_snapshot_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pids.json");
+
+        let mut pids = HashMap::new();
+        pids.insert("session-abc".to_string(), 12345u32);
+        pids.insert("session-def".to_string(), 67890u32);
+
+        save_pid_snapshot(&path, &pids);
+        let loaded = load_pid_snapshot(&path);
+
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.get("session-abc"), Some(&12345u32));
+        assert_eq!(loaded.get("session-def"), Some(&67890u32));
+    }
+
+    #[test]
+    fn test_pid_snapshot_missing_file() {
+        let path = std::path::PathBuf::from("/tmp/nonexistent-pid-snapshot-test.json");
+        let loaded = load_pid_snapshot(&path);
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_pid_snapshot_corrupt_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pids.json");
+        std::fs::write(&path, "not valid json {{{").unwrap();
+
+        let loaded = load_pid_snapshot(&path);
+        assert!(loaded.is_empty());
     }
 }
