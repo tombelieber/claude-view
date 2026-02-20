@@ -495,6 +495,12 @@ impl LiveSessionManager {
                                 .tx
                                 .send(SessionEvent::SessionDiscovered { session });
                             promoted += 1;
+                        } else {
+                            warn!(
+                                session_id = %session_id,
+                                pid = entry.pid,
+                                "Snapshot entry has alive PID but no matching JSONL file in 24h scan window — skipping"
+                            );
                         }
                     }
 
@@ -610,35 +616,9 @@ impl LiveSessionManager {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             let mut tick_count: u64 = 0;
 
-            // On startup, load session snapshot from disk to recover bindings
-            let snapshot = load_session_snapshot(&pid_snapshot_path());
-            if !snapshot.sessions.is_empty() {
-                let mut sessions = manager.sessions.write().await;
-                for (session_id, entry) in &snapshot.sessions {
-                    if let Some(session) = sessions.get_mut(session_id) {
-                        if session.pid.is_none() {
-                            session.pid = Some(entry.pid);
-                        }
-                    }
-                }
-                // Prune stale entries and save back
-                let current_count = sessions
-                    .iter()
-                    .filter(|(_, s)| s.pid.is_some())
-                    .count();
-                if current_count < snapshot.sessions.len() {
-                    drop(sessions);
-                    manager.save_session_snapshot_from_state().await;
-                } else {
-                    drop(sessions);
-                }
-
-                info!(
-                    count = snapshot.sessions.len(),
-                    restored = current_count,
-                    "Restored PID bindings from snapshot"
-                );
-            }
+            // NOTE: Snapshot recovery is handled by spawn_file_watcher (crash recovery).
+            // A previous startup snapshot load here raced with file_watcher and could
+            // clobber the snapshot before crash recovery promoted entries. Removed.
 
             loop {
                 interval.tick().await;
