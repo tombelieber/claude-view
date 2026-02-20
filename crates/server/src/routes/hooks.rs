@@ -1220,4 +1220,88 @@ mod tests {
             AgentStateGroup::Autonomous
         ));
     }
+
+    #[tokio::test]
+    async fn test_subagent_stop_hook_event_records_actual_session_group() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Pre-populate session in autonomous/delegating state
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert(
+                "test-session".to_string(),
+                make_autonomous_session("test-session"),
+            );
+        }
+
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": "test-session",
+            "hook_event_name": "SubagentStop",
+            "agent_type": "code-explorer",
+            "agent_id": "agent-1"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("test-session").unwrap();
+        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(
+            session.hook_events[0].group, "autonomous",
+            "SubagentStop hook event should record session's actual group"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_teammate_idle_hook_event_records_actual_session_group() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert(
+                "test-session".to_string(),
+                make_autonomous_session("test-session"),
+            );
+        }
+
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": "test-session",
+            "hook_event_name": "TeammateIdle",
+            "teammate_name": "researcher"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("test-session").unwrap();
+        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(
+            session.hook_events[0].group, "autonomous",
+            "TeammateIdle hook event should record session's actual group"
+        );
+    }
 }
