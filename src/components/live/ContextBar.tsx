@@ -1,5 +1,7 @@
 import { cn } from '../../lib/utils'
 
+const AUTOCOMPACT_THRESHOLD_PCT = 80
+
 interface ContextBarProps {
   percent: number
 }
@@ -15,10 +17,21 @@ export function ContextBar({ percent }: ContextBarProps) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-[40px] h-1 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex-shrink-0">
+      <div className="relative w-[40px] h-1 rounded-full bg-gray-200 dark:bg-gray-800 flex-shrink-0">
+        <div className="h-full rounded-full overflow-hidden">
+          <div
+            className={cn('h-full rounded-full transition-all', getFillColor(clamped))}
+            style={{ width: `${clamped}%` }}
+          />
+        </div>
         <div
-          className={cn('h-full rounded-full transition-all', getFillColor(clamped))}
-          style={{ width: `${clamped}%` }}
+          className={`absolute top-[-1px] bottom-[-1px] w-[1px] rounded-full ${
+            clamped >= AUTOCOMPACT_THRESHOLD_PCT
+              ? 'bg-white opacity-90'
+              : 'bg-gray-400 dark:bg-gray-600 opacity-40'
+          }`}
+          style={{ left: `${AUTOCOMPACT_THRESHOLD_PCT}%` }}
+          title="~auto-compact threshold"
         />
       </div>
       <span className="text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{clamped}%</span>
