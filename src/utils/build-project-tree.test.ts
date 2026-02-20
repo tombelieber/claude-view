@@ -140,9 +140,9 @@ describe('buildProjectTree', () => {
     expect(orgGroup!.depth).toBe(1);
     expect(orgGroup!.children).toHaveLength(2);
 
-    const charity-app = devGroup!.children!.find((n) => n.name === 'enc-tp');
-    expect(charity-app).toBeDefined();
-    expect(charity-app!.depth).toBe(1);
+    const charityApp = devGroup!.children!.find((n) => n.name === 'enc-tp');
+    expect(charityApp).toBeDefined();
+    expect(charityApp!.depth).toBe(1);
 
     // test-project at root
     const vibeTest = result.find((n) => n.name === 'enc-vm');
