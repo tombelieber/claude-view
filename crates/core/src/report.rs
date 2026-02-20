@@ -102,12 +102,20 @@ impl ContextDigest {
     }
 }
 
-/// Truncate a prompt string to `max_len` chars, appending "..." if truncated.
+/// Truncate a prompt string to `max_len` **characters**, appending "..." if truncated.
+///
+/// Uses `char_indices()` so that multi-byte characters (CJK, emoji, etc.)
+/// are never sliced mid-codepoint.
 fn truncate_prompt(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        let byte_end = s
+            .char_indices()
+            .nth(max_len)
+            .map(|(idx, _)| idx)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..byte_end])
     }
 }
 
@@ -290,5 +298,33 @@ mod tests {
         let text = digest.to_prompt_text();
         assert!(text.contains("1800s"), "Should show session duration");
         assert!(text.contains("2700s"), "Should show project total duration");
+    }
+
+    #[test]
+    fn test_truncate_prompt_cjk_no_panic() {
+        // Each CJK character is 3 bytes in UTF-8. Slicing by byte index at
+        // max_len=5 would land inside the second character and panic.
+        let cjk = "你好世界測試完成"; // 8 CJK characters, 24 bytes
+        let result = truncate_prompt(cjk, 5);
+        assert!(result.ends_with("..."), "Truncated CJK should end with ...");
+        // The visible part should be exactly 5 CJK characters
+        assert_eq!(result, "你好世界測...");
+    }
+
+    #[test]
+    fn test_truncate_prompt_emoji_no_panic() {
+        // Emoji can be 4 bytes each in UTF-8.
+        let emoji = "🎉🚀🔥💡🎯✨🌟";
+        let result = truncate_prompt(emoji, 3);
+        assert!(result.ends_with("..."));
+        assert_eq!(result, "🎉🚀🔥...");
+    }
+
+    #[test]
+    fn test_truncate_prompt_mixed_ascii_cjk() {
+        let mixed = "Fix 修復 bug"; // 10 chars
+        let result = truncate_prompt(mixed, 6);
+        assert!(result.ends_with("..."));
+        assert_eq!(result, "Fix 修復...");
     }
 }
