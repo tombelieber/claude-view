@@ -106,7 +106,7 @@ describe('MonitorPane', () => {
       expect(screen.getByText('$4.56')).toBeInTheDocument()
     })
 
-    it('renders context percentage with green color when low', () => {
+    it('renders context percentage with sky color when low', () => {
       renderMonitorPane({
         session: createMockSession({ contextWindowTokens: 40000 }),
       })
@@ -114,27 +114,27 @@ describe('MonitorPane', () => {
       // 40000 / 200000 = 20%
       const ctxEl = screen.getByText('20% ctx')
       expect(ctxEl).toBeInTheDocument()
-      expect(ctxEl.className).toContain('text-green-400')
+      expect(ctxEl.className).toContain('text-sky-400')
     })
 
     it('renders context percentage with amber color when moderate', () => {
       renderMonitorPane({
-        session: createMockSession({ contextWindowTokens: 120000 }),
+        session: createMockSession({ contextWindowTokens: 160000 }),
       })
 
-      // 120000 / 200000 = 60%
-      const ctxEl = screen.getByText('60% ctx')
+      // 160000 / 200000 = 80%, hits >= 75 amber zone
+      const ctxEl = screen.getByText('80% ctx')
       expect(ctxEl).toBeInTheDocument()
       expect(ctxEl.className).toContain('text-amber-400')
     })
 
     it('renders context percentage with red color when high', () => {
       renderMonitorPane({
-        session: createMockSession({ contextWindowTokens: 180000 }),
+        session: createMockSession({ contextWindowTokens: 190000 }),
       })
 
-      // 180000 / 200000 = 90%
-      const ctxEl = screen.getByText('90% ctx')
+      // 190000 / 200000 = 95%, hits > 90 red zone
+      const ctxEl = screen.getByText('95% ctx')
       expect(ctxEl).toBeInTheDocument()
       expect(ctxEl.className).toContain('text-red-400')
     })
