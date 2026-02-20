@@ -3,4 +3,4 @@
 /**
  * A saved report row.
  */
-export type ReportRow = { id: number, reportType: string, dateStart: string, dateEnd: string, contentMd: string, sessionCount: number, projectCount: number, totalDurationSecs: number, totalCostCents: number, generationMs: number | null, createdAt: string, };
+export type ReportRow = { id: number, reportType: string, dateStart: string, dateEnd: string, contentMd: string, contextDigest: string | null, sessionCount: number, projectCount: number, totalDurationSecs: number, totalCostCents: number, generationMs: number | null, createdAt: string, };

@@ -15,6 +15,7 @@ pub struct ReportRow {
     pub date_start: String,
     pub date_end: String,
     pub content_md: String,
+    pub context_digest: Option<String>,
     #[ts(type = "number")]
     pub session_count: i64,
     #[ts(type = "number")]
@@ -91,31 +92,31 @@ impl Database {
 
     /// List all reports, newest first.
     pub async fn list_reports(&self) -> DbResult<Vec<ReportRow>> {
-        let rows = sqlx::query_as::<_, (i64, String, String, String, String, i64, i64, i64, i64, Option<i64>, String)>(
-            "SELECT id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports ORDER BY created_at DESC, id DESC"
+        let rows = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports ORDER BY created_at DESC, id DESC"
         )
         .fetch_all(self.pool())
         .await?;
 
         Ok(rows
             .into_iter()
-            .map(|(id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
-                id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
+            .map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
+                id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
             })
             .collect())
     }
 
     /// Get a single report by id.
     pub async fn get_report(&self, id: i64) -> DbResult<Option<ReportRow>> {
-        let row = sqlx::query_as::<_, (i64, String, String, String, String, i64, i64, i64, i64, Option<i64>, String)>(
-            "SELECT id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports WHERE id = ?"
+        let row = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|(id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
-            id, report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
+        Ok(row.map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
+            id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
         }))
     }
 
