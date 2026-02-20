@@ -101,26 +101,10 @@ async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    // ── Build hook event for the event log ──────────────────────────────
-    let group_str = match &agent_state.group {
-        AgentStateGroup::NeedsYou => "needs_you",
-        AgentStateGroup::Autonomous => "autonomous",
-        AgentStateGroup::Delivered => "delivered",
-    };
-
     let hook_event_context: Option<serde_json::Value> = payload
         .tool_input
         .clone()
         .or_else(|| payload.error.as_ref().map(|e| serde_json::json!({"error": e})));
-
-    let hook_event = build_hook_event(
-        now,
-        &payload.hook_event_name,
-        payload.tool_name.as_deref(),
-        &agent_state.label,
-        group_str,
-        hook_event_context.as_ref(),
-    );
 
     // ── Lazy session creation ────────────────────────────────────────────
     // Sessions that were already running before the server started won't
@@ -452,20 +436,42 @@ async fn handle_hook(
 
     // ── Append hook event to session (unified, after all match arms) ──
     // SessionEnd removes the session, so skip appending for it.
+    // IMPORTANT: Build the hook event HERE (after match arms), using the
+    // session's actual agent_state.group. For metadata-only events
+    // (TaskCompleted, SubagentStop, TeammateIdle), the resolved state from
+    // resolve_state_from_hook is never applied to session.agent_state.
+    // Recording the resolved group would create visual false positives
+    // in the hook event log (e.g., TaskCompleted showing as "needs_you"
+    // when the session is still autonomous).
     if payload.hook_event_name != "SessionEnd" {
         let mut sessions = state.live_sessions.write().await;
         if let Some(session) = sessions.get_mut(&payload.session_id) {
+            let actual_group = match &session.agent_state.group {
+                AgentStateGroup::NeedsYou => "needs_you",
+                AgentStateGroup::Autonomous => "autonomous",
+                AgentStateGroup::Delivered => "delivered",
+            };
+
+            let hook_event = build_hook_event(
+                now,
+                &payload.hook_event_name,
+                payload.tool_name.as_deref(),
+                &agent_state.label,
+                actual_group,
+                hook_event_context.as_ref(),
+            );
+
             if session.hook_events.len() >= MAX_HOOK_EVENTS_PER_SESSION {
                 session.hook_events.drain(..100); // drop oldest 100
             }
             session.hook_events.push(hook_event.clone());
-        }
-        drop(sessions);
+            drop(sessions);
 
-        // Broadcast to any connected WS listeners
-        let channels = state.hook_event_channels.read().await;
-        if let Some(tx) = channels.get(&payload.session_id) {
-            let _ = tx.send(hook_event);
+            // Broadcast to any connected WS listeners
+            let channels = state.hook_event_channels.read().await;
+            if let Some(tx) = channels.get(&payload.session_id) {
+                let _ = tx.send(hook_event);
+            }
         }
     }
 
