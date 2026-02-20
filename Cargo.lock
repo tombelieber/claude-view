@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "assert-json-diff",
