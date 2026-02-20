@@ -176,6 +176,7 @@ pub async fn git_sync_progress(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let git_sync = state.git_sync.clone();
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         let mut last_phase = GitSyncPhase::Idle;
@@ -259,7 +260,12 @@ pub async fn git_sync_progress(
                 break;
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {}
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
+                }
+            }
         }
     };
 
@@ -286,7 +292,13 @@ pub async fn trigger_deep_index(
         Ok(guard) => {
             let db = state.db.clone();
             let indexing = state.indexing.clone();
-            let search_index = state.search_index.clone();
+            // Read-lock the holder, clone Option<Arc<SearchIndex>>, drop lock.
+            // After clear_cache recreates the index, this grabs the fresh one.
+            let search_index: Option<Arc<claude_view_search::SearchIndex>> = state
+                .search_index
+                .read()
+                .ok()
+                .and_then(|g| g.clone());
 
             // Reset indexing state BEFORE spawning so SSE clients that
             // connect after receiving the 202 never see stale `Done` from

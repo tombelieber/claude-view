@@ -27,6 +27,13 @@ use claude_view_search::SearchIndex;
 /// - No need to hold the lock across `.await` points
 pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 
+/// Type alias for the runtime-swappable search index holder.
+///
+/// Follows the same `Arc<RwLock<Option<...>>>` pattern as `RegistryHolder`.
+/// `None` means the index is unavailable (not yet opened, or mid-swap during clear-cache).
+/// Wrapped in `Arc` so `clear_cache` can take-drop-recreate without blocking readers.
+pub type SearchIndexHolder = Arc<RwLock<Option<Arc<SearchIndex>>>>;
+
 /// Shared application state accessible from all route handlers.
 pub struct AppState {
     /// Server start time for uptime tracking.
@@ -59,9 +66,11 @@ pub struct AppState {
     /// Live session manager (for hook handler to create/remove accumulators).
     /// `None` in test factories that don't start the manager.
     pub live_manager: Option<Arc<LiveSessionManager>>,
-    /// Full-text search index (Tantivy).
-    /// `None` until the index is initialized, or if index open failed.
-    pub search_index: Option<Arc<SearchIndex>>,
+    /// Full-text search index (Tantivy), runtime-swappable.
+    /// `None` inside the RwLock until the index is initialized, or mid-swap during clear-cache.
+    pub search_index: SearchIndexHolder,
+    /// Shutdown signal receiver. When `true`, SSE streams should terminate cleanly.
+    pub shutdown: tokio::sync::watch::Receiver<bool>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
     /// Key: session_id. Created on demand when a WS connects, cleaned up on SessionEnd.
     pub hook_event_channels: Arc<tokio::sync::RwLock<
@@ -97,7 +106,8 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: None,
+            search_index: Arc::new(RwLock::new(None)),
+            shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
@@ -128,7 +138,8 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: None,
+            search_index: Arc::new(RwLock::new(None)),
+            shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
@@ -162,7 +173,8 @@ impl AppState {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: None,
+            search_index: Arc::new(RwLock::new(None)),
+            shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }

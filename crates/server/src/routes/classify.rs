@@ -326,13 +326,19 @@ async fn stream_classification(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let classify_state = Arc::clone(&state.classify);
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         let mut last_classified = 0u64;
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
 
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {}
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
+                }
+            }
 
             let status = classify_state.status();
             let classified = classify_state.classified();

@@ -15,7 +15,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tracing_subscriber::FmtSubscriber;
 use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
 use claude_view_db::Database;
-use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus};
+use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus, SearchIndexHolder};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -199,21 +199,25 @@ async fn main() -> Result<()> {
     let registry_holder = Arc::new(RwLock::new(None));
 
     // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
-    let search_index = {
+    // Wrapped in SearchIndexHolder so clear_cache can swap it at runtime.
+    let search_index_holder: SearchIndexHolder = {
         let index_dir = claude_view_core::paths::search_index_dir()
             .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
 
         match claude_view_search::SearchIndex::open(&index_dir) {
             Ok(idx) => {
                 tracing::info!("Search index opened at {}", index_dir.display());
-                Some(Arc::new(idx))
+                Arc::new(RwLock::new(Some(Arc::new(idx))))
             }
             Err(e) => {
                 tracing::warn!("Failed to open search index: {}. Search will be unavailable.", e);
-                None
+                Arc::new(RwLock::new(None))
             }
         }
     };
+
+    // Step 3b: Create shutdown channel for SSE stream termination on Ctrl+C
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Step 4: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
@@ -221,7 +225,8 @@ async fn main() -> Result<()> {
         db.clone(),
         indexing.clone(),
         registry_holder.clone(),
-        search_index.clone(),
+        search_index_holder.clone(),
+        shutdown_rx,
         static_dir,
     );
 
@@ -240,8 +245,8 @@ async fn main() -> Result<()> {
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
     let periodic_registry = registry_holder.clone();
-    let idx_search = search_index.clone();
-    let periodic_search = search_index.clone();
+    let idx_search_holder = search_index_holder.clone();
+    let periodic_search_holder = search_index_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -251,11 +256,18 @@ async fn main() -> Result<()> {
         let state_for_progress = idx_state.clone();
         let state_for_done = idx_state.clone();
 
+        // Snapshot the current search index for the initial indexing run.
+        // If clear_cache swaps the holder mid-run, this Arc keeps the old index alive
+        // (safe — it's ref-counted). Next run will grab the new one.
+        let idx_search_snapshot: Option<Arc<claude_view_search::SearchIndex>> = idx_search_holder
+            .read()
+            .ok()
+            .and_then(|g| g.clone());
         let result = run_background_index(
             &claude_dir,
             &idx_db,
             Some(idx_registry),
-            idx_search.as_deref(),
+            idx_search_snapshot.as_deref(),
             // on_pass1_done: Pass 1 finished — store project/session counts, transition to DeepIndexing
             move |projects, sessions| {
                 state_for_pass1.set_projects_found(projects);
@@ -321,7 +333,12 @@ async fn main() -> Result<()> {
                                     poisoned.into_inner().clone()
                                 }
                             };
-                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), periodic_search.as_deref(), |_| {}, |_, _, _| {}).await {
+                            // Read fresh search index from holder each cycle (picks up post-clear-cache index)
+                            let periodic_search_snapshot: Option<Arc<claude_view_search::SearchIndex>> = periodic_search_holder
+                                .read()
+                                .ok()
+                                .and_then(|g| g.clone());
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), periodic_search_snapshot.as_deref(), |_| {}, |_, _, _| {}).await {
                                 Ok((indexed, _)) => {
                                     if indexed > 0 {
                                         tracing::info!(indexed, "Incremental deep index complete");
@@ -525,15 +542,32 @@ async fn main() -> Result<()> {
     }
 
     // Step 10: Serve forever (with graceful shutdown for hook cleanup)
-    let shutdown_port = port; // port is already defined at line 177, capture for closure
+    let shutdown_port = port;
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
+            // Wait for Ctrl+C
             tokio::signal::ctrl_c().await.ok();
-            tracing::info!("Shutting down, cleaning up hooks...");
-            // File I/O is blocking but we're shutting down — acceptable.
+            eprintln!("\n  Shutting down...");
+
+            // Signal all SSE streams to terminate (breaks their select! loops).
+            // This is the key step — without it, axum waits forever for open
+            // SSE connections to close, and the process never exits.
+            let _ = shutdown_tx.send(true);
+
+            // Clean up hooks from ~/.claude/settings.json
             claude_view_server::live::hook_registrar::cleanup(shutdown_port);
+
+            // Give SSE streams a moment to see the shutdown signal and break.
+            // Second Ctrl+C skips the wait for impatient users.
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
+            }
         })
         .await?;
 
-    Ok(())
+    // Hard exit: axum's graceful shutdown waits for all connections to close.
+    // If any SSE stream missed the shutdown signal, the process would hang.
+    // Force exit to guarantee the process terminates.
+    std::process::exit(0);
 }

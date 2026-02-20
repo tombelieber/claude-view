@@ -74,6 +74,7 @@ pub async fn live_stream(
     let mut rx = state.live_tx.subscribe();
     let sessions = state.live_sessions.clone();
     let live_manager = state.live_manager.clone();
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         // 1. On connect: send current summary + all active sessions
@@ -142,6 +143,9 @@ pub async fn live_stream(
                 }
                 _ = heartbeat_interval.tick() => {
                     yield Ok(Event::default().event("heartbeat").data("{}"));
+                }
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
                 }
             }
         }

@@ -310,29 +310,75 @@ pub async fn trigger_reindex(
 }
 
 /// POST /api/system/clear-cache - Clear search index and cached data.
+///
+/// Uses a take-drop-recreate pattern:
+/// 1. Write-lock the holder, `.take()` the old `Arc<SearchIndex>` (holder becomes `None`)
+/// 2. Call `clear_all()` on the old index (flushes deletes via Tantivy API)
+/// 3. Drop the old index — releases mmap handles and file locks
+/// 4. `remove_dir_all()` — now safe, no live handles
+/// 5. `SearchIndex::open()` — creates fresh empty index
+/// 6. Write-lock holder, swap in the new `Arc<SearchIndex>`
 pub async fn clear_cache(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClearCacheResponse>> {
-    // Calculate size of search index before clearing
     let cache_dir = claude_view_core::paths::search_index_dir();
 
-    let cleared_bytes = if let Some(ref dir) = cache_dir {
-        if dir.exists() {
-            // Calculate size first
-            let size = calculate_dir_size(dir);
-            // Remove the directory
-            if let Err(e) = std::fs::remove_dir_all(dir) {
-                tracing::warn!("Failed to clear cache directory: {}", e);
-                0
-            } else {
-                size
-            }
-        } else {
-            0
+    // Measure size before clearing
+    let size_before = cache_dir
+        .as_ref()
+        .filter(|d| d.exists())
+        .map(|d| calculate_dir_size(d))
+        .unwrap_or(0);
+
+    // Step 1: Take the old index out of the holder (sets holder to None)
+    let old_index = state
+        .search_index
+        .write()
+        .map_err(|_| ApiError::Internal("search index lock poisoned".into()))?
+        .take();
+
+    // Step 2-3: Clear and drop the old index (releases mmap handles)
+    if let Some(old) = old_index {
+        if let Err(e) = old.clear_all() {
+            tracing::warn!("Failed to clear old search index: {}", e);
         }
-    } else {
-        0
-    };
+        drop(old);
+    }
+
+    // Step 4: Remove the directory on disk (safe — no live handles)
+    if let Some(ref dir) = cache_dir {
+        if dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(dir) {
+                tracing::warn!("Failed to remove search index directory: {}", e);
+            }
+        }
+    }
+
+    // Step 5-6: Create a fresh index and swap it into the holder
+    if let Some(ref dir) = cache_dir {
+        match claude_view_search::SearchIndex::open(dir) {
+            Ok(new_idx) => {
+                let mut guard = state
+                    .search_index
+                    .write()
+                    .map_err(|_| ApiError::Internal("search index lock poisoned".into()))?;
+                *guard = Some(Arc::new(new_idx));
+                tracing::info!("Search index recreated at {}", dir.display());
+            }
+            Err(e) => {
+                tracing::warn!("Failed to recreate search index: {}. Search will be unavailable until next restart.", e);
+            }
+        }
+    }
+
+    // Measure size after clearing to compute freed bytes
+    let size_after = cache_dir
+        .as_ref()
+        .filter(|d| d.exists())
+        .map(|d| calculate_dir_size(d))
+        .unwrap_or(0);
+
+    let cleared_bytes = size_before.saturating_sub(size_after);
 
     Ok(Json(ClearCacheResponse {
         status: "success".to_string(),
@@ -370,6 +416,15 @@ pub async fn reset_all(
         .reset_all_data()
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to reset data: {}", e)))?;
+
+    // Also clear the search index
+    if let Ok(guard) = state.search_index.read() {
+        if let Some(ref search) = *guard {
+            if let Err(e) = search.clear_all() {
+                tracing::warn!("Failed to clear search index during reset: {}", e);
+            }
+        }
+    }
 
     Ok(Json(ActionResponse {
         status: "success".to_string(),
