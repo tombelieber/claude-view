@@ -45,6 +45,16 @@ pub enum SessionStatus {
     Done,
 }
 
+/// A tool integration (MCP server or skill) detected from actual usage in a session.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUsed {
+    /// Display name: "playwright", "chrome-devtools" for MCP; "commit", "review-pr" for skills.
+    pub name: String,
+    /// Category: "mcp" or "skill".
+    pub kind: String,
+}
+
 /// A live session snapshot broadcast to connected SSE clients.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +114,10 @@ pub struct LiveSession {
     /// Empty vec if no progress items have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub progress_items: Vec<claude_view_core::progress::ProgressItem>,
+    /// Unique tool integrations detected in this session (MCP servers, skills).
+    /// Discovered from actual tool_use invocations -- 100% accuracy.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tools_used: Vec<ToolUsed>,
     /// Unix timestamp when the last cache hit or creation occurred.
     /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
