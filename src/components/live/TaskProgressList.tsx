@@ -8,7 +8,7 @@ const STATUS_ICON: Record<string, string> = {
 
 const STATUS_CLASS: Record<string, string> = {
   pending: 'text-gray-400 dark:text-gray-500',
-  in_progress: 'text-blue-500 dark:text-blue-400',
+  in_progress: 'text-gray-600 dark:text-gray-300',
   completed: 'text-green-500 dark:text-green-400',
 }
 
