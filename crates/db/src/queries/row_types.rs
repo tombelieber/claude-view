@@ -183,6 +183,9 @@ pub async fn update_session_deep_fields_tx(
     primary_model: Option<&str>,
     last_message_at: Option<i64>,
     first_user_prompt: Option<&str>,
+    total_task_time_seconds: i32,
+    longest_task_seconds: Option<i32>,
+    longest_task_preview: Option<&str>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -238,7 +241,10 @@ pub async fn update_session_deep_fields_tx(
             git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
             primary_model = ?49,
             last_message_at = COALESCE(?50, last_message_at),
-            preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
+            preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
+            total_task_time_seconds = ?52,
+            longest_task_seconds = ?53,
+            longest_task_preview = ?54
         WHERE id = ?1
         "#,
     )
@@ -293,6 +299,9 @@ pub async fn update_session_deep_fields_tx(
     .bind(primary_model)
     .bind(last_message_at)
     .bind(first_user_prompt)
+    .bind(total_task_time_seconds)
+    .bind(longest_task_seconds)
+    .bind(longest_task_preview)
     .execute(&mut **tx)
     .await?;
 
@@ -481,6 +490,10 @@ pub(crate) struct SessionRow {
     pub(crate) prompt_word_count: Option<i32>,
     pub(crate) correction_count: i32,
     pub(crate) same_file_edit_count: i32,
+    // Wall-clock task time metrics
+    pub(crate) total_task_time_seconds: Option<i32>,
+    pub(crate) longest_task_seconds: Option<i32>,
+    pub(crate) longest_task_preview: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -551,6 +564,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             prompt_word_count: row.try_get("prompt_word_count").ok().flatten(),
             correction_count: row.try_get("correction_count").unwrap_or(0),
             same_file_edit_count: row.try_get("same_file_edit_count").unwrap_or(0),
+            // Wall-clock task time metrics
+            total_task_time_seconds: row.try_get("total_task_time_seconds").ok().flatten(),
+            longest_task_seconds: row.try_get("longest_task_seconds").ok().flatten(),
+            longest_task_preview: row.try_get("longest_task_preview").ok().flatten(),
         })
     }
 }
@@ -633,6 +650,10 @@ impl SessionRow {
             prompt_word_count: self.prompt_word_count.map(|v| v as u32),
             correction_count: self.correction_count as u32,
             same_file_edit_count: self.same_file_edit_count as u32,
+            // Wall-clock task time metrics
+            total_task_time_seconds: self.total_task_time_seconds.map(|v| v as u32),
+            longest_task_seconds: self.longest_task_seconds.map(|v| v as u32),
+            longest_task_preview: self.longest_task_preview,
         }
     }
 }

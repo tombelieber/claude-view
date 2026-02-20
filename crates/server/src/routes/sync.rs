@@ -286,6 +286,7 @@ pub async fn trigger_deep_index(
         Ok(guard) => {
             let db = state.db.clone();
             let indexing = state.indexing.clone();
+            let search_index = state.search_index.clone();
 
             // Reset indexing state BEFORE spawning so SSE clients that
             // connect after receiving the 202 never see stale `Done` from
@@ -328,6 +329,7 @@ pub async fn trigger_deep_index(
                 let result = vibe_recall_db::indexer_parallel::pass_2_deep_index(
                     &db,
                     None, // No registry needed for rebuild
+                    search_index.as_deref(), // Pass search index for Tantivy indexing
                     move |total_bytes| {
                         indexing_start.set_bytes_total(total_bytes);
                     },

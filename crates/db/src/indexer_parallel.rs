@@ -21,11 +21,16 @@ use crate::Database;
 /// Version 1: Full 7-type extraction, ParseDiagnostics, spacing fix.
 /// Version 2: File modification detection (file_size_at_index, file_mtime_at_index).
 /// Version 3: Deep indexing now updates last_message_at from parsed timestamps.
-pub const CURRENT_PARSE_VERSION: i32 = 5;
+/// Version 4: LOC estimation, AI contribution tracking, work type classification.
+/// Version 5: Git branch extraction, primary model detection.
+/// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
+/// Version 7: Search index uses project_display_name instead of encoded project_id.
+/// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
+pub const CURRENT_PARSE_VERSION: i32 = 8;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (51 params).
+// Must match the sqlx `_tx` function in queries.rs exactly (54 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -79,7 +84,10 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
         primary_model = ?49,
         last_message_at = COALESCE(?50, last_message_at),
-        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
+        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
+        total_task_time_seconds = ?52,
+        longest_task_seconds = ?53,
+        longest_task_preview = ?54
     WHERE id = ?1
 "#;
 
@@ -197,6 +205,18 @@ pub struct ExtendedMetadata {
     /// First user prompt text (truncated to 500 chars).
     /// Used to populate `preview` for filesystem-discovered sessions that lack index metadata.
     pub first_user_prompt: Option<String>,
+
+    // Turn tracking for wall-clock task time
+    /// Timestamp of the current (in-progress) turn start
+    pub current_turn_start_ts: Option<i64>,
+    /// First 60 chars of the current turn's prompt
+    pub current_turn_prompt: Option<String>,
+    /// Longest single turn in wall-clock seconds
+    pub longest_task_seconds: Option<u32>,
+    /// First 60 chars of the prompt that started the longest turn
+    pub longest_task_preview: Option<String>,
+    /// Sum of all turn wall-clock durations in seconds
+    pub total_task_time_seconds: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +425,9 @@ pub struct ParseResult {
     pub lines_added: u32,
     pub lines_removed: u32,
     pub git_branch: Option<String>,
+    /// Collected message content for full-text search indexing.
+    /// Only user, assistant text, and tool_use inputs are included.
+    pub search_messages: Vec<vibe_recall_core::SearchableMessage>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -415,6 +438,8 @@ pub struct ParseResult {
 pub struct DeepIndexResult {
     pub session_id: String,
     pub file_path: String,
+    /// Project name (from sessions table `project_id` column), used for search indexing.
+    pub project: String,
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
     pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
@@ -596,6 +621,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
     let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
+    // Turn detection: tool_result user messages are continuations, not real turns
+    let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
+
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
 
@@ -664,19 +692,51 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         if type_user.find(line).is_some() {
             diag.lines_user += 1;
             user_count += 1;
+            // Check if this is a tool_result continuation (not a real user turn)
+            let is_tool_result = tool_result_finder.find(line).is_some();
+            let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                if first_user_content.is_none() && !is_system_user_content(&content) {
+                if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                     first_user_content = Some(content.clone());
                 }
-                last_user_content = Some(content);
+                last_user_content = Some(content.clone());
+
+                // Turn detection: real user prompts (not system prefixes, not tool_result)
+                if !is_tool_result && !is_system_user_content(&content) {
+                    let current_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
+                    // Close previous turn if one was open
+                    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                        let wall_secs = (end_ts - start_ts).max(0) as u32;
+                        result.deep.total_task_time_seconds += wall_secs;
+                        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                            result.deep.longest_task_seconds = Some(wall_secs);
+                            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                        }
+                    }
+                    // Start new turn
+                    result.deep.current_turn_start_ts = current_ts;
+                    result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
+                }
+                // Collect for search indexing (skip tool_result continuations and system messages)
+                if !is_tool_result && !is_system_user_content(&content) {
+                    user_text_for_search = Some(content);
+                }
             }
-            extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
-            if let Some(ts) = extract_timestamp_from_bytes(line, &timestamp_finder) {
+            let user_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
+            if let Some(ts) = user_ts {
                 diag.timestamps_extracted += 1;
                 if first_timestamp.is_none() {
                     first_timestamp = Some(ts);
                 }
                 last_timestamp = Some(ts);
+            }
+            // Push search message for user content
+            if let Some(text) = user_text_for_search {
+                result.search_messages.push(vibe_recall_core::SearchableMessage {
+                    role: "user".to_string(),
+                    content: text,
+                    timestamp: user_ts,
+                });
             }
             continue;
         }
@@ -684,6 +744,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
         // Assistant lines: typed struct parse (skips text/thinking content allocation)
         if type_assistant.find(line).is_some() {
             diag.json_parse_attempts += 1;
+            // Extract timestamp for search before consuming the line in typed parse
+            let assistant_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
             match serde_json::from_slice::<AssistantLine>(line) {
                 Ok(parsed) => {
                     handle_assistant_line(
@@ -713,9 +775,23 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                             result.lines_removed = result.lines_removed.saturating_add(removed);
                         }
                     }
+
+                    // Collect assistant text content for search indexing.
+                    // Use SIMD text_finder on raw bytes — avoids re-parse, consistent with user path.
+                    if let Some(text) = extract_first_text_content(line, &content_finder, &text_finder) {
+                        if !text.is_empty() {
+                            result.search_messages.push(vibe_recall_core::SearchableMessage {
+                                role: "assistant".to_string(),
+                                content: text,
+                                timestamp: assistant_ts,
+                            });
+                        }
+                    }
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
+                    // Fallback: SIMD skill extraction even when typed parse fails
+                    extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
                 }
             }
             continue;
@@ -775,18 +851,49 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 // Spacing variant that SIMD missed
                 diag.lines_user += 1;
                 user_count += 1;
+                let is_tool_result = tool_result_finder.find(line).is_some();
+                let fallback_user_ts = extract_timestamp_from_value(&value);
+                let mut fallback_user_text: Option<String> = None;
                 if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                    if first_user_content.is_none() && !is_system_user_content(&content) {
+                    if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
                         first_user_content = Some(content.clone());
                     }
-                    last_user_content = Some(content);
+                    last_user_content = Some(content.clone());
+
+                    // Turn detection: real user prompts (not system prefixes, not tool_result)
+                    if !is_tool_result && !is_system_user_content(&content) {
+                        // Timestamp was already extracted above (before the match)
+                        let current_ts = fallback_user_ts;
+                        // Close previous turn if one was open
+                        if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                            let wall_secs = (end_ts - start_ts).max(0) as u32;
+                            result.deep.total_task_time_seconds += wall_secs;
+                            if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                                result.deep.longest_task_seconds = Some(wall_secs);
+                                result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                            }
+                        }
+                        // Start new turn
+                        result.deep.current_turn_start_ts = current_ts;
+                        result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
+                        // Collect for search indexing
+                        fallback_user_text = Some(content);
+                    }
                 }
-                extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
+                // Push search message for fallback user content
+                if let Some(text) = fallback_user_text {
+                    result.search_messages.push(vibe_recall_core::SearchableMessage {
+                        role: "user".to_string(),
+                        content: text,
+                        timestamp: fallback_user_ts,
+                    });
+                }
             }
             "assistant" => {
                 // Spacing variant — fall back to Value-based extraction
                 diag.lines_assistant += 1;
                 assistant_count += 1;
+                let fallback_assistant_ts = extract_timestamp_from_value(&value);
                 handle_assistant_value(
                     &value,
                     byte_offset,
@@ -810,6 +917,27 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         let (added, removed) = extract_loc_from_tool_use(line, is_edit);
                         result.lines_added = result.lines_added.saturating_add(added);
                         result.lines_removed = result.lines_removed.saturating_add(removed);
+                    }
+                }
+
+                // Collect assistant content for search indexing (Value path)
+                let (text_content, tool_entries) = extract_search_content_from_value(&value);
+                if let Some(text) = text_content {
+                    if !text.is_empty() {
+                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                            role: "assistant".to_string(),
+                            content: text,
+                            timestamp: fallback_assistant_ts,
+                        });
+                    }
+                }
+                for tool_text in tool_entries {
+                    if !tool_text.is_empty() {
+                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                            role: "tool".to_string(),
+                            content: tool_text,
+                            timestamp: fallback_assistant_ts,
+                        });
                     }
                 }
             }
@@ -874,6 +1002,16 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             _ => {
                 diag.lines_unknown_type += 1;
             }
+        }
+    }
+
+    // Close the final turn at EOF using the last known timestamp
+    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+        let wall_secs = (end_ts - start_ts).max(0) as u32;
+        result.deep.total_task_time_seconds += wall_secs;
+        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+            result.deep.longest_task_seconds = Some(wall_secs);
+            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
         }
     }
 
@@ -1041,6 +1179,16 @@ fn handle_assistant_line(
                                 "Edit" => deep.tool_counts.edit += 1,
                                 "Write" => deep.tool_counts.write += 1,
                                 "Bash" => deep.tool_counts.bash += 1,
+                                "Skill" => {
+                                    if let Some(skill_name) = block.input.as_ref()
+                                        .and_then(|i| i.get("skill"))
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        if !skill_name.is_empty() {
+                                            deep.skills_used.push(skill_name.to_string());
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
 
@@ -1170,15 +1318,26 @@ fn handle_assistant_value(
 
                         *tool_call_count += 1;
 
+                        let input = block.get("input");
+
                         match name {
                             "Read" => deep.tool_counts.read += 1,
                             "Edit" => deep.tool_counts.edit += 1,
                             "Write" => deep.tool_counts.write += 1,
                             "Bash" => deep.tool_counts.bash += 1,
+                            "Skill" => {
+                                if let Some(skill_name) = input
+                                    .and_then(|i| i.get("skill"))
+                                    .and_then(|v| v.as_str())
+                                {
+                                    if !skill_name.is_empty() {
+                                        deep.skills_used.push(skill_name.to_string());
+                                    }
+                                }
+                            }
                             _ => {}
                         }
 
-                        let input = block.get("input");
                         if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
                             if !fp.is_empty() {
                                 diag.file_paths_extracted += 1;
@@ -1368,6 +1527,70 @@ fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])>
     })
 }
 
+/// Extract text content from a JSONL `serde_json::Value` for full-text search indexing.
+///
+/// Returns a tuple of (text_content, tool_use_entries) where:
+/// - text_content: concatenated text blocks from the message (for "user" or "assistant" role)
+/// - tool_use_entries: individual tool_use block descriptions (role="tool")
+///
+/// Handles both string content (`"content": "..."`) and array content
+/// (`"content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]`).
+fn extract_search_content_from_value(
+    value: &serde_json::Value,
+) -> (Option<String>, Vec<String>) {
+    let mut tool_entries = Vec::new();
+
+    let message = match value.get("message") {
+        Some(m) => m,
+        None => return (None, tool_entries),
+    };
+
+    let content = match message.get("content") {
+        Some(c) => c,
+        None => return (None, tool_entries),
+    };
+
+    match content {
+        serde_json::Value::String(s) => (Some(s.clone()), tool_entries),
+        serde_json::Value::Array(arr) => {
+            let mut text_parts = Vec::new();
+            for block in arr {
+                let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                match block_type {
+                    "text" => {
+                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                            text_parts.push(text.to_string());
+                        }
+                    }
+                    "tool_use" => {
+                        // Include tool name + stringified input for searchability
+                        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        if let Some(input) = block.get("input") {
+                            if let Some(s) = input.as_str() {
+                                tool_entries.push(format!("{}: {}", name, s));
+                            }
+                            // For object inputs, include only if small (e.g., command field)
+                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
+                                tool_entries.push(format!("{}: {}", name, cmd));
+                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str()) {
+                                tool_entries.push(format!("{}: {}", name, fp));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let text = if text_parts.is_empty() {
+                None
+            } else {
+                Some(text_parts.join("\n"))
+            };
+            (text, tool_entries)
+        }
+        _ => (None, tool_entries),
+    }
+}
+
 /// Extract the first text content from a JSONL line (best-effort, no full JSON parse).
 fn extract_first_text_content(
     line: &[u8],
@@ -1431,7 +1654,8 @@ fn is_system_user_content(content: &str) -> bool {
         || trimmed.starts_with("{\"type\":\"tool_result\"")
 }
 
-/// Extract skill names from a user message line (looking for "skill":"..." patterns).
+/// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
+/// Used when the typed AssistantLine parse fails but we still want to capture skills.
 fn extract_skills_from_line(
     line: &[u8],
     skill_name_finder: &memmem::Finder,
@@ -1621,6 +1845,7 @@ pub async fn pass_1_read_indexes(
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
+    search_index: Option<&vibe_recall_search::SearchIndex>,
     on_start: impl FnOnce(u64),
     on_file_done: F,
 ) -> Result<(usize, u64), String>
@@ -1638,9 +1863,9 @@ where
     // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
     // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
     let all_sessions_count = all_sessions.len();
-    let sessions: Vec<(String, String)> = all_sessions
+    let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
-        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version)| {
+        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
             let needs_index = if deep_indexed_at.is_none() {
                 // Never deep-indexed → must index
                 true
@@ -1667,7 +1892,7 @@ where
                 true
             };
             if needs_index {
-                Some((id, file_path))
+                Some((id, file_path, project))
             } else {
                 None
             }
@@ -1684,7 +1909,7 @@ where
     // Pre-compute total bytes of all JSONL files to process.
     let total_bytes: u64 = sessions
         .iter()
-        .filter_map(|(_, path)| std::fs::metadata(path).ok())
+        .filter_map(|(_, path, _)| std::fs::metadata(path).ok())
         .map(|m| m.len())
         .sum();
 
@@ -1708,7 +1933,7 @@ where
     // missing or empty (nothing to write).
     let mut handles = Vec::with_capacity(total);
 
-    for (id, file_path) in sessions {
+    for (id, file_path, project) in sessions {
         let sem = semaphore.clone();
         let counter = counter.clone();
         let on_done = on_file_done.clone();
@@ -1815,6 +2040,7 @@ where
             Ok::<Option<DeepIndexResult>, String>(Some(DeepIndexResult {
                 session_id: id,
                 file_path,
+                project,
                 parse_result,
                 classified_invocations: classified,
                 file_size,
@@ -1854,6 +2080,34 @@ where
     //   2. In-memory DB (tests): sqlx _tx functions via async transaction,
     //      because rusqlite can't open a separate connection to sqlx's
     //      in-memory database.
+    // Extract search-relevant data before the write phase moves `results`.
+    // This is needed because the rusqlite write path moves `results` into
+    // spawn_blocking (requires 'static), so we can't access them afterwards.
+    struct SearchBatch {
+        session_id: String,
+        project: String,
+        branch: Option<String>,
+        primary_model: Option<String>,
+        messages: Vec<vibe_recall_core::SearchableMessage>,
+        skills: Vec<String>,
+    }
+    let search_batches: Vec<SearchBatch> = if search_index.is_some() {
+        results
+            .iter()
+            .filter(|r| !r.parse_result.search_messages.is_empty())
+            .map(|r| SearchBatch {
+                session_id: r.session_id.clone(),
+                project: r.project.clone(),
+                branch: r.parse_result.git_branch.clone(),
+                primary_model: compute_primary_model(&r.parse_result.turns),
+                messages: r.parse_result.search_messages.clone(),
+                skills: r.parse_result.deep.skills_used.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     let use_rusqlite = !db.db_path().as_os_str().is_empty();
     let indexed = if !results.is_empty() {
         if use_rusqlite {
@@ -1908,7 +2162,7 @@ where
                         (None, None, None)
                     } else {
                         let total: u64 = meta.turn_durations_ms.iter().sum();
-                        let max = *meta.turn_durations_ms.iter().max().unwrap();
+                        let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
                         let avg = total / meta.turn_durations_ms.len() as u64;
                         (Some(avg as i64), Some(max as i64), Some(total as i64))
                     };
@@ -1925,7 +2179,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (51 params: ?1=id, ?2-?51=fields)
+                    // UPDATE session deep fields (54 params: ?1=id, ?2-?54=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -1978,6 +2232,9 @@ where
                         primary_model,                    // ?49 (Option<String>)
                         meta.last_timestamp,              // ?50 (Option<i64>)
                         meta.first_user_prompt,           // ?51 (Option<String>)
+                        meta.total_task_time_seconds as i32,       // ?52
+                        meta.longest_task_seconds.map(|v| v as i32), // ?53 (Option<i32>)
+                        meta.longest_task_preview,        // ?54 (Option<String>)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // DELETE stale turns/invocations before re-inserting
@@ -2035,6 +2292,52 @@ where
     } else {
         0
     };
+
+    // ── Search index phase (after SQLite commit) ──────────────────────
+    // Write collected search messages to Tantivy. Runs after SQLite succeeds.
+    // If Tantivy fails, we only log a warning — search index will be rebuilt
+    // on next startup.
+    if let Some(search) = search_index {
+        if !search_batches.is_empty() {
+            let mut search_errors = 0u32;
+            for batch in &search_batches {
+                let docs: Vec<vibe_recall_search::SearchDocument> = batch
+                    .messages
+                    .iter()
+                    .enumerate()
+                    .map(|(i, msg)| vibe_recall_search::SearchDocument {
+                        session_id: batch.session_id.clone(),
+                        project: batch.project.clone(),
+                        branch: batch.branch.clone().unwrap_or_default(),
+                        model: batch.primary_model.clone().unwrap_or_default(),
+                        role: msg.role.clone(),
+                        content: msg.content.clone(),
+                        turn_number: (i + 1) as u64,
+                        timestamp: msg.timestamp.unwrap_or(0),
+                        skills: batch.skills.clone(),
+                    })
+                    .collect();
+
+                if let Err(e) = search.index_session(&batch.session_id, &docs) {
+                    tracing::warn!(
+                        session_id = %batch.session_id,
+                        error = %e,
+                        "Failed to index session for search"
+                    );
+                    search_errors += 1;
+                }
+            }
+            if let Err(e) = search.commit() {
+                tracing::warn!(error = %e, "Failed to commit search index");
+            } else if search_errors > 0 {
+                tracing::info!(
+                    indexed = search_batches.len() - search_errors as usize,
+                    errors = search_errors,
+                    "Search index write complete (with errors)"
+                );
+            }
+        }
+    }
 
     let write_elapsed = phase_start.elapsed() - parse_elapsed;
 
@@ -2112,7 +2415,7 @@ async fn write_results_sqlx(
             (None, None, None)
         } else {
             let total: u64 = meta.turn_durations_ms.iter().sum();
-            let max = *meta.turn_durations_ms.iter().max().unwrap();
+            let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
             let avg = total / meta.turn_durations_ms.len() as u64;
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
@@ -2181,6 +2484,9 @@ async fn write_results_sqlx(
             primary_model.as_deref(),
             meta.last_timestamp,
             meta.first_user_prompt.as_deref(),
+            meta.total_task_time_seconds as i32,
+            meta.longest_task_seconds.map(|v| v as i32),
+            meta.longest_task_preview.as_deref(),
         )
         .await
         .map_err(|e| {
@@ -2265,7 +2571,6 @@ pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 ///
 /// If `registry_holder` is provided, the built registry is stored in it so
 /// API routes can access it after indexing completes.
-
 /// Prune sessions from the database whose JSONL files no longer exist on disk.
 ///
 /// Queries all session file_paths from the DB, checks each one for existence
@@ -2310,6 +2615,7 @@ pub async fn run_background_index<F>(
     claude_dir: &Path,
     db: &Database,
     registry_holder: Option<RegistryHolder>,
+    search_index: Option<&vibe_recall_search::SearchIndex>,
     on_pass1_done: impl FnOnce(usize, usize),
     on_pass2_start: impl FnOnce(u64),
     on_file_done: F,
@@ -2347,8 +2653,8 @@ where
             .map_err(|e| format!("Failed to seed invocables: {}", e))?;
     }
 
-    // Pass 2: use the registry for invocation classification
-    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), on_pass2_start, on_file_done).await?;
+    // Pass 2: use the registry for invocation classification + Tantivy search indexing
+    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), search_index, on_pass2_start, on_file_done).await?;
 
     // Backfill primary_model for sessions indexed before this field was populated
     match db.backfill_primary_models().await {
@@ -3096,7 +3402,7 @@ mod tests {
         // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let (indexed, _) = pass_2_deep_index(&db, None, |_| {}, move |done, _total, _bytes| {
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, move |done, _total, _bytes| {
             progress_clone.store(done, Ordering::Relaxed);
         })
         .await
@@ -3126,11 +3432,11 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -3143,13 +3449,13 @@ mod tests {
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
         // Run Pass 2 — should deep-index the 1 session
-        let (first_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
 
         // Verify file_size_at_index and file_mtime_at_index are populated
         let sessions = db.get_sessions_needing_deep_index().await.unwrap();
         assert_eq!(sessions.len(), 1);
-        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version) = &sessions[0];
+        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) = &sessions[0];
         assert!(
             stored_size.is_some(),
             "file_size_at_index should be populated after deep index"
@@ -3168,7 +3474,7 @@ mod tests {
         );
 
         // Run Pass 2 again — should skip because file hasn't changed
-        let (second_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(second_run, 0, "Should skip unchanged session");
 
         // Now append data to the JSONL file (simulates user continuing conversation)
@@ -3198,7 +3504,7 @@ mod tests {
         drop(file);
 
         // Run Pass 2 again — should re-index because file size changed
-        let (third_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(third_run, 1, "Should re-index session after file was modified");
 
         // Verify the updated metrics reflect the new content
@@ -3211,7 +3517,7 @@ mod tests {
         );
 
         // Run Pass 2 one more time — should skip again (file hasn't changed)
-        let (fourth_run, _) = pass_2_deep_index(&db, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
@@ -3230,6 +3536,7 @@ mod tests {
             &claude_dir,
             &db,
             None, // no registry holder
+            None::<&vibe_recall_search::SearchIndex>,
             move |projects, sessions| {
                 *p1.lock().unwrap() = (projects, sessions);
             },
@@ -3506,6 +3813,23 @@ mod tests {
 
         // File snapshot
         assert_eq!(result.deep.file_snapshot_count, 1);
+
+        // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:04:00 = 240s)
+        assert!(result.deep.total_task_time_seconds > 0, "total_task_time_seconds should be > 0");
+        assert_eq!(result.deep.total_task_time_seconds, 240);
+        assert!(result.deep.longest_task_seconds.is_some(), "longest_task_seconds should be Some");
+        assert_eq!(result.deep.longest_task_seconds, Some(240));
+        assert!(result.deep.longest_task_preview.is_some(), "longest_task_preview should be Some");
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read and fix auth.rs"));
+
+        // Sanity check: wall-clock task time >= CC turn_duration_total_ms / 1000
+        let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
+        assert!(
+            result.deep.total_task_time_seconds as u64 >= turn_duration_total_secs,
+            "Wall-clock task time ({}) should be >= turn_duration_total_ms/1000 ({})",
+            result.deep.total_task_time_seconds,
+            turn_duration_total_secs,
+        );
     }
 
     #[test]
@@ -3549,6 +3873,85 @@ mod tests {
         assert_eq!(result.deep.files_read_count, 0);
         assert_eq!(result.deep.total_input_tokens, 300);
         assert_eq!(result.deep.total_output_tokens, 150);
+    }
+
+    // ============================================================================
+    // Wall-clock task time tests
+    // ============================================================================
+
+    #[test]
+    fn test_multi_turn_task_time() {
+        // Fixture has 3 real user turns plus tool_result and system-prefix user messages.
+        // Turn 1: ts=1700000000 "Implement the login page" → ends at last_ts=1700000100 → 100s
+        // Turn 2: ts=1700000200 "Now add form validation..." → ends at last_ts=1700000295 → 95s
+        // Turn 3: ts=1700000500 "Fix the CSS styling..."    → ends at last_ts=1700000540 → 40s
+        let data = include_bytes!("../tests/golden_fixtures/multi_turn_task_time.jsonl");
+        let result = parse_bytes(data);
+
+        // 6 user lines total (3 real prompts + 2 tool_result + 1 system prefix)
+        assert_eq!(result.deep.user_prompt_count, 6);
+
+        // Wall-clock task time = 100 + 95 + 40 = 235s
+        assert_eq!(result.deep.total_task_time_seconds, 235);
+
+        // Longest task is turn 1 at 100 seconds
+        assert_eq!(result.deep.longest_task_seconds, Some(100));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Implement the login page"));
+
+        // Verify longest is the maximum, not first or last
+        assert!(result.deep.longest_task_seconds.unwrap() > 40, "longest should not be the last turn (40s)");
+        assert!(result.deep.longest_task_seconds.unwrap() > 95, "longest should not be the second turn (95s)");
+
+        // Sanity check: wall-clock >= CC turn_duration_total / 1000
+        let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
+        assert!(
+            result.deep.total_task_time_seconds as u64 >= turn_duration_total_secs,
+            "Wall-clock ({}) should be >= turn_duration_total/1000 ({})",
+            result.deep.total_task_time_seconds,
+            turn_duration_total_secs,
+        );
+    }
+
+    #[test]
+    fn test_task_time_system_prefix_not_counted() {
+        // A session with a system-prefix user message should not start a new turn
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Hello world"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000060,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hi!"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","timestamp":1700000100,"sessionId":"test","message":{"role":"user","content":"<system-reminder>Context refresh</system-reminder>"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700000120,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Ok."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Only 1 real turn: "Hello world" at ts=1700000000 → ends at ts=1700000120 (last_timestamp) = 120s
+        assert_eq!(result.deep.total_task_time_seconds, 120);
+        assert_eq!(result.deep.longest_task_seconds, Some(120));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Hello world"));
+    }
+
+    #[test]
+    fn test_task_time_tool_result_not_counted() {
+        // Tool result user messages should not start a new turn
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Read the file"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"/project/foo.rs"}}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700000060,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"fn main() {}"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700000090,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Only 1 real turn: "Read the file" at ts=1700000000 → ends at ts=1700000090 = 90s
+        assert_eq!(result.deep.total_task_time_seconds, 90);
+        assert_eq!(result.deep.longest_task_seconds, Some(90));
+        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read the file"));
+    }
+
+    #[test]
+    fn test_task_time_empty_session() {
+        let data = include_bytes!("../tests/golden_fixtures/empty_session.jsonl");
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.total_task_time_seconds, 0);
+        assert_eq!(result.deep.longest_task_seconds, None);
+        assert_eq!(result.deep.longest_task_preview, None);
     }
 
     // ============================================================================
@@ -3611,11 +4014,47 @@ mod tests {
         );
         assert_eq!(result.raw_invocations[0].timestamp, 1706400100);
 
+        // Should also extract skill name into deep.skills_used
+        assert!(
+            result.deep.skills_used.contains(&"commit".to_string()),
+            "skills_used should contain 'commit', got: {:?}",
+            result.deep.skills_used
+        );
+
         // Now filter for commit skills
         let commit_skills = extract_commit_skill_invocations(&result.raw_invocations);
         assert_eq!(commit_skills.len(), 1);
         assert_eq!(commit_skills[0].skill_name, "commit");
         assert_eq!(commit_skills[0].timestamp_unix, 1706400100);
+    }
+
+    #[test]
+    fn test_skills_extracted_from_assistant_lines_not_user_lines() {
+        // Skill tool_use blocks live in assistant lines, not user lines.
+        // Verify skills are extracted from assistant lines and NOT from user lines
+        // that happen to contain the word "skill".
+        let data = br#"{"type":"user","message":{"content":"use the brainstorming skill please"}}
+{"type":"assistant","timestamp":1706400100,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:brainstorming"}}]}}
+{"type":"user","message":{"content":"now try systematic debugging"}}
+{"type":"assistant","timestamp":1706400200,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:systematic-debugging"}},{"type":"text","text":"Using systematic debugging..."}]}}
+{"type":"assistant","timestamp":1706400300,"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/test.rs"}}]}}
+"#;
+        let result = parse_bytes(data);
+
+        let mut skills = result.deep.skills_used.clone();
+        skills.sort();
+
+        assert_eq!(
+            skills,
+            vec!["superpowers:brainstorming", "superpowers:systematic-debugging"],
+            "Should extract exactly the 2 skills from assistant tool_use blocks"
+        );
+
+        // Read tool should NOT appear in skills
+        assert!(
+            !skills.contains(&"Read".to_string()),
+            "Non-Skill tools should not appear in skills_used"
+        );
     }
 
     /// Helper: create a test claude dir with two sessions in two projects.

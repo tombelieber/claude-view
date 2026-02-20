@@ -16,7 +16,7 @@ tokio-stream = "0.1"
 async-stream = "0.3"
 
 # Web framework
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "trace", "compression-gzip"] }
 tower = { version = "0.5", features = ["util"] }
 
@@ -52,6 +52,9 @@ indicatif = "0.17"
 # Browser
 open = "5"
 
+# HTTP client (for litellm pricing fetch)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
 # Utilities
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
@@ -68,6 +71,8 @@ tokio-test = "0.4"
 axum-test = "16"
 assert-json-diff = "2"
 pretty_assertions = "1"
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
 
 # Internal crates
 vibe-recall-core = { path = "crates/core" }
