@@ -1154,7 +1154,7 @@ export function generateStandaloneHtml(messages: Message[], metadata?: ExportMet
       ${messagesHtml}
     </div>
     <div class="doc-footer">
-      Exported from <a href="https://github.com/anonymous-dev/claude-view" target="_blank" rel="noopener noreferrer">claude-view</a>
+      Exported from <a href="https://github.com/tombelieber/claude-view" target="_blank" rel="noopener noreferrer">claude-view</a>
     </div>
   </div>
   <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">

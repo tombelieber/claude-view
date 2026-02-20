@@ -136,11 +136,11 @@ Verify with `cargo audit` after the change.
 
 **File:** `Cargo.toml:10`
 
-**Problem:** `repository = "https://github.com/user/claude-view"` — this is a placeholder that was never updated. The actual repo is `https://github.com/anonymous-dev/claude-view`.
+**Problem:** `repository = "https://github.com/user/claude-view"` — this is a placeholder that was never updated. The actual repo is `https://github.com/tombelieber/claude-view`.
 
 **Fix:**
 ```toml
-repository = "https://github.com/anonymous-dev/claude-view"
+repository = "https://github.com/tombelieber/claude-view"
 ```
 
 ---
@@ -173,7 +173,7 @@ After all fixes:
 - [ ] `git status` shows `.playwright-mcp/*.png` removed from tracking
 - [ ] `cargo audit` shows no medium+ vulnerabilities
 - [ ] All three manifest files show the same version
-- [ ] `Cargo.toml` repository URL points to `anonymous-dev/claude-view`
+- [ ] `Cargo.toml` repository URL points to `tombelieber/claude-view`
 - [ ] Chinese READMEs have Development sections
 - [ ] `cargo test --workspace` passes
 - [ ] `bun test` passes
