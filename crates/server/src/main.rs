@@ -138,6 +138,32 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    // Handle `claude-view cleanup` subcommand early, before any async/DB work
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("cleanup") {
+        eprintln!("\n\u{1f9f9} claude-view cleanup\n");
+        let mut actions = Vec::new();
+
+        // 1. Remove hooks from ~/.claude/settings.json (also removes .tmp)
+        actions.extend(claude_view_server::live::hook_registrar::cleanup(0));
+
+        // 2. Remove cache directory (DB + Tantivy index)
+        actions.extend(claude_view_core::paths::remove_cache_data());
+
+        // 3. Remove lock files from /tmp
+        actions.extend(claude_view_core::paths::remove_lock_files());
+
+        if actions.is_empty() {
+            eprintln!("  Nothing to clean up.");
+        } else {
+            for action in &actions {
+                eprintln!("  \u{2713} {action}");
+            }
+        }
+        eprintln!();
+        std::process::exit(0);
+    }
+
     let startup_start = Instant::now();
 
     // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
