@@ -1086,6 +1086,7 @@ mod tests {
                 last_turn_task_seconds: None,
                 sub_agents: Vec::new(),
                 progress_items: Vec::new(),
+                tools_used: Vec::new(),
                 last_cache_hit_at: None,
                 hook_events: Vec::new(),
             };
