@@ -7,7 +7,15 @@
 <p align="center">
   <a href="./README.md">English</a> ·
   <a href="./README.zh-TW.md">繁體中文</a> ·
-  <a href="./README.zh-CN.md">简体中文</a>
+  <a href="./README.zh-CN.md">简体中文</a> ·
+  <a href="./README.ja.md">日本語</a> ·
+  <a href="./README.es.md">Español</a> ·
+  <a href="./README.fr.md">Français</a> ·
+  <a href="./README.de.md">Deutsch</a> ·
+  <a href="./README.pt.md">Português</a> ·
+  <a href="./README.it.md">Italiano</a> ·
+  <a href="./README.ko.md">한국어</a> ·
+  <a href="./README.nl.md">Nederlands</a>
 </p>
 
 <p align="center">
@@ -144,9 +152,38 @@ One browser tab. All sessions. Stay in flow.
 |---|---|
 | **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
 | **Real-time** | File watcher + SSE + WebSocket for sub-second live updates across all sessions |
-| **Tiny footprint** | Single ~15 MB binary. No runtime dependencies, no background daemons |
+| **Tiny footprint** | ~10 MB download, ~27 MB on disk (binary + frontend). No runtime dependencies, no background daemons |
 | **100% local** | All data stays on your machine. Zero telemetry, zero cloud, zero network requests |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
+
+### Why Rust? — The Numbers
+
+Measured on an M-series Mac with 1,493 sessions across 26 projects:
+
+| Metric | claude-view | Typical Electron dashboard |
+|--------|:-----------:|:--------------------------:|
+| **Download** | **~10 MB** | 150–300 MB |
+| **On disk** | **~27 MB** | 300–500 MB |
+| **Startup (ready to serve)** | **< 500 ms** | 3–8 s |
+| **RAM (full index loaded)** | **~50 MB** | 300–800 MB |
+| **Deep-index 1,500 sessions** | **< 1 s** | N/A |
+| **Runtime dependencies** | **0** | Node.js + Chromium |
+
+<details>
+<summary>Reproduce locally</summary>
+
+```bash
+cargo build --release
+/usr/bin/time -l target/release/claude-view   # peak RSS + wall time
+```
+</details>
+
+Key techniques that make this possible:
+
+- **SIMD pre-filter** — `memchr` scans raw bytes before touching a JSON parser
+- **Memory-mapped I/O** — JSONL files are mmap'd and parsed in-place, never copied
+- **Tantivy search** — Same engine behind Quickwit; indexes 1,500 sessions in under a second
+- **Zero-copy where it counts** — Borrowed slices from mmap through parse to response
 
 ---
 
@@ -182,21 +219,34 @@ Opens at `http://localhost:47892`.
 
 ## How It Compares
 
-Other tools are either viewers (browse history) or simple monitors. None combine real-time monitoring, rich chat history, debugging tools, and advanced search in a single workspace.
+The Claude Code ecosystem has great tools — chat UIs, history viewers, session managers. claude-view fills a different gap: **real-time monitoring + deep history + analytics in one lightweight workspace.**
 
-```
-                    Passive ←————————————→ Active
-                         |                  |
-            View only    |  ccusage         |
-                         |  History Viewer  |
-                         |  clog            |
-                         |                  |
-            Monitor      |  claude-code-ui  |
-            only         |  Agent Sessions  |
-                         |                  |
-            Full         |  ★ claude-view   |
-            workspace    |                  |
-```
+### Landscape
+
+| Tool | Category | Stack | Download | Runtime deps | Live monitor | Full-text search | Analytics |
+|------|----------|-------|:--------:|:------------:|:------------:|:----------------:|:---------:|
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **None** | **Yes** | **Yes** | **Yes** |
+| [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 (Rust + React) | ~13 MB (macOS) | None | Partial | No | Yes |
+| [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | Node.js | No | No | CLI-only |
+| [CUI](https://github.com/wbopan/cui) | Web chat UI | TypeScript (React) | — | Node.js ≥20 | No | No | No |
+| [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron + Next.js | **~140 MB** (macOS) | Bundled Chromium | No | No | No |
+| [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript (React) | ~500 KB | Node.js ≥20 | Partial | Basic | No |
+| [claude-code-webui](https://github.com/sugyan/claude-code-webui) | Web chat UI | TypeScript (React) | — | Node.js / Deno | No | No | No |
+
+> **Note:** Chat UIs (CodePilot, CUI, claude-code-webui) solve a different problem — they're interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary, not competing.
+
+### Why the size difference matters
+
+| | claude-view | Electron app (e.g. CodePilot) |
+|---|:-:|:-:|
+| **Download** | ~10 MB | ~140 MB |
+| **On disk** | ~27 MB | ~400 MB |
+| **What's in it** | Rust server + SPA assets | Chromium + Node.js + Next.js + app code |
+| **RAM at idle** | ~50 MB | ~300 MB+ |
+| **Startup** | < 500 ms | 3–8 s |
+| **Background cost** | Negligible | Chromium renderer process |
+
+When you're already running 10+ Claude Code sessions eating RAM and CPU, the last thing you want is a 300 MB dashboard competing for resources.
 
 ---
 
