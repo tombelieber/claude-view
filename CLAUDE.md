@@ -55,11 +55,24 @@ Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm 
 ## Key Docs
 
 - `docs/plans/PROGRESS.md` — Current status (start here each session)
-- `docs/VISION.md` — Product evolution, business model, identity
-- `docs/ROADMAP.md` — Module roadmap, priorities, deferred items
 - `docs/plans/mission-control/PROGRESS.md` — Mission Control feature tracker
 - `docs/plans/mission-control/design.md` — Mission Control full design spec
 - `README.md` — User-facing docs (trilingual: EN, zh-TW, zh-CN)
+
+## Private Docs (sibling repo)
+
+Product vision, pricing, roadmap, and GTM docs live in the sibling repo:
+
+```
+../claude-view-gtm/
+  vision/          — VISION.md, ROADMAP.md
+  plans/active/    — active pricing/strategy plans
+  plans/backlog/   — backlog strategy plans
+  marketing/       — release runbook, blog drafts
+```
+
+When business context is needed (pricing tiers, feature gating, product direction),
+read from that repo. Never commit business/strategy docs to this repo.
 
 ## Development Priorities
 

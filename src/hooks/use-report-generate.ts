@@ -1,18 +1,18 @@
 import { useState, useCallback, useRef } from 'react'
-import type { ReportRow } from '../types/generated/ReportRow'
 import { useReportsMutate } from './use-reports'
 
 interface GenerateParams {
   reportType: string
   dateStart: string
   dateEnd: string
+  startTs: number
+  endTs: number
 }
 
 interface UseReportGenerateReturn {
   generate: (params: GenerateParams) => void
   isGenerating: boolean
   streamedText: string
-  report: ReportRow | null
   error: string | null
   reset: () => void
 }
@@ -20,14 +20,12 @@ interface UseReportGenerateReturn {
 export function useReportGenerate(): UseReportGenerateReturn {
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamedText, setStreamedText] = useState('')
-  const [report, setReport] = useState<ReportRow | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const invalidateReports = useReportsMutate()
 
   const reset = useCallback(() => {
     setStreamedText('')
-    setReport(null)
     setError(null)
     setIsGenerating(false)
   }, [])
@@ -106,5 +104,5 @@ export function useReportGenerate(): UseReportGenerateReturn {
     }
   }, [reset, invalidateReports])
 
-  return { generate, isGenerating, streamedText, report, error, reset }
+  return { generate, isGenerating, streamedText, error, reset }
 }

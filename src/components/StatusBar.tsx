@@ -26,7 +26,7 @@ export function StatusBar({ projects }: StatusBarProps) {
   // Reset to false when sseEnabled transitions to true (new sync started).
   const doneHandledRef = useRef(false)
 
-  const sessionsIndexed = status?.sessionsIndexed ? Number(status.sessionsIndexed) : totalSessions
+  const sessionsIndexed = totalSessions || (status?.sessionsIndexed ? Number(status.sessionsIndexed) : 0)
 
   // Use lastGitSyncAt for the "last updated" display (more recent than lastIndexedAt)
   const lastSyncTs = status?.lastGitSyncAt ?? status?.lastIndexedAt ?? null

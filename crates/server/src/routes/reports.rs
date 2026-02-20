@@ -29,6 +29,16 @@ use claude_view_db::{ReportPreview, ReportRow};
 /// Guard to prevent concurrent report generation.
 static GENERATING: AtomicBool = AtomicBool::new(false);
 
+/// RAII guard that resets GENERATING to false on drop.
+/// Ensures the lock is released even if the SSE stream is dropped (client disconnect).
+struct GeneratingGuard;
+
+impl Drop for GeneratingGuard {
+    fn drop(&mut self) {
+        GENERATING.store(false, Ordering::SeqCst);
+    }
+}
+
 // ============================================================================
 // Request / Response Types
 // ============================================================================
@@ -40,6 +50,10 @@ pub struct GenerateRequest {
     pub report_type: String,
     pub date_start: String,
     pub date_end: String,
+    /// Unix timestamp for range start (from frontend, uses local midnight).
+    pub start_ts: i64,
+    /// Unix timestamp for range end (from frontend, uses local midnight + 86399).
+    pub end_ts: i64,
 }
 
 /// Query params for GET /api/reports/preview.
@@ -78,7 +92,7 @@ async fn get_report(
 ) -> ApiResult<impl IntoResponse> {
     match state.db.get_report(id).await? {
         Some(report) => Ok(Json(report)),
-        None => Err(ApiError::BadRequest(format!("Report {} not found", id))),
+        None => Err(ApiError::NotFound(format!("Report {} not found", id))),
     }
 }
 
@@ -90,7 +104,7 @@ async fn delete_report(
     if state.db.delete_report(id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(ApiError::BadRequest(format!("Report {} not found", id)))
+        Err(ApiError::NotFound(format!("Report {} not found", id)))
     }
 }
 
@@ -120,16 +134,9 @@ async fn generate_report(
         )));
     }
 
-    // Parse date range to unix timestamps for querying sessions.
-    // date_start and date_end are ISO date strings (YYYY-MM-DD).
-    let start_ts = parse_date_to_ts(&body.date_start, false).map_err(|e| {
-        GENERATING.store(false, Ordering::SeqCst);
-        ApiError::BadRequest(format!("Invalid date_start: {e}"))
-    })?;
-    let end_ts = parse_date_to_ts(&body.date_end, true).map_err(|e| {
-        GENERATING.store(false, Ordering::SeqCst);
-        ApiError::BadRequest(format!("Invalid date_end: {e}"))
-    })?;
+    // Use timestamps from frontend (computed using local midnight) to avoid timezone mismatch.
+    let start_ts = body.start_ts;
+    let end_ts = body.end_ts;
 
     // Build context digest from DB data
     let digest = match build_context_digest(&state, &body.report_type, &body.date_start, &body.date_end, start_ts, end_ts).await {
@@ -166,6 +173,9 @@ async fn generate_report(
         }
     };
 
+    // Create RAII guard that resets GENERATING on drop (handles client disconnect).
+    let guard = GeneratingGuard;
+
     // Build SSE stream
     let report_type = body.report_type.clone();
     let date_start = body.date_start.clone();
@@ -173,6 +183,8 @@ async fn generate_report(
     let db = state.db.clone();
 
     let stream = async_stream::stream! {
+        // Move guard into the stream so it drops when the stream drops.
+        let _guard = guard;
         let t0 = std::time::Instant::now();
         let mut full_content = String::new();
 
@@ -217,47 +229,10 @@ async fn generate_report(
             }
         }
 
-        GENERATING.store(false, Ordering::SeqCst);
+        // Guard drops here, resetting GENERATING to false.
     };
 
     Ok(Sse::new(stream))
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/// Parse an ISO date string (YYYY-MM-DD) to a unix timestamp.
-/// If `end_of_day` is true, returns 23:59:59 of that day.
-fn parse_date_to_ts(date_str: &str, end_of_day: bool) -> Result<i64, String> {
-    let parts: Vec<&str> = date_str.split('-').collect();
-    if parts.len() != 3 {
-        return Err(format!("expected YYYY-MM-DD, got {date_str}"));
-    }
-    let y: i32 = parts[0].parse().map_err(|_| "invalid year")?;
-    let m: u32 = parts[1].parse().map_err(|_| "invalid month")?;
-    let d: u32 = parts[2].parse().map_err(|_| "invalid day")?;
-
-    // Simple days-since-epoch calculation (sufficient for date range filtering)
-    let days = days_from_civil(y, m, d);
-    let base = days as i64 * 86400;
-
-    if end_of_day {
-        Ok(base + 86399)
-    } else {
-        Ok(base)
-    }
-}
-
-/// Civil date to days since Unix epoch (1970-01-01).
-/// Algorithm from Howard Hinnant's date library (public domain).
-fn days_from_civil(y: i32, m: u32, d: u32) -> i32 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u32;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe as i32 - 719468
 }
 
 /// Build a context digest from DB data for the given date range.
@@ -269,18 +244,9 @@ async fn build_context_digest(
     start_ts: i64,
     end_ts: i64,
 ) -> Result<ContextDigest, ApiError> {
-    // Query sessions in range
-    let sessions: Vec<(String, String, String, Option<String>, i64, Option<String>)> = sqlx::query_as(
-        r#"SELECT id, project_display_name, preview, category_l2, duration_seconds, git_branch
-           FROM sessions
-           WHERE first_message_at >= ? AND first_message_at <= ?
-           ORDER BY project_display_name, git_branch, first_message_at"#,
-    )
-    .bind(start_ts)
-    .bind(end_ts)
-    .fetch_all(state.db.pool())
-    .await
-    .map_err(|e| ApiError::Internal(format!("Failed to query sessions: {e}")))?;
+    // Query sessions in range via Database method
+    let sessions = state.db.get_sessions_in_range(start_ts, end_ts).await
+        .map_err(|e| ApiError::Internal(format!("Failed to query sessions: {e}")))?;
 
     if sessions.is_empty() {
         return Ok(ContextDigest::default());
@@ -309,54 +275,16 @@ async fn build_context_digest(
         *project_session_counts.entry(project.clone()).or_default() += 1;
     }
 
-    // Query commit counts per project
-    let commit_rows: Vec<(String, i64)> = sqlx::query_as(
-        r#"SELECT s.project_display_name, COALESCE(SUM(s.commit_count), 0)
-           FROM sessions s
-           WHERE s.first_message_at >= ? AND s.first_message_at <= ?
-           GROUP BY s.project_display_name"#,
-    )
-    .bind(start_ts)
-    .bind(end_ts)
-    .fetch_all(state.db.pool())
-    .await
-    .unwrap_or_default();
-
+    // Query commit counts per project via Database method
+    let commit_rows = state.db.get_commit_counts_in_range(start_ts, end_ts).await
+        .unwrap_or_default();
     let commit_counts: HashMap<String, i64> = commit_rows.into_iter().collect();
 
-    // Query top tools (from invocations table)
-    let top_tools: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT i.name
-           FROM invocations i
-           JOIN sessions s ON i.session_id = s.id
-           WHERE s.first_message_at >= ? AND s.first_message_at <= ?
-             AND i.type = 'tool'
-           GROUP BY i.name
-           ORDER BY SUM(i.count) DESC
-           LIMIT 5"#,
-    )
-    .bind(start_ts)
-    .bind(end_ts)
-    .fetch_all(state.db.pool())
-    .await
-    .unwrap_or_default();
-
-    // Query top skills
-    let top_skills: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT i.name
-           FROM invocations i
-           JOIN sessions s ON i.session_id = s.id
-           WHERE s.first_message_at >= ? AND s.first_message_at <= ?
-             AND i.type = 'skill'
-           GROUP BY i.name
-           ORDER BY SUM(i.count) DESC
-           LIMIT 5"#,
-    )
-    .bind(start_ts)
-    .bind(end_ts)
-    .fetch_all(state.db.pool())
-    .await
-    .unwrap_or_default();
+    // Query top tools and skills via Database methods
+    let top_tools = state.db.get_top_tools_in_range(start_ts, end_ts, 5).await
+        .unwrap_or_default();
+    let top_skills = state.db.get_top_skills_in_range(start_ts, end_ts, 5).await
+        .unwrap_or_default();
 
     // Build project digests
     let mut projects: Vec<ProjectDigest> = project_map
@@ -395,8 +323,8 @@ async fn build_context_digest(
         report_type: report_type.to_string(),
         date_range,
         projects,
-        top_tools: top_tools.into_iter().map(|(n,)| n).collect(),
-        top_skills: top_skills.into_iter().map(|(n,)| n).collect(),
+        top_tools,
+        top_skills,
         summary_line: format!("{total_sessions} sessions across {total_projects} projects"),
     })
 }
@@ -428,6 +356,37 @@ mod tests {
 
     fn test_app(state: Arc<AppState>) -> Router {
         Router::new().nest("/api", router()).with_state(state)
+    }
+
+    /// Parse an ISO date string (YYYY-MM-DD) to a unix timestamp.
+    /// If `end_of_day` is true, returns 23:59:59 of that day.
+    fn parse_date_to_ts(date_str: &str, end_of_day: bool) -> Result<i64, String> {
+        let parts: Vec<&str> = date_str.split('-').collect();
+        if parts.len() != 3 {
+            return Err(format!("expected YYYY-MM-DD, got {date_str}"));
+        }
+        let y: i32 = parts[0].parse().map_err(|_| "invalid year")?;
+        let m: u32 = parts[1].parse().map_err(|_| "invalid month")?;
+        let d: u32 = parts[2].parse().map_err(|_| "invalid day")?;
+
+        let days = days_from_civil(y, m, d);
+        let base = days as i64 * 86400;
+
+        if end_of_day {
+            Ok(base + 86399)
+        } else {
+            Ok(base)
+        }
+    }
+
+    /// Civil date to days since Unix epoch (1970-01-01).
+    fn days_from_civil(y: i32, m: u32, d: u32) -> i32 {
+        let y = if m <= 2 { y - 1 } else { y };
+        let era = if y >= 0 { y } else { y - 399 } / 400;
+        let yoe = (y - era * 400) as u32;
+        let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        era * 146097 + doe as i32 - 719468
     }
 
     #[tokio::test]
@@ -535,7 +494,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -580,7 +539,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

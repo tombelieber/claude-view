@@ -24,6 +24,7 @@ export function ReportHistory({ onSelect, selectedId }: ReportHistoryProps) {
 
   const handleDelete = useCallback(async (id: number, e: React.MouseEvent) => {
     e.stopPropagation()
+    if (!window.confirm('Delete this report?')) return
     const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' })
     if (res.ok) {
       queryClient.invalidateQueries({ queryKey: ['reports'] })

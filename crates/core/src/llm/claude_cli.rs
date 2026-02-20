@@ -100,28 +100,70 @@ impl ClaudeCliProvider {
 
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
 
+        // Capture timeout before moving into the spawned task (self is not moved).
+        let timeout_secs = self.timeout_secs;
+
         let handle = tokio::spawn(async move {
+            use tokio::time::{sleep, Duration};
+
+            let deadline = sleep(Duration::from_secs(timeout_secs));
+            tokio::pin!(deadline);
+
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
 
-            while let Ok(Some(line)) = lines.next_line().await {
-                if tx.send(line).await.is_err() {
-                    // Receiver dropped — abort the child
-                    let _ = child.kill().await;
-                    return Ok(());
+            loop {
+                tokio::select! {
+                    _ = &mut deadline => {
+                        tracing::error!(
+                            timeout_secs,
+                            "claude CLI stream_completion(): timed out, killing child"
+                        );
+                        let _ = child.kill().await;
+                        return Err(LlmError::Timeout(timeout_secs));
+                    }
+                    line_result = lines.next_line() => {
+                        match line_result {
+                            Ok(Some(line)) => {
+                                if tx.send(line).await.is_err() {
+                                    // Receiver dropped — abort the child
+                                    let _ = child.kill().await;
+                                    return Ok(());
+                                }
+                            }
+                            Ok(None) => break, // EOF
+                            Err(_) => break,    // Read error, proceed to wait
+                        }
+                    }
                 }
             }
 
-            // Wait for the child to exit
-            let status = child.wait().await.map_err(|e| {
-                LlmError::SpawnFailed(format!("failed to wait for CLI: {e}"))
-            })?;
-
-            if !status.success() {
-                tracing::warn!(
-                    exit_code = ?status.code(),
-                    "claude CLI stream_completion(): non-zero exit"
-                );
+            // Wait for the child to exit (still under the same timeout)
+            tokio::select! {
+                _ = &mut deadline => {
+                    tracing::error!(
+                        timeout_secs,
+                        "claude CLI stream_completion(): timed out waiting for child exit"
+                    );
+                    let _ = child.kill().await;
+                    return Err(LlmError::Timeout(timeout_secs));
+                }
+                wait_result = child.wait() => {
+                    match wait_result {
+                        Ok(status) if !status.success() => {
+                            tracing::warn!(
+                                exit_code = ?status.code(),
+                                "claude CLI stream_completion(): non-zero exit"
+                            );
+                        }
+                        Err(e) => {
+                            return Err(LlmError::SpawnFailed(
+                                format!("failed to wait for CLI: {e}")
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
             }
 
             Ok(())
