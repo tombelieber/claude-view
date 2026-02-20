@@ -1,27 +1,22 @@
-//! Live session state types and status derivation for Mission Control.
+//! Live session state types and status derivation for Live Monitor.
 //!
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
-use serde::{Serialize, Deserialize};
-use vibe_recall_core::cost::{CacheStatus, CostBreakdown, TokenUsage};
-use vibe_recall_core::live_parser::{LineType, LiveLine};
+use serde::{Deserialize, Serialize};
+use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
-/// The universal agent state — core protocol.
+/// The universal agent state — driven by hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentState {
-    /// Which UI group this belongs to (fixed, never changes)
+    /// Which UI group: NeedsYou or Autonomous
     pub group: AgentStateGroup,
     /// Sub-state within group (open string — new states added freely)
     pub state: String,
-    /// Human-readable label (domain layer can override)
+    /// Human-readable label for the UI
     pub label: String,
-    /// How confident we are in this classification
-    pub confidence: f32,
-    /// How this state was determined
-    pub source: SignalSource,
-    /// Raw context for domain layers to interpret
+    /// Optional context (tool input, error details, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<serde_json::Value>,
 }
@@ -31,15 +26,8 @@ pub struct AgentState {
 pub enum AgentStateGroup {
     NeedsYou,
     Autonomous,
+    #[allow(dead_code)]
     Delivered,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SignalSource {
-    Hook,
-    Jsonl,
-    Fallback,
 }
 
 /// The current status of a live Claude Code session.
@@ -53,7 +41,7 @@ pub enum SessionStatus {
     Working,
     /// Agent paused -- reason available in pause_classification.
     Paused,
-    /// Session is over (process exited + no new writes for 60s).
+    /// Session is over (process exited + no new writes for 300s).
     Done,
 }
 
@@ -102,22 +90,37 @@ pub struct LiveSession {
     pub cost: CostBreakdown,
     /// Whether the Anthropic prompt cache is likely warm or cold.
     pub cache_status: CacheStatus,
+    /// Unix timestamp when the current user turn started (real prompt detected).
+    /// Used by frontend to compute live elapsed time for autonomous sessions.
+    pub current_turn_started_at: Option<i64>,
+    /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
+    /// Used by frontend to show task time for needs_you sessions.
+    pub last_turn_task_seconds: Option<u32>,
+    /// Sub-agents spawned via the Task tool in this session.
+    /// Empty vec if no sub-agents have been detected.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
+    /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
+    /// Empty vec if no progress items have been detected.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    /// Unix timestamp when the last cache hit or creation occurred.
+    /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
+    /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
+    pub last_cache_hit_at: Option<i64>,
 }
 
-/// Events broadcast over the SSE channel to connected Mission Control clients.
+/// Events broadcast over the SSE channel to connected Live Monitor clients.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
     /// A new session JSONL file was discovered on disk.
-    SessionDiscovered {
-        session: LiveSession,
-    },
+    SessionDiscovered { session: LiveSession },
     /// An existing session was updated (new lines appended to JSONL).
-    SessionUpdated {
-        session: LiveSession,
-    },
+    SessionUpdated { session: LiveSession },
     /// A session has been cleaned up (Complete for >10 min).
     SessionCompleted {
+        #[serde(rename = "sessionId")]
         session_id: String,
     },
     /// Periodic aggregate summary of all live sessions.
@@ -127,6 +130,7 @@ pub enum SessionEvent {
         #[serde(rename = "autonomousCount")]
         autonomous_count: usize,
         #[serde(rename = "deliveredCount")]
+        #[allow(dead_code)]
         delivered_count: usize,
         #[serde(rename = "totalCostTodayUsd")]
         total_cost_today_usd: f64,
@@ -135,92 +139,15 @@ pub enum SessionEvent {
     },
 }
 
-/// Derive the session status from the last parsed JSONL line, file age, and
-/// process presence.
-///
-/// 3-state derivation (first match wins):
-/// 1. No data at all -> Paused
-/// 2. No running process AND file stale >60s -> Done
-/// 3. Activity within 30s:
-///    - Assistant with tools -> Working
-///    - Assistant still streaming (no end_turn) -> Working
-///    - Assistant with end_turn -> Paused
-///    - Progress -> Working
-///    - User/System/other -> Paused
-/// 4. >30s since last write -> Paused
-pub fn derive_status(
-    last_line: Option<&LiveLine>,
-    seconds_since_modified: u64,
-    has_running_process: bool,
-) -> SessionStatus {
-    let last_line = match last_line {
-        Some(ll) => ll,
-        None => return SessionStatus::Paused,
-    };
-
-    // Done: process exited AND file stale >60s
-    if !has_running_process && seconds_since_modified > 60 {
-        return SessionStatus::Done;
+/// Derive SessionStatus from AgentState. No heuristics — purely structural.
+pub fn status_from_agent_state(agent_state: &AgentState) -> SessionStatus {
+    match agent_state.state.as_str() {
+        "session_ended" => SessionStatus::Done,
+        _ => match agent_state.group {
+            AgentStateGroup::Autonomous => SessionStatus::Working,
+            AgentStateGroup::NeedsYou | AgentStateGroup::Delivered => SessionStatus::Paused,
+        },
     }
-
-    // Working: active streaming or tool use (within last 30s)
-    if seconds_since_modified <= 30 {
-        match last_line.line_type {
-            LineType::Assistant => {
-                if !last_line.tool_names.is_empty() {
-                    return SessionStatus::Working;
-                }
-                if last_line.stop_reason.as_deref() != Some("end_turn") {
-                    return SessionStatus::Working;
-                }
-                // end_turn = Claude finished -> Paused
-                SessionStatus::Paused
-            }
-            LineType::Progress => SessionStatus::Working,
-            // User message, System message, etc. -> Paused
-            _ => SessionStatus::Paused,
-        }
-    } else {
-        // >30s since last write -> Paused
-        SessionStatus::Paused
-    }
-}
-
-/// Derive a human-readable activity description from the tool names in use.
-///
-/// Returns an empty string when no tools are active and the session is not streaming.
-pub fn derive_activity(tool_names: &[String], is_streaming: bool) -> String {
-    if is_streaming && tool_names.is_empty() {
-        return "Generating response...".to_string();
-    }
-
-    if tool_names.is_empty() {
-        return String::new();
-    }
-
-    // Use the most "interesting" tool for the activity string
-    for name in tool_names {
-        let activity = match name.as_str() {
-            "Read" => "Reading file",
-            "Write" => "Writing file",
-            "Edit" => "Editing file",
-            "Bash" => "Running command",
-            "Glob" => "Searching files",
-            "Grep" => "Searching code",
-            "WebFetch" => "Fetching URL",
-            "WebSearch" => "Searching the web",
-            "Task" => "Spawning sub-agent",
-            "NotebookEdit" => "Editing notebook",
-            "TodoRead" | "TodoWrite" => "Managing tasks",
-            _ => "",
-        };
-        if !activity.is_empty() {
-            return activity.to_string();
-        }
-    }
-
-    // Fallback for unknown tool names
-    format!("Using {}", tool_names[0])
 }
 
 // =============================================================================
@@ -231,165 +158,92 @@ pub fn derive_activity(tool_names: &[String], is_streaming: bool) -> String {
 mod tests {
     use super::*;
 
-    /// Helper to create a minimal LiveLine for testing.
-    fn make_live_line(
-        line_type: LineType,
-        tool_names: Vec<String>,
-        stop_reason: Option<&str>,
-    ) -> LiveLine {
-        LiveLine {
-            line_type,
-            role: None,
-            content_preview: String::new(),
-            tool_names,
-            model: None,
-            input_tokens: None,
-            output_tokens: None,
-            cache_read_tokens: None,
-            cache_creation_tokens: None,
-            timestamp: None,
-            stop_reason: stop_reason.map(String::from),
-            git_branch: None,
-            is_meta: false,
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // derive_status tests (3-state: Working, Paused, Done)
-    // -------------------------------------------------------------------------
-
     #[test]
-    fn test_status_paused_no_data() {
-        let status = derive_status(None, 0, false);
-        assert_eq!(status, SessionStatus::Paused);
+    fn test_status_from_autonomous_acting() {
+        let state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "acting".into(),
+            label: "Working".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_working_streaming_recent() {
-        let last = make_live_line(LineType::Assistant, vec![], None);
-        let status = derive_status(Some(&last), 10, true);
-        assert_eq!(status, SessionStatus::Working);
+    fn test_status_from_autonomous_thinking() {
+        let state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "thinking".into(),
+            label: "Thinking".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_working_tool_use_recent() {
-        let last = make_live_line(LineType::Assistant, vec!["Bash".to_string()], None);
-        let status = derive_status(Some(&last), 25, true);
-        assert_eq!(status, SessionStatus::Working);
+    fn test_status_from_autonomous_delegating() {
+        let state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "delegating".into(),
+            label: "Running agent".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Working);
     }
 
     #[test]
-    fn test_status_paused_end_turn_recent() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
-        let status = derive_status(Some(&last), 10, true);
-        assert_eq!(status, SessionStatus::Paused);
+    fn test_status_from_needs_you_idle() {
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Idle".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_paused_at_31s() {
-        let last = make_live_line(LineType::Assistant, vec![], None);
-        let status = derive_status(Some(&last), 31, true);
-        assert_eq!(status, SessionStatus::Paused);
+    fn test_status_from_needs_you_awaiting_input() {
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "awaiting_input".into(),
+            label: "Asked a question".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_paused_at_61s_with_process() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
-        let status = derive_status(Some(&last), 61, true);
-        assert_eq!(status, SessionStatus::Paused, "At 61s with running process, status is Paused (not Done because process is active)");
+    fn test_status_from_needs_you_needs_permission() {
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "needs_permission".into(),
+            label: "Needs permission".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Paused);
     }
 
     #[test]
-    fn test_status_done_at_61s_no_process() {
-        let last = make_live_line(LineType::Assistant, vec![], Some("end_turn"));
-        let status = derive_status(Some(&last), 61, false);
-        assert_eq!(status, SessionStatus::Done);
+    fn test_status_from_session_ended() {
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "session_ended".into(),
+            label: "Ended".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Done);
     }
 
     #[test]
-    fn test_status_working_progress_recent() {
-        let last = make_live_line(LineType::Progress, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::Working);
-    }
-
-    #[test]
-    fn test_status_paused_user_message() {
-        let last = make_live_line(LineType::User, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::Paused);
-    }
-
-    #[test]
-    fn test_status_working_streaming_no_process() {
-        // Edge case: process exits during active streaming -- recent activity keeps it Working
-        let last = make_live_line(LineType::Assistant, vec![], None);
-        let status = derive_status(Some(&last), 5, false);
-        assert_eq!(status, SessionStatus::Working);
-    }
-
-    #[test]
-    fn test_status_paused_system_message() {
-        let last = make_live_line(LineType::System, vec![], None);
-        let status = derive_status(Some(&last), 5, true);
-        assert_eq!(status, SessionStatus::Paused);
-    }
-
-    // -------------------------------------------------------------------------
-    // derive_activity tests
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_activity_streaming() {
-        let activity = derive_activity(&[], true);
-        assert_eq!(activity, "Generating response...");
-    }
-
-    #[test]
-    fn test_activity_no_tools_not_streaming() {
-        let activity = derive_activity(&[], false);
-        assert_eq!(activity, "");
-    }
-
-    #[test]
-    fn test_activity_read() {
-        let tools = vec!["Read".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Reading file");
-    }
-
-    #[test]
-    fn test_activity_edit() {
-        let tools = vec!["Edit".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Editing file");
-    }
-
-    #[test]
-    fn test_activity_bash() {
-        let tools = vec!["Bash".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Running command");
-    }
-
-    #[test]
-    fn test_activity_grep() {
-        let tools = vec!["Grep".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Searching code");
-    }
-
-    #[test]
-    fn test_activity_unknown_tool() {
-        let tools = vec!["CustomMcpTool".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Using CustomMcpTool");
-    }
-
-    #[test]
-    fn test_activity_multiple_tools_first_wins() {
-        let tools = vec!["Bash".to_string(), "Read".to_string()];
-        let activity = derive_activity(&tools, false);
-        assert_eq!(activity, "Running command");
+    fn test_status_from_session_ended_autonomous_group() {
+        // session_ended should always produce Done regardless of group
+        let state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "session_ended".into(),
+            label: "Ended".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Done);
     }
 }

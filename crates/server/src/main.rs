@@ -140,6 +140,14 @@ async fn main() -> Result<()> {
 
     let startup_start = Instant::now();
 
+    // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
+    if std::env::consts::OS != "macos" {
+        eprintln!("\n\u{26a0}\u{fe0f}  vibe-recall currently supports macOS only.");
+        eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
+        eprintln!("   Follow progress: https://github.com/anonymous-dev/claude-view/issues\n");
+        std::process::exit(1);
+    }
+
     // Initialize Prometheus metrics
     init_metrics();
 
@@ -164,30 +172,50 @@ async fn main() -> Result<()> {
     let indexing = Arc::new(IndexingState::new());
     let registry_holder = Arc::new(RwLock::new(None));
 
-    // Step 3: Build the Axum app with indexing state and registry holder
+    // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
+    let search_index = {
+        let index_dir = vibe_recall_core::paths::search_index_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
+
+        match vibe_recall_search::SearchIndex::open(&index_dir) {
+            Ok(idx) => {
+                tracing::info!("Search index opened at {}", index_dir.display());
+                Some(Arc::new(idx))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to open search index: {}. Search will be unavailable.", e);
+                None
+            }
+        }
+    };
+
+    // Step 4: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
     let app = create_app_full(
         db.clone(),
         indexing.clone(),
         registry_holder.clone(),
+        search_index.clone(),
         static_dir,
     );
 
-    // Step 4: Bind and start the HTTP server IMMEDIATELY (before any indexing)
+    // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
     let port = get_port();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    // Step 5: Resolve the claude dir for indexing
+    // Step 6: Resolve the claude dir for indexing
     let claude_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
         .join(".claude");
 
-    // Step 6: Spawn background indexing task (with registry build in parallel)
+    // Step 7: Spawn background indexing task (with registry build in parallel)
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
     let periodic_registry = registry_holder.clone();
+    let idx_search = search_index.clone();
+    let periodic_search = search_index.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -201,6 +229,7 @@ async fn main() -> Result<()> {
             &claude_dir,
             &idx_db,
             Some(idx_registry),
+            idx_search.as_deref(),
             // on_pass1_done: Pass 1 finished — store project/session counts, transition to DeepIndexing
             move |projects, sessions| {
                 state_for_pass1.set_projects_found(projects);
@@ -246,7 +275,7 @@ async fn main() -> Result<()> {
                 // Re-read interval from DB each cycle so changes take effect without restart.
                 let mut prev_session_count = idx_db.get_session_count().await.unwrap_or(0);
                 loop {
-                    let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(60);
+                    let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(120);
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
 
@@ -266,7 +295,7 @@ async fn main() -> Result<()> {
                                     poisoned.into_inner().clone()
                                 }
                             };
-                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), |_| {}, |_, _, _| {}).await {
+                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), periodic_search.as_deref(), |_| {}, |_, _, _| {}).await {
                                 Ok((indexed, _)) => {
                                     if indexed > 0 {
                                         tracing::info!(indexed, "Incremental deep index complete");
@@ -290,7 +319,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Step 7: Spawn TUI progress task (runs concurrently with the server)
+    // Step 8: Spawn TUI progress task (runs concurrently with the server)
     let tui_state = indexing.clone();
     tokio::spawn(async move {
         // Wait for Pass 1 to complete (status transitions out of Idle/ReadingIndexes)
@@ -299,7 +328,7 @@ async fn main() -> Result<()> {
             if status != IndexingStatus::Idle && status != IndexingStatus::ReadingIndexes {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         // Print the "Ready" line with Pass 1 results
@@ -407,7 +436,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Step 8: Spawn facet ingest background tasks (startup + periodic)
+    // Step 9: Spawn facet ingest background tasks (startup + periodic)
     //
     // Uses a dedicated FacetIngestState for background tasks. The AppState has
     // its own FacetIngestState for user-triggered ingest via the API/SSE endpoint.
@@ -416,11 +445,11 @@ async fn main() -> Result<()> {
         let db = db.clone();
         let ingest_state = Arc::new(FacetIngestState::new());
 
-        // Initial ingest (delayed 5s to let indexing finish first)
+        // Initial ingest (delayed 3s to let indexing finish first)
         let db_init = db.clone();
         let state_init = ingest_state.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
             if state_init.is_running() {
                 return;
             }
@@ -438,9 +467,9 @@ async fn main() -> Result<()> {
             }
         });
 
-        // Periodic re-ingest (every 6 hours)
+        // Periodic re-ingest (every 12 hours)
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(6 * 3600));
+            let mut interval = tokio::time::interval(Duration::from_secs(12 * 3600));
             interval.tick().await; // skip immediate tick (startup already handled above)
             loop {
                 interval.tick().await;
@@ -469,8 +498,16 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Step 9: Serve forever
-    axum::serve(listener, app).await?;
+    // Step 10: Serve forever (with graceful shutdown for hook cleanup)
+    let shutdown_port = port; // port is already defined at line 177, capture for closure
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c().await.ok();
+            tracing::info!("Shutting down, cleaning up hooks...");
+            // File I/O is blocking but we're shutting down — acceptable.
+            vibe_recall_server::live::hook_registrar::cleanup(shutdown_port);
+        })
+        .await?;
 
     Ok(())
 }

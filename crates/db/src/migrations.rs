@@ -550,6 +550,16 @@ CREATE TABLE IF NOT EXISTS fluency_scores (
 );
 "#,
     r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_fluency_scores_week ON fluency_scores(week_start);"#,
+    // Migration 22: Wall-clock task time metrics
+    r#"ALTER TABLE sessions ADD COLUMN total_task_time_seconds INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN longest_task_seconds INTEGER;"#,
+    r#"ALTER TABLE sessions ADD COLUMN longest_task_preview TEXT;"#,
+    // Migration 23: Pricing cache for three-tier resolution (litellm → SQLite → defaults)
+    r#"CREATE TABLE IF NOT EXISTS pricing_cache (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+)"#,
 ];
 
 // ============================================================================
@@ -1554,6 +1564,47 @@ mod tests {
             "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-3'"
         ).fetch_one(&pool).await.unwrap();
         assert!(row.0.is_none(), "Both NULL should yield NULL");
+    }
+
+    #[tokio::test]
+    async fn test_migration_task_time_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('sessions')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"total_task_time_seconds"), "Missing total_task_time_seconds column");
+        assert!(column_names.contains(&"longest_task_seconds"), "Missing longest_task_seconds column");
+        assert!(column_names.contains(&"longest_task_preview"), "Missing longest_task_preview column");
+    }
+
+    #[tokio::test]
+    async fn test_migration_task_time_defaults() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('task-time-test', 'proj', '/tmp/tt.jsonl', 'Test')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (Option<i64>, Option<i64>, Option<String>) = sqlx::query_as(
+            "SELECT total_task_time_seconds, longest_task_seconds, longest_task_preview FROM sessions WHERE id = 'task-time-test'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert!(row.0.is_none(), "total_task_time_seconds default should be NULL");
+        assert!(row.1.is_none(), "longest_task_seconds default should be NULL");
+        assert!(row.2.is_none(), "longest_task_preview default should be NULL");
     }
 
     #[tokio::test]

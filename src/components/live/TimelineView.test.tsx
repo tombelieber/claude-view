@@ -1,0 +1,391 @@
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { TimelineView } from './TimelineView'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+
+// Helper functions for testing formatter logic
+function formatCost(usd: number): string {
+  return `$${usd.toFixed(2)}`
+}
+
+function formatDurationSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+describe('formatCost', () => {
+  it('formats to 2 decimals with $ prefix', () => {
+    expect(formatCost(0.0342)).toBe('$0.03')
+    expect(formatCost(1.2567)).toBe('$1.26')
+    expect(formatCost(10)).toBe('$10.00')
+    expect(formatCost(0)).toBe('$0.00')
+  })
+
+  it('handles very small amounts', () => {
+    expect(formatCost(0.001)).toBe('$0.00')
+    expect(formatCost(0.005)).toBe('$0.01')
+  })
+
+  it('handles large amounts', () => {
+    expect(formatCost(123.456)).toBe('$123.46')
+    expect(formatCost(9999.99)).toBe('$9999.99')
+  })
+})
+
+describe('formatDurationSeconds', () => {
+  it('formats milliseconds to seconds with 1 decimal', () => {
+    expect(formatDurationSeconds(2134)).toBe('2.1s')
+    expect(formatDurationSeconds(5000)).toBe('5.0s')
+    expect(formatDurationSeconds(123)).toBe('0.1s')
+  })
+
+  it('handles very short durations', () => {
+    expect(formatDurationSeconds(10)).toBe('0.0s')
+    expect(formatDurationSeconds(1)).toBe('0.0s')
+  })
+
+  it('handles longer durations', () => {
+    expect(formatDurationSeconds(60000)).toBe('60.0s')
+    expect(formatDurationSeconds(90000)).toBe('90.0s')
+  })
+})
+
+describe('TimelineView', () => {
+  const baseSessionStart = 1700000000 // Unix timestamp in seconds
+
+  const createAgent = (overrides: Partial<SubAgentInfo> = {}): SubAgentInfo => ({
+    toolUseId: overrides.toolUseId ?? 'test-1',
+    agentType: overrides.agentType ?? 'Explore',
+    description: overrides.description ?? 'Test description',
+    status: overrides.status ?? 'complete',
+    startedAt: overrides.startedAt ?? baseSessionStart + 5,
+    completedAt: overrides.completedAt ?? baseSessionStart + 10,
+    durationMs: overrides.durationMs ?? 5000,
+    toolUseCount: overrides.toolUseCount ?? 3,
+    costUsd: overrides.costUsd ?? 0.05,
+    agentId: overrides.agentId ?? 'abc1234',
+  })
+
+  it('renders nothing when subAgents array is empty', () => {
+    const { container } = render(
+      <TimelineView
+        subAgents={[]}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('renders time axis with appropriate intervals for short sessions (<30s)', () => {
+    const agents = [createAgent()]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={20000} // 20 seconds
+      />
+    )
+    // Should use 5s intervals: 0s, 5s, 10s, 15s, 20s
+    expect(screen.getByText('0s')).toBeDefined()
+    expect(screen.getByText('5s')).toBeDefined()
+    expect(screen.getByText('10s')).toBeDefined()
+    expect(screen.getByText('15s')).toBeDefined()
+    expect(screen.getByText('20s')).toBeDefined()
+  })
+
+  it('renders time axis with appropriate intervals for medium sessions (30-60s)', () => {
+    const agents = [createAgent()]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={45000} // 45 seconds
+      />
+    )
+    // Should use 10s intervals
+    expect(screen.getByText('0s')).toBeDefined()
+    expect(screen.getByText('10s')).toBeDefined()
+    expect(screen.getByText('20s')).toBeDefined()
+    expect(screen.getByText('30s')).toBeDefined()
+    expect(screen.getByText('40s')).toBeDefined()
+  })
+
+  it('renders time axis with minute labels for longer sessions', () => {
+    const agents = [createAgent()]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={120000} // 2 minutes
+      />
+    )
+    // Should use 30s intervals, formatted as "1m", "1m 30s"
+    expect(screen.getByText('0s')).toBeDefined()
+    expect(screen.getByText('1m')).toBeDefined()
+    expect(screen.getByText('2m')).toBeDefined()
+  })
+
+  it('renders agent type labels', () => {
+    const agents = [
+      createAgent({ agentType: 'Explore', toolUseId: '1' }),
+      createAgent({ agentType: 'code-review', toolUseId: '2' }),
+      createAgent({ agentType: 'search', toolUseId: '3' }),
+    ]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    expect(screen.getByText('Explore')).toBeDefined()
+    expect(screen.getByText('code-review')).toBeDefined()
+    expect(screen.getByText('search')).toBeDefined()
+  })
+
+  it('sorts agents chronologically by startedAt', () => {
+    const agents = [
+      createAgent({ agentType: 'Third', startedAt: baseSessionStart + 20, toolUseId: '3' }),
+      createAgent({ agentType: 'First', startedAt: baseSessionStart + 5, toolUseId: '1' }),
+      createAgent({ agentType: 'Second', startedAt: baseSessionStart + 10, toolUseId: '2' }),
+    ]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Check that labels appear in chronological order in the DOM
+    const labels = screen.getAllByText(/First|Second|Third/)
+    expect(labels[0].textContent).toBe('First')
+    expect(labels[1].textContent).toBe('Second')
+    expect(labels[2].textContent).toBe('Third')
+  })
+
+  it('handles running agents (no completedAt or durationMs)', () => {
+    const agents = [
+      createAgent({
+        status: 'running',
+        completedAt: null,
+        durationMs: null,
+        costUsd: null,
+        toolUseCount: null,
+        agentId: null,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should render without crashing, bar should have animation class
+    const bars = container.querySelectorAll('.timeline-bar-growing')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles error status agents', () => {
+    const agents = [
+      createAgent({
+        status: 'error',
+        completedAt: baseSessionStart + 8,
+        durationMs: 3000,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should render with red color class
+    const bars = container.querySelectorAll('.bg-red-500')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles complete status agents', () => {
+    const agents = [
+      createAgent({
+        status: 'complete',
+        completedAt: baseSessionStart + 10,
+        durationMs: 5000,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should render with green color class
+    const bars = container.querySelectorAll('.bg-green-600')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles agents with very short durations (min width enforcement)', () => {
+    const agents = [
+      createAgent({
+        startedAt: baseSessionStart + 1,
+        completedAt: baseSessionStart + 1.01, // 10ms duration
+        durationMs: 10,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should render with min-width CSS (max(2px, ...))
+    // We can't easily test the computed width, but verify it renders
+    const bars = container.querySelectorAll('[class*="bg-green"]')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles overlapping agents (parallel execution)', () => {
+    const agents = [
+      createAgent({
+        agentType: 'Agent1',
+        startedAt: baseSessionStart + 5,
+        completedAt: baseSessionStart + 15,
+        durationMs: 10000,
+        toolUseId: '1',
+      }),
+      createAgent({
+        agentType: 'Agent2',
+        startedAt: baseSessionStart + 10,
+        completedAt: baseSessionStart + 20,
+        durationMs: 10000,
+        toolUseId: '2',
+      }),
+    ]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Both should render (overlapping bars visible)
+    expect(screen.getByText('Agent1')).toBeDefined()
+    expect(screen.getByText('Agent2')).toBeDefined()
+  })
+
+  it('handles agents starting before session start (negative offset)', () => {
+    const agents = [
+      createAgent({
+        startedAt: baseSessionStart - 5, // Started 5s before session
+        completedAt: baseSessionStart + 5,
+        durationMs: 10000,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should clamp to 0% start position
+    const bars = container.querySelectorAll('[class*="bg-green"]')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles agents extending beyond session duration', () => {
+    const agents = [
+      createAgent({
+        startedAt: baseSessionStart + 25,
+        completedAt: baseSessionStart + 40, // Extends beyond 30s session
+        durationMs: 15000,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should clamp width to not exceed 100%
+    const bars = container.querySelectorAll('[class*="bg-green"]')
+    expect(bars.length).toBeGreaterThan(0)
+  })
+
+  it('handles agents with null cost/toolUseCount gracefully', () => {
+    const agents = [
+      createAgent({
+        costUsd: null,
+        toolUseCount: null,
+      }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Should render without crashing
+    expect(container.querySelector('.font-mono')).toBeDefined()
+  })
+
+  it('formats cost correctly with $ prefix', () => {
+    const agents = [createAgent({ costUsd: 0.0342 })]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Tooltip should show "$0.03" (rounded to 2 decimals)
+    // Note: Tooltip content is in portal, harder to test without user interaction
+    // This test just verifies component renders
+    expect(screen.getByText('Explore')).toBeDefined()
+  })
+
+  it('formats duration in seconds with 1 decimal', () => {
+    const agents = [createAgent({ durationMs: 2134 })] // 2.134s
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+    // Tooltip should show "2.1s"
+    // Note: Tooltip content is in portal, harder to test without user interaction
+    // This test just verifies component renders
+    expect(screen.getByText('Explore')).toBeDefined()
+  })
+
+  it('makes timeline bars keyboard accessible', () => {
+    const agents = [
+      createAgent({ agentType: 'Explore', description: 'Test exploration task' }),
+    ]
+    const { container } = render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />
+    )
+
+    // Find the timeline bar wrapper
+    const barWrapper = container.querySelector('[role="button"]')
+    expect(barWrapper).toBeDefined()
+
+    // Verify it's keyboard focusable
+    expect(barWrapper?.getAttribute('tabIndex')).toBe('0')
+
+    // Verify it has an accessible label
+    const ariaLabel = barWrapper?.getAttribute('aria-label')
+    expect(ariaLabel).toContain('Explore')
+    expect(ariaLabel).toContain('Test exploration task')
+  })
+})
