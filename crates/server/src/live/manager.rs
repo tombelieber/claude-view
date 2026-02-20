@@ -19,7 +19,7 @@ use claude_view_core::pricing::{
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
-use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
+use super::process::{detect_claude_processes, is_pid_alive};
 use super::state::{
     status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
     SessionSnapshot, SessionStatus, SnapshotEntry,
@@ -224,8 +224,6 @@ pub struct LiveSessionManager {
     finders: Arc<TailFinders>,
     /// Per-session accumulator state (offsets, token totals, etc.).
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
-    /// Detected Claude processes, keyed by working directory.
-    processes: Arc<RwLock<HashMap<PathBuf, ClaudeProcess>>>,
     /// Total number of Claude processes detected (not deduplicated by cwd).
     /// Updated by the eager scan and periodic detector.
     process_count: Arc<AtomicU32>,
@@ -249,7 +247,6 @@ impl LiveSessionManager {
             tx: tx.clone(),
             finders: Arc::new(TailFinders::new()),
             accumulators: Arc::new(RwLock::new(HashMap::new())),
-            processes: Arc::new(RwLock::new(HashMap::new())),
             process_count: Arc::new(AtomicU32::new(0)),
             pricing,
         });
@@ -324,19 +321,13 @@ impl LiveSessionManager {
         );
     }
 
-    /// Run a one-shot process table scan and store results.
+    /// Run a one-shot process count scan (display metric only).
     async fn run_eager_process_scan(&self) {
-        let (new_processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
+        let (_, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
             .await
             .unwrap_or_default();
         self.process_count.store(total_count, Ordering::Relaxed);
-        let unique_cwds = new_processes.len();
-        let mut processes = self.processes.write().await;
-        *processes = new_processes;
-        info!(
-            "Process scan: {} Claude processes ({} unique projects)",
-            total_count, unique_cwds
-        );
+        info!("Process scan: {} Claude processes", total_count);
     }
 
     /// Spawn the file watcher background task.
@@ -387,6 +378,7 @@ impl LiveSessionManager {
                 if !snapshot.sessions.is_empty() {
                     let mut promoted = 0u32;
                     let mut dead = 0u32;
+                    let mut dead_ids: Vec<String> = Vec::new();
 
                     for (session_id, entry) in &snapshot.sessions {
                         // Skip if hook already created this session
@@ -395,6 +387,7 @@ impl LiveSessionManager {
                         }
                         if !is_pid_alive(entry.pid) {
                             dead += 1;
+                            dead_ids.push(session_id.clone());
                             continue;
                         }
 
@@ -412,11 +405,6 @@ impl LiveSessionManager {
                                 extract_project_info(path);
                             let accumulators = manager.accumulators.read().await;
                             if let Some(acc) = accumulators.get(session_id) {
-                                let processes = manager.processes.read().await;
-                                let (_, pid) =
-                                    has_running_process(&processes, &project_path);
-                                drop(processes);
-
                                 let cost = manager
                                     .pricing
                                     .read()
@@ -440,7 +428,7 @@ impl LiveSessionManager {
 
                                 let metadata = JsonlMetadata {
                                     git_branch: acc.git_branch.clone(),
-                                    pid: pid.or(Some(entry.pid)),
+                                    pid: Some(entry.pid),
                                     title: acc.first_user_message.clone(),
                                     last_user_message: acc.last_user_message.clone(),
                                     turn_count: acc.user_turn_count,
@@ -510,6 +498,16 @@ impl LiveSessionManager {
                         }
                     }
 
+                    // Clean accumulators for dead snapshot PIDs to prevent
+                    // zombie resurrection if a new process starts in the same project.
+                    if !dead_ids.is_empty() {
+                        let mut accumulators = manager.accumulators.write().await;
+                        for id in &dead_ids {
+                            accumulators.remove(id);
+                        }
+                        info!(cleaned = dead_ids.len(), "Cleaned accumulators for dead snapshot PIDs");
+                    }
+
                     if promoted > 0 || dead > 0 {
                         info!(
                             promoted,
@@ -519,10 +517,11 @@ impl LiveSessionManager {
                         );
                     }
 
-                    // Save cleaned snapshot (remove dead entries)
-                    if dead > 0 {
-                        manager.save_session_snapshot_from_state().await;
-                    }
+                    // Always re-save: prunes dead entries AND alive-but-unmatched entries
+                    // (PIDs recycled by OS, or JSONL rotated past 24h scan window).
+                    // save_session_snapshot_from_state() writes only sessions currently
+                    // in the in-memory map, so anything not promoted is implicitly pruned.
+                    manager.save_session_snapshot_from_state().await;
                 }
             }
 
@@ -590,7 +589,7 @@ impl LiveSessionManager {
         });
     }
 
-    /// Spawn the reconciliation loop (replaces the old process detector).
+    /// Spawn the reconciliation loop.
     ///
     /// Two-phase design on a 10-second tick:
     ///
@@ -598,12 +597,12 @@ impl LiveSessionManager {
     /// For each session with a bound PID, check `is_pid_alive(pid)`.
     /// Mark dead sessions as Done, remove from map, broadcast completion, save snapshot.
     ///
-    /// **Phase 2 (every 3rd tick = 30s) — full reconciliation:**
-    /// 1. Refresh process table via `detect_claude_processes`.
-    /// 2. Discover sessions: accumulators with file_path + project_path that have no
-    ///    LiveSession entry but DO have a running Claude process — build and broadcast.
-    /// 3. PID binding: sessions without PID but with project_path get bound from process table.
-    /// 4. Unconditional snapshot save (defense in depth).
+    /// **Phase 2 (every 3rd tick = 30s) — process count + snapshot:**
+    /// 1. Refresh process count via `detect_claude_processes` (display metric only).
+    /// 2. Unconditional snapshot save (defense in depth).
+    ///
+    /// No discovery. No CWD PID binding. Hooks and snapshot recovery are the
+    /// only session creation paths.
     fn spawn_reconciliation_loop(self: &Arc<Self>) {
         let manager = self.clone();
 
@@ -649,7 +648,6 @@ impl LiveSessionManager {
                 // Phase 1: Lightweight liveness (every tick = 10s)
                 // =============================================================
                 let mut dead_sessions: Vec<String> = Vec::new();
-                let mut dead_session_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
                 let mut snapshot_dirty = false;
                 {
                     let mut sessions = manager.sessions.write().await;
@@ -680,7 +678,6 @@ impl LiveSessionManager {
                                 session: session.clone(),
                             });
                             dead_sessions.push(session_id.clone());
-                            dead_session_ids.insert(session_id.clone());
                             snapshot_dirty = true;
                         }
                     }
@@ -691,10 +688,8 @@ impl LiveSessionManager {
                     }
                 }
 
-                // Remove accumulators for dead sessions to prevent zombie resurrection.
-                // If the accumulator persists, Phase 2 discovery would match it against
-                // a NEW Claude process in the same project directory and resurrect the
-                // old session ID with the wrong PID.
+                // Remove accumulators for dead sessions to prevent stale data if
+                // a new session starts in the same project directory.
                 if !dead_sessions.is_empty() {
                     let mut accumulators = manager.accumulators.write().await;
                     for session_id in &dead_sessions {
@@ -715,266 +710,20 @@ impl LiveSessionManager {
                 }
 
                 // =============================================================
-                // Phase 2: Full reconciliation (every 3rd tick = 30s)
+                // Phase 2: Process count + snapshot (every 3rd tick = 30s)
                 // =============================================================
                 if !tick_count.is_multiple_of(3) {
                     continue;
                 }
 
-                // 2.1 — Process table refresh
-                let (new_processes, total_count) =
+                // 2.1 — Process count refresh (display metric only)
+                let (_, total_count) =
                     tokio::task::spawn_blocking(detect_claude_processes)
                         .await
                         .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
-                {
-                    let mut processes = manager.processes.write().await;
-                    *processes = new_processes;
-                }
 
-                // 2.2 — Discovery: find accumulators with file_path + project_path
-                //        that have no LiveSession but DO have a running Claude process
-                // 2.3 — PID binding: sessions without PID get bound from process table
-                //
-                // Read phase: gather candidates while holding read locks only
-                let mut discovery_candidates: Vec<(
-                    String,       // session_id
-                    PathBuf,      // file_path
-                    String,       // project_path
-                )> = Vec::new();
-                let mut pid_bind_candidates: Vec<(
-                    String,       // session_id
-                    String,       // project_path
-                )> = Vec::new();
-
-                {
-                    let sessions = manager.sessions.read().await;
-                    let accumulators = manager.accumulators.read().await;
-
-                    for (session_id, acc) in accumulators.iter() {
-                        let (Some(ref file_path), Some(ref proj_path)) =
-                            (&acc.file_path, &acc.project_path)
-                        else {
-                            continue;
-                        };
-
-                        if !sessions.contains_key(session_id)
-                            && !dead_session_ids.contains(session_id)
-                        {
-                            // Discovery candidate: no session exists yet
-                            discovery_candidates.push((
-                                session_id.clone(),
-                                file_path.clone(),
-                                proj_path.clone(),
-                            ));
-                        } else if let Some(session) = sessions.get(session_id) {
-                            if session.pid.is_none()
-                                && session.status != SessionStatus::Done
-                            {
-                                // PID binding candidate
-                                pid_bind_candidates.push((
-                                    session_id.clone(),
-                                    proj_path.clone(),
-                                ));
-                            }
-                        }
-                    }
-                }
-                // All read locks dropped here
-
-                // Process discovery candidates
-                let mut discovered_sessions: Vec<(String, LiveSession)> = Vec::new();
-                {
-                    let processes = manager.processes.read().await;
-                    for (session_id, file_path, proj_path) in &discovery_candidates {
-                        let (running, pid) = has_running_process(&processes, proj_path);
-                        if !running {
-                            continue;
-                        }
-
-                        let (project, display, decoded_path) =
-                            extract_project_info(file_path);
-                        let file_path_str = file_path.to_string_lossy().to_string();
-
-                        let now_unix = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as i64;
-
-                        let mut session = LiveSession {
-                            id: session_id.clone(),
-                            project: project.clone(),
-                            project_display_name: display.clone(),
-                            project_path: decoded_path.clone(),
-                            file_path: file_path_str.clone(),
-                            status: SessionStatus::Paused,
-                            agent_state: AgentState {
-                                group: AgentStateGroup::NeedsYou,
-                                state: "recovered".into(),
-                                label: "Recovered from restart".into(),
-                                context: None,
-                            },
-                            git_branch: None,
-                            pid,
-                            title: String::new(),
-                            last_user_message: String::new(),
-                            current_activity: "Recovered from restart".to_string(),
-                            turn_count: 0,
-                            started_at: None,
-                            last_activity_at: now_unix,
-                            model: None,
-                            tokens: TokenUsage::default(),
-                            context_window_tokens: 0,
-                            cost: CostBreakdown::default(),
-                            cache_status: CacheStatus::Unknown,
-                            current_turn_started_at: None,
-                            last_turn_task_seconds: None,
-                            sub_agents: Vec::new(),
-                            progress_items: Vec::new(),
-                            tools_used: Vec::new(),
-                            last_cache_hit_at: None,
-                            hook_events: Vec::new(),
-                                            };
-
-                        // Enrich with accumulator data if available
-                        let accumulators = manager.accumulators.read().await;
-                        if let Some(acc) = accumulators.get(session_id) {
-                            let cost = manager
-                                .pricing
-                                .read()
-                                .ok()
-                                .map(|p| {
-                                    calculate_cost(&acc.tokens, acc.model.as_deref(), &p)
-                                })
-                                .unwrap_or_default();
-
-                            let cache_status = match acc.last_cache_hit_at {
-                                Some(ts) => {
-                                    let secs = seconds_since_modified_from_timestamp(ts);
-                                    if secs < 300 {
-                                        CacheStatus::Warm
-                                    } else {
-                                        CacheStatus::Cold
-                                    }
-                                }
-                                None => CacheStatus::Unknown,
-                            };
-
-                            let metadata = JsonlMetadata {
-                                git_branch: acc.git_branch.clone(),
-                                pid,
-                                title: acc.first_user_message.clone(),
-                                last_user_message: acc.last_user_message.clone(),
-                                turn_count: acc.user_turn_count,
-                                started_at: acc.started_at,
-                                last_activity_at: now_unix,
-                                model: acc.model.clone(),
-                                tokens: acc.tokens.clone(),
-                                context_window_tokens: acc.context_window_tokens,
-                                cost,
-                                cache_status,
-                                current_turn_started_at: acc.current_turn_started_at,
-                                last_turn_task_seconds: acc.last_turn_task_seconds,
-                                sub_agents: acc.sub_agents.clone(),
-                                progress_items: {
-                                    let mut items = acc.todo_items.clone();
-                                    items.extend(acc.task_items.clone());
-                                    items
-                                },
-                                tools_used: {
-                                    let mut mcp: Vec<_> =
-                                        acc.mcp_servers.iter().cloned().collect();
-                                    mcp.sort();
-                                    let mut skill: Vec<_> =
-                                        acc.skills.iter().cloned().collect();
-                                    skill.sort();
-                                    let mut tools =
-                                        Vec::with_capacity(mcp.len() + skill.len());
-                                    for name in mcp {
-                                        tools.push(super::state::ToolUsed {
-                                            name,
-                                            kind: "mcp".to_string(),
-                                        });
-                                    }
-                                    for name in skill {
-                                        tools.push(super::state::ToolUsed {
-                                            name,
-                                            kind: "skill".to_string(),
-                                        });
-                                    }
-                                    tools
-                                },
-                                last_cache_hit_at: acc.last_cache_hit_at,
-                            };
-                            drop(accumulators);
-
-                            apply_jsonl_metadata(
-                                &mut session,
-                                &metadata,
-                                &file_path_str,
-                                &project,
-                                &display,
-                                &decoded_path,
-                            );
-                        } else {
-                            drop(accumulators);
-                        }
-
-                        discovered_sessions.push((session_id.clone(), session));
-                    }
-                }
-                // processes read lock dropped
-
-                // Write phase: insert discovered sessions and bind PIDs
-                let mut actually_inserted: Vec<(String, LiveSession)> = Vec::new();
-                if !discovered_sessions.is_empty() || !pid_bind_candidates.is_empty() {
-                    let mut sessions = manager.sessions.write().await;
-
-                    for (session_id, session) in discovered_sessions {
-                        // Double-check: hook may have created it between read and write
-                        if !sessions.contains_key(&session_id) {
-                            info!(
-                                session_id = %session_id,
-                                project_path = %session.project_path,
-                                "Reconciliation: discovered session with running process"
-                            );
-                            sessions.insert(session_id.clone(), session.clone());
-                            actually_inserted.push((session_id, session));
-                        }
-                    }
-
-                    // 2.3 — PID binding
-                    let processes = manager.processes.read().await;
-                    for (session_id, proj_path) in &pid_bind_candidates {
-                        if let Some(session) = sessions.get_mut(session_id) {
-                            if session.pid.is_none() {
-                                let (_, pid) = has_running_process(&processes, proj_path);
-                                if let Some(p) = pid {
-                                    info!(
-                                        session_id = %session_id,
-                                        pid = p,
-                                        "Reconciliation: bound PID from process table"
-                                    );
-                                    session.pid = Some(p);
-                                }
-                            }
-                        }
-                    }
-                    drop(processes);
-                    drop(sessions);
-                }
-
-                // Broadcast only sessions we actually inserted (outside all locks).
-                // If a hook created the session between read and write phases,
-                // we must NOT broadcast our stale "Recovered" version — it would
-                // overwrite the hook's correct agent_state.
-                for (_, session) in actually_inserted {
-                    let _ = manager
-                        .tx
-                        .send(SessionEvent::SessionDiscovered { session });
-                }
-
-                // 2.4 — Unconditional snapshot save (defense in depth)
+                // 2.2 — Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
             }
         });
@@ -1424,15 +1173,11 @@ impl LiveSessionManager {
 
         let file_path_str = path.to_str().unwrap_or("").to_string();
 
-        // Process detector needs PID for this session
-        let processes = self.processes.read().await;
-        let (_, pid) = has_running_process(&processes, &project_path);
-        drop(processes);
-
-        // Collect metadata from accumulator (snapshot while lock is held)
+        // Collect metadata from accumulator (snapshot while lock is held).
+        // PID is not set here — hooks deliver PIDs via SessionStart.
         let metadata = JsonlMetadata {
             git_branch: acc.git_branch.clone(),
-            pid,
+            pid: None,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
             turn_count: acc.user_turn_count,
@@ -1757,31 +1502,6 @@ mod tests {
             !running,
             "Session A's bound PID 1000 is dead — must NOT be kept alive by PID 2000 in same cwd"
         );
-    }
-
-    /// Verify that sessions without a bound PID fall back to cwd discovery.
-    #[test]
-    fn test_unbound_session_discovers_pid_via_cwd() {
-        let session_pid: Option<u32> = None; // No PID bound yet
-        let alive_pids: HashSet<u32> = [3000].into_iter().collect();
-
-        // No bound PID → would fall through to cwd discovery path
-        let needs_cwd_discovery = session_pid.is_none();
-
-        assert!(
-            needs_cwd_discovery,
-            "Session without PID should fall through to cwd discovery"
-        );
-
-        // After discovery, PID gets bound
-        let mut bound_pid = session_pid;
-        if needs_cwd_discovery {
-            bound_pid = Some(3000); // Simulates cwd discovery finding PID 3000
-        }
-
-        // Subsequent check uses bound PID
-        let running = alive_pids.contains(&bound_pid.unwrap());
-        assert!(running, "After binding, PID check should find the process alive");
     }
 
     #[test]
