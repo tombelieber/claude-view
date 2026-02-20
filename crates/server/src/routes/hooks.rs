@@ -1304,4 +1304,53 @@ mod tests {
             "TeammateIdle hook event should record session's actual group"
         );
     }
+
+    #[tokio::test]
+    async fn test_state_changing_event_hook_event_records_new_group() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Session starts autonomous
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert(
+                "test-session".to_string(),
+                make_autonomous_session("test-session"),
+            );
+        }
+
+        // Send PreToolUse/AskUserQuestion — this SHOULD transition to needs_you
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": "test-session",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"question": "Which approach?"}
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("test-session").unwrap();
+        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(
+            session.hook_events[0].group, "needs_you",
+            "AskUserQuestion hook event should record needs_you (state was applied)"
+        );
+        // Verify session.agent_state was updated too
+        assert!(matches!(
+            session.agent_state.group,
+            AgentStateGroup::NeedsYou
+        ));
+    }
 }
