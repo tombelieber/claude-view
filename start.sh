@@ -5,7 +5,7 @@ set -euo pipefail
 # Downloads pre-built binary from GitHub Releases and runs it.
 # No Rust, Node, or Bun required — just curl and tar.
 
-REPO="anonymous-dev/claude-view"
+REPO="tombelieber/claude-view"
 CACHE_DIR="${HOME}/.cache/claude-view"
 BIN_DIR="${CACHE_DIR}/bin"
 VERSION_FILE="${CACHE_DIR}/version"
