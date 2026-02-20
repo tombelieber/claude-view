@@ -767,6 +767,7 @@ fn extract_pid_from_header(header_value: Option<&str>) -> Option<u32> {
 mod tests {
     use super::*;
     use crate::live::state::{AgentStateGroup, SessionStatus};
+    use tower::ServiceExt;
 
     fn minimal_payload(event: &str) -> HookPayload {
         HookPayload {
@@ -800,6 +801,43 @@ mod tests {
             trigger: None,
             custom_instructions: None,
             name: None,
+        }
+    }
+
+    /// Create a LiveSession in autonomous/acting state for integration tests.
+    fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
+        crate::live::state::LiveSession {
+            id: id.to_string(),
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            status: crate::live::state::SessionStatus::Working,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            git_branch: None,
+            pid: None,
+            title: "Test session".into(),
+            last_user_message: String::new(),
+            current_activity: "Working".into(),
+            turn_count: 5,
+            started_at: Some(1000),
+            last_activity_at: 1000,
+            model: None,
+            tokens: claude_view_core::pricing::TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: claude_view_core::pricing::CostBreakdown::default(),
+            cache_status: claude_view_core::pricing::CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            last_cache_hit_at: None,
+            hook_events: Vec::new(),
         }
     }
 
@@ -1125,5 +1163,61 @@ mod tests {
 
         let ended = resolve_state_from_hook(&minimal_payload("SessionEnd"));
         assert_eq!(status_from_agent_state(&ended), SessionStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn test_task_completed_hook_event_records_actual_session_group() {
+        // Setup: create AppState with a session in autonomous state
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Pre-populate a session in autonomous state (simulating a working session)
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert(
+                "test-session".to_string(),
+                make_autonomous_session("test-session"),
+            );
+        }
+
+        // Send a TaskCompleted hook
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": "test-session",
+            "hook_event_name": "TaskCompleted",
+            "task_id": "task-1",
+            "task_subject": "Fix login bug"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        // Verify: hook event should record "autonomous" (actual session group),
+        // NOT "needs_you" (what resolve_state_from_hook returns for TaskCompleted)
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("test-session").unwrap();
+        assert_eq!(session.hook_events.len(), 1);
+        let event = &session.hook_events[0];
+        assert_eq!(event.event_name, "TaskCompleted");
+        assert_eq!(event.label, "Fix login bug"); // label still from resolved state
+        assert_eq!(
+            event.group, "autonomous",
+            "TaskCompleted hook event should record the session's actual group (autonomous), \
+             not the resolved group (needs_you)"
+        );
+        // Also verify session.agent_state was NOT changed
+        assert!(matches!(
+            session.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
     }
 }
