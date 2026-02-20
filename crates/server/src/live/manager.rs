@@ -61,6 +61,10 @@ struct SessionAccumulator {
     /// Unix timestamp of the most recent cache hit or creation.
     /// Updated when a line has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     last_cache_hit_at: Option<i64>,
+    /// Unique MCP server names seen (deduplicated).
+    mcp_servers: std::collections::HashSet<String>,
+    /// Unique skill names seen (deduplicated).
+    skills: std::collections::HashSet<String>,
 }
 
 impl SessionAccumulator {
@@ -81,6 +85,8 @@ impl SessionAccumulator {
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
+            mcp_servers: std::collections::HashSet::new(),
+            skills: std::collections::HashSet::new(),
         }
     }
 }
@@ -104,6 +110,7 @@ struct JsonlMetadata {
     sub_agents: Vec<SubAgentInfo>,
     progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
+    tools_used: Vec<super::state::ToolUsed>,
 }
 
 /// Apply JSONL metadata to an existing session without touching hook-owned fields
@@ -146,6 +153,7 @@ fn apply_jsonl_metadata(
     session.last_turn_task_seconds = m.last_turn_task_seconds;
     session.sub_agents = m.sub_agents.clone();
     session.progress_items = m.progress_items.clone();
+    session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;
 }
 
@@ -573,6 +581,8 @@ impl LiveSessionManager {
                 "File replaced — clearing task progress for clean re-accumulation"
             );
             acc.task_items.clear();
+            acc.mcp_servers.clear();
+            acc.skills.clear();
             acc.tokens = TokenUsage::default();
         }
 
@@ -786,6 +796,22 @@ impl LiveSessionManager {
                 }
             }
 
+            // --- Tool integration tracking (MCP servers + skills) ---
+            for tool_name in &line.tool_names {
+                if tool_name.starts_with("mcp__") {
+                    // Pattern: mcp__{server}__{tool} — extract the server segment
+                    if let Some(idx) = tool_name[5..].find("__") {
+                        let server = &tool_name[5..5 + idx];
+                        acc.mcp_servers.insert(server.to_string());
+                    }
+                }
+            }
+            for skill_name in &line.skill_names {
+                if !skill_name.is_empty() {
+                    acc.skills.insert(skill_name.clone());
+                }
+            }
+
             // --- TodoWrite: full replacement ---
             if let Some(ref todos) = line.todo_write {
                 use claude_view_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
@@ -918,6 +944,22 @@ impl LiveSessionManager {
                 let mut items = acc.todo_items.clone();
                 items.extend(acc.task_items.clone());
                 items
+            },
+            tools_used: {
+                let mut tools = Vec::new();
+                for name in &acc.mcp_servers {
+                    tools.push(super::state::ToolUsed {
+                        name: name.clone(),
+                        kind: "mcp".to_string(),
+                    });
+                }
+                for name in &acc.skills {
+                    tools.push(super::state::ToolUsed {
+                        name: name.clone(),
+                        kind: "skill".to_string(),
+                    });
+                }
+                tools
             },
             last_cache_hit_at: acc.last_cache_hit_at,
         };
