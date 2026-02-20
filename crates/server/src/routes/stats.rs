@@ -12,8 +12,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use claude_view_core::{claude_projects_dir, DashboardStats};
+use claude_view_core::pricing::{self as pricing_engine, tiered_cost};
 use claude_view_db::trends::{TrendMetric, WeekTrends};
-use claude_view_db::AIGenerationStats;
+use claude_view_db::{AggregateCostBreakdown, AIGenerationStats};
 
 use crate::error::ApiResult;
 use crate::metrics::record_request;
@@ -520,21 +521,42 @@ pub async fn ai_generation_stats(
         }
     }
 
-    match state.db.get_ai_generation_stats(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
-        Ok(stats) => {
-            record_request("ai_generation_stats", "200", start.elapsed());
-            Ok(Json(stats))
-        }
+    let mut stats = match state.db.get_ai_generation_stats(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
+        Ok(s) => s,
         Err(e) => {
-            tracing::error!(
-                endpoint = "ai_generation_stats",
-                error = %e,
-                "Failed to fetch AI generation stats"
-            );
+            tracing::error!(endpoint = "ai_generation_stats", error = %e, "Failed to fetch AI generation stats");
             record_request("ai_generation_stats", "500", start.elapsed());
-            Err(e.into())
+            return Err(e.into());
         }
+    };
+
+    // Compute aggregate cost breakdown from per-model token data + pricing engine
+    if let Ok(model_tokens) = state.db.get_per_model_token_breakdown(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
+        let pricing = state.pricing.read().unwrap_or_else(|e| e.into_inner());
+        let mut cost = AggregateCostBreakdown::default();
+
+        for (model_id, input, output, cache_read, cache_create) in &model_tokens {
+            if let Some(mp) = pricing_engine::lookup_pricing(model_id, &pricing) {
+                cost.input_cost_usd += tiered_cost(*input, mp.input_cost_per_token, mp.input_cost_per_token_above_200k);
+                cost.output_cost_usd += tiered_cost(*output, mp.output_cost_per_token, mp.output_cost_per_token_above_200k);
+                let cr_cost = tiered_cost(*cache_read, mp.cache_read_cost_per_token, mp.cache_read_cost_per_token_above_200k);
+                cost.cache_read_cost_usd += cr_cost;
+                cost.cache_creation_cost_usd += tiered_cost(*cache_create, mp.cache_creation_cost_per_token, mp.cache_creation_cost_per_token_above_200k);
+                cost.cache_savings_usd += tiered_cost(*cache_read, mp.input_cost_per_token, mp.input_cost_per_token_above_200k) - cr_cost;
+            } else {
+                cost.input_cost_usd += *input as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN;
+                cost.output_cost_usd += *output as f64 * pricing_engine::FALLBACK_OUTPUT_COST_PER_TOKEN;
+                cost.cache_read_cost_usd += *cache_read as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
+                cost.cache_creation_cost_usd += *cache_create as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
+            }
+        }
+
+        cost.total_cost_usd = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
+        stats.cost = cost;
     }
+
+    record_request("ai_generation_stats", "200", start.elapsed());
+    Ok(Json(stats))
 }
 
 /// Create the stats routes router.
