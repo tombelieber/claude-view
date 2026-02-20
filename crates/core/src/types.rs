@@ -447,7 +447,7 @@ pub struct ProjectStat {
     pub session_count: usize,
 }
 
-/// A session entry for the "Longest Sessions" dashboard card.
+/// A session entry for the "Longest Tasks" dashboard card.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]

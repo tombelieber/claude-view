@@ -1085,6 +1085,7 @@ impl Database {
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                       INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                       WHERE s2.project_id = ?1
+                        AND s2.is_sidechain = 0
                         AND (?4 IS NULL OR s2.git_branch = ?4)
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
@@ -1092,6 +1093,7 @@ impl Database {
                     COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
                 FROM valid_sessions s
                 WHERE s.project_id = ?1
+                  AND s.is_sidechain = 0
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR s.git_branch = ?4)

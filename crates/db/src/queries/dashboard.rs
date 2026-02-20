@@ -607,14 +607,14 @@ impl Database {
             })
             .collect();
 
-        // Top 5 longest sessions by duration
+        // Top 5 sessions by longest task time
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
             SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
                         WHERE longest_task_seconds > 0
               AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
-            ORDER BY duration_seconds DESC
+            ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
         )
@@ -761,14 +761,14 @@ impl Database {
             })
             .collect();
 
-        // Top 5 longest sessions by duration (filtered)
+        // Top 5 sessions by longest task time (filtered)
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
             SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
             WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
-            ORDER BY duration_seconds DESC
+            ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
         )
