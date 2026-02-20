@@ -7,16 +7,24 @@ describe('formatTokens', () => {
     expect(formatTokens(undefined)).toBe('--')
   })
 
+  it('formats billions with B suffix', () => {
+    expect(formatTokens(1_000_000_000)).toBe('1.00B')
+    expect(formatTokens(7_177_700_000)).toBe('7.18B')
+    expect(formatTokens(12_500_000_000)).toBe('12.5B')
+  })
+
   it('formats millions with M suffix', () => {
     expect(formatTokens(1_000_000)).toBe('1.0M')
-    expect(formatTokens(1_500_000)).toBe('1.5M')
-    expect(formatTokens(2_900_000)).toBe('2.9M')
+    expect(formatTokens(4_900_000)).toBe('4.9M')
+    expect(formatTokens(456_800_000)).toBe('456.8M')
+    expect(formatTokens(999_000_000)).toBe('999.0M')
   })
 
   it('formats thousands with k suffix', () => {
-    expect(formatTokens(1_000)).toBe('1k')
+    expect(formatTokens(1_000)).toBe('1.0k')
+    expect(formatTokens(5_400)).toBe('5.4k')
+    expect(formatTokens(45_000)).toBe('45k')
     expect(formatTokens(450_000)).toBe('450k')
-    expect(formatTokens(999_999)).toBe('1000k')
   })
 
   it('formats small numbers without suffix', () => {
