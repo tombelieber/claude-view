@@ -270,13 +270,13 @@ export function StatsDashboard() {
           </div>
         )}
 
-        {/* Longest Sessions — "See all" links to sorted history */}
+        {/* Longest Tasks — "See all" links to sorted history */}
         {stats.longestSessions.length > 0 && (
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-4 h-4" />
-                Longest Sessions
+                Longest Tasks
               </h2>
               <Link
                 to="/history?sort=duration"

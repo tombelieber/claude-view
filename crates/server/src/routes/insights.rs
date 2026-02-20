@@ -1517,9 +1517,9 @@ pub async fn get_benchmarks(
         SELECT COUNT(*),
                (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                 INNER JOIN sessions s2 ON sc.session_id = s2.id
-                WHERE s2.last_message_at >= ?1),
+                WHERE s2.last_message_at >= ?1 AND s2.is_sidechain = 0),
                COALESCE(SUM(total_input_tokens + total_output_tokens), 0)
-        FROM sessions WHERE last_message_at >= ?1
+        FROM sessions WHERE last_message_at >= ?1 AND is_sidechain = 0
         "#,
     )
     .bind(current_month_start)
