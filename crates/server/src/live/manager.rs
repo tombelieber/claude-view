@@ -1285,34 +1285,6 @@ fn pid_snapshot_path() -> PathBuf {
         .join("live-monitor-pids.json")
 }
 
-/// Save the session-to-PID mapping to disk atomically.
-///
-/// Written as `{ "session_id": pid, ... }`. Uses tmp+rename for crash safety.
-fn save_pid_snapshot(path: &Path, pids: &HashMap<String, u32>) {
-    let content = match serde_json::to_string(pids) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to serialize PID snapshot: {}", e);
-            return;
-        }
-    };
-    let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, &content).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
-    }
-}
-
-/// Load the session-to-PID mapping from disk.
-///
-/// Returns an empty map if the file is missing or corrupt.
-fn load_pid_snapshot(path: &Path) -> HashMap<String, u32> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return HashMap::new(),
-    };
-    serde_json::from_str(&content).unwrap_or_default()
-}
-
 /// Save the extended session snapshot to disk atomically.
 fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
     let content = match serde_json::to_string(snapshot) {
@@ -1527,37 +1499,54 @@ mod tests {
     }
 
     #[test]
-    fn test_pid_snapshot_roundtrip() {
+    fn test_session_snapshot_roundtrip() {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionSnapshot, SnapshotEntry};
+
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pids.json");
+        let path = dir.path().join("snapshot.json");
 
-        let mut pids = HashMap::new();
-        pids.insert("session-abc".to_string(), 12345u32);
-        pids.insert("session-def".to_string(), 67890u32);
+        let mut entries = HashMap::new();
+        entries.insert(
+            "session-abc".to_string(),
+            SnapshotEntry {
+                pid: 12345,
+                status: "working".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                last_activity_at: 1708500000,
+            },
+        );
+        let snapshot = SessionSnapshot { version: 2, sessions: entries };
 
-        save_pid_snapshot(&path, &pids);
-        let loaded = load_pid_snapshot(&path);
+        save_session_snapshot(&path, &snapshot);
+        let loaded = load_session_snapshot(&path);
 
-        assert_eq!(loaded.len(), 2);
-        assert_eq!(loaded.get("session-abc"), Some(&12345u32));
-        assert_eq!(loaded.get("session-def"), Some(&67890u32));
+        assert_eq!(loaded.version, 2);
+        assert_eq!(loaded.sessions.len(), 1);
+        assert_eq!(loaded.sessions["session-abc"].pid, 12345);
     }
 
     #[test]
-    fn test_pid_snapshot_missing_file() {
-        let path = std::path::PathBuf::from("/tmp/nonexistent-pid-snapshot-test.json");
-        let loaded = load_pid_snapshot(&path);
-        assert!(loaded.is_empty());
+    fn test_session_snapshot_missing_file() {
+        let path = std::path::PathBuf::from("/tmp/nonexistent-session-snapshot-test.json");
+        let loaded = load_session_snapshot(&path);
+        assert_eq!(loaded.version, 2);
+        assert!(loaded.sessions.is_empty());
     }
 
     #[test]
-    fn test_pid_snapshot_corrupt_file() {
+    fn test_session_snapshot_corrupt_file() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pids.json");
+        let path = dir.path().join("snapshot.json");
         std::fs::write(&path, "not valid json {{{").unwrap();
 
-        let loaded = load_pid_snapshot(&path);
-        assert!(loaded.is_empty());
+        let loaded = load_session_snapshot(&path);
+        assert_eq!(loaded.version, 2);
+        assert!(loaded.sessions.is_empty());
     }
 
     #[test]
