@@ -1796,7 +1796,7 @@ impl Pattern for OptimalDurationPattern {
 
 use axum::{extract::{Query, State}, Json};
 use serde::Deserialize;
-use vibe_recall_core::patterns::PatternRegistry;
+use claude_view_core::patterns::PatternRegistry;
 
 #[derive(Debug, Deserialize)]
 pub struct InsightsQuery {

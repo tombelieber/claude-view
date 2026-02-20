@@ -955,7 +955,7 @@ Expected: 0 errors
 **Step 2: Run relevant tests**
 
 ```bash
-cargo test -p vibe-recall-server -- routes::system
+cargo test -p claude-view-server -- routes::system
 ```
 Expected: All system route tests pass (backend unchanged)
 

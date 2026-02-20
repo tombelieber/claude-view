@@ -97,7 +97,7 @@ In each of these files, replace `Mission Control` → `Live Monitor` in doc comm
 
 **Step 4: Run Rust tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests pass (hook_registrar test updated in step 1)
 
 **Step 5: Commit**
@@ -254,14 +254,14 @@ pub mod accumulator;
 **Step 4: Update manager.rs to delegate to shared accumulator**
 
 In `crates/server/src/live/manager.rs`:
-- Replace the `SessionAccumulator` struct with `use vibe_recall_core::accumulator::SessionAccumulator`
+- Replace the `SessionAccumulator` struct with `use claude_view_core::accumulator::SessionAccumulator`
 - Remove duplicated accumulation logic from `process_jsonl_update()`
 - Call `self.accumulator.process_line(&line)` for each parsed line
 - Keep orchestration logic (file watching, SSE broadcast, process detection) in manager
 
 **Step 5: Run tests**
 
-Run: `cargo test -p vibe-recall-core && cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-core && cargo test -p claude-view-server`
 Expected: All pass
 
 **Step 6: Commit**
@@ -282,7 +282,7 @@ git add -A && git commit -m "refactor: extract SessionAccumulator to crates/core
 Add to `crates/server/src/routes/sessions.rs`:
 
 ```rust
-use vibe_recall_core::accumulator::{SessionAccumulator, RichSessionData};
+use claude_view_core::accumulator::{SessionAccumulator, RichSessionData};
 
 /// GET /api/sessions/:id/rich — Parse JSONL on demand and return rich session data.
 pub async fn get_session_rich(
@@ -326,7 +326,7 @@ In the `router()` function (line 442), add after line 448:
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: Pass. Also manually test: `curl http://localhost:47892/api/sessions/<any-id>/rich | jq .`
 
 **Step 4: Commit**
@@ -548,7 +548,7 @@ git add -A && git commit -m "feat: redesign history sidebar with tabbed Overview
 
 **Step 1: Run full Rust test suite**
 
-Run: `cargo test -p vibe-recall-core -p vibe-recall-server`
+Run: `cargo test -p claude-view-core -p claude-view-server`
 Expected: All pass
 
 **Step 2: Run frontend type check**

@@ -20,10 +20,10 @@ use ts_rs::TS;
 use crate::classify_state::ClassifyStatus;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use vibe_recall_core::classification::{
+use claude_view_core::classification::{
     self, ClassificationInput, BATCH_SIZE,
 };
-use vibe_recall_core::llm::{ClassificationRequest, LlmProvider};
+use claude_view_core::llm::{ClassificationRequest, LlmProvider};
 
 // ============================================================================
 // Request / Response Types
@@ -473,7 +473,7 @@ async fn classify_single_session(
 
     // 4. Classify via Claude CLI
     let provider =
-        vibe_recall_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+        claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
     let request = ClassificationRequest {
         session_id: session_id.clone(),
         first_prompt: preview,
@@ -619,7 +619,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
             }
 
             let single_provider =
-                vibe_recall_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+                claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
             let single_request = ClassificationRequest {
                 session_id: input.session_id.clone(),
                 first_prompt: input.preview.clone(),
@@ -807,7 +807,7 @@ mod tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
         use tower::ServiceExt;
-        use vibe_recall_db::Database;
+        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -837,7 +837,7 @@ mod tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
         use tower::ServiceExt;
-        use vibe_recall_db::Database;
+        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -871,7 +871,7 @@ mod tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
         use tower::ServiceExt;
-        use vibe_recall_db::Database;
+        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -916,7 +916,7 @@ mod tests {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
         use tower::ServiceExt;
-        use vibe_recall_db::Database;
+        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);

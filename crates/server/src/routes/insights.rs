@@ -14,9 +14,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use vibe_recall_core::insights::generator::GeneratedInsight;
-use vibe_recall_core::patterns::calculate_all_patterns;
-use vibe_recall_core::types::SessionInfo;
+use claude_view_core::insights::generator::GeneratedInsight;
+use claude_view_core::patterns::calculate_all_patterns;
+use claude_view_core::types::SessionInfo;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -312,7 +312,7 @@ impl LightSession {
             last_message: String::new(),
             files_touched: vec![],
             skills_used: vec![],
-            tool_counts: vibe_recall_core::ToolCounts {
+            tool_counts: claude_view_core::ToolCounts {
                 edit: self.tool_counts_edit as usize,
                 read: self.tool_counts_read as usize,
                 bash: self.tool_counts_bash as usize,
@@ -434,7 +434,7 @@ pub async fn get_insights(
     let patterns_evaluated = all_insights.len() as u32;
 
     // 5. Sort by impact score descending
-    vibe_recall_core::insights::generator::sort_by_impact(&mut all_insights);
+    claude_view_core::insights::generator::sort_by_impact(&mut all_insights);
 
     // 6. Group by tier
     let high: Vec<GeneratedInsight> = all_insights
@@ -1088,8 +1088,8 @@ const VALID_GRANULARITIES: &[&str] = &["day", "week", "month"];
 pub async fn get_insights_trends(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TrendsQuery>,
-) -> ApiResult<Json<vibe_recall_db::insights_trends::InsightsTrendsResponse>> {
-    use vibe_recall_db::insights_trends::*;
+) -> ApiResult<Json<claude_view_db::insights_trends::InsightsTrendsResponse>> {
+    use claude_view_db::insights_trends::*;
 
     // Validate inputs
     if !VALID_METRICS.contains(&query.metric.as_str()) {
@@ -1204,8 +1204,8 @@ pub struct BenchmarksQuery {
 pub async fn get_benchmarks(
     State(state): State<Arc<AppState>>,
     Query(query): Query<BenchmarksQuery>,
-) -> ApiResult<Json<vibe_recall_core::BenchmarksResponse>> {
-    use vibe_recall_core::{
+) -> ApiResult<Json<claude_view_core::BenchmarksResponse>> {
+    use claude_view_core::{
         BenchmarksResponse, CategoryPerformance, CategoryVerdict, ImprovementMetrics,
         LearningCurvePoint, PeriodMetrics, ProgressComparison, ReportSummary, SkillAdoption,
     };
@@ -1566,9 +1566,9 @@ pub async fn get_benchmarks(
 // ============================================================================
 
 fn bench_progress_insight(
-    first: &Option<vibe_recall_core::PeriodMetrics>,
-    last: &vibe_recall_core::PeriodMetrics,
-    improvement: &Option<vibe_recall_core::ImprovementMetrics>,
+    first: &Option<claude_view_core::PeriodMetrics>,
+    last: &claude_view_core::PeriodMetrics,
+    improvement: &Option<claude_view_core::ImprovementMetrics>,
 ) -> String {
     let Some(_first) = first else {
         if last.reedit_rate < 0.3 {
@@ -1601,8 +1601,8 @@ fn bench_progress_insight(
     }
 }
 
-fn bench_category_insight(category: &str, verdict: vibe_recall_core::CategoryVerdict) -> String {
-    use vibe_recall_core::CategoryVerdict as CV;
+fn bench_category_insight(category: &str, verdict: claude_view_core::CategoryVerdict) -> String {
+    use claude_view_core::CategoryVerdict as CV;
     let display = category.replace('_', " ");
     match verdict {
         CV::Excellent => format!("{} is your strongest area -- excellent re-edit rate", display),
@@ -1613,11 +1613,11 @@ fn bench_category_insight(category: &str, verdict: vibe_recall_core::CategoryVer
 }
 
 fn bench_top_wins(
-    progress: &vibe_recall_core::ProgressComparison,
-    categories: &[vibe_recall_core::CategoryPerformance],
-    skills: &[vibe_recall_core::SkillAdoption],
+    progress: &claude_view_core::ProgressComparison,
+    categories: &[claude_view_core::CategoryPerformance],
+    skills: &[claude_view_core::SkillAdoption],
 ) -> Vec<String> {
-    use vibe_recall_core::CategoryVerdict as CV;
+    use claude_view_core::CategoryVerdict as CV;
     let mut wins = Vec::new();
 
     if let Some(ref imp) = progress.improvement {
@@ -1642,8 +1642,8 @@ fn bench_top_wins(
     wins
 }
 
-fn bench_focus_areas(categories: &[vibe_recall_core::CategoryPerformance]) -> Vec<String> {
-    use vibe_recall_core::CategoryVerdict as CV;
+fn bench_focus_areas(categories: &[claude_view_core::CategoryPerformance]) -> Vec<String> {
+    use claude_view_core::CategoryVerdict as CV;
     let mut areas: Vec<String> = categories
         .iter()
         .filter(|c| c.verdict == CV::NeedsWork)
@@ -1678,7 +1678,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

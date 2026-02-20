@@ -108,7 +108,7 @@ crates/db/src/queries/
 use crate::{Database, DbResult};
 use chrono::Utc;
 use std::collections::HashMap;
-use vibe_recall_core::{ProjectInfo, SessionInfo, ToolCounts};
+use claude_view_core::{ProjectInfo, SessionInfo, ToolCounts};
 use super::row_types::SessionRow;
 use super::IndexerEntry;
 // NOTE: _tx functions are NOT used by sessions.rs — they're only used by indexer_parallel.rs
@@ -143,7 +143,7 @@ use super::{InvocableWithCount, StatsOverview};
 **Imports needed:**
 ```rust
 use crate::{Database, DbResult};
-use vibe_recall_core::RawTurn;
+use claude_view_core::RawTurn;
 use super::{ModelWithStats, TokenStats};
 // NOTE: _tx functions are NOT called by models.rs — only by indexer_parallel.rs
 ```
@@ -169,7 +169,7 @@ use super::{ModelWithStats, TokenStats};
 ```rust
 use crate::{Database, DbResult};
 use chrono::Utc;
-use vibe_recall_core::{
+use claude_view_core::{
     DashboardStats, DayActivity, ProjectStat, ProjectSummary,
     SessionDurationStat, SessionInfo, SessionsPage, SkillStat, ToolCounts,
 };
@@ -261,14 +261,14 @@ use crate::DbResult;  // NOTE: Database is NOT needed — row_types has no impl 
 use chrono::Utc;
 use serde_json;
 use sqlx::Row;
-use vibe_recall_core::{
+use claude_view_core::{
     parse_model_id, RawTurn, SessionInfo, ToolCounts,
     ClassificationJob, ClassificationJobStatus,
     IndexRun, IndexRunType, IndexRunStatus,
 };
 ```
 
-> **Audit note:** The original import list was missing 6 types from `vibe_recall_core` needed by `ClassificationJobRow::into_classification_job()` and `IndexRunRow::into_index_run()`, plus `serde_json` needed by `SessionRow::into_session_info()`. These were caught by the visibility audit agent. The compiler would also catch these immediately.
+> **Audit note:** The original import list was missing 6 types from `claude_view_core` needed by `ClassificationJobRow::into_classification_job()` and `IndexRunRow::into_index_run()`, plus `serde_json` needed by `SessionRow::into_session_info()`. These were caught by the visibility audit agent. The compiler would also catch these immediately.
 
 ---
 
@@ -280,7 +280,7 @@ git checkout -b backup/pre-queries-refactor
 git checkout -  # return to working branch
 
 # 2. Record baseline test results
-cargo test -p vibe-recall-db 2>&1 | tail -3  # save expected pass count
+cargo test -p claude-view-db 2>&1 | tail -3  # save expected pass count
 
 # 3. Record baseline line count
 wc -l crates/db/src/queries.rs  # should be 4,562
@@ -312,7 +312,7 @@ git mv crates/db/src/queries.rs crates/db/src/queries/mod.rs
 **Step 2: Verify it compiles (zero changes to code)**
 
 ```bash
-cargo check -p vibe-recall-db
+cargo check -p claude-view-db
 ```
 
 Expected: Clean compile. Rust resolves `mod queries;` to `queries/mod.rs` identically.
@@ -320,7 +320,7 @@ Expected: Clean compile. Rust resolves `mod queries;` to `queries/mod.rs` identi
 **Step 3: Run tests**
 
 ```bash
-cargo test -p vibe-recall-db -- queries 2>&1 | tail -5
+cargo test -p claude-view-db -- queries 2>&1 | tail -5
 ```
 
 Expected: All 29 queries tests pass.
@@ -360,7 +360,7 @@ Add at the top:
 use crate::DbResult;
 use chrono::Utc;
 use sqlx::Row;
-use vibe_recall_core::{parse_model_id, RawTurn, SessionInfo, ToolCounts};
+use claude_view_core::{parse_model_id, RawTurn, SessionInfo, ToolCounts};
 ```
 
 Make all items `pub(crate)` — they're internal to the db crate.
@@ -385,7 +385,7 @@ This preserves `crate::queries::update_session_deep_fields_tx` for `indexer_para
 **Step 4: Verify compile + test**
 
 ```bash
-cargo check -p vibe-recall-db && cargo test -p vibe-recall-db
+cargo check -p claude-view-db && cargo test -p claude-view-db
 ```
 
 **Step 5: Commit**
@@ -419,8 +419,8 @@ Distribute the 29 tests into domain-specific files. Each file uses the crate's p
 ```rust
 //! Integration tests for Database {domain} query methods.
 
-use vibe_recall_db::Database;
-use vibe_recall_core::{SessionInfo, ToolCounts};
+use claude_view_db::Database;
+use claude_view_core::{SessionInfo, ToolCounts};
 
 mod queries_shared;
 use queries_shared::make_session;
@@ -433,19 +433,19 @@ The shared `make_session` helper goes in `queries_shared.rs`:
 ```rust
 //! Shared test helpers for queries integration tests.
 
-use vibe_recall_core::{SessionInfo, ToolCounts};
+use claude_view_core::{SessionInfo, ToolCounts};
 
 pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
     // ... exact copy from the original test block
 }
 ```
 
-Note: Integration tests use the crate's public API (`vibe_recall_db::Database`), not `super::`. Adjust any `super::` references to use the crate name.
+Note: Integration tests use the crate's public API (`claude_view_db::Database`), not `super::`. Adjust any `super::` references to use the crate name.
 
 **Step 2: Verify ALL test files pass**
 
 ```bash
-cargo test -p vibe-recall-db 2>&1 | tail -10
+cargo test -p claude-view-db 2>&1 | tail -10
 ```
 
 Expected: All 29 tests pass across the domain-specific files.
@@ -483,7 +483,7 @@ Each task follows the same pattern:
 2. Add `mod {domain};` to `queries/mod.rs`
 3. Cut the methods from `mod.rs`, paste into the new file
 4. Add `use crate::{Database, DbResult};` + domain-specific imports
-5. `cargo check -p vibe-recall-db && cargo test -p vibe-recall-db`
+5. `cargo check -p claude-view-db && cargo test -p claude-view-db`
 6. Commit
 
 **Task A4:** Move 11 session methods → `sessions.rs`
@@ -522,7 +522,7 @@ pub use types::*;
 **Step 3: Verify lib.rs re-exports still work**
 
 ```bash
-cargo check -p vibe-recall-db && cargo check -p vibe-recall-server
+cargo check -p claude-view-db && cargo check -p claude-view-server
 ```
 
 The `pub use queries::BranchCount` in `lib.rs` resolves through: `queries/mod.rs` → `pub use types::*` → `types.rs::BranchCount`. No changes needed to `lib.rs`.
@@ -551,17 +551,17 @@ After all moves, `mod.rs` should contain only:
 
 ```bash
 # Compile all dependent crates
-cargo check -p vibe-recall-db
-cargo check -p vibe-recall-server
+cargo check -p claude-view-db
+cargo check -p claude-view-server
 
 # Run ALL db tests (unit + integration)
-cargo test -p vibe-recall-db
+cargo test -p claude-view-db
 
 # Run server tests
-cargo test -p vibe-recall-server
+cargo test -p claude-view-server
 
 # Clippy
-cargo clippy -p vibe-recall-db -- -D warnings
+cargo clippy -p claude-view-db -- -D warnings
 ```
 
 **Step 3: Final commit**
@@ -615,14 +615,14 @@ Change `crates/db/src/migrations.rs`:
 
 Move `#[cfg(test)] mod tests { ... }` (lines 509–1528) to `crates/db/tests/migration_test.rs`.
 
-Replace `super::MIGRATIONS` with `vibe_recall_db::MIGRATIONS`.
+Replace `super::MIGRATIONS` with `claude_view_db::MIGRATIONS`.
 
-Replace `setup_db()` helper — it manually runs migrations, so it needs access to `MIGRATIONS`. With the re-export, use `vibe_recall_db::MIGRATIONS`.
+Replace `setup_db()` helper — it manually runs migrations, so it needs access to `MIGRATIONS`. With the re-export, use `claude_view_db::MIGRATIONS`.
 
 **Step 3: Verify**
 
 ```bash
-cargo test -p vibe-recall-db --test migration_test 2>&1 | tail -10
+cargo test -p claude-view-db --test migration_test 2>&1 | tail -10
 ```
 
 **Step 4: Commit**
@@ -708,18 +708,18 @@ Phases C, D, E can be parallelized across sessions.
 ## Verification Checklist (after each phase)
 
 ```bash
-cargo check -p vibe-recall-db        # db crate compiles
-cargo check -p vibe-recall-server    # server crate compiles (depends on db)
-cargo test -p vibe-recall-db         # all db tests pass
-cargo test -p vibe-recall-server     # all server tests pass
-cargo clippy -p vibe-recall-db -- -D warnings  # no new warnings
+cargo check -p claude-view-db        # db crate compiles
+cargo check -p claude-view-server    # server crate compiles (depends on db)
+cargo test -p claude-view-db         # all db tests pass
+cargo test -p claude-view-server     # all server tests pass
+cargo clippy -p claude-view-db -- -D warnings  # no new warnings
 ```
 
 ## Import Strategy
 
 All 67 query methods remain `impl Database` methods. **Consuming code does NOT need import changes** — `db.method_name()` works identically before and after the split. Rust merges `impl Database` blocks from all sub-files at compile time.
 
-Only **types** are re-exported from `queries/mod.rs` via `pub use types::*;` to preserve existing `use vibe_recall_db::BranchCount` paths in `lib.rs`.
+Only **types** are re-exported from `queries/mod.rs` via `pub use types::*;` to preserve existing `use claude_view_db::BranchCount` paths in `lib.rs`.
 
 The 4 `_tx` free functions are re-exported from `queries/mod.rs` via `pub use row_types::{...}` to preserve `crate::queries::function_name` paths used by `indexer_parallel.rs`.
 

@@ -256,7 +256,7 @@ Since production always uses the rusqlite path (file-based DB), `lines_added`, `
 **Estimated scope:** 3 files, ~400 LOC changed (mostly deletions of duplicated SQL and parameter lists). This is the largest phase and touches the core write path -- allow 1-2 sessions for implementation + testing. Also commit the Prevention Rules to `CLAUDE.md` as part of this phase's PR.
 
 **Test strategy:**
-- Run `cargo test -p vibe-recall-db -- update_session_deep` to verify all existing tests pass with the new struct-based API.
+- Run `cargo test -p claude-view-db -- update_session_deep` to verify all existing tests pass with the new struct-based API.
 - Add a new test that verifies `lines_added`, `lines_removed`, `loc_source`, and `work_type` are round-tripped through the rusqlite path.
 - Verify column count matches between SQL string and struct field count at compile time (const assert or test).
 - **Critical:** Existing tests use in-memory SQLite databases, which take the `write_results_sqlx` fallback path (not the rusqlite production path). You MUST add at least one integration test that uses a **file-based** temporary database to exercise the rusqlite write path (`pass_2_deep_index` with `db.is_file_based() == true`). Without this, the production code path remains untested.
@@ -298,7 +298,7 @@ Since production always uses the rusqlite path (file-based DB), `lines_added`, `
 **Test strategy:**
 - Add test: insert a session with turns, re-index with different turns, verify old turns are gone and new turns are present.
 - Add test: delete a session via `remove_stale_sessions`, verify turns and invocations are also deleted (CASCADE).
-- Run `cargo test -p vibe-recall-db`.
+- Run `cargo test -p claude-view-db`.
 
 **Risk:** Low-medium. The migration recreates tables, which requires copying data. For large databases, this is a one-time cost at startup. The DELETE-before-INSERT pattern is standard and well-understood.
 
@@ -399,9 +399,9 @@ Since production always uses the rusqlite path (file-based DB), `lines_added`, `
 After all phases are complete, run these checks:
 
 ### Automated
-- [ ] `cargo test -p vibe-recall-db` -- all DB tests pass
-- [ ] `cargo test -p vibe-recall-server` -- all server tests pass
-- [ ] `cargo test -p vibe-recall-core` -- all core tests pass
+- [ ] `cargo test -p claude-view-db` -- all DB tests pass
+- [ ] `cargo test -p claude-view-server` -- all server tests pass
+- [ ] `cargo test -p claude-view-core` -- all core tests pass
 - [ ] `cargo build --release` -- no warnings
 - [ ] `bun run build` -- frontend builds without errors
 - [ ] **Full pipeline integration test** (added in Phase 1): construct `DeepIndexFields`, write via rusqlite path to a temp file-based DB, read back via `into_session_info`, assert ALL 50 fields match expected values (including `lines_added`, `lines_removed`, `loc_source`, `work_type`, `git_branch`)

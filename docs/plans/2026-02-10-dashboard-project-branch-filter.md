@@ -396,7 +396,7 @@ These existing tests call functions whose signatures changed. Update each to pas
 **Step 2.9: Test DB crate**
 
 ```bash
-cargo test -p vibe-recall-db -- --no-capture
+cargo test -p claude-view-db -- --no-capture
 ```
 
 Expected: All existing tests pass (behavior unchanged — `None, None` = no filter).
@@ -477,7 +477,7 @@ pub async fn get_week_trends(&self) -> DbResult<WeekTrends> {
 **Step 3.4: Test DB crate (trends)**
 
 ```bash
-cargo test -p vibe-recall-db -- trends --no-capture
+cargo test -p claude-view-db -- trends --no-capture
 ```
 
 Expected: All existing trend tests pass (behavior unchanged).
@@ -575,7 +575,7 @@ Storage stats are always global (not filtered by project/branch).
 **Step 4.5: Run server tests**
 
 ```bash
-cargo test -p vibe-recall-server -- --no-capture
+cargo test -p claude-view-server -- --no-capture
 ```
 
 Expected: All existing tests pass (they send no project/branch query params → DashboardQuery defaults to None → no filter → same behavior).
@@ -1029,8 +1029,8 @@ async fn test_get_trends_with_range_and_project_filter() {
 **Step 5.7: Run all tests**
 
 ```bash
-cargo test -p vibe-recall-db -- --no-capture
-cargo test -p vibe-recall-server -- --no-capture
+cargo test -p claude-view-db -- --no-capture
+cargo test -p claude-view-server -- --no-capture
 ```
 
 Expected: All tests pass, including the new filter-behavior tests.
@@ -1070,8 +1070,8 @@ Expected: Zero errors, zero warnings related to our changes.
 **Step 6.2: Run ALL tests across both crates**
 
 ```bash
-cargo test -p vibe-recall-db --no-capture
-cargo test -p vibe-recall-server --no-capture
+cargo test -p claude-view-db --no-capture
+cargo test -p claude-view-server --no-capture
 ```
 
 Expected: All pass.
@@ -1079,7 +1079,7 @@ Expected: All pass.
 **Step 6.3: Start dev server and verify in browser**
 
 ```bash
-cargo build -p vibe-recall-server && cargo run -p vibe-recall-server
+cargo build -p claude-view-server && cargo run -p claude-view-server
 ```
 
 In another terminal:

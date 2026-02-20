@@ -526,7 +526,7 @@ New field on `LiveSession` in `state.rs` (after `sub_agents` at line 115):
     /// Progress items (todos + tasks) for display on session cards.
     /// Merged from TodoWrite and TaskCreate/TaskUpdate systems.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    pub progress_items: Vec<claude_view_core::progress::ProgressItem>,
 ```
 
 Built in `process_jsonl_update` inside the `LiveSession { ... }` construction block (after `sub_agents: acc.sub_agents.clone()` at `manager.rs:981`):

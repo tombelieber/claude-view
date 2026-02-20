@@ -40,7 +40,7 @@ reqwest = { workspace = true }
 
 **Step 2: Verify it compiles**
 
-Run: `cargo check -p vibe-recall-db`
+Run: `cargo check -p claude-view-db`
 Expected: compiles with no errors
 
 **Step 3: Commit**
@@ -483,7 +483,7 @@ Replace `pub mod cost;` with `pub mod pricing;`. Update re-exports.
 
 **Step 3: Update all consumers**
 
-Every file that imports from `vibe_recall_core::cost::*` must switch to `vibe_recall_core::pricing::*`. Key files:
+Every file that imports from `claude_view_core::cost::*` must switch to `claude_view_core::pricing::*`. Key files:
 - `crates/server/src/live/manager.rs` — uses `TokenUsage`, `CostBreakdown`, `calculate_live_cost` → `calculate_cost`
 - `crates/server/src/live/state.rs` — uses `CostBreakdown`, `TokenUsage`, `CacheStatus`
 - `crates/server/src/routes/live.rs` — uses pricing map
@@ -497,7 +497,7 @@ Remove `ModelPricing`, `TokenBreakdown`, `calculate_cost_usd`, `tiered_cost`, `l
 
 ```rust
 // Re-export pricing types (now from core)
-pub use vibe_recall_core::pricing::{
+pub use claude_view_core::pricing::{
     calculate_cost, calculate_cost_usd, default_pricing, lookup_pricing,
     ModelPricing, TokenBreakdown, CostBreakdown, TokenUsage, CacheStatus,
     FALLBACK_INPUT_COST_PER_TOKEN, FALLBACK_OUTPUT_COST_PER_TOKEN,
@@ -506,13 +506,13 @@ pub use vibe_recall_core::pricing::{
 
 **Step 6: Run tests**
 
-Run: `cargo test -p vibe-recall-core -- pricing`
+Run: `cargo test -p claude-view-core -- pricing`
 Expected: all pricing tests pass
 
-Run: `cargo test -p vibe-recall-db`
+Run: `cargo test -p claude-view-db`
 Expected: all db tests pass (re-exports resolve correctly)
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Expected: compiles (all imports resolve)
 
 **Step 7: Commit**
@@ -540,7 +540,7 @@ and adds is_estimated flag to CostBreakdown for frontend badge support."
 //! Pricing data management: litellm fetch + merge with defaults.
 
 use std::collections::HashMap;
-use vibe_recall_core::pricing::ModelPricing;
+use claude_view_core::pricing::ModelPricing;
 
 const LITELLM_URL: &str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 
@@ -674,10 +674,10 @@ Key files:
 }
 
 async fn refresh_pricing(pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>) {
-    match vibe_recall_db::fetch_litellm_pricing().await {
+    match claude_view_db::fetch_litellm_pricing().await {
         Ok(litellm) => {
-            let defaults = vibe_recall_core::pricing::default_pricing();
-            let merged = vibe_recall_db::merge_pricing(&defaults, &litellm);
+            let defaults = claude_view_core::pricing::default_pricing();
+            let merged = claude_view_db::merge_pricing(&defaults, &litellm);
             let count = merged.len();
             *pricing.write().unwrap() = merged;
             tracing::info!(models = count, "Pricing table refreshed from litellm");
@@ -691,7 +691,7 @@ async fn refresh_pricing(pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPr
 
 **Step 5: Run full compile and test**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: all tests pass
 
 **Step 6: Commit**
@@ -770,7 +770,7 @@ let (curr_tokens, prev_tokens): (i64, i64) = sqlx::query_as(
 
 **Step 2: Run trends tests**
 
-Run: `cargo test -p vibe-recall-db -- trends`
+Run: `cargo test -p claude-view-db -- trends`
 Expected: all pass
 
 **Step 3: Commit**
@@ -835,7 +835,7 @@ Cache hit ratio = `cache_read / (cache_read + cache_creation)` = "what fraction 
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-db -- models`
+Run: `cargo test -p claude-view-db -- models`
 
 **Step 3: Commit**
 
@@ -891,7 +891,7 @@ To:
 
 **Step 2: Run pattern tests**
 
-Run: `cargo test -p vibe-recall-core -- patterns`
+Run: `cargo test -p claude-view-core -- patterns`
 
 **Step 3: Commit**
 
@@ -966,7 +966,7 @@ ORDER BY (COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_token
 
 **Step 2: Run tests**
 
-Run: `cargo test -p vibe-recall-db`
+Run: `cargo test -p claude-view-db`
 
 **Step 3: Commit**
 
@@ -985,7 +985,7 @@ git commit -m "fix: use full expressions in ORDER BY instead of column aliases (
 
 After `acc.task_items.clear()` at line 586, add:
 ```rust
-acc.tokens = vibe_recall_core::pricing::TokenUsage::default();
+acc.tokens = claude_view_core::pricing::TokenUsage::default();
 ```
 
 **Step 2: Commit**

@@ -3,9 +3,9 @@ status: draft
 date: 2026-01-27
 ---
 
-# vibe-recall Analytics - Design Specification
+# claude-view Analytics - Design Specification
 
-> Productivity analytics for vibe coders, built into vibe-recall Phase 2
+> Productivity analytics for vibe coders, built into claude-view Phase 2
 
 **Status:** Draft — partially implemented via Phase 3 Metrics Engine, CLI stats + insights generation still pending
 **Date:** 2026-01-27
@@ -39,7 +39,7 @@ Vibe coders run many AI coding sessions but lack insight into:
 - Session health metrics (turn count, circle-back rate, duration)
 - Git commit correlation (auto-detected via file overlap + time)
 - Dashboard with stats banner + enriched session list
-- CLI report (`vibe-recall stats`)
+- CLI report (`claude-view stats`)
 - Smooth/turbulent classification
 
 ### Out of Scope (Post-MVP)
@@ -52,11 +52,11 @@ Vibe coders run many AI coding sessions but lack insight into:
 
 ## 4. Architecture
 
-Analytics is **Phase 2 of vibe-recall**, same codebase.
+Analytics is **Phase 2 of claude-view**, same codebase.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    vibe-recall                          │
+│                    claude-view                          │
 ├─────────────────────────────────────────────────────────┤
 │  Phase 1: Search + Tagging (current)                    │
 │  Phase 2: Analytics (this design)                       │
@@ -330,7 +330,7 @@ CREATE TABLE daily_stats (
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  vibe-recall                                    [Search] 🔍 │
+│  claude-view                                    [Search] 🔍 │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  📊 This Week                              [▼ Collapse]     │
@@ -346,7 +346,7 @@ CREATE TABLE daily_stats (
 │  Sessions                          [Filter ▼] [Skills ▼]    │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │ vibe-recall v2 design          Today 2:15am           │  │
+│  │ claude-view v2 design          Today 2:15am           │  │
 │  │ 🔄 6 turns  ⏱ 18min  ✨ smooth                        │  │
 │  │ /brainstorm → /commit                                 │  │
 │  │                                                       │  │
@@ -401,13 +401,13 @@ CREATE TABLE daily_stats (
 ### 11.1 Command
 
 ```bash
-vibe-recall stats [--day|--week|--month] [--json] [--no-color]
+claude-view stats [--day|--week|--month] [--json] [--no-color]
 ```
 
 ### 11.2 Output
 
 ```
-$ vibe-recall stats
+$ claude-view stats
 
 ╭──────────────────────────────────────────────────────────────╮
 │  📈 Your Vibe Coding · Jan 20-27                             │
@@ -442,7 +442,7 @@ $ vibe-recall stats
   1. "Fix auth bug"         14 turns · 42min · 3 circle-backs
   2. "Refactor user model"  11 turns · 38min · 2 circle-backs
 
-  Run: vibe-recall open <session-id> to review
+  Run: claude-view open <session-id> to review
 
 ──────────────────────────────────────────────────────────────────
   --day, --week, --month    Change time range
@@ -535,7 +535,7 @@ Post-MVP, can send anonymized stats to LLM for richer insights:
 - [ ] "Possibly shipped" dropdown
 
 ### Phase 2c: CLI & Polish
-- [ ] `vibe-recall stats` command
+- [ ] `claude-view stats` command
 - [ ] Insights generation
 - [ ] User correction endpoints
 - [ ] Skill effectiveness ranking

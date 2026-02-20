@@ -9,7 +9,7 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use vibe_recall_core::{
+use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
     resolve_project_path, resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry,
     ToolCounts,
@@ -119,7 +119,7 @@ const UPSERT_MODEL_SQL: &str = r#"
 "#;
 
 /// Compute the primary model for a session: the model_id with the most turns.
-fn compute_primary_model(turns: &[vibe_recall_core::RawTurn]) -> Option<String> {
+fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> {
     if turns.is_empty() {
         return None;
     }
@@ -419,7 +419,7 @@ pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Ve
 pub struct ParseResult {
     pub deep: ExtendedMetadata,
     pub raw_invocations: Vec<RawInvocation>,
-    pub turns: Vec<vibe_recall_core::RawTurn>,
+    pub turns: Vec<claude_view_core::RawTurn>,
     pub models_seen: Vec<String>,
     pub diagnostics: ParseDiagnostics,
     pub lines_added: u32,
@@ -427,7 +427,7 @@ pub struct ParseResult {
     pub git_branch: Option<String>,
     /// Collected message content for full-text search indexing.
     /// Only user, assistant text, and tool_use inputs are included.
-    pub search_messages: Vec<vibe_recall_core::SearchableMessage>,
+    pub search_messages: Vec<claude_view_core::SearchableMessage>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -732,7 +732,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             // Push search message for user content
             if let Some(text) = user_text_for_search {
-                result.search_messages.push(vibe_recall_core::SearchableMessage {
+                result.search_messages.push(claude_view_core::SearchableMessage {
                     role: "user".to_string(),
                     content: text,
                     timestamp: user_ts,
@@ -780,7 +780,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     // Use SIMD text_finder on raw bytes — avoids re-parse, consistent with user path.
                     if let Some(text) = extract_first_text_content(line, &content_finder, &text_finder) {
                         if !text.is_empty() {
-                            result.search_messages.push(vibe_recall_core::SearchableMessage {
+                            result.search_messages.push(claude_view_core::SearchableMessage {
                                 role: "assistant".to_string(),
                                 content: text,
                                 timestamp: assistant_ts,
@@ -882,7 +882,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 // Push search message for fallback user content
                 if let Some(text) = fallback_user_text {
-                    result.search_messages.push(vibe_recall_core::SearchableMessage {
+                    result.search_messages.push(claude_view_core::SearchableMessage {
                         role: "user".to_string(),
                         content: text,
                         timestamp: fallback_user_ts,
@@ -924,7 +924,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 let (text_content, tool_entries) = extract_search_content_from_value(&value);
                 if let Some(text) = text_content {
                     if !text.is_empty() {
-                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                        result.search_messages.push(claude_view_core::SearchableMessage {
                             role: "assistant".to_string(),
                             content: text,
                             timestamp: fallback_assistant_ts,
@@ -933,7 +933,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 for tool_text in tool_entries {
                     if !tool_text.is_empty() {
-                        result.search_messages.push(vibe_recall_core::SearchableMessage {
+                        result.search_messages.push(claude_view_core::SearchableMessage {
                             role: "tool".to_string(),
                             content: tool_text,
                             timestamp: fallback_assistant_ts,
@@ -1080,7 +1080,7 @@ fn handle_assistant_line(
     byte_offset: usize,
     deep: &mut ExtendedMetadata,
     raw_invocations: &mut Vec<RawInvocation>,
-    turns: &mut Vec<vibe_recall_core::RawTurn>,
+    turns: &mut Vec<claude_view_core::RawTurn>,
     models_seen: &mut Vec<String>,
     diag: &mut ParseDiagnostics,
     assistant_count: &mut u32,
@@ -1140,7 +1140,7 @@ fn handle_assistant_line(
                 _ => "text".to_string(),
             };
 
-            turns.push(vibe_recall_core::RawTurn {
+            turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: *assistant_count - 1,
@@ -1238,7 +1238,7 @@ fn handle_assistant_value(
     byte_offset: usize,
     deep: &mut ExtendedMetadata,
     raw_invocations: &mut Vec<RawInvocation>,
-    turns: &mut Vec<vibe_recall_core::RawTurn>,
+    turns: &mut Vec<claude_view_core::RawTurn>,
     models_seen: &mut Vec<String>,
     diag: &mut ParseDiagnostics,
     assistant_count: u32,
@@ -1282,7 +1282,7 @@ fn handle_assistant_value(
                 .to_string();
             let timestamp = extract_timestamp_from_value(value);
 
-            turns.push(vibe_recall_core::RawTurn {
+            turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: assistant_count - 1,
@@ -1713,7 +1713,7 @@ pub async fn pass_1_read_indexes(
         claude_dir: &Path,
         db: &Database,
         project_encoded: &str,
-        entries: &[vibe_recall_core::SessionIndexEntry],
+        entries: &[claude_view_core::SessionIndexEntry],
         total_sessions: &mut usize,
     ) -> Result<(), String> {
         // Worktree consolidation — reparent under the main project
@@ -1845,7 +1845,7 @@ pub async fn pass_1_read_indexes(
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
-    search_index: Option<&vibe_recall_search::SearchIndex>,
+    search_index: Option<&claude_view_search::SearchIndex>,
     on_start: impl FnOnce(u64),
     on_file_done: F,
 ) -> Result<(usize, u64), String>
@@ -2011,7 +2011,7 @@ where
                     .raw_invocations
                     .iter()
                     .filter_map(|raw| {
-                        let result = vibe_recall_core::classify_tool_use(
+                        let result = claude_view_core::classify_tool_use(
                             &raw.name,
                             &raw.input,
                             registry,
@@ -2088,7 +2088,7 @@ where
         project: String,
         branch: Option<String>,
         primary_model: Option<String>,
-        messages: Vec<vibe_recall_core::SearchableMessage>,
+        messages: Vec<claude_view_core::SearchableMessage>,
         skills: Vec<String>,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
@@ -2253,7 +2253,7 @@ where
                     // UPSERT models + INSERT turns
                     if !result.parse_result.turns.is_empty() {
                         for model_id in &result.parse_result.models_seen {
-                            let (provider, family) = vibe_recall_core::parse_model_id(model_id);
+                            let (provider, family) = claude_view_core::parse_model_id(model_id);
                             model_stmt.execute(rusqlite::params![
                                 model_id, provider, family, seen_at, seen_at
                             ]).map_err(|e| format!("UPSERT model error: {}", e))?;
@@ -2301,11 +2301,11 @@ where
         if !search_batches.is_empty() {
             let mut search_errors = 0u32;
             for batch in &search_batches {
-                let docs: Vec<vibe_recall_search::SearchDocument> = batch
+                let docs: Vec<claude_view_search::SearchDocument> = batch
                     .messages
                     .iter()
                     .enumerate()
-                    .map(|(i, msg)| vibe_recall_search::SearchDocument {
+                    .map(|(i, msg)| claude_view_search::SearchDocument {
                         session_id: batch.session_id.clone(),
                         project: batch.project.clone(),
                         branch: batch.branch.clone().unwrap_or_default(),
@@ -2366,15 +2366,15 @@ where
         );
         eprintln!(
             "    [perf]   parse phase: {}",
-            vibe_recall_core::format_duration(parse_elapsed)
+            claude_view_core::format_duration(parse_elapsed)
         );
         eprintln!(
             "    [perf]   write phase: {}",
-            vibe_recall_core::format_duration(write_elapsed)
+            claude_view_core::format_duration(write_elapsed)
         );
         eprintln!(
             "    [perf]   total:       {}",
-            vibe_recall_core::format_duration(total_elapsed)
+            claude_view_core::format_duration(total_elapsed)
         );
     }
 
@@ -2615,7 +2615,7 @@ pub async fn run_background_index<F>(
     claude_dir: &Path,
     db: &Database,
     registry_holder: Option<RegistryHolder>,
-    search_index: Option<&vibe_recall_search::SearchIndex>,
+    search_index: Option<&claude_view_search::SearchIndex>,
     on_pass1_done: impl FnOnce(usize, usize),
     on_pass2_start: impl FnOnce(u64),
     on_file_done: F,
@@ -2628,7 +2628,7 @@ where
     let claude_dir_owned = claude_dir.to_path_buf();
     let (pass1_result, registry) = tokio::join!(
         pass_1_read_indexes(claude_dir, db),
-        vibe_recall_core::build_registry(&claude_dir_owned),
+        claude_view_core::build_registry(&claude_dir_owned),
     );
 
     let (projects, sessions) = pass1_result?;
@@ -3536,7 +3536,7 @@ mod tests {
             &claude_dir,
             &db,
             None, // no registry holder
-            None::<&vibe_recall_search::SearchIndex>,
+            None::<&claude_view_search::SearchIndex>,
             move |projects, sessions| {
                 *p1.lock().unwrap() = (projects, sessions);
             },

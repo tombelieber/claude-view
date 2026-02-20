@@ -143,7 +143,7 @@ npm pack --dry-run
 bun run build
 
 # Build Rust backend
-cargo build --release -p vibe-recall-server
+cargo build --release -p claude-view-server
 ```
 
 Both must succeed without errors.
@@ -152,11 +152,11 @@ Both must succeed without errors.
 
 ```bash
 mkdir -p /tmp/cv-staging
-cp target/release/vibe-recall /tmp/cv-staging/
+cp target/release/claude-view /tmp/cv-staging/
 cp -r dist /tmp/cv-staging/
 
 # Start the server
-STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/vibe-recall
+STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/claude-view
 ```
 
 **Should see:**
@@ -273,7 +273,7 @@ Mark Phase 4 as **DONE**:
 Add to **https://github.com/myorg/claude-view/releases/tag/v0.2.0**:
 
 ```markdown
-## 🎉 vibe-recall v0.2.0 — MVP Release
+## 🎉 claude-view v0.2.0 — MVP Release
 
 ### What's Included
 - Full JSONL parser (7-type extraction: assistant, user, tool_use, etc.)
@@ -310,7 +310,7 @@ Found a bug? Have a feature request? [Open an issue](https://github.com/myorg/cl
 
 Post in your channels (Twitter, blog, Discord, etc.):
 
-> 🚀 **vibe-recall v0.2.0 is live!**
+> 🚀 **claude-view v0.2.0 is live!**
 >
 > Browse & search your Claude Code sessions with:
 > ```bash
@@ -357,7 +357,7 @@ bun run release:push
 ### Before Release (Validation)
 - [ ] `npm pack --dry-run` shows correct files
 - [ ] `bun run build` succeeds
-- [ ] `cargo build --release -p vibe-recall-server` succeeds
+- [ ] `cargo build --release -p claude-view-server` succeeds
 - [ ] Local smoke test starts server on :47892
 - [ ] `NPM_TOKEN` secret exists on GitHub
 
@@ -410,7 +410,7 @@ bun run release:push
 
 ## Done! 🎉
 
-Once you complete all these steps, `vibe-recall` will be:
+Once you complete all these steps, `claude-view` will be:
 - ✅ Open source (public GitHub repo)
 - ✅ PII-free (privacy scrub complete)
 - ✅ Publicly installable (`npx claude-view`)

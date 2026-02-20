@@ -157,7 +157,7 @@ These are entries 104-110 (7 entries) in the MIGRATIONS array.
 **Step 2: Run migration test**
 
 ```bash
-cargo test -p vibe-recall-db -- migrations
+cargo test -p claude-view-db -- migrations
 ```
 
 Expected: PASS (migrations applied in order, tables created)
@@ -327,7 +327,7 @@ mod tests {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cargo test -p vibe-recall-core -- facets
+cargo test -p claude-view-core -- facets
 ```
 
 Expected: FAIL (module doesn't exist)
@@ -461,7 +461,7 @@ pub mod facets;
 **Step 5: Run tests**
 
 ```bash
-cargo test -p vibe-recall-core -- facets
+cargo test -p claude-view-core -- facets
 ```
 
 Expected: ALL PASS
@@ -703,7 +703,7 @@ mod tests {
 **Step 2: Run test to verify it fails**
 
 ```bash
-cargo test -p vibe-recall-db -- queries::facets
+cargo test -p claude-view-db -- queries::facets
 ```
 
 Expected: FAIL (module doesn't exist)
@@ -946,7 +946,7 @@ pub use queries::facets::{FacetRow, FacetAggregateStats};
 **Step 5: Run tests**
 
 ```bash
-cargo test -p vibe-recall-db -- queries::facets
+cargo test -p claude-view-db -- queries::facets
 ```
 
 Expected: ALL PASS
@@ -984,8 +984,8 @@ This task wires the cache reader to the DB, with atomic progress tracking.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-use vibe_recall_core::facets::{default_facet_cache_path, scan_facet_cache};
-use vibe_recall_db::{Database, FacetRow};
+use claude_view_core::facets::{default_facet_cache_path, scan_facet_cache};
+use claude_view_db::{Database, FacetRow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -1199,7 +1199,7 @@ pub use facet_ingest::{FacetIngestState, IngestStatus};
 **Step 4: Run tests**
 
 ```bash
-cargo test -p vibe-recall-server -- facet_ingest
+cargo test -p claude-view-server -- facet_ingest
 ```
 
 Expected: ALL PASS
@@ -1386,7 +1386,7 @@ And in the `api_routes` function, add:
 **Step 3: Run tests**
 
 ```bash
-cargo test -p vibe-recall-server -- routes
+cargo test -p claude-view-server -- routes
 ```
 
 Expected: ALL PASS (compilation + existing route tests)
@@ -1420,7 +1420,7 @@ In `crates/server/src/main.rs`, AFTER the `axum::serve(listener, app).await?;` c
         // we need to create the state separately and share it.
         // Alternative: restructure to extract the state before building the app.
         // For now, create a standalone FacetIngestState Arc.
-        Arc::new(vibe_recall_server::FacetIngestState::new())
+        Arc::new(claude_view_server::FacetIngestState::new())
     };
     let ingest_for_periodic = ingest_state.clone();
     let db_for_periodic = db.clone();
@@ -1625,7 +1625,7 @@ pub fn compute_fluency_score(input: &ScoreInput) -> i32 {
 ```rust
 //! Fluency score DB bridge — builds ScoreInput from facet + session queries.
 
-use vibe_recall_core::fluency_score::{compute_fluency_score, FluencyScore, ScoreInput};
+use claude_view_core::fluency_score::{compute_fluency_score, FluencyScore, ScoreInput};
 
 impl crate::Database {
     /// Compute the current fluency score from facet data.
@@ -1724,8 +1724,8 @@ pub mod score;
 **Step 5: Run tests**
 
 ```bash
-cargo test -p vibe-recall-core -- fluency_score
-cargo test -p vibe-recall-db -- queries::fluency
+cargo test -p claude-view-core -- fluency_score
+cargo test -p claude-view-db -- queries::fluency
 ```
 
 Expected: ALL PASS
@@ -2272,7 +2272,7 @@ This section documents all bugs found during code review of the original plan, n
 | 17 | Route registration: `.route()` instead of `router()` | Changed to `pub fn router() -> Router<Arc<AppState>>` pattern |
 | 18 | Context table: "19 migrations" | Fixed to "103 migration entries" |
 | 19 | Context table: `src/pages/InsightsPage.tsx` | Fixed to `src/components/InsightsPage.tsx` |
-| 20 | `vibe_recall_db::database::Database` import | Fixed to `vibe_recall_db::Database` |
+| 20 | `claude_view_db::database::Database` import | Fixed to `claude_view_db::Database` |
 
 ---
 

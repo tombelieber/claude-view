@@ -1,4 +1,4 @@
-/// Inline SQL migrations for vibe-recall database schema.
+/// Inline SQL migrations for claude-view database schema.
 ///
 /// We use simple inline migrations rather than sqlx migration files
 /// because the schema is small and self-contained.
@@ -560,6 +560,20 @@ CREATE TABLE IF NOT EXISTS fluency_scores (
     data TEXT NOT NULL,
     fetched_at INTEGER NOT NULL
 )"#,
+    // Migration 24: Hook events log for event timeline
+    r#"
+CREATE TABLE IF NOT EXISTS hook_events (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    event_name TEXT NOT NULL,
+    tool_name TEXT,
+    label TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    context TEXT
+);
+"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, timestamp);"#,
 ];
 
 // ============================================================================

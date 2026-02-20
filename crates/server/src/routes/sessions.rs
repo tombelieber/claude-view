@@ -10,9 +10,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::accumulator::SessionAccumulator;
-use vibe_recall_core::{ParsedSession, SessionInfo};
-use vibe_recall_db::git_correlation::GitCommit;
+use claude_view_core::accumulator::SessionAccumulator;
+use claude_view_core::{ParsedSession, SessionInfo};
+use claude_view_db::git_correlation::GitCommit;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -80,7 +80,7 @@ pub struct SessionsListResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionActivityResponse {
-    pub activity: Vec<vibe_recall_db::ActivityPoint>,
+    pub activity: Vec<claude_view_db::ActivityPoint>,
     pub bucket: String,
 }
 
@@ -242,7 +242,7 @@ pub async fn list_sessions(
         _ => None,
     };
 
-    let params = vibe_recall_db::SessionFilterParams {
+    let params = claude_view_db::SessionFilterParams {
         q: query.q,
         branches: query.branches.map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
         models: query.models.map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
@@ -326,7 +326,7 @@ pub async fn get_session_parsed(
         return Err(ApiError::SessionNotFound(session_id));
     }
 
-    let session = vibe_recall_core::parse_session(&path).await?;
+    let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
 
@@ -338,7 +338,7 @@ pub async fn get_session_messages_by_id(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
     let file_path = state
         .db
         .get_session_file_path(&session_id)
@@ -352,7 +352,7 @@ pub async fn get_session_messages_by_id(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
 /// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
@@ -363,7 +363,7 @@ pub async fn get_session_messages_by_id(
 pub async fn get_session_rich(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
-) -> ApiResult<Json<vibe_recall_core::accumulator::RichSessionData>> {
+) -> ApiResult<Json<claude_view_core::accumulator::RichSessionData>> {
     // 1. Look up session file path from DB
     let file_path = state
         .db
@@ -410,7 +410,7 @@ pub async fn get_session(
         return Err(ApiError::SessionNotFound(session_id));
     }
 
-    let session = vibe_recall_core::parse_session(&path).await?;
+    let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
 
@@ -423,7 +423,7 @@ pub async fn get_session_messages(
     State(state): State<Arc<AppState>>,
     Path((_project_dir, session_id)): Path<(String, String)>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
     let file_path = state
         .db
         .get_session_file_path(&session_id)
@@ -437,7 +437,7 @@ pub async fn get_session_messages(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&path, limit, offset).await?;
+    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
     Ok(Json(result))
 }
 
@@ -465,6 +465,32 @@ pub async fn list_branches(
     Ok(Json(branches))
 }
 
+/// GET /api/sessions/:id/hook-events — Fetch stored hook events for a historical session.
+async fn get_session_hook_events(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> Json<serde_json::Value> {
+    match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await {
+        Ok(events) => {
+            let json_events: Vec<serde_json::Value> = events
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "timestamp": e.timestamp,
+                        "eventName": e.event_name,
+                        "toolName": e.tool_name,
+                        "label": e.label,
+                        "group": e.group_name,
+                        "context": e.context,
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({ "hookEvents": json_events }))
+        }
+        Err(e) => Json(serde_json::json!({ "hookEvents": [], "error": e.to_string() })),
+    }
+}
+
 /// GET /api/sessions/activity — Activity histogram for sparkline chart.
 pub async fn session_activity(
     State(state): State<Arc<AppState>>,
@@ -483,6 +509,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/parsed", get(get_session_parsed))
         .route("/sessions/{id}/messages", get(get_session_messages_by_id))
         .route("/sessions/{id}/rich", get(get_session_rich))
+        .route("/sessions/{id}/hook-events", get(get_session_hook_events))
         .route("/session/{project_dir}/{session_id}", get(get_session))
         .route("/session/{project_dir}/{session_id}/messages", get(get_session_messages))
         .route("/branches", get(list_branches))
@@ -497,8 +524,8 @@ mod tests {
     };
     use std::path::PathBuf;
     use tower::ServiceExt;
-    use vibe_recall_core::{Message, SessionMetadata, ToolCounts};
-    use vibe_recall_db::Database;
+    use claude_view_core::{Message, SessionMetadata, ToolCounts};
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -1153,7 +1180,7 @@ mod tests {
 
     #[test]
     fn test_paginated_messages_serialization() {
-        use vibe_recall_core::PaginatedMessages;
+        use claude_view_core::PaginatedMessages;
         let result = PaginatedMessages {
             messages: vec![
                 Message::user("Hello"),
@@ -1370,5 +1397,72 @@ mod tests {
         assert!(!activity.is_empty());
         assert!(activity[0]["date"].is_string());
         assert!(activity[0]["count"].is_number());
+    }
+
+    // ========================================================================
+    // GET /api/sessions/:id/hook-events tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_hook_events_empty() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (status, body) = do_get(app, "/api/sessions/nonexistent/hook-events").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(json["hookEvents"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_hook_events_with_data() {
+        let db = test_db().await;
+
+        // Insert session first (FK reference)
+        let session = make_session("hook-test", "project-a", 1700000000);
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        // Insert hook events
+        let events = vec![
+            claude_view_db::HookEventRow {
+                timestamp: 1000,
+                event_name: "SessionStart".into(),
+                tool_name: None,
+                label: "Waiting for first prompt".into(),
+                group_name: "needs_you".into(),
+                context: None,
+            },
+            claude_view_db::HookEventRow {
+                timestamp: 1001,
+                event_name: "PreToolUse".into(),
+                tool_name: Some("Bash".into()),
+                label: "Running: git status".into(),
+                group_name: "autonomous".into(),
+                context: Some(r#"{"command":"git status"}"#.into()),
+            },
+        ];
+        claude_view_db::hook_events_queries::insert_hook_events(&db, "hook-test", &events)
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/hook-test/hook-events").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let hook_events = json["hookEvents"].as_array().unwrap();
+        assert_eq!(hook_events.len(), 2);
+
+        // Verify camelCase serialization
+        assert_eq!(hook_events[0]["eventName"], "SessionStart");
+        assert_eq!(hook_events[0]["group"], "needs_you");
+        assert!(hook_events[0]["toolName"].is_null());
+
+        assert_eq!(hook_events[1]["eventName"], "PreToolUse");
+        assert_eq!(hook_events[1]["toolName"], "Bash");
+        assert_eq!(hook_events[1]["label"], "Running: git status");
+        assert!(hook_events[1]["context"].as_str().unwrap().contains("git status"));
     }
 }

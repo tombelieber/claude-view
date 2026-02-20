@@ -269,7 +269,7 @@ Also add `diagnostics: ParseDiagnostics` to `ParseResult`:
 pub struct ParseResult {
     pub deep: ExtendedMetadata,
     pub raw_invocations: Vec<RawInvocation>,
-    pub turns: Vec<vibe_recall_core::RawTurn>,
+    pub turns: Vec<claude_view_core::RawTurn>,
     pub models_seen: Vec<String>,
     pub diagnostics: ParseDiagnostics,
 }
