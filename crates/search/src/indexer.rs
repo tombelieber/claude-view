@@ -104,4 +104,23 @@ impl SearchIndex {
 
         Ok(())
     }
+
+    /// Delete all documents from the index and commit.
+    ///
+    /// Used by "Clear Cache" to safely empty the Tantivy index without
+    /// deleting the underlying directory (which would corrupt the live
+    /// `IndexWriter`/`IndexReader` mmap handles).
+    pub fn clear_all(&self) -> Result<(), SearchError> {
+        let mut writer = self.writer.lock().map_err(|e| {
+            SearchError::Io(std::io::Error::other(
+                format!("writer lock poisoned: {e}"),
+            ))
+        })?;
+
+        writer.delete_all_documents()?;
+        writer.commit()?;
+        info!("search index cleared (all documents deleted)");
+
+        Ok(())
+    }
 }

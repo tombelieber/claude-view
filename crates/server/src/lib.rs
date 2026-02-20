@@ -26,7 +26,7 @@ pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
-pub use state::{AppState, RegistryHolder};
+pub use state::{AppState, RegistryHolder, SearchIndexHolder};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -122,7 +122,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: None,
-        search_index: None,
+        search_index: Arc::new(std::sync::RwLock::new(None)),
+        shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
     api_routes(state)
@@ -137,7 +138,8 @@ pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
-    search_index: Option<Arc<claude_view_search::SearchIndex>>,
+    search_index: SearchIndexHolder,
+    shutdown: tokio::sync::watch::Receiver<bool>,
     static_dir: Option<PathBuf>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
@@ -174,6 +176,7 @@ pub fn create_app_full(
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: Some(manager),
         search_index,
+        shutdown,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
 

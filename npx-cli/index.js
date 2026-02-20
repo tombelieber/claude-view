@@ -203,16 +203,32 @@ async function main() {
   // Set STATIC_DIR so the server finds the frontend assets
   const env = { ...process.env, STATIC_DIR: distDir };
 
-  // Run the server, forwarding signals and exit code
+  // Run the server, forwarding signals and exit code.
+  //
+  // Signal handling strategy:
+  // - SIGINT: Don't forward. Terminal sends SIGINT to the entire process group,
+  //   so the child already receives it. Forwarding would double-deliver, causing
+  //   the Rust server's graceful shutdown to see two SIGINTs from one Ctrl+C.
+  // - SIGTERM/SIGHUP: Forward. These may be sent to our PID only (e.g. from
+  //   `kill` or a process manager), so the child wouldn't get them otherwise.
   const child = spawn(binaryPath, process.argv.slice(2), { stdio: "inherit", env });
 
-  // Forward signals to child process
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  // Prevent Node from exiting on SIGINT before the child does.
+  const ignoreSigint = () => {};
+  process.on("SIGINT", ignoreSigint);
+
+  // Forward SIGTERM/SIGHUP — child may not receive these from process group.
+  for (const sig of ["SIGTERM", "SIGHUP"]) {
     process.on(sig, () => child.kill(sig));
   }
 
   child.on("exit", (code, signal) => {
+    // Remove our SIGINT handler so the re-signal below uses default behavior.
+    process.removeListener("SIGINT", ignoreSigint);
+
     if (signal) {
+      // Child was killed by signal — re-signal ourselves so the parent shell
+      // sees the correct exit status (128 + signal number).
       process.kill(process.pid, signal);
     } else {
       process.exit(code ?? 1);
