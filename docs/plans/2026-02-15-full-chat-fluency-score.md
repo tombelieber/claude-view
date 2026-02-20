@@ -244,7 +244,7 @@ The providers convert `reqwest::Error` via `.map_err(|e| LlmError::HttpError(e.t
 ```rust
 // Add to existing ApiError enum:
     #[error("LLM provider error: {0}")]
-    Llm(String),              // Manual conversion, NOT #[from] (avoids vibe_recall_core dep)
+    Llm(String),              // Manual conversion, NOT #[from] (avoids claude_view_core dep)
 
 // Add to IntoResponse impl:
     ApiError::Llm(msg) => {

@@ -60,7 +60,7 @@ fn parse_tail_codex_detects_task_state_transitions() { ... }
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core codex::live_parser::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::live_parser::tests -- --nocapture`
 Expected: FAIL because module is missing.
 
 **Step 3: Implement parser + line model**
@@ -93,7 +93,7 @@ Use tolerant extraction against `response_item` and `event_msg` payloads.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core codex::live_parser::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::live_parser::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -121,7 +121,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server live::watcher::tests -- --nocapture`
+Run: `cargo test -p claude-view-server live::watcher::tests -- --nocapture`
 Expected: FAIL because watcher only monitors `~/.claude/projects`.
 
 **Step 3: Implement source-tagged file events**
@@ -140,7 +140,7 @@ pub enum FileEvent {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server live::watcher::tests -- --nocapture`
+Run: `cargo test -p claude-view-server live::watcher::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -168,7 +168,7 @@ Add tests for process classification:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server live::process::tests -- --nocapture`
+Run: `cargo test -p claude-view-server live::process::tests -- --nocapture`
 Expected: FAIL because process struct and detection are Claude-only.
 
 **Step 3: Implement source-aware process model**
@@ -181,7 +181,7 @@ Expected: FAIL because process struct and detection are Claude-only.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server live::process::tests -- --nocapture`
+Run: `cargo test -p claude-view-server live::process::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -210,7 +210,7 @@ Add tests covering Codex-specific transitions:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server live::state::tests::codex_* -- --nocapture`
+Run: `cargo test -p claude-view-server live::state::tests::codex_* -- --nocapture`
 Expected: FAIL (no codex mapping logic).
 
 **Step 3: Implement state model updates**
@@ -223,7 +223,7 @@ Expected: FAIL (no codex mapping logic).
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server live::state::tests::codex_* -- --nocapture`
+Run: `cargo test -p claude-view-server live::state::tests::codex_* -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -294,7 +294,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server routes::live::tests::codex_* -- --nocapture`
+Run: `cargo test -p claude-view-server routes::live::tests::codex_* -- --nocapture`
 Expected: FAIL on parser dispatch and/or payload shape.
 
 **Step 3: Implement route-level dispatch and guardrails**
@@ -304,7 +304,7 @@ Expected: FAIL on parser dispatch and/or payload shape.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server routes::live::tests::codex_* -- --nocapture`
+Run: `cargo test -p claude-view-server routes::live::tests::codex_* -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -326,8 +326,8 @@ git commit -m "test(live): validate codex route contracts and kill semantics"
 ## Verification Checklist
 
 Run:
-- `cargo test -p vibe-recall-core codex::live_parser::tests`
-- `cargo test -p vibe-recall-server live::watcher::tests live::process::tests live::state::tests::codex_* routes::live::tests::codex_*`
+- `cargo test -p claude-view-core codex::live_parser::tests`
+- `cargo test -p claude-view-server live::watcher::tests live::process::tests live::state::tests::codex_* routes::live::tests::codex_*`
 - `npm test -- use-live-sessions SessionCard MissionControlPage --runInBand`
 
 Expected:

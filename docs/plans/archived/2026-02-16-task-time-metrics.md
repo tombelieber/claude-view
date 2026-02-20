@@ -446,7 +446,7 @@ CC's `turn_duration` aggregation (avg/max/total) is ALREADY implemented (lines 8
    **Note:** There is NO `sessions_dir` field on `AppState`. File paths are always resolved via `state.db.get_session_file_path()`.
 3. Parse JSONL on demand. Two options:
    - **Fast path (preferred):** Write a new scanning function using `memmem::Finder` to pre-filter for `"type":"user"` and `"type":"system"` lines before JSON deserialization (like `live_parser.rs` lines 52-83). Most lines are assistant/tool messages that don't need parsing.
-   - **Simple path:** Use existing `vibe_recall_core::parse_session(&path)` which deserializes every line, then post-filter. Simpler but slower for large sessions.
+   - **Simple path:** Use existing `claude_view_core::parse_session(&path)` which deserializes every line, then post-filter. Simpler but slower for large sessions.
 4. Return per-turn data with both wall-clock and CC duration
 5. Create `pub fn router() -> Router<Arc<AppState>>` function and register via `.nest("/api", turns::router())` pattern (see lines 84-108 of `mod.rs`)
 
@@ -627,7 +627,7 @@ This is a pure additive feature (new fields, new endpoint). No existing behavior
 - Live Autonomous cards show current task elapsed (not session elapsed)
 - `total_task_time_seconds`, `longest_task_seconds`, `longest_task_preview` populated for newly indexed sessions
 - New `/api/sessions/{id}/turns` endpoint returns per-turn data
-- All existing tests pass (`cargo test -p vibe-recall-core`, `cargo test -p vibe-recall-db`, `cargo test -p vibe-recall-server`)
+- All existing tests pass (`cargo test -p claude-view-core`, `cargo test -p claude-view-db`, `cargo test -p claude-view-server`)
 - New turn detection tests cover all 6 system prefix patterns and tool_result detection
 - New endpoint tests cover 200, 404, and empty session cases
 - Migration test validates 3 new columns exist

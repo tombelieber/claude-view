@@ -223,7 +223,7 @@ Register this module in `crates/core/src/lib.rs` (add after the `pub mod tail;` 
 pub mod subagent;
 ```
 
-Note: Do NOT add `pub use subagent::*;`. The newer modules (`cost`, `live_parser`, `tail`) use qualified imports, not glob re-exports. Consumers import as `vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus}`.
+Note: Do NOT add `pub use subagent::*;`. The newer modules (`cost`, `live_parser`, `tail`) use qualified imports, not glob re-exports. Consumers import as `claude_view_core::subagent::{SubAgentInfo, SubAgentStatus}`.
 
 ### JSONL Parsing
 
@@ -397,7 +397,7 @@ Add a `sub_agents` field to the `LiveSession` struct. Since `LiveSession` uses `
 /// Sub-agents spawned via the Task tool in this session.
 /// Empty vec if no sub-agents have been detected.
 #[serde(default, skip_serializing_if = "Vec::is_empty")]
-pub sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
+pub sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
 ```
 
 **CRITICAL: Update ALL `LiveSession` construction sites** after adding this field. There are 2 sites:
@@ -409,9 +409,9 @@ Without updating both sites, the code will not compile ("missing field" errors).
 
 **File to modify:** `crates/server/src/live/manager.rs`
 
-First, add the required import (after existing `use vibe_recall_core::...` imports at ~line 16-18):
+First, add the required import (after existing `use claude_view_core::...` imports at ~line 16-18):
 ```rust
-use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
+use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 ```
 
 Add sub-agent tracking to the `SessionAccumulator` private struct:
@@ -419,7 +419,7 @@ Add sub-agent tracking to the `SessionAccumulator` private struct:
 ```rust
 // Add to SessionAccumulator struct (after recent_messages field, line 65):
 /// Sub-agents spawned in this session (accumulated across tail polls).
-sub_agents: Vec<vibe_recall_core::subagent::SubAgentInfo>,
+sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
 ```
 
 Initialize in `SessionAccumulator::new()`:
@@ -792,9 +792,9 @@ No new Rust crate dependencies. No new npm dependencies (timeline uses CSS posit
 ### Backend Tests
 
 **Scope:**
-- `cargo test -p vibe-recall-core -- subagent`
-- `cargo test -p vibe-recall-core -- live_parser`
-- `cargo check -p vibe-recall-server` (verifies all `LiveSession` construction sites compile with the new field)
+- `cargo test -p claude-view-core -- subagent`
+- `cargo test -p claude-view-core -- live_parser`
+- `cargo check -p claude-view-server` (verifies all `LiveSession` construction sites compile with the new field)
 - `bun run typecheck`
 - `bun run test:client -- src/components/live/SwimLanes.test.tsx src/components/live/SubAgentPills.test.tsx src/components/live/TimelineView.test.tsx src/components/live/use-sub-agents.test.ts`
 
@@ -871,7 +871,7 @@ No new Rust crate dependencies. No new npm dependencies (timeline uses CSS posit
 - [ ] SIMD pre-filter in TailFinders skips non-Task lines (no unnecessary JSON parsing)
 - [ ] All new components have passing tests
 - [ ] TypeScript types generated from Rust via ts-rs (`SubAgentInfo`, `SubAgentStatus`)
-- [ ] After creating `subagent.rs`, run `cargo test -p vibe-recall-core` to trigger ts-rs generation; verify `src/types/generated/SubAgentInfo.ts` and `src/types/generated/SubAgentStatus.ts` exist
+- [ ] After creating `subagent.rs`, run `cargo test -p claude-view-core` to trigger ts-rs generation; verify `src/types/generated/SubAgentInfo.ts` and `src/types/generated/SubAgentStatus.ts` exist
 
 ---
 
@@ -901,7 +901,7 @@ No new Rust crate dependencies. No new npm dependencies (timeline uses CSS posit
 |---|-------|----------|-------------|
 | 16 | `LiveLine` JSON-parse error fallback missing new fields | Blocker | Added explicit note listing all 3 `LiveLine` construction sites that must be updated (line 173 fallback, line 281 normal, state.rs test helper). |
 | 17 | `make_live_line` test helper in `state.rs` missing new fields | Blocker | Included in issue #16 — test helper at state.rs ~line 242 must add `sub_agent_spawns: Vec::new(), sub_agent_result: None`. |
-| 18 | Missing `use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};` import in manager.rs | Important | Added explicit import instruction in the manager.rs modification section. |
+| 18 | Missing `use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};` import in manager.rs | Important | Added explicit import instruction in the manager.rs modification section. |
 | 19 | Ambiguous insertion point for sub-agent extraction code | Minor | Changed to "Insert immediately before the final `LiveLine { ... }` construction (before line 281)". |
 | 20 | Orphaned Running sub-agents never cleaned up on session Done | Important | Added cleanup logic in `handle_status_change` to mark Running sub-agents as Error when session transitions to Done. |
 | 21 | `CostTooltip` prop interface change not specified | Important | Added `subAgents?: SubAgentInfo[]` prop to `CostTooltipProps` with parent integration note. |
@@ -912,7 +912,7 @@ No new Rust crate dependencies. No new npm dependencies (timeline uses CSS posit
 |---|-------|----------|-------------|
 | 22 | Missing `LiveSession` construction site in `terminal.rs:865` | Blocker | Added "CRITICAL: Update ALL LiveSession construction sites" section listing both manager.rs:712 and terminal.rs:865. Added terminal.rs to Modified Files table. |
 | 23 | `pub use subagent::*;` doesn't match newer module pattern | Important | Removed glob re-export. Added note explaining newer modules (cost, live_parser, tail) use qualified imports. |
-| 24 | Test scope doesn't cover `vibe-recall-server` compilation | Important | Added `cargo check -p vibe-recall-server` to testing scope. |
+| 24 | Test scope doesn't cover `claude-view-server` compilation | Important | Added `cargo check -p claude-view-server` to testing scope. |
 
 **Polish fixes (round 4, score 94→100):**
 

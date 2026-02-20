@@ -13,7 +13,7 @@ depends_on: A
 
 **Architecture:** Introduce an explicit `SessionSource` model (`claude`, `codex`) at core + DB layers, enforce source-aware identity (`source`, `source_session_id`, canonical `id`), and route discovery/parsing/indexing through provider adapters instead of Claude-only code paths.
 
-**Tech Stack:** Rust (`axum`, `sqlx`, `serde`, `tokio`), TypeScript/React, SQLite migrations, existing `vibe_recall_core` + `vibe_recall_db` crates.
+**Tech Stack:** Rust (`axum`, `sqlx`, `serde`, `tokio`), TypeScript/React, SQLite migrations, existing `claude_view_core` + `claude_view_db` crates.
 
 ---
 
@@ -68,7 +68,7 @@ fn split_canonical_id_round_trip() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core canonical_id_for_codex -- --nocapture`
+Run: `cargo test -p claude-view-core canonical_id_for_codex -- --nocapture`
 Expected: FAIL with unresolved `SessionSource` / helper symbols.
 
 **Step 3: Implement minimal source model**
@@ -94,7 +94,7 @@ pub source_session_id: String,
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core source::tests -- --nocapture`
+Run: `cargo test -p claude-view-core source::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -123,7 +123,7 @@ Add tests asserting:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db test_migration_.*source -- --nocapture`
+Run: `cargo test -p claude-view-db test_migration_.*source -- --nocapture`
 Expected: FAIL because columns/index do not exist.
 
 **Step 3: Implement migration and backfill**
@@ -145,7 +145,7 @@ Update row mapping structs to include new fields.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db test_migration_.*source -- --nocapture`
+Run: `cargo test -p claude-view-db test_migration_.*source -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -177,7 +177,7 @@ assert_eq!(codex_row.source, "codex");
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db duplicate_raw_id_across_sources -- --nocapture`
+Run: `cargo test -p claude-view-db duplicate_raw_id_across_sources -- --nocapture`
 Expected: FAIL due to collision on `id` or missing source columns in insert path.
 
 **Step 3: Update insert APIs**
@@ -191,7 +191,7 @@ Expected: FAIL due to collision on `id` or missing source columns in insert path
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db duplicate_raw_id_across_sources -- --nocapture`
+Run: `cargo test -p claude-view-db duplicate_raw_id_across_sources -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -225,7 +225,7 @@ fn default_provider_registry_contains_claude_and_codex() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core default_provider_registry_contains_claude_and_codex -- --nocapture`
+Run: `cargo test -p claude-view-core default_provider_registry_contains_claude_and_codex -- --nocapture`
 Expected: FAIL (module missing).
 
 **Step 3: Implement provider interfaces**
@@ -245,7 +245,7 @@ pub trait SessionProvider {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core provider::tests -- --nocapture`
+Run: `cargo test -p claude-view-core provider::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -273,7 +273,7 @@ Add tests for source root resolution:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server provider_roots -- --nocapture`
+Run: `cargo test -p claude-view-server provider_roots -- --nocapture`
 Expected: FAIL (single-root `.claude` assumptions).
 
 **Step 3: Implement source-root aggregation**
@@ -284,7 +284,7 @@ Expected: FAIL (single-root `.claude` assumptions).
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server provider_roots -- --nocapture`
+Run: `cargo test -p claude-view-server provider_roots -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -313,7 +313,7 @@ Add assertions that `/api/sessions` and `/api/sessions/:id` include:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server sessions_includes_source_fields -- --nocapture`
+Run: `cargo test -p claude-view-server sessions_includes_source_fields -- --nocapture`
 Expected: FAIL due to missing fields in serialized payload.
 
 **Step 3: Implement response model changes**
@@ -324,7 +324,7 @@ Expected: FAIL due to missing fields in serialized payload.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server sessions_includes_source_fields -- --nocapture`
+Run: `cargo test -p claude-view-server sessions_includes_source_fields -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -347,9 +347,9 @@ git commit -m "feat(api): expose session source metadata in session endpoints"
 ## Verification Checklist
 
 Run:
-- `cargo test -p vibe-recall-core source::tests provider::tests`
-- `cargo test -p vibe-recall-db test_migration_.*source duplicate_raw_id_across_sources`
-- `cargo test -p vibe-recall-server sessions_includes_source_fields provider_roots`
+- `cargo test -p claude-view-core source::tests provider::tests`
+- `cargo test -p claude-view-db test_migration_.*source duplicate_raw_id_across_sources`
+- `cargo test -p claude-view-server sessions_includes_source_fields provider_roots`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 
 Expected:

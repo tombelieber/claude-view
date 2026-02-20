@@ -52,7 +52,7 @@ theme: "Search & Discovery"
      └─────────────────┘    └─────────────────────┘
 ```
 
-**Storage**: Tantivy index at `<cache_dir>/vibe-recall/search-index/` (macOS: `~/Library/Caches/vibe-recall/search-index/`, Linux: `~/.cache/vibe-recall/search-index/`). Resolved via `dirs::cache_dir().join("vibe-recall").join("search-index")` — same base as the existing SQLite DB at `<cache_dir>/vibe-recall/vibe-recall.db`. Rebuilt from JSONL if deleted.
+**Storage**: Tantivy index at `<cache_dir>/claude-view/search-index/` (macOS: `~/Library/Caches/claude-view/search-index/`, Linux: `~/.cache/claude-view/search-index/`). Resolved via `dirs::cache_dir().join("claude-view").join("search-index")` — same base as the existing SQLite DB at `<cache_dir>/claude-view/claude-view.db`. Rebuilt from JSONL if deleted.
 
 **Data flow**: Deep indexer parses JSONL → inserts messages into Tantivy (same pass) → search API queries Tantivy → returns session-grouped results with highlighted snippets.
 
@@ -352,7 +352,7 @@ When on a session detail page, the search bar switches to find-in-conversation m
 
 The deep indexer in `crates/db/src/indexer_parallel.rs` already:
 1. Opens each JSONL file
-2. Parses every message via `vibe_recall_db::indexer_parallel::parse_bytes()` → returns `ParseResult`
+2. Parses every message via `claude_view_db::indexer_parallel::parse_bytes()` → returns `ParseResult`
 3. Extracts 60+ fields from `ParseResult`
 4. Writes to SQLite
 
@@ -414,7 +414,7 @@ If the Tantivy index is deleted or corrupted:
 
 ### Index location
 
-`<cache_dir>/vibe-recall/search-index/` — alongside the existing SQLite DB at `<cache_dir>/vibe-recall/vibe-recall.db`. Use `dirs::cache_dir().join("vibe-recall").join("search-index")` in Rust. On macOS this is `~/Library/Caches/vibe-recall/search-index/`, on Linux `~/.cache/vibe-recall/search-index/`.
+`<cache_dir>/claude-view/search-index/` — alongside the existing SQLite DB at `<cache_dir>/claude-view/claude-view.db`. Use `dirs::cache_dir().join("claude-view").join("search-index")` in Rust. On macOS this is `~/Library/Caches/claude-view/search-index/`, on Linux `~/.cache/claude-view/search-index/`.
 
 ---
 
@@ -477,7 +477,7 @@ use crate::AppState;
 use axum::{extract::{Query, State}, routing::get, Json, Router};
 use serde::Deserialize;
 use std::sync::Arc;
-use vibe_recall_search::types::SearchResponse;
+use claude_view_search::types::SearchResponse;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -655,7 +655,7 @@ These files already exist and the plan must integrate with them, not recreate fr
 | 1 | Plan said `AppState` is in `crates/server/src/lib.rs` — actual: `crates/server/src/state.rs` with 5 construction sites | Blocker | Updated "Modified files" table to list `state.rs` and all 5 construction sites explicitly |
 | 2 | No hook point for search indexing — `parse_bytes()` doesn't expose session metadata | Blocker | Added detailed integration strategy: pass `Arc<SearchIndex>` into `pass_2_deep_index()`, call inside existing per-session closure |
 | 3 | `crates/search/Cargo.toml` missing `serde` and `ts-rs` dependencies | Blocker | Added "Crate dependency fix" pre-requisite section with exact lines to add |
-| 4 | Wrong data directory: plan said `~/.claude-view/`, actual: `dirs::cache_dir().join("vibe-recall")` | Blocker | Fixed all path references to use `<cache_dir>/vibe-recall/search-index/` with platform-specific paths |
+| 4 | Wrong data directory: plan said `~/.claude-view/`, actual: `dirs::cache_dir().join("claude-view")` | Blocker | Fixed all path references to use `<cache_dir>/claude-view/search-index/` with platform-specific paths |
 | 5 | `CommandPalette.tsx` already fully exists (228 lines) — plan treated as net-new | Blocker | Changed to "Modify existing" with specific changes needed |
 | 6 | `SearchResults.tsx` already exists with client-side filtering | Blocker | Changed Phase 1 to "Upgrade SearchResults page" instead of creating new |
 | 7 | `src/types/generated/index.ts` is hand-maintained — new types won't be importable without manual update | Blocker | Added explicit step in "Modified files" to add re-exports |
@@ -679,7 +679,7 @@ These files already exist and the plan must integrate with them, not recreate fr
 |---|-------|----------|-------------|
 | 21 | `RawTurn` has no `.messages: Vec<Message>` — entire integration strategy based on non-existent field | Blocker | Completely rewrote integration strategy: extend `ParseResult` with `search_messages: Vec<SearchableMessage>` collected during `parse_bytes()` |
 | 22 | `project` not in scope in `pass_2_deep_index()` — `get_sessions_needing_deep_index()` doesn't return it | Blocker | Added requirement to extend SQL query to SELECT project, add `project: String` to `DeepIndexResult` |
-| 23 | Missing `use serde::Deserialize;` and `use vibe_recall_search::types::SearchResponse;` in handler code block | Blocker | Added both imports to the code block |
+| 23 | Missing `use serde::Deserialize;` and `use claude_view_search::types::SearchResponse;` in handler code block | Blocker | Added both imports to the code block |
 | 24 | Plan claimed 5 AppState construction sites; actual is 7 (2 test helpers in `jobs.rs` and `terminal.rs` missed) | Blocker | Updated count to 7, listed all sites with file/line references, added `jobs.rs` and `terminal.rs` to modified files |
 | 25 | Tantivy writes in parallel parse tasks would cause `IndexWriter` lock contention | Important | Moved Tantivy writes to sequential write phase — batch delete+insert+commit alongside SQLite transaction |
 | 26 | `primary_model` not computed at parse phase, only available in write phase | Important | Documented that `compute_primary_model()` is called in write phase — Tantivy writes happen there too |

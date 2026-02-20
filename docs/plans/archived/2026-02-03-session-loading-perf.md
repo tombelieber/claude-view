@@ -54,7 +54,7 @@ async fn test_api_response_is_gzip_compressed() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server -- tests::test_api_response_is_gzip_compressed`
+Run: `cargo test -p claude-view-server -- tests::test_api_response_is_gzip_compressed`
 Expected: FAIL — no `content-encoding: gzip` header in response.
 
 **Step 3: Enable compression feature in workspace Cargo.toml**
@@ -87,12 +87,12 @@ Apply the same change to both `create_app_full` and `create_app_with_indexing_an
 
 **Step 5: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server -- tests::test_api_response_is_gzip_compressed`
+Run: `cargo test -p claude-view-server -- tests::test_api_response_is_gzip_compressed`
 Expected: PASS
 
 **Step 6: Run full server test suite**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests pass. Some tests may need the `Accept-Encoding: gzip` header added if they assert on body content (since responses may now be compressed). If any body-asserting tests fail, they likely need to NOT send `Accept-Encoding: gzip` or decompress before asserting.
 
 **Step 7: Commit**
@@ -171,7 +171,7 @@ async fn test_parse_session_paginated_beyond_end() {
 
 **Step 3: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-core -- tests::test_parse_session_paginated`
+Run: `cargo test -p claude-view-core -- tests::test_parse_session_paginated`
 Expected: FAIL — function doesn't exist.
 
 **Step 4: Implement `parse_session_paginated`**
@@ -218,7 +218,7 @@ Make sure to add `PaginatedMessages` to the public exports in `crates/core/src/l
 
 **Step 5: Run core tests**
 
-Run: `cargo test -p vibe-recall-core -- tests::test_parse_session_paginated`
+Run: `cargo test -p claude-view-core -- tests::test_parse_session_paginated`
 Expected: PASS
 
 **Step 6: Write failing test for the API endpoint**
@@ -228,7 +228,7 @@ In `crates/server/src/routes/sessions.rs` tests:
 ```rust
 #[test]
 fn test_paginated_messages_serialization() {
-    use vibe_recall_core::PaginatedMessages;
+    use claude_view_core::PaginatedMessages;
     let result = PaginatedMessages {
         messages: vec![
             Message::user("Hello"),
@@ -269,12 +269,12 @@ pub async fn get_session_messages(
     State(_state): State<Arc<AppState>>,
     Path((project_dir, session_id)): Path<(String, String)>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<vibe_recall_core::PaginatedMessages>> {
+) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
     let project_dir_decoded = urlencoding::decode(&project_dir)
         .map_err(|_| ApiError::ProjectNotFound(project_dir.clone()))?
         .into_owned();
 
-    let projects_dir = vibe_recall_core::claude_projects_dir()?;
+    let projects_dir = claude_view_core::claude_projects_dir()?;
     let session_path = projects_dir
         .join(&project_dir_decoded)
         .join(&session_id)
@@ -289,7 +289,7 @@ pub async fn get_session_messages(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = vibe_recall_core::parse_session_paginated(&session_path, limit, offset).await?;
+    let result = claude_view_core::parse_session_paginated(&session_path, limit, offset).await?;
     Ok(Json(result))
 }
 ```
@@ -301,7 +301,7 @@ Add route in `router()`:
 
 **Step 8: Run server tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: All tests pass.
 
 **Step 9: Commit**
@@ -458,7 +458,7 @@ A pragmatic approach: keep `useSession` but only trigger it when the user clicks
 
 **Step 4: Generate TypeScript types**
 
-Run: `cargo test -p vibe-recall-core -- test_that_generates_types` (or whatever generates the ts-rs types)
+Run: `cargo test -p claude-view-core -- test_that_generates_types` (or whatever generates the ts-rs types)
 
 Or manually ensure `PaginatedMessages` gets exported. Check that `src/types/generated/PaginatedMessages.ts` exists after running `cargo test`.
 

@@ -194,7 +194,7 @@ async fn run_git_sync_logged(db: &Database, label: &str) {
     let start = Instant::now();
     tracing::info!(sync_type = label, "Starting git sync");
 
-    match vibe_recall_db::git_correlation::run_git_sync(db, |_| {}).await {
+    match claude_view_db::git_correlation::run_git_sync(db, |_| {}).await {
         // ... existing match arms unchanged
     }
 }
@@ -407,7 +407,7 @@ The signature change (added callback param) will cause compile errors at **3 cal
 | `crates/server/src/main.rs` | `run_git_sync_logged` (initial) | Pass no-op `\|_\| {}` (Step 6b) |
 | `crates/server/src/main.rs` | `run_git_sync_logged` (periodic) | Same no-op — shares `run_git_sync_logged` |
 
-Run `cargo check -p vibe-recall-server` to verify. Then `cargo check -p vibe-recall-db` for the db crate changes.
+Run `cargo check -p claude-view-server` to verify. Then `cargo check -p claude-view-db` for the db crate changes.
 
 ---
 

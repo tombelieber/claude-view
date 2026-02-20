@@ -123,7 +123,7 @@ fn test_progress_event_agent_activity() {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core -- test_progress_event_agent_activity`
+Run: `cargo test -p claude-view-core -- test_progress_event_agent_activity`
 Expected: FAIL with "no field `sub_agent_progress` on type `LiveLine`"
 
 **Step 3: Add SIMD finder to TailFinders**
@@ -218,7 +218,7 @@ let sub_agent_progress = if line_type == LineType::Progress
 
 **Step 6: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core -- test_progress_event_agent_activity`
+Run: `cargo test -p claude-view-core -- test_progress_event_agent_activity`
 Expected: PASS
 
 **Step 7: Add edge case tests**
@@ -254,7 +254,7 @@ fn test_progress_event_missing_agent_id() {
 
 **Step 8: Run all parser tests**
 
-Run: `cargo test -p vibe-recall-core -- live_parser`
+Run: `cargo test -p claude-view-core -- live_parser`
 Expected: ALL PASS
 
 **Step 9: Commit**
@@ -322,7 +322,7 @@ mod tests {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core -- subagent`
+Run: `cargo test -p claude-view-core -- subagent`
 Expected: FAIL with "no field named `current_activity`"
 
 **Step 3: Add `current_activity` field to SubAgentInfo**
@@ -343,17 +343,17 @@ In `crates/core/src/subagent.rs`, add after `cost_usd`:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core -- subagent`
+Run: `cargo test -p claude-view-core -- subagent`
 Expected: PASS
 
 **Step 5: Regenerate TypeScript types**
 
-Run: `cargo test -p vibe-recall-core` (triggers ts-rs generation)
+Run: `cargo test -p claude-view-core` (triggers ts-rs generation)
 Verify: `src/types/generated/SubAgentInfo.ts` now contains `currentActivity?: string | null`
 
 **Step 6: Compile check**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Expected: Success (no missing field errors)
 
 **Step 7: Commit**
@@ -426,7 +426,7 @@ agent.current_activity = None;
 
 **Step 5: Run compilation**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Expected: Success
 
 **Step 6: Manual verification**
@@ -582,7 +582,7 @@ mod tests {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server -- subagent_file`
+Run: `cargo test -p claude-view-server -- subagent_file`
 Expected: FAIL (module doesn't exist)
 
 **Step 3: Create the file resolution module**
@@ -634,7 +634,7 @@ pub mod subagent_file;
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server -- subagent_file`
+Run: `cargo test -p claude-view-server -- subagent_file`
 Expected: PASS
 
 **Step 5: Commit**
@@ -792,7 +792,7 @@ async fn ws_subagent_terminal_handler(
 
 **Step 3: Verify compilation**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Expected: Success
 
 **Step 4: Manual test**
@@ -1498,12 +1498,12 @@ fn test_spawn_and_progress_same_agent() {
 
 **Step 2: Run all parser tests**
 
-Run: `cargo test -p vibe-recall-core -- live_parser`
+Run: `cargo test -p claude-view-core -- live_parser`
 Expected: ALL PASS
 
 **Step 3: Run full crate check**
 
-Run: `cargo check -p vibe-recall-server && cargo test -p vibe-recall-core`
+Run: `cargo check -p claude-view-server && cargo test -p claude-view-core`
 Expected: ALL PASS
 
 **Step 4: Commit**
@@ -1604,9 +1604,9 @@ git commit -m "test(ui): integration tests for SubAgentDrillDown state and verbo
 **Step 1: Run full backend compilation and tests**
 
 ```bash
-cargo check -p vibe-recall-server
-cargo test -p vibe-recall-core
-cargo test -p vibe-recall-server -- subagent_file
+cargo check -p claude-view-server
+cargo test -p claude-view-core
+cargo test -p claude-view-server -- subagent_file
 ```
 
 Expected: ALL PASS, no warnings related to new code.
@@ -1653,7 +1653,7 @@ Expected: `currentActivity?: string | null;`
 
 ```bash
 bun run vitest run
-cargo test -p vibe-recall-core
+cargo test -p claude-view-core
 ```
 
 Expected: ALL PASS
@@ -1727,7 +1727,7 @@ No new Rust crate dependencies. No new npm dependencies.
 
 All changes are additive (new struct fields, new files, new routes). No existing behavior is modified.
 
-**To roll back completely:** Revert all commits from this phase. The new `sub_agent_progress` field on `LiveLine` and `current_activity` on `SubAgentInfo` are `Option` types with `None` defaults — removing them requires removing the field from all construction sites (3 for LiveLine, 1 for SubAgentInfo) and deleting the new files. After reverting `subagent.rs`, run `cargo test -p vibe-recall-core` to regenerate `src/types/generated/SubAgentInfo.ts` without `currentActivity`.
+**To roll back completely:** Revert all commits from this phase. The new `sub_agent_progress` field on `LiveLine` and `current_activity` on `SubAgentInfo` are `Option` types with `None` defaults — removing them requires removing the field from all construction sites (3 for LiveLine, 1 for SubAgentInfo) and deleting the new files. After reverting `subagent.rs`, run `cargo test -p claude-view-core` to regenerate `src/types/generated/SubAgentInfo.ts` without `currentActivity`.
 
 **To roll back partially (keep backend, revert frontend drill-down):**
 1. Keep Tasks 1-3 (progress parsing + activity tracking in SSE stream)

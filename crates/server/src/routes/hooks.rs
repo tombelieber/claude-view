@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
-    status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
+    status_from_agent_state, AgentState, AgentStateGroup, HookEvent, LiveSession, SessionEvent,
 };
 use crate::state::AppState;
-use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 #[derive(Debug, Deserialize)]
 pub struct HookPayload {
@@ -43,8 +43,30 @@ pub struct HookPayload {
     pub name: Option<String>,              // SubagentStart/Stop name field
 }
 
+/// Maximum hook events kept in memory per session.
+const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/live/hook", post(handle_hook))
+}
+
+/// Build a HookEvent from hook handler data.
+fn build_hook_event(
+    timestamp: i64,
+    event_name: &str,
+    tool_name: Option<&str>,
+    label: &str,
+    group: &str,
+    context: Option<&serde_json::Value>,
+) -> HookEvent {
+    HookEvent {
+        timestamp,
+        event_name: event_name.to_string(),
+        tool_name: tool_name.map(|s| s.to_string()),
+        label: label.to_string(),
+        group: group.to_string(),
+        context: context.map(|v| v.to_string()),
+    }
 }
 
 async fn handle_hook(
@@ -78,6 +100,27 @@ async fn handle_hook(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
+
+    // ── Build hook event for the event log ──────────────────────────────
+    let group_str = match &agent_state.group {
+        AgentStateGroup::NeedsYou => "needs_you",
+        AgentStateGroup::Autonomous => "autonomous",
+        AgentStateGroup::Delivered => "delivered",
+    };
+
+    let hook_event_context: Option<serde_json::Value> = payload
+        .tool_input
+        .clone()
+        .or_else(|| payload.error.as_ref().map(|e| serde_json::json!({"error": e})));
+
+    let hook_event = build_hook_event(
+        now,
+        &payload.hook_event_name,
+        payload.tool_name.as_deref(),
+        &agent_state.label,
+        group_str,
+        hook_event_context.as_ref(),
+    );
 
     // ── Lazy session creation ────────────────────────────────────────────
     // Sessions that were already running before the server started won't
@@ -123,6 +166,7 @@ async fn handle_hook(
                 sub_agents: Vec::new(),
                 progress_items: Vec::new(),
                 last_cache_hit_at: None,
+                hook_events: Vec::new(),
             };
             let mut sessions = state.live_sessions.write().await;
             if !sessions.contains_key(&payload.session_id) {
@@ -194,6 +238,7 @@ async fn handle_hook(
                     sub_agents: Vec::new(),
                     progress_items: Vec::new(),
                     last_cache_hit_at: None,
+                    hook_events: Vec::new(),
                 };
                 sessions.insert(session.id.clone(), session.clone());
                 drop(sessions); // release lock before async manager call
@@ -251,10 +296,57 @@ async fn handle_hook(
         }
         "SessionEnd" => {
             let session_id = payload.session_id.clone();
+
+            // Persist hook events to SQLite before removing from memory.
+            // Per CLAUDE.md: batch writes in transactions (insert_hook_events does this).
+            {
+                let sessions = state.live_sessions.read().await;
+                if let Some(session) = sessions.get(&session_id) {
+                    if !session.hook_events.is_empty() {
+                        let rows: Vec<claude_view_db::HookEventRow> = session
+                            .hook_events
+                            .iter()
+                            .map(|e| claude_view_db::HookEventRow {
+                                timestamp: e.timestamp,
+                                event_name: e.event_name.clone(),
+                                tool_name: e.tool_name.clone(),
+                                label: e.label.clone(),
+                                group_name: e.group.clone(),
+                                context: e.context.clone(),
+                            })
+                            .collect();
+                        if let Err(e) =
+                            claude_view_db::hook_events_queries::insert_hook_events(
+                                &state.db, &session_id, &rows,
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "Failed to persist hook events to SQLite"
+                            );
+                        } else {
+                            tracing::info!(
+                                session_id = %session_id,
+                                count = rows.len(),
+                                "Persisted hook events to SQLite"
+                            );
+                        }
+                    }
+                }
+            }
+
             state.live_sessions.write().await.remove(&session_id);
             if let Some(mgr) = &state.live_manager {
                 mgr.remove_accumulator(&session_id).await;
             }
+            // Clean up hook event broadcast channel
+            state
+                .hook_event_channels
+                .write()
+                .await
+                .remove(&session_id);
             let _ = state
                 .live_tx
                 .send(SessionEvent::SessionCompleted { session_id });
@@ -272,7 +364,7 @@ async fn handle_hook(
                     if (!match_type.is_empty() && agent.agent_type == match_type)
                         || (!match_id.is_empty() && agent.agent_id.as_deref() == Some(match_id))
                     {
-                        agent.status = vibe_recall_core::subagent::SubAgentStatus::Complete;
+                        agent.status = claude_view_core::subagent::SubAgentStatus::Complete;
                     }
                 }
                 session.last_activity_at = now;
@@ -309,7 +401,7 @@ async fn handle_hook(
                 if let Some(task_id) = &payload.task_id {
                     for item in &mut session.progress_items {
                         if item.id.as_deref() == Some(task_id.as_str()) {
-                            item.status = vibe_recall_core::progress::ProgressStatus::Completed;
+                            item.status = claude_view_core::progress::ProgressStatus::Completed;
                         }
                     }
                 }
@@ -355,6 +447,25 @@ async fn handle_hook(
                     session: session.clone(),
                 });
             }
+        }
+    }
+
+    // ── Append hook event to session (unified, after all match arms) ──
+    // SessionEnd removes the session, so skip appending for it.
+    if payload.hook_event_name != "SessionEnd" {
+        let mut sessions = state.live_sessions.write().await;
+        if let Some(session) = sessions.get_mut(&payload.session_id) {
+            if session.hook_events.len() >= MAX_HOOK_EVENTS_PER_SESSION {
+                session.hook_events.drain(..100); // drop oldest 100
+            }
+            session.hook_events.push(hook_event.clone());
+        }
+        drop(sessions);
+
+        // Broadcast to any connected WS listeners
+        let channels = state.hook_event_channels.read().await;
+        if let Some(tx) = channels.get(&payload.session_id) {
+            let _ = tx.send(hook_event);
         }
     }
 
@@ -950,6 +1061,38 @@ mod tests {
         p.task_subject = Some("Fix bug".into());
         let state = resolve_state_from_hook(&p);
         assert_eq!(state.state, "task_complete");
+    }
+
+    #[test]
+    fn test_build_hook_event() {
+        let event = super::build_hook_event(
+            1708000000,
+            "PreToolUse",
+            Some("Read"),
+            "Reading file.rs",
+            "autonomous",
+            None,
+        );
+        assert_eq!(event.event_name, "PreToolUse");
+        assert_eq!(event.tool_name, Some("Read".to_string()));
+        assert_eq!(event.label, "Reading file.rs");
+        assert_eq!(event.group, "autonomous");
+        assert_eq!(event.timestamp, 1708000000);
+        assert!(event.context.is_none());
+    }
+
+    #[test]
+    fn test_build_hook_event_with_context() {
+        let ctx = serde_json::json!({"command": "git status"});
+        let event = super::build_hook_event(
+            1708000000,
+            "PreToolUse",
+            Some("Bash"),
+            "Running: git status",
+            "autonomous",
+            Some(&ctx),
+        );
+        assert_eq!(event.context, Some(ctx.to_string()));
     }
 
     #[test]

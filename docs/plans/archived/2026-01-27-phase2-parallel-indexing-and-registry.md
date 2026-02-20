@@ -695,7 +695,7 @@ Items intentionally excluded from this plan. Each is fully designed in its sourc
 
 ### Chunk C: Session Health & Git Correlation
 
-**Source:** `2026-01-27-vibe-recall-analytics-design.md` §5-7
+**Source:** `2026-01-27-claude-view-analytics-design.md` §5-7
 
 | Item | What it adds | Why deferred |
 |------|-------------|--------------|

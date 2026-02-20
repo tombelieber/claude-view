@@ -69,7 +69,7 @@ fn extracts_source_session_id_from_session_meta() { ... }
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core codex::discovery::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::discovery::tests -- --nocapture`
 Expected: FAIL because module/functions are missing.
 
 **Step 3: Implement discovery module**
@@ -94,7 +94,7 @@ Rules:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core codex::discovery::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::discovery::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -133,7 +133,7 @@ async fn maps_function_calls_to_tool_messages() { ... }
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-core codex::parser::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::parser::tests -- --nocapture`
 Expected: FAIL because parser does not exist.
 
 **Step 3: Implement parser**
@@ -155,7 +155,7 @@ Mapping policy:
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-core codex::parser::tests -- --nocapture`
+Run: `cargo test -p claude-view-core codex::parser::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -194,7 +194,7 @@ fn computes_tool_call_count_from_function_call_items() { ... }
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db codex_indexer::tests -- --nocapture`
+Run: `cargo test -p claude-view-db codex_indexer::tests -- --nocapture`
 Expected: FAIL because extractor module is missing.
 
 **Step 3: Implement extractor + integration hook**
@@ -206,7 +206,7 @@ Expected: FAIL because extractor module is missing.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db codex_indexer::tests -- --nocapture`
+Run: `cargo test -p claude-view-db codex_indexer::tests -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -235,7 +235,7 @@ Integration assertions:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-db codex_pass1_pass2_integration -- --nocapture`
+Run: `cargo test -p claude-view-db codex_pass1_pass2_integration -- --nocapture`
 Expected: FAIL due to Claude-only indexing path.
 
 **Step 3: Implement provider-driven index loops**
@@ -246,7 +246,7 @@ Expected: FAIL due to Claude-only indexing path.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-db codex_pass1_pass2_integration -- --nocapture`
+Run: `cargo test -p claude-view-db codex_pass1_pass2_integration -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -276,7 +276,7 @@ Add tests proving:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p vibe-recall-server codex_session_parsed_route -- --nocapture`
+Run: `cargo test -p claude-view-server codex_session_parsed_route -- --nocapture`
 Expected: FAIL because route always calls Claude parser.
 
 **Step 3: Implement source dispatch**
@@ -287,7 +287,7 @@ Expected: FAIL because route always calls Claude parser.
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p vibe-recall-server codex_session_parsed_route -- --nocapture`
+Run: `cargo test -p claude-view-server codex_session_parsed_route -- --nocapture`
 Expected: PASS.
 
 **Step 5: Commit**
@@ -350,9 +350,9 @@ git commit -m "feat(ui): surface session source metadata for mixed claude/codex 
 ## Verification Checklist
 
 Run:
-- `cargo test -p vibe-recall-core codex::discovery::tests codex::parser::tests`
-- `cargo test -p vibe-recall-db codex_indexer::tests codex_pass1_pass2_integration`
-- `cargo test -p vibe-recall-server codex_session_parsed_route`
+- `cargo test -p claude-view-core codex::discovery::tests codex::parser::tests`
+- `cargo test -p claude-view-db codex_indexer::tests codex_pass1_pass2_integration`
+- `cargo test -p claude-view-server codex_session_parsed_route`
 - `npm test -- HistoryView SessionCard ConversationView --runInBand`
 
 Expected:

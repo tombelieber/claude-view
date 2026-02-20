@@ -63,7 +63,7 @@ impl ClaudeCliProvider {
             "claude CLI: spawning"
         );
 
-        let mut cmd = TokioCommand::new("claude");
+        let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
                 "-p",
                 "--output-format",
@@ -152,7 +152,7 @@ impl LlmProvider for ClaudeCliProvider {
             "claude CLI complete(): spawning"
         );
 
-        let mut cmd = TokioCommand::new("claude");
+        let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
                 "-p",
                 "--output-format",
@@ -201,7 +201,7 @@ impl LlmProvider for ClaudeCliProvider {
     }
 
     async fn health_check(&self) -> Result<(), LlmError> {
-        let output = TokioCommand::new("claude")
+        let output = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"))
             .arg("--version")
             .output()
             .await
