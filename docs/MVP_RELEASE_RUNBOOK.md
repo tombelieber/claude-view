@@ -68,7 +68,7 @@ This is a one-time setup that tells npm to trust your GitHub Actions workflow.
 
 npm provenance requires your GitHub repo to be public.
 
-Go to **https://github.com/myorg/claude-view/settings** and check:
+Go to **https://github.com/tombelieber/claude-view/settings** and check:
 - Under "Danger Zone" → is the repo visibility set to **Public**?
 - If **Private**, click "Change visibility" and make it public
 
@@ -170,7 +170,7 @@ Press `Ctrl+C` to stop.
 ### Step 3.4: Verify Trusted Publisher
 
 Go to **https://www.npmjs.com/** → Account Settings → Trusted Publishers and confirm:
-- ✓ GitHub Actions publisher for `myorg/claude-view/release.yml` is listed
+- ✓ GitHub Actions publisher for `tombelieber/claude-view/release.yml` is listed
 
 **✓ Validation complete when:** All 4 checks pass.
 
@@ -215,7 +215,7 @@ This:
 
 ### Step 4.5: Monitor CI
 
-Go to **https://github.com/myorg/claude-view/actions** and watch the release workflow.
+Go to **https://github.com/tombelieber/claude-view/actions** and watch the release workflow.
 
 **Wait for:**
 1. ✓ `build` job completes (4 platform binaries)
@@ -270,7 +270,7 @@ Mark Phase 4 as **DONE**:
 
 ### 5.2: Create Release Notes
 
-Add to **https://github.com/myorg/claude-view/releases/tag/v0.2.0**:
+Add to **https://github.com/tombelieber/claude-view/releases/tag/v0.2.0**:
 
 ```markdown
 ## 🎉 claude-view v0.2.0 — MVP Release
@@ -303,7 +303,7 @@ npx claude-view
 Open `http://127.0.0.1:47892` in your browser.
 
 ### Feedback
-Found a bug? Have a feature request? [Open an issue](https://github.com/myorg/claude-view/issues)
+Found a bug? Have a feature request? [Open an issue](https://github.com/tombelieber/claude-view/issues)
 ```
 
 ### 5.3: Announce
@@ -321,7 +321,7 @@ Post in your channels (Twitter, blog, Discord, etc.):
 >
 > 📊 335+ tests, zero dependencies, open-source
 >
-> GitHub: [myorg/claude-view](https://github.com/myorg/claude-view)
+> GitHub: [tombelieber/claude-view](https://github.com/tombelieber/claude-view)
 
 ### 5.4: Future Releases
 
@@ -382,7 +382,7 @@ bun run release:push
 ### "npm ERR! 403 Forbidden" during publish
 - **Cause:** Trusted Publisher not configured, or workflow file name doesn't match
 - **Fix:** Go to https://www.npmjs.com/ → Account Settings → Trusted Publishers and verify:
-  - GitHub publisher exists for `myorg/claude-view`
+  - GitHub publisher exists for `tombelieber/claude-view`
   - Workflow filename is exactly `release.yml`
 - **Or:** Check GitHub Actions logs for OIDC token errors
 
@@ -399,7 +399,7 @@ bun run release:push
 - **Fix:** Generate a new token, update `NPM_TOKEN` secret
 
 ### "GitHub Actions fails during build"
-- **Check:** https://github.com/myorg/claude-view/actions
+- **Check:** https://github.com/tombelieber/claude-view/actions
 - **Click:** Failed job → logs
 - **Common issues:**
   - Rust compilation error → run `cargo test` locally

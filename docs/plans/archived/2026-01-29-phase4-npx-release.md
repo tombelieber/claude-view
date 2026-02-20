@@ -22,7 +22,7 @@ date: 2026-01-29
 | `npx-cli/index.js` (download + cache + launch) | Done | Modify — add checksum verification |
 | `npx-cli/package.json` | Done | No change |
 | `.github/workflows/release.yml` (build 4 platforms) | Done | Modify — add checksum generation + npm publish |
-| GitHub repo (`anonymous-dev/claude-view`) | Exists | — |
+| GitHub repo (`tombelieber/claude-view`) | Exists | — |
 | npm account + NPM_TOKEN secret | Missing | **Human action required** |
 | SHA256 checksums in release | Missing | Add to CI |
 | npm publish step in CI | Missing | Add to CI |
@@ -60,7 +60,7 @@ These are one-time setup steps that only the human can do. Complete these before
 
 ### Step C: Add NPM_TOKEN to GitHub repo secrets
 
-1. Go to `https://github.com/anonymous-dev/claude-view/settings/secrets/actions`
+1. Go to `https://github.com/tombelieber/claude-view/settings/secrets/actions`
 2. Click **New repository secret**
 3. Name: `NPM_TOKEN`
 4. Value: paste the token from Step B
@@ -73,7 +73,7 @@ npm provenance requires the GitHub Actions OIDC token. This is already handled b
 ### Step E: Verify GitHub repo is public
 
 npm provenance only works with public repos. Verify:
-- `https://github.com/anonymous-dev/claude-view` is public
+- `https://github.com/tombelieber/claude-view` is public
 - If private, either make it public or skip the `--provenance` flag
 
 ---
@@ -356,7 +356,7 @@ STATIC_DIR=/tmp/cv-staging/dist /tmp/cv-staging/claude-view
 
 **Step 4: Verify GitHub secret**
 
-Confirm `NPM_TOKEN` exists at `https://github.com/anonymous-dev/claude-view/settings/secrets/actions`
+Confirm `NPM_TOKEN` exists at `https://github.com/tombelieber/claude-view/settings/secrets/actions`
 
 ---
 
@@ -384,7 +384,7 @@ bun run release:tag
 bun run release:push
 ```
 
-**Step 5: Monitor CI** at `https://github.com/anonymous-dev/claude-view/actions`
+**Step 5: Monitor CI** at `https://github.com/tombelieber/claude-view/actions`
 
 Verify:
 1. All 4 platform builds succeed
