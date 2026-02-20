@@ -304,4 +304,15 @@ mod tests {
         };
         assert_eq!(status_from_agent_state(&state), SessionStatus::Done);
     }
+
+    #[test]
+    fn test_status_from_compacting() {
+        let state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "compacting".into(),
+            label: "Auto-compacting context...".into(),
+            context: None,
+        };
+        assert_eq!(status_from_agent_state(&state), SessionStatus::Working);
+    }
 }

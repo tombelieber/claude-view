@@ -408,15 +408,63 @@ async fn handle_hook(
                 });
             }
         }
+        "PreCompact" => {
+            let mut sessions = state.live_sessions.write().await;
+            if let Some(session) = sessions.get_mut(&payload.session_id) {
+                session.agent_state = agent_state.clone();
+                session.status = status_from_agent_state(&agent_state);
+                session.current_activity = agent_state.label.clone();
+                session.last_activity_at = now;
+                state_changed = true;
+                if session.pid.is_none() {
+                    if let Some(pid) = claude_pid {
+                        session.pid = Some(pid);
+                        pid_newly_bound = true;
+                    }
+                }
+                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                    session: session.clone(),
+                });
+            }
+        }
+        "PostToolUse" => {
+            let mut sessions = state.live_sessions.write().await;
+            if let Some(session) = sessions.get_mut(&payload.session_id) {
+                if session.agent_state.state == "compacting" {
+                    session.last_activity_at = now;
+                    if session.pid.is_none() {
+                        if let Some(pid) = claude_pid {
+                            session.pid = Some(pid);
+                            pid_newly_bound = true;
+                        }
+                    }
+                    let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                        session: session.clone(),
+                    });
+                } else {
+                    session.agent_state = agent_state.clone();
+                    session.status = status_from_agent_state(&agent_state);
+                    session.current_activity = agent_state.label.clone();
+                    session.last_activity_at = now;
+                    state_changed = true;
+                    if session.pid.is_none() {
+                        if let Some(pid) = claude_pid {
+                            session.pid = Some(pid);
+                            pid_newly_bound = true;
+                        }
+                    }
+                    let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                        session: session.clone(),
+                    });
+                }
+            }
+        }
         // ── All other state-changing events ──────────────────────────────
-        // PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest,
-        // Notification, SubagentStart, PreCompact
+        // PreToolUse, PostToolUseFailure, PermissionRequest,
+        // Notification, SubagentStart
         _ => {
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
-                // Preserve context when re-entering the same state without new context.
-                // e.g., Notification/elicitation_dialog fires after PreToolUse/AskUserQuestion
-                // and would otherwise overwrite the question context with None.
                 let mut new_state = agent_state.clone();
                 if new_state.context.is_none()
                     && session.agent_state.state == new_state.state
@@ -676,7 +724,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 .unwrap_or("auto");
             AgentState {
                 group: AgentStateGroup::Autonomous,
-                state: "thinking".into(),
+                state: "compacting".into(),
                 label: if trigger == "manual" {
                     "Compacting context...".into()
                 } else {
@@ -1040,21 +1088,21 @@ mod tests {
     }
 
     #[test]
-    fn test_pre_compact_auto_returns_thinking() {
+    fn test_pre_compact_auto_returns_compacting() {
         let mut payload = minimal_payload("PreCompact");
         payload.trigger = Some("auto".into());
         let state = resolve_state_from_hook(&payload);
-        assert_eq!(state.state, "thinking");
+        assert_eq!(state.state, "compacting");
         assert!(matches!(state.group, AgentStateGroup::Autonomous));
         assert!(state.label.contains("Auto-compacting"));
     }
 
     #[test]
-    fn test_pre_compact_manual_returns_thinking() {
+    fn test_pre_compact_manual_returns_compacting() {
         let mut payload = minimal_payload("PreCompact");
         payload.trigger = Some("manual".into());
         let state = resolve_state_from_hook(&payload);
-        assert_eq!(state.state, "thinking");
+        assert_eq!(state.state, "compacting");
         assert!(state.label.contains("Compacting context"));
         assert!(!state.label.contains("Auto"));
     }
@@ -1367,5 +1415,59 @@ mod tests {
             session.agent_state.group,
             AgentStateGroup::NeedsYou
         ));
+    }
+
+    #[tokio::test]
+    async fn test_post_tool_use_does_not_override_compacting() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Pre-populate a session in compacting state (as if PreCompact just fired)
+        {
+            let mut session = make_autonomous_session("test-session");
+            session.agent_state = AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "compacting".into(),
+                label: "Auto-compacting context...".into(),
+                context: None,
+            };
+            session.status = SessionStatus::Working;
+            session.current_activity = "Auto-compacting context...".into();
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("test-session".to_string(), session);
+        }
+
+        // Send PostToolUse (racing from the previous tool)
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": "test-session",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        // Verify: agent_state should still be "compacting", NOT "thinking"
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("test-session").unwrap();
+        assert_eq!(
+            session.agent_state.state, "compacting",
+            "PostToolUse must not overwrite compacting state"
+        );
+        assert_eq!(
+            session.current_activity, "Auto-compacting context...",
+            "PostToolUse must not overwrite current_activity during compaction"
+        );
+        assert_eq!(session.status, SessionStatus::Working);
     }
 }
