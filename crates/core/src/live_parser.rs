@@ -106,6 +106,8 @@ pub struct LiveLine {
     pub task_updates: Vec<RawTaskUpdate>,
     /// Task ID assignments from toolUseResult on this user line.
     pub task_id_assignments: Vec<RawTaskIdAssignment>,
+    /// Skill names extracted from Skill tool_use blocks (from `input.skill`).
+    pub skill_names: Vec<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -142,6 +144,7 @@ pub struct TailFinders {
     pub task_create_key: memmem::Finder<'static>,
     pub task_update_key: memmem::Finder<'static>,
     pub task_notification_key: memmem::Finder<'static>,
+    pub skill_name_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -167,6 +170,7 @@ impl TailFinders {
             task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
+            skill_name_key: memmem::Finder::new(b"\"name\":\"Skill\""),
         }
     }
 }
@@ -304,6 +308,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 task_creates: Vec::new(),
                 task_updates: Vec::new(),
                 task_id_assignments: Vec::new(),
+                skill_names: Vec::new(),
             };
         }
     };
@@ -326,7 +331,7 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names, is_tool_result) =
+    let (content_preview, tool_names, skill_names, is_tool_result) =
         extract_content_and_tools(content_source, finders);
 
     // Detect system-injected prefixes in user-type lines.
@@ -662,17 +667,20 @@ fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         task_creates,
         task_updates,
         task_id_assignments,
+        skill_names,
     }
 }
 
-/// Extract content preview (truncated to 200 chars), tool_use names, and
-/// whether the content array contains a `tool_result` block.
+/// Extract content preview (truncated to 200 chars), tool_use names,
+/// skill names (from Skill tool_use `input.skill`), and whether the
+/// content array contains a `tool_result` block.
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
     _finders: &TailFinders,
-) -> (String, Vec<String>, bool) {
+) -> (String, Vec<String>, Vec<String>, bool) {
     let mut preview = String::new();
     let mut tool_names = Vec::new();
+    let mut skill_names = Vec::new();
     let mut has_tool_result = false;
 
     match parsed.get("content") {
@@ -692,6 +700,18 @@ fn extract_content_and_tools(
                     Some("tool_use") => {
                         if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
                             tool_names.push(name.to_string());
+                            // Extract skill name from Skill tool_use input
+                            if name == "Skill" {
+                                if let Some(skill) = block
+                                    .get("input")
+                                    .and_then(|i| i.get("skill"))
+                                    .and_then(|s| s.as_str())
+                                {
+                                    if !skill.is_empty() {
+                                        skill_names.push(skill.to_string());
+                                    }
+                                }
+                            }
                         }
                     }
                     Some("tool_result") => {
@@ -704,7 +724,7 @@ fn extract_content_and_tools(
         _ => {}
     }
 
-    (preview, tool_names, has_tool_result)
+    (preview, tool_names, skill_names, has_tool_result)
 }
 
 /// Extract a `<task-notification>` from the full content JSON value.
@@ -1635,5 +1655,63 @@ mod tests {
         let progress_line = parse_single_line(progress_raw, &finders);
         assert!(progress_line.sub_agent_spawns.is_empty());
         assert!(progress_line.sub_agent_progress.is_some());
+    }
+
+    // -------------------------------------------------------------------------
+    // Skill name extraction from Skill tool_use
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_skill_name_extracted_from_skill_tool_use() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Let me commit."},{"type":"tool_use","id":"toolu_01XYZ","name":"Skill","input":{"skill":"commit","args":"-m 'fix bug'"}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["Skill"]);
+        assert_eq!(line.skill_names, vec!["commit"]);
+    }
+
+    #[test]
+    fn test_multiple_skill_invocations() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{"skill":"commit"}},{"type":"tool_use","id":"toolu_01B","name":"Skill","input":{"skill":"review-pr","args":"123"}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["Skill", "Skill"]);
+        assert_eq!(line.skill_names, vec!["commit", "review-pr"]);
+    }
+
+    #[test]
+    fn test_skill_name_empty_ignored() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{"skill":""}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["Skill"]);
+        assert!(line.skill_names.is_empty(), "Empty skill name should be ignored");
+    }
+
+    #[test]
+    fn test_skill_name_missing_input() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["Skill"]);
+        assert!(line.skill_names.is_empty(), "Missing skill field should produce no skill_names");
+    }
+
+    #[test]
+    fn test_non_skill_tool_use_no_skill_names() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"toolu_01B","name":"mcp__plugin_playwright_playwright__browser_navigate","input":{"url":"http://example.com"}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["Bash", "mcp__plugin_playwright_playwright__browser_navigate"]);
+        assert!(line.skill_names.is_empty(), "Non-Skill tools should produce no skill_names");
+    }
+
+    #[test]
+    fn test_mixed_skill_and_mcp_tools() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"mcp__chrome-devtools__take_screenshot","input":{}},{"type":"tool_use","id":"toolu_01B","name":"Skill","input":{"skill":"pdf"}}]}}"#;
+        let line = parse_single_line(raw, &finders);
+        assert_eq!(line.tool_names, vec!["mcp__chrome-devtools__take_screenshot", "Skill"]);
+        assert_eq!(line.skill_names, vec!["pdf"]);
     }
 }
