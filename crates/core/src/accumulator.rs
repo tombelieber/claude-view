@@ -521,6 +521,7 @@ mod tests {
             task_creates: Vec::new(),
             task_updates: Vec::new(),
             task_id_assignments: Vec::new(),
+            skill_names: Vec::new(),
         }
     }
 

@@ -12,6 +12,7 @@ mod system;
 mod ai_generation;
 pub mod facets;
 mod fluency;
+pub mod reports;
 mod types;
 
 pub use dashboard::ActivityPoint;

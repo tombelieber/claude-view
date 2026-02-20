@@ -574,6 +574,26 @@ CREATE TABLE IF NOT EXISTS hook_events (
 );
 "#,
     r#"CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, timestamp);"#,
+    // Migration 25: Work Reports table
+    r#"
+CREATE TABLE IF NOT EXISTS reports (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type         TEXT NOT NULL,
+    date_start          TEXT NOT NULL,
+    date_end            TEXT NOT NULL,
+    content_md          TEXT NOT NULL,
+    context_digest      TEXT,
+    session_count       INTEGER NOT NULL,
+    project_count       INTEGER NOT NULL,
+    total_duration_secs INTEGER NOT NULL,
+    total_cost_cents    INTEGER NOT NULL,
+    generation_ms       INTEGER,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    CONSTRAINT valid_report_type CHECK (report_type IN ('daily', 'weekly', 'custom'))
+);
+"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date_start, date_end);"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type);"#,
 ];
 
 // ============================================================================
@@ -1639,5 +1659,73 @@ mod tests {
             "UPDATE sessions SET loc_source = 3 WHERE id = 'm18-chk'"
         ).execute(&pool).await;
         assert!(result.is_err(), "CHECK constraint on loc_source should survive migration 18");
+    }
+
+    // ========================================================================
+    // Migration 25: Work Reports table
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration25_reports_table_exists() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('reports')"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(column_names.contains(&"id"), "Missing id column");
+        assert!(column_names.contains(&"report_type"), "Missing report_type column");
+        assert!(column_names.contains(&"date_start"), "Missing date_start column");
+        assert!(column_names.contains(&"date_end"), "Missing date_end column");
+        assert!(column_names.contains(&"content_md"), "Missing content_md column");
+        assert!(column_names.contains(&"context_digest"), "Missing context_digest column");
+        assert!(column_names.contains(&"session_count"), "Missing session_count column");
+        assert!(column_names.contains(&"project_count"), "Missing project_count column");
+        assert!(column_names.contains(&"total_duration_secs"), "Missing total_duration_secs column");
+        assert!(column_names.contains(&"total_cost_cents"), "Missing total_cost_cents column");
+        assert!(column_names.contains(&"generation_ms"), "Missing generation_ms column");
+        assert!(column_names.contains(&"created_at"), "Missing created_at column");
+    }
+
+    #[tokio::test]
+    async fn test_migration25_reports_check_constraints() {
+        let pool = setup_db().await;
+
+        // Valid report_type should work
+        let result = sqlx::query(
+            "INSERT INTO reports (report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents) VALUES ('daily', '2026-02-21', '2026-02-21', '- Shipped search', 8, 3, 15120, 680)"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_ok(), "Valid report_type 'daily' should be accepted");
+
+        // Invalid report_type should fail
+        let result = sqlx::query(
+            "INSERT INTO reports (report_type, date_start, date_end, content_md, session_count, project_count, total_duration_secs, total_cost_cents) VALUES ('invalid', '2026-02-21', '2026-02-21', 'test', 0, 0, 0, 0)"
+        )
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "Invalid report_type should be rejected");
+    }
+
+    #[tokio::test]
+    async fn test_migration25_reports_indexes() {
+        let pool = setup_db().await;
+
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_reports%'"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+        assert!(index_names.contains(&"idx_reports_date"), "Missing idx_reports_date index");
+        assert!(index_names.contains(&"idx_reports_type"), "Missing idx_reports_type index");
     }
 }

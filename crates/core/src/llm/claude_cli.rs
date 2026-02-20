@@ -32,6 +32,104 @@ impl ClaudeCliProvider {
         self
     }
 
+    /// Spawn Claude CLI and stream stdout chunks via a channel.
+    ///
+    /// Returns (receiver, join_handle). The receiver yields text chunks.
+    /// When the CLI exits, the channel closes.
+    ///
+    /// Uses `--output-format text` (not json) since we want raw text streaming.
+    pub fn stream_completion(
+        &self,
+        prompt: String,
+    ) -> Result<
+        (
+            tokio::sync::mpsc::Receiver<String>,
+            tokio::task::JoinHandle<Result<(), LlmError>>,
+        ),
+        LlmError,
+    > {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        // Strip ALL Claude Code env vars to prevent nested session detection.
+        let known_vars = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_SSE_PORT",
+            "CLAUDE_CODE_ENTRYPOINT",
+        ];
+        let extra_vars: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
+            .map(|(k, _)| k)
+            .collect();
+        let all_stripped: Vec<String> = known_vars
+            .iter()
+            .map(|s| s.to_string())
+            .chain(extra_vars)
+            .collect();
+
+        tracing::info!(
+            model = %self.model,
+            stripped_vars = ?all_stripped,
+            "claude CLI stream_completion(): spawning"
+        );
+
+        let mut cmd =
+            tokio::process::Command::new(crate::resolved_cli_path().unwrap_or("claude"));
+        cmd.args([
+            "-p",
+            "--output-format",
+            "text",
+            "--model",
+            &self.model,
+            &prompt,
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+        for var in &all_stripped {
+            cmd.env_remove(var);
+        }
+
+        let mut child = cmd.spawn().map_err(|e| {
+            tracing::error!(error = %e, "claude CLI stream_completion(): failed to spawn");
+            LlmError::SpawnFailed(e.to_string())
+        })?;
+
+        let stdout = child.stdout.take().ok_or_else(|| {
+            LlmError::SpawnFailed("failed to capture stdout".to_string())
+        })?;
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
+
+        let handle = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                if tx.send(line).await.is_err() {
+                    // Receiver dropped — abort the child
+                    let _ = child.kill().await;
+                    return Ok(());
+                }
+            }
+
+            // Wait for the child to exit
+            let status = child.wait().await.map_err(|e| {
+                LlmError::SpawnFailed(format!("failed to wait for CLI: {e}"))
+            })?;
+
+            if !status.success() {
+                tracing::warn!(
+                    exit_code = ?status.code(),
+                    "claude CLI stream_completion(): non-zero exit"
+                );
+            }
+
+            Ok(())
+        });
+
+        Ok((rx, handle))
+    }
+
     /// Spawn Claude CLI and parse JSON response.
     ///
     /// Command: `claude -p --output-format json --model {model} "{prompt}"`
@@ -388,5 +486,23 @@ mod tests {
         assert_eq!(provider.name(), "claude-cli");
         assert_eq!(provider.model(), "haiku");
         assert_eq!(provider.timeout_secs, 60);
+    }
+
+    #[test]
+    fn test_stream_completion_compiles() {
+        // Verify the method exists and has the right signature.
+        // We can't test actual CLI invocation in unit tests.
+        let _provider = ClaudeCliProvider::new("haiku");
+        // Just verify it compiles — calling it would require CLI to be installed
+        let _: fn(
+            &ClaudeCliProvider,
+            String,
+        ) -> Result<
+            (
+                tokio::sync::mpsc::Receiver<String>,
+                tokio::task::JoinHandle<Result<(), LlmError>>,
+            ),
+            LlmError,
+        > = ClaudeCliProvider::stream_completion;
     }
 }
