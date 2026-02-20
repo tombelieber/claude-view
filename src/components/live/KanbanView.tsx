@@ -76,10 +76,6 @@ export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, cu
     return groups
   }, [sessions])
 
-  if (sessions.length === 0) {
-    return null
-  }
-
   return (
     <div className="flex gap-4 pb-4 h-full min-h-0">
       {COLUMNS.map((col) => (
