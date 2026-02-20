@@ -168,33 +168,46 @@ pub fn register(port: u16) {
 }
 
 /// Remove Live Monitor hooks from ~/.claude/settings.json.
-/// Called on graceful server shutdown.
-pub fn cleanup(port: u16) {
+/// Called on graceful server shutdown and by `cleanup` subcommand.
+/// Returns list of what was cleaned up for user feedback.
+pub fn cleanup(port: u16) -> Vec<String> {
     let _ = port; // port param reserved for future multi-instance support
+    let mut removed = Vec::new();
     let path = settings_path();
-    if !path.exists() {
-        return;
+
+    if path.exists() {
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => return removed,
+        };
+        let mut settings: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(s) => s,
+            Err(_) => return removed,
+        };
+
+        if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+            remove_our_hooks(hooks);
+        }
+
+        let tmp_path = path.with_extension("json.tmp");
+        let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
+        if std::fs::write(&tmp_path, &serialized).is_ok() {
+            let _ = std::fs::rename(&tmp_path, &path);
+            removed.push("Removed hooks from ~/.claude/settings.json".to_string());
+            tracing::info!("Cleaned up Live Monitor hooks");
+        }
     }
 
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    let mut settings: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-
-    if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
-        remove_our_hooks(hooks);
-    }
-
+    // Clean up atomic-write temp file if left behind by a crash
     let tmp_path = path.with_extension("json.tmp");
-    let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
-    if std::fs::write(&tmp_path, &serialized).is_ok() {
-        let _ = std::fs::rename(&tmp_path, &path);
-        tracing::info!("Cleaned up Live Monitor hooks");
+    if tmp_path.exists() {
+        match std::fs::remove_file(&tmp_path) {
+            Ok(()) => removed.push("Removed ~/.claude/settings.json.tmp".to_string()),
+            Err(e) => removed.push(format!("Failed to remove settings.json.tmp: {}", e)),
+        }
     }
+
+    removed
 }
 
 #[cfg(test)]

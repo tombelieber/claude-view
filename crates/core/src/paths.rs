@@ -19,6 +19,40 @@ pub fn db_path() -> Option<PathBuf> {
     app_cache_dir().map(|d| d.join("claude-view.db"))
 }
 
+/// Remove all claude-view cache data (DB, WAL, SHM, search index).
+/// Returns list of what was removed for user feedback.
+pub fn remove_cache_data() -> Vec<String> {
+    let mut removed = Vec::new();
+    if let Some(dir) = app_cache_dir() {
+        if dir.exists() {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => removed.push(format!("Removed cache directory: {}", dir.display())),
+                Err(e) => removed.push(format!("Failed to remove {}: {}", dir.display(), e)),
+            }
+        }
+    }
+    removed
+}
+
+/// Remove restart-detection lock files from /tmp.
+pub fn remove_lock_files() -> Vec<String> {
+    let mut removed = Vec::new();
+    let tmp = std::env::temp_dir();
+    if let Ok(entries) = std::fs::read_dir(&tmp) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("claude-view-") && name.ends_with(".lock") {
+                match std::fs::remove_file(entry.path()) {
+                    Ok(()) => removed.push(format!("Removed lock file: {}", entry.path().display())),
+                    Err(e) => removed.push(format!("Failed to remove {}: {}", entry.path().display(), e)),
+                }
+            }
+        }
+    }
+    removed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
