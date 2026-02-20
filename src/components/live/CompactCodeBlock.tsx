@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { useExpandContext } from '../../contexts/ExpandContext'
+import { useMonitorStore } from '../../store/monitor-store'
 import { useTheme } from '../../hooks/use-theme'
 import { useShikiHighlighter } from '../../hooks/use-shiki'
 import { resolveLanguage } from '../../lib/shiki'
@@ -9,14 +10,13 @@ interface CompactCodeBlockProps {
   code: string | null | undefined
   language?: string | null | undefined
   blockId?: string
-  /** When true, never collapse — show full code block. */
-  verboseMode?: boolean
 }
 
 const COLLAPSE_THRESHOLD = 12
 
-export function CompactCodeBlock({ code, language, blockId, verboseMode }: CompactCodeBlockProps) {
+export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockProps) {
   const { expandedBlocks, toggleBlock } = useExpandContext()
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
   const isExpanded = verboseMode || (blockId ? expandedBlocks.has(blockId) : false)
   const [copied, setCopied] = useState(false)
   const { resolvedTheme } = useTheme()
