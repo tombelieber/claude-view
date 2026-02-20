@@ -82,6 +82,7 @@ pub async fn facet_ingest_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let ingest = state.facet_ingest.clone();
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         loop {
@@ -98,7 +99,12 @@ pub async fn facet_ingest_stream(
                 yield Ok(Event::default().event("done").data(data.to_string()));
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
+                }
+            }
         }
     };
 

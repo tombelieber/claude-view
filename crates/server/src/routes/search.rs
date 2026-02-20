@@ -55,7 +55,15 @@ async fn search_handler(
         ));
     }
 
-    let search_index = state.search_index.as_ref().ok_or_else(|| {
+    // Read-lock the holder, clone the Option<Arc<SearchIndex>>, drop the lock immediately.
+    let search_index = state
+        .search_index
+        .read()
+        .map_err(|_| {
+            crate::error::ApiError::Internal("search index lock poisoned".into())
+        })?
+        .clone();
+    let search_index = search_index.ok_or_else(|| {
         crate::error::ApiError::ServiceUnavailable(
             "Search index is not available. It may still be building.".to_string(),
         )

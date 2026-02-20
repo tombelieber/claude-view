@@ -90,6 +90,7 @@ pub async fn indexing_progress(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let indexing = state.indexing.clone();
+    let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
         let mut last_status = IndexingStatus::Idle;
@@ -187,7 +188,15 @@ pub async fn indexing_progress(
                 break;
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            // Wait for next poll interval OR shutdown signal (clean Ctrl+C exit).
+            // Only break if the value became true (real shutdown). Ignore Err from
+            // dropped sender (test constructors drop the Sender immediately).
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {}
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { break; }
+                }
+            }
         }
     };
 
