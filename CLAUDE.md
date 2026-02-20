@@ -61,18 +61,21 @@ Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm 
 
 ## Private Docs (sibling repo)
 
-Product vision, pricing, roadmap, and GTM docs live in the sibling repo:
+Business strategy and operational plans live in a **private sibling repo** (one level up, the GTM repo).
 
 ```
-../claude-view-gtm/
+(private sibling repo)/
   vision/          — VISION.md, ROADMAP.md
-  plans/active/    — active pricing/strategy plans
+  plans/active/    — executable plans (action items, ops tasks, strategy plans)
   plans/backlog/   — backlog strategy plans
   marketing/       — release runbook, blog drafts
 ```
 
-When business context is needed (pricing tiers, feature gating, product direction),
-read from that repo. Never commit business/strategy docs to this repo.
+**Rules:**
+- To find it: `ls ../ | grep gtm` from this repo root.
+- When business context is needed (pricing, product direction), read from that repo.
+- When the user says "execute a plan", check that repo's `plans/active/` for the matching plan file and follow it.
+- Never commit business/strategy docs to this repo.
 
 ## Development Priorities
 
