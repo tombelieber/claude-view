@@ -246,7 +246,7 @@ pub fn calculate_cost_usd(tokens: &TokenBreakdown, pricing: &ModelPricing) -> f6
     input_cost + output_cost + cache_create_cost + cache_read_cost
 }
 
-fn tiered_cost(tokens: i64, base_rate: f64, above_200k_rate: Option<f64>) -> f64 {
+pub fn tiered_cost(tokens: i64, base_rate: f64, above_200k_rate: Option<f64>) -> f64 {
     const THRESHOLD: i64 = 200_000;
     if tokens <= 0 {
         return 0.0;
