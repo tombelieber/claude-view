@@ -28,42 +28,19 @@ export interface WorkTypeConfig {
 /**
  * Work type configuration map.
  */
+/** Neutral style shared by all work types — icon + text label differentiate. */
+const NEUTRAL = {
+  bgColor: 'bg-gray-50 dark:bg-gray-800',
+  textColor: 'text-gray-600 dark:text-gray-400',
+  borderColor: 'border-gray-200 dark:border-gray-700',
+} as const
+
 export const WORK_TYPE_CONFIG: Record<string, WorkTypeConfig> = {
-  deep_work: {
-    label: 'Deep Work',
-    bgColor: 'bg-blue-50 dark:bg-blue-950/30',
-    textColor: 'text-blue-700 dark:text-blue-400',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    title: 'Extended coding session (>30 min, many files)',
-  },
-  quick_ask: {
-    label: 'Quick Ask',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
-    textColor: 'text-amber-700 dark:text-amber-400',
-    borderColor: 'border-amber-200 dark:border-amber-800',
-    title: 'Brief question (<5 min, no edits)',
-  },
-  planning: {
-    label: 'Planning',
-    bgColor: 'bg-purple-50 dark:bg-purple-950/30',
-    textColor: 'text-purple-700 dark:text-purple-400',
-    borderColor: 'border-purple-200 dark:border-purple-800',
-    title: 'Architecture/design discussion',
-  },
-  bug_fix: {
-    label: 'Bug Fix',
-    bgColor: 'bg-red-50 dark:bg-red-950/30',
-    textColor: 'text-red-700 dark:text-red-400',
-    borderColor: 'border-red-200 dark:border-red-800',
-    title: 'Debugging session',
-  },
-  standard: {
-    label: 'Standard',
-    bgColor: 'bg-gray-50 dark:bg-gray-800',
-    textColor: 'text-gray-600 dark:text-gray-400',
-    borderColor: 'border-gray-200 dark:border-gray-700',
-    title: 'General development session',
-  },
+  deep_work: { label: 'Deep Work',  ...NEUTRAL, title: 'Extended coding session (>30 min, many files)' },
+  quick_ask: { label: 'Quick Ask',  ...NEUTRAL, title: 'Brief question (<5 min, no edits)' },
+  planning:  { label: 'Planning',   ...NEUTRAL, title: 'Architecture/design discussion' },
+  bug_fix:   { label: 'Bug Fix',    ...NEUTRAL, title: 'Debugging session' },
+  standard:  { label: 'Standard',   ...NEUTRAL, title: 'General development session' },
 }
 
 /**

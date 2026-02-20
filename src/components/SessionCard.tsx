@@ -361,7 +361,7 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
 
           {/* Commit badge */}
           {commitCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-200 dark:border-green-800">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded border border-gray-200 dark:border-gray-700">
               <GitCommit className="w-3 h-3" />
               {commitCount} commit{commitCount !== 1 ? 's' : ''}
             </span>
