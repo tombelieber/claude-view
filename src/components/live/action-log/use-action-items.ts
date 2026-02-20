@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { RichMessage } from '../RichPane'
-import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory } from './types'
+import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory, HookEventItem } from './types'
 
 function categorize(toolName: string): ActionCategory {
   if (toolName === 'Skill') return 'skill'
@@ -62,7 +62,9 @@ function makeLabel(toolName: string, input?: string): string {
   }
 }
 
-export function useActionItems(messages: RichMessage[]): TimelineItem[] {
+export function useActionItems(messages: RichMessage[], hookEvents?: HookEventItem[]): TimelineItem[] {
+  const hookEventsLength = hookEvents?.length ?? 0
+
   return useMemo(() => {
     const items: TimelineItem[] = []
     let actionIndex = 0
@@ -131,6 +133,19 @@ export function useActionItems(messages: RichMessage[]): TimelineItem[] {
       }
     }
 
+    // Merge hook events into timeline
+    if (hookEvents && hookEvents.length > 0) {
+      for (const event of hookEvents) {
+        items.push(event)
+      }
+      // Re-sort all items by timestamp
+      items.sort((a, b) => {
+        const tsA = 'timestamp' in a ? (a.timestamp ?? 0) : 0
+        const tsB = 'timestamp' in b ? (b.timestamp ?? 0) : 0
+        return tsA - tsB
+      })
+    }
+
     return items
-  }, [messages])
+  }, [messages, hookEventsLength])
 }

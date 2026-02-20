@@ -10,7 +10,7 @@ use crate::{Database, DbResult};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{debug, warn};
-use vibe_recall_core::{extract_session_metadata, resolve_project_path, SessionInfo};
+use claude_view_core::{extract_session_metadata, resolve_project_path, SessionInfo};
 
 // ============================================================================
 // Types

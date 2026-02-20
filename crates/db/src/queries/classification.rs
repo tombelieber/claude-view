@@ -33,7 +33,7 @@ impl Database {
     }
 
     /// Get the currently running classification job, if any.
-    pub async fn get_active_classification_job(&self) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+    pub async fn get_active_classification_job(&self) -> DbResult<Option<claude_view_core::ClassificationJob>> {
         let row: Option<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1",
         )
@@ -134,7 +134,7 @@ impl Database {
     }
 
     /// Get recent classification jobs (last 10).
-    pub async fn get_recent_classification_jobs(&self) -> DbResult<Vec<vibe_recall_core::ClassificationJob>> {
+    pub async fn get_recent_classification_jobs(&self) -> DbResult<Vec<claude_view_core::ClassificationJob>> {
         let rows: Vec<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs ORDER BY started_at DESC LIMIT 10",
         )
@@ -216,7 +216,7 @@ impl Database {
     }
 
     /// Get recent index runs (last 20).
-    pub async fn get_recent_index_runs(&self) -> DbResult<Vec<vibe_recall_core::IndexRun>> {
+    pub async fn get_recent_index_runs(&self) -> DbResult<Vec<claude_view_core::IndexRun>> {
         let rows: Vec<IndexRunRow> = sqlx::query_as(
             "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20",
         )
@@ -360,7 +360,7 @@ impl Database {
     }
 
     /// Get a classification job by ID.
-    pub async fn get_classification_job(&self, job_id: i64) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+    pub async fn get_classification_job(&self, job_id: i64) -> DbResult<Option<claude_view_core::ClassificationJob>> {
         let row: Option<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs WHERE id = ?1",
         )
@@ -371,7 +371,7 @@ impl Database {
     }
 
     /// Get the most recent completed/cancelled/failed classification job.
-    pub async fn get_last_completed_classification_job(&self) -> DbResult<Option<vibe_recall_core::ClassificationJob>> {
+    pub async fn get_last_completed_classification_job(&self) -> DbResult<Option<claude_view_core::ClassificationJob>> {
         let row: Option<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs WHERE status IN ('completed', 'cancelled', 'failed') ORDER BY completed_at DESC LIMIT 1",
         )

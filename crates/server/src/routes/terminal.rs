@@ -123,7 +123,7 @@ async fn ws_terminal_handler(
             manager: terminal_connections.clone(),
         };
 
-        handle_terminal_ws(socket, sid.clone(), file_path, terminal_connections.clone()).await;
+        handle_terminal_ws(socket, sid.clone(), file_path, terminal_connections.clone(), state.clone()).await;
         // _guard dropped here (or on panic/cancel), calling disconnect()
     })
 }
@@ -235,6 +235,7 @@ async fn ws_subagent_terminal_handler(
             connection_key,
             subagent_path,
             terminal_connections.clone(),
+            state.clone(),
         )
         .await;
     })
@@ -555,6 +556,7 @@ async fn handle_terminal_ws(
     session_id: String,
     file_path: PathBuf,
     _terminal_connections: Arc<crate::terminal_state::TerminalConnectionManager>,
+    state: Arc<AppState>,
 ) {
     // 1. Wait for handshake message from client (with timeout)
     let handshake = match tokio::time::timeout(Duration::from_secs(10), socket.recv()).await {
@@ -613,7 +615,7 @@ async fn handle_terminal_ws(
 
     // 3. Send scrollback buffer using tail_lines (capped to MAX_SCROLLBACK)
     let scrollback_count = handshake.scrollback.min(MAX_SCROLLBACK);
-    match vibe_recall_core::tail::tail_lines(&file_path, scrollback_count).await {
+    match claude_view_core::tail::tail_lines(&file_path, scrollback_count).await {
         Ok(lines) => {
             for line in &lines {
                 for formatted in format_line_for_mode(line, &current_mode, &finders) {
@@ -650,6 +652,31 @@ async fn handle_terminal_ws(
                 })))
                 .await;
             return;
+        }
+    }
+
+    // 3b. Send buffered hook events from in-memory LiveSession
+    {
+        let sessions = state.live_sessions.read().await;
+        if let Some(session) = sessions.get(&session_id) {
+            for event in &session.hook_events {
+                let msg = serde_json::json!({
+                    "type": "hook_event",
+                    "timestamp": event.timestamp,
+                    "eventName": event.event_name,
+                    "toolName": event.tool_name,
+                    "label": event.label,
+                    "group": event.group,
+                    "context": event.context,
+                });
+                if socket
+                    .send(Message::Text(msg.to_string().into()))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
         }
     }
 
@@ -711,6 +738,15 @@ async fn handle_terminal_ws(
         scrollback = scrollback_count,
         "Terminal WebSocket connected"
     );
+
+    // 4b. Subscribe to hook event broadcasts for this session
+    let mut hook_rx = {
+        let mut channels = state.hook_event_channels.write().await;
+        let tx = channels
+            .entry(session_id.clone())
+            .or_insert_with(|| tokio::sync::broadcast::channel(256).0);
+        tx.subscribe()
+    };
 
     // 5. Main event loop: multiplex file watcher, client messages, and heartbeat
     //
@@ -893,6 +929,44 @@ async fn handle_terminal_ws(
                     return;
                 }
             }
+
+            // Hook event broadcasts from handle_hook()
+            hook_event = hook_rx.recv() => {
+                match hook_event {
+                    Ok(event) => {
+                        let msg = serde_json::json!({
+                            "type": "hook_event",
+                            "timestamp": event.timestamp,
+                            "eventName": event.event_name,
+                            "toolName": event.tool_name,
+                            "label": event.label,
+                            "group": event.group,
+                            "context": event.context,
+                        });
+                        if socket
+                            .send(Message::Text(msg.to_string().into()))
+                            .await
+                            .is_err()
+                        {
+                            tracing::debug!(
+                                session_id = %session_id,
+                                "Client disconnected during hook event send"
+                            );
+                            return;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::debug!(
+                            session_id = %session_id,
+                            lagged = n,
+                            "Hook event broadcast lagged — missed events are in the in-memory vec"
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        // Channel closed — session ended, no more events
+                    }
+                }
+            }
         }
     }
     // _watcher is dropped here, stopping the file watch
@@ -957,7 +1031,7 @@ mod tests {
     /// Helper: create an AppState with an in-memory database and a live session
     /// registered pointing to the given JSONL file path.
     async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppState> {
-        let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
         let state = Arc::new(AppState {
             start_time: std::time::Instant::now(),
             db,
@@ -975,11 +1049,12 @@ mod tests {
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         });
 
         // Register the session in the live sessions map
         {
-            use vibe_recall_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+            use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
             let mut map = state.live_sessions.write().await;
             let session = crate::live::state::LiveSession {
                 id: session_id.to_string(),
@@ -1012,6 +1087,7 @@ mod tests {
                 sub_agents: Vec::new(),
                 progress_items: Vec::new(),
                 last_cache_hit_at: None,
+                hook_events: Vec::new(),
             };
             map.insert(session_id.to_string(), session);
         }
@@ -1130,7 +1206,7 @@ mod tests {
     #[tokio::test]
     async fn ws_unknown_session_returns_error() {
         // Create state with NO sessions registered
-        let db = vibe_recall_db::Database::new_in_memory().await.unwrap();
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
         let state = Arc::new(AppState {
             start_time: std::time::Instant::now(),
             db,
@@ -1148,6 +1224,7 @@ mod tests {
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

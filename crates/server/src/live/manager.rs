@@ -13,11 +13,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
 
-use vibe_recall_core::live_parser::{parse_tail, LineType, TailFinders};
-use vibe_recall_core::pricing::{
+use claude_view_core::live_parser::{parse_tail, LineType, TailFinders};
+use claude_view_core::pricing::{
     calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
-use vibe_recall_core::subagent::{SubAgentInfo, SubAgentStatus};
+use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
 use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
 use super::state::{AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionStatus};
@@ -55,9 +55,9 @@ struct SessionAccumulator {
     /// Sub-agents spawned in this session (accumulated across tail polls).
     sub_agents: Vec<SubAgentInfo>,
     /// Current todo items from the latest TodoWrite call (full replacement).
-    todo_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    todo_items: Vec<claude_view_core::progress::ProgressItem>,
     /// Structured tasks from TaskCreate/TaskUpdate (incremental).
-    task_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    task_items: Vec<claude_view_core::progress::ProgressItem>,
     /// Unix timestamp of the most recent cache hit or creation.
     /// Updated when a line has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     last_cache_hit_at: Option<i64>,
@@ -102,7 +102,7 @@ struct JsonlMetadata {
     current_turn_started_at: Option<i64>,
     last_turn_task_seconds: Option<u32>,
     sub_agents: Vec<SubAgentInfo>,
-    progress_items: Vec<vibe_recall_core::progress::ProgressItem>,
+    progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
 }
 
@@ -705,36 +705,44 @@ impl LiveSessionManager {
                     .iter_mut()
                     .find(|a| a.tool_use_id == result.tool_use_id)
                 {
-                    agent.status = if result.status == "completed" {
-                        SubAgentStatus::Complete
+                    // Background agents return "async_launched" immediately — they're
+                    // still running, so only capture the agentId and keep Running status.
+                    if result.status == "async_launched" {
+                        agent.agent_id = result.agent_id.clone();
                     } else {
-                        SubAgentStatus::Error
-                    };
-                    agent.agent_id = result.agent_id.clone();
-                    agent.completed_at =
-                        line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
-                    agent.duration_ms = result.total_duration_ms;
-                    agent.tool_use_count = result.total_tool_use_count;
-                    agent.current_activity = None; // No longer running, clear activity
-                                                   // Compute cost from token usage via pricing table
-                    if let Some(model) = acc.model.as_deref() {
-                        let sub_tokens = TokenUsage {
-                            input_tokens: result.usage_input_tokens.unwrap_or(0),
-                            output_tokens: result.usage_output_tokens.unwrap_or(0),
-                            cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
-                            cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
-                            cache_creation_5m_tokens: 0,
-                            cache_creation_1hr_tokens: 0,
-                            total_tokens: 0, // not used by calculate_cost
+                        agent.status = if result.status == "completed" {
+                            SubAgentStatus::Complete
+                        } else {
+                            SubAgentStatus::Error
                         };
-                        let sub_cost = self
-                            .pricing
-                            .read()
-                            .ok()
-                            .map(|p| calculate_cost(&sub_tokens, Some(model), &p))
-                            .unwrap_or_default();
-                        if sub_cost.total_usd > 0.0 {
-                            agent.cost_usd = Some(sub_cost.total_usd);
+                        agent.agent_id = result.agent_id.clone();
+                        agent.completed_at =
+                            line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
+                        agent.duration_ms = result.total_duration_ms;
+                        agent.tool_use_count = result.total_tool_use_count;
+                        agent.current_activity = None;
+
+                        // Compute cost from token usage via pricing table
+                        if let Some(model) = acc.model.as_deref() {
+                            let sub_tokens = TokenUsage {
+                                input_tokens: result.usage_input_tokens.unwrap_or(0),
+                                output_tokens: result.usage_output_tokens.unwrap_or(0),
+                                cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
+                                cache_creation_tokens:
+                                    result.usage_cache_creation_tokens.unwrap_or(0),
+                                cache_creation_5m_tokens: 0,
+                                cache_creation_1hr_tokens: 0,
+                                total_tokens: 0, // not used by calculate_cost
+                            };
+                            let sub_cost = self
+                                .pricing
+                                .read()
+                                .ok()
+                                .map(|p| calculate_cost(&sub_tokens, Some(model), &p))
+                                .unwrap_or_default();
+                            if sub_cost.total_usd > 0.0 {
+                                agent.cost_usd = Some(sub_cost.total_usd);
+                            }
                         }
                     }
                 }
@@ -759,9 +767,28 @@ impl LiveSessionManager {
                 }
             }
 
+            // --- Background agent completion via <task-notification> ---
+            if let Some(ref notif) = line.sub_agent_notification {
+                if let Some(agent) = acc
+                    .sub_agents
+                    .iter_mut()
+                    .find(|a| a.agent_id.as_deref() == Some(&notif.agent_id))
+                {
+                    agent.status = if notif.status == "completed" {
+                        SubAgentStatus::Complete
+                    } else {
+                        // "failed", "killed", or any other terminal status
+                        SubAgentStatus::Error
+                    };
+                    agent.completed_at =
+                        line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
+                    agent.current_activity = None;
+                }
+            }
+
             // --- TodoWrite: full replacement ---
             if let Some(ref todos) = line.todo_write {
-                use vibe_recall_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
+                use claude_view_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
                 acc.todo_items = todos
                     .iter()
                     .map(|t| {
@@ -788,7 +815,7 @@ impl LiveSessionManager {
 
             // --- TaskCreate: append with dedup guard ---
             for create in &line.task_creates {
-                use vibe_recall_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
+                use claude_view_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
                 if acc
                     .task_items
                     .iter()
@@ -823,7 +850,7 @@ impl LiveSessionManager {
 
             // --- TaskUpdate: modify existing task ---
             for update in &line.task_updates {
-                use vibe_recall_core::progress::ProgressStatus;
+                use claude_view_core::progress::ProgressStatus;
                 if let Some(task) = acc
                     .task_items
                     .iter_mut()
@@ -955,7 +982,7 @@ fn extract_project_info(path: &Path) -> (String, String, String) {
     // Resolve the encoded directory name to a real filesystem path.
     // Claude Code encodes paths like `/Users/foo/@org/project` as
     // `-Users-foo--org-project` (special chars → `-`), NOT URL-encoding.
-    let resolved = vibe_recall_core::discovery::resolve_project_path(&project_encoded);
+    let resolved = claude_view_core::discovery::resolve_project_path(&project_encoded);
 
     (project_encoded, resolved.display_name, resolved.full_path)
 }

@@ -4,7 +4,7 @@
 use crate::{Database, DbResult};
 use chrono::Utc;
 use std::collections::HashMap;
-use vibe_recall_core::{ProjectInfo, SessionInfo};
+use claude_view_core::{ProjectInfo, SessionInfo};
 
 use super::row_types::SessionRow;
 use super::IndexerEntry;

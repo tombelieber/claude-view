@@ -1,4 +1,4 @@
-# vibe-recall
+# claude-view
 
 <p align="center">
   <strong>Your AI fluency, measured. Your AI agents, monitored.</strong>
@@ -17,8 +17,6 @@
   <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
-<!-- TODO: demo GIF here -->
-
 ---
 
 ## The Problem
@@ -31,7 +29,7 @@ Meanwhile, power users are running **10-20+ concurrent Claude Code sessions** ac
 
 ## The Solution
 
-**vibe-recall** does two things:
+**claude-view** does two things:
 
 1. **Analytics** — A fitness tracker for your AI coding workflow. It analyzes your Claude Code sessions, shows you your patterns, and helps you measurably improve.
 2. **Mission Control** — A real-time dashboard for all your active Claude Code sessions. See every session's status, cost, context usage, and sub-agent activity from a single browser tab.
@@ -129,7 +127,7 @@ Other tools are either viewers (browse history) or monitors (watch live). None c
             Monitor      |  claude-code-ui  |
             only         |  Agent Sessions  |
                          |                  |
-            Analyze +    |  ★ vibe-recall   |  (coming soon)
+            Analyze +    |  ★ claude-view   |  (coming soon)
             Monitor +    |                  |
             Coach        |                  |
 ```
@@ -144,7 +142,7 @@ Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature re
 
 ## Like this project?
 
-If **vibe-recall** helps you level up your AI coding, consider giving it a star. It helps others discover this tool.
+If **claude-view** helps you level up your AI coding, consider giving it a star. It helps others discover this tool.
 
 <p align="center">
   <a href="https://github.com/anonymous-dev/claude-view/stargazers">

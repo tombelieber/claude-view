@@ -14,9 +14,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::broadcast;
-use vibe_recall_core::Registry;
-use vibe_recall_db::{Database, ModelPricing};
-use vibe_recall_search::SearchIndex;
+use claude_view_core::Registry;
+use claude_view_db::{Database, ModelPricing};
+use claude_view_search::SearchIndex;
 
 /// Type alias for the shared registry holder.
 ///
@@ -62,6 +62,11 @@ pub struct AppState {
     /// Full-text search index (Tantivy).
     /// `None` until the index is initialized, or if index open failed.
     pub search_index: Option<Arc<SearchIndex>>,
+    /// Per-session broadcast channels for hook events (WebSocket streaming).
+    /// Key: session_id. Created on demand when a WS connects, cleaned up on SessionEnd.
+    pub hook_event_channels: Arc<tokio::sync::RwLock<
+        HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
+    >>,
 }
 
 impl AppState {
@@ -79,8 +84,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(RwLock::new({
-                let mut p = vibe_recall_db::default_pricing();
-                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                let mut p = claude_view_db::default_pricing();
+                claude_view_core::pricing::fill_tiering_gaps(&mut p);
                 p
             })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -93,6 +98,7 @@ impl AppState {
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -109,8 +115,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(RwLock::new({
-                let mut p = vibe_recall_db::default_pricing();
-                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                let mut p = claude_view_db::default_pricing();
+                claude_view_core::pricing::fill_tiering_gaps(&mut p);
                 p
             })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -123,6 +129,7 @@ impl AppState {
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -142,8 +149,8 @@ impl AppState {
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(RwLock::new({
-                let mut p = vibe_recall_db::default_pricing();
-                vibe_recall_core::pricing::fill_tiering_gaps(&mut p);
+                let mut p = claude_view_db::default_pricing();
+                claude_view_core::pricing::fill_tiering_gaps(&mut p);
                 p
             })),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -156,6 +163,7 @@ impl AppState {
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
             search_index: None,
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
