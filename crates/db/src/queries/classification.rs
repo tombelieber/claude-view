@@ -305,20 +305,20 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Count all sessions.
+    /// Count all sessions (using valid_sessions view for consistent counts).
     pub async fn count_all_sessions(&self) -> DbResult<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions",
+            "SELECT COUNT(*) FROM valid_sessions",
         )
         .fetch_one(self.pool())
         .await?;
         Ok(row.0)
     }
 
-    /// Count classified sessions.
+    /// Count classified sessions (using valid_sessions view for consistent counts).
     pub async fn count_classified_sessions(&self) -> DbResult<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE category_l1 IS NOT NULL",
+            "SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL",
         )
         .fetch_one(self.pool())
         .await?;
