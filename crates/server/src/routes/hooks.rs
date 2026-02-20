@@ -85,6 +85,7 @@ async fn handle_hook(
         headers.get("x-claude-pid").and_then(|v| v.to_str().ok()),
     );
     let mut pid_newly_bound = false;
+    let mut state_changed = false;
 
     let agent_state = resolve_state_from_hook(&payload);
 
@@ -180,6 +181,7 @@ async fn handle_hook(
                 // Session already exists (file watcher got there first, OR resume)
                 existing.agent_state = agent_state.clone();
                 existing.status = status_from_agent_state(&agent_state);
+                state_changed = true;
                 if let Some(m) = &payload.model {
                     existing.model = Some(m.clone());
                 }
@@ -227,6 +229,7 @@ async fn handle_hook(
                     hook_events: Vec::new(),
                 };
                 sessions.insert(session.id.clone(), session.clone());
+                state_changed = true;
                 drop(sessions); // release lock before async manager call
                 if let Some(mgr) = &state.live_manager {
                     mgr.create_accumulator_for_hook(&payload.session_id).await;
@@ -251,6 +254,7 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                state_changed = true;
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
@@ -269,6 +273,7 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                state_changed = true;
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
@@ -423,6 +428,7 @@ async fn handle_hook(
                 session.status = status_from_agent_state(&agent_state);
                 session.current_activity = agent_state.label.clone();
                 session.last_activity_at = now;
+                state_changed = true;
                 if session.pid.is_none() {
                     if let Some(pid) = claude_pid {
                         session.pid = Some(pid);
@@ -477,8 +483,8 @@ async fn handle_hook(
         }
     }
 
-    // Persist session snapshot to disk when a new PID binding was created
-    if pid_newly_bound {
+    // Persist session snapshot when PID binding or agent state changed
+    if pid_newly_bound || state_changed {
         if let Some(mgr) = &state.live_manager {
             mgr.save_session_snapshot_from_state().await;
         }
