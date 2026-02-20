@@ -128,6 +128,98 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Query sessions in a date range for report context building.
+    /// Returns Vec of (id, project_display_name, preview, category_l2, duration_seconds, git_branch).
+    pub async fn get_sessions_in_range(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> DbResult<Vec<(String, String, String, Option<String>, i64, Option<String>)>> {
+        let rows = sqlx::query_as(
+            r#"SELECT id, project_display_name, preview, category_l2, duration_seconds, git_branch
+               FROM sessions
+               WHERE first_message_at >= ? AND first_message_at <= ?
+               ORDER BY project_display_name, git_branch, first_message_at"#,
+        )
+        .bind(start_ts)
+        .bind(end_ts)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    /// Query commit counts per project in a date range.
+    /// Returns Vec of (project_display_name, commit_count).
+    pub async fn get_commit_counts_in_range(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> DbResult<Vec<(String, i64)>> {
+        let rows = sqlx::query_as(
+            r#"SELECT s.project_display_name, COALESCE(SUM(s.commit_count), 0)
+               FROM sessions s
+               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
+               GROUP BY s.project_display_name"#,
+        )
+        .bind(start_ts)
+        .bind(end_ts)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    /// Query top tools used in a date range.
+    /// Returns Vec of tool names ordered by usage count descending.
+    pub async fn get_top_tools_in_range(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+        limit: i64,
+    ) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"SELECT i.name
+               FROM invocations i
+               JOIN sessions s ON i.session_id = s.id
+               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
+                 AND i.type = 'tool'
+               GROUP BY i.name
+               ORDER BY SUM(i.count) DESC
+               LIMIT ?"#,
+        )
+        .bind(start_ts)
+        .bind(end_ts)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|(n,)| n).collect())
+    }
+
+    /// Query top skills used in a date range.
+    /// Returns Vec of skill names ordered by usage count descending.
+    pub async fn get_top_skills_in_range(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+        limit: i64,
+    ) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"SELECT i.name
+               FROM invocations i
+               JOIN sessions s ON i.session_id = s.id
+               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
+                 AND i.type = 'skill'
+               GROUP BY i.name
+               ORDER BY SUM(i.count) DESC
+               LIMIT ?"#,
+        )
+        .bind(start_ts)
+        .bind(end_ts)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|(n,)| n).collect())
+    }
+
     /// Aggregate preview stats for sessions in a date range.
     ///
     /// Uses `first_message_at` (unix timestamp) for filtering.
@@ -139,7 +231,7 @@ impl Database {
                 COUNT(*) as session_count,
                 COUNT(DISTINCT project_display_name) as project_count,
                 COALESCE(SUM(duration_seconds), 0) as total_duration,
-                0 as total_cost
+                COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total_tokens
             FROM sessions
             WHERE first_message_at >= ? AND first_message_at <= ?"#,
         )
@@ -166,11 +258,15 @@ impl Database {
             .map(|(name, session_count)| ProjectPreview { name, session_count })
             .collect();
 
+        // Estimate cost from total tokens using blended rate (~$2.50/M tokens = 0.00025 cents/token)
+        let total_tokens = stats.3;
+        let total_cost_cents = (total_tokens as f64 * 0.00025).round() as i64;
+
         Ok(ReportPreview {
             session_count: stats.0,
             project_count: stats.1,
             total_duration_secs: stats.2,
-            total_cost_cents: stats.3,
+            total_cost_cents,
             projects,
         })
     }

@@ -277,8 +277,8 @@ impl Database {
         let (curr_commits, prev_commits): (i64, i64) = sqlx::query_as(
             r#"
             SELECT
-              COALESCE(SUM(CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2 THEN 1 ELSE 0 END), 0),
-              COALESCE(SUM(CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4 THEN 1 ELSE 0 END), 0)
+              COUNT(DISTINCT CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2 THEN sc.commit_hash END),
+              COUNT(DISTINCT CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4 THEN sc.commit_hash END)
             FROM session_commits sc
             INNER JOIN sessions s ON sc.session_id = s.id
             WHERE s.is_sidechain = 0

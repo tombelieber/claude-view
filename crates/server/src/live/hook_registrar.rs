@@ -185,16 +185,32 @@ pub fn cleanup(port: u16) -> Vec<String> {
             Err(_) => return removed,
         };
 
-        if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
-            remove_our_hooks(hooks);
-        }
+        // Check if any of our hooks exist before removing
+        let had_hooks = settings
+            .get("hooks")
+            .and_then(|h| h.as_object())
+            .map(|hooks| {
+                hooks.values().any(|entries| {
+                    entries
+                        .as_array()
+                        .map(|arr| arr.iter().any(|e| matcher_group_has_sentinel(e)))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
 
-        let tmp_path = path.with_extension("json.tmp");
-        let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
-        if std::fs::write(&tmp_path, &serialized).is_ok() {
-            let _ = std::fs::rename(&tmp_path, &path);
-            removed.push("Removed hooks from ~/.claude/settings.json".to_string());
-            tracing::info!("Cleaned up Live Monitor hooks");
+        if had_hooks {
+            if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+                remove_our_hooks(hooks);
+            }
+
+            let tmp_path = path.with_extension("json.tmp");
+            let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
+            if std::fs::write(&tmp_path, &serialized).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &path);
+                removed.push("Removed hooks from ~/.claude/settings.json".to_string());
+                tracing::info!("Cleaned up Live Monitor hooks");
+            }
         }
     }
 
