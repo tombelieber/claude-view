@@ -8,7 +8,7 @@ const https = require("https");
 const zlib = require("zlib");
 
 const VERSION = require("./package.json").version;
-const REPO = "anonymous-dev/claude-view";
+const REPO = "tombelieber/claude-view";
 const BINARY_NAME = process.platform === "win32" ? "claude-view.exe" : "claude-view";
 
 // --- Platform detection ---

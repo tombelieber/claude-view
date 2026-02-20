@@ -38,8 +38,8 @@ On first run, `npx claude-view` downloads a platform-specific tarball from GitHu
 
 ## Links
 
-- [GitHub Repository](https://github.com/anonymous-dev/claude-view)
-- [Report an Issue](https://github.com/anonymous-dev/claude-view/issues)
+- [GitHub Repository](https://github.com/tombelieber/claude-view)
+- [Report an Issue](https://github.com/tombelieber/claude-view/issues)
 
 ## License
 

@@ -15,7 +15,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="macOS | Linux | Windows">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
-  <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
 ---
@@ -65,8 +65,8 @@ npx claude-view
 | 方式 | 指令 |
 |------|------|
 | **npx**（推薦） | `npx claude-view` |
-| **Shell 腳本**（無需 Node） | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
+| **Shell 腳本**（無需 Node） | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
 
 ---
 
@@ -93,8 +93,8 @@ npx claude-view
 如果 **claude-view** 節省了你的時間，請考慮給它一顆星！這有助於更多人發現這個工具。
 
 <p align="center">
-  <a href="https://github.com/anonymous-dev/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  <a href="https://github.com/tombelieber/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
 

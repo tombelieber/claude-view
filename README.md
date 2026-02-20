@@ -14,7 +14,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
-  <a href="https://github.com/anonymous-dev/claude-view/stargazers"><img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
 ---
@@ -104,8 +104,8 @@ Opens at `http://localhost:47892`.
 | Method | Command |
 |--------|---------|
 | **npx** (recommended) | `npx claude-view` |
-| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/anonymous-dev/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/anonymous-dev/claude-view.git && cd claude-view && ./start.sh` |
+| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
 
 ### Requirements
 
@@ -145,8 +145,8 @@ Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature re
 If **claude-view** helps you level up your AI coding, consider giving it a star. It helps others discover this tool.
 
 <p align="center">
-  <a href="https://github.com/anonymous-dev/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/anonymous-dev/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+  <a href="https://github.com/tombelieber/claude-view/stargazers">
+    <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
   </a>
 </p>
 
