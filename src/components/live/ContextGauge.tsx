@@ -192,7 +192,7 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
             )}
           </div>
           {/* Threshold marker */}
-          {!isInactive && !isCompacting && (
+          {!isCompacting && (
             <div
               className={`absolute top-[-1px] bottom-[-1px] w-[1.5px] rounded-full transition-opacity duration-300 ${
                 usedPct >= AUTOCOMPACT_THRESHOLD_PCT
@@ -292,7 +292,7 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
           )}
         </div>
         {/* Threshold marker */}
-        {!isInactive && !isCompacting && (
+        {!isCompacting && (
           <div
             className={`absolute top-[-1px] bottom-[-1px] w-[1.5px] rounded-full transition-opacity duration-300 ${
               usedPct >= AUTOCOMPACT_THRESHOLD_PCT
