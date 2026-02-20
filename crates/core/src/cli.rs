@@ -1,13 +1,31 @@
 // crates/core/src/cli.rs
 //! Claude CLI detection and status checking.
+//!
+//! Uses the same pattern as VS Code / Cursor / Electron apps: resolve the CLI
+//! path via the user's login shell so that nvm, mise, asdf, ~/.local/bin, and
+//! other non-standard PATH entries are picked up correctly.
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::Duration;
 use ts_rs::TS;
 
 /// Timeout for each CLI subprocess call (prevents hangs when claude is already running).
 const CLI_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Cached resolved path to the `claude` binary (process-lifetime singleton).
+static RESOLVED_CLI_PATH: OnceLock<Option<String>> = OnceLock::new();
+
+/// Get the resolved path to the `claude` binary, resolving on first call.
+///
+/// Uses a login-shell waterfall to find the binary regardless of how the
+/// server process was started (npx, cargo run, launchd, etc.).
+pub fn resolved_cli_path() -> Option<&'static str> {
+    RESOLVED_CLI_PATH
+        .get_or_init(|| ClaudeCliStatus::find_claude_path())
+        .as_deref()
+}
 
 /// Claude CLI status information.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -28,16 +46,15 @@ pub struct ClaudeCliStatus {
 impl ClaudeCliStatus {
     /// Detect Claude CLI installation and status.
     ///
-    /// Runs shell commands to detect the claude binary, its version,
-    /// and authentication status. Each command has a 5-second timeout.
+    /// Path resolution is cached via `OnceLock` (first call only).
+    /// Auth status is always re-checked (cheap with a known path).
     pub fn detect() -> Self {
-        let path = Self::find_claude_path();
+        let path = resolved_cli_path().map(|s| s.to_string());
 
-        if path.is_none() {
+        let Some(ref path_str) = path else {
             return Self::default();
-        }
+        };
 
-        let path_str = path.as_ref().unwrap();
         let version = Self::get_version(path_str);
         let (authenticated, subscription_type) = Self::check_auth(path_str);
 
@@ -78,34 +95,64 @@ impl ClaudeCliStatus {
         }
     }
 
-    /// Find the path to the claude binary.
+    /// Find the path to the claude binary using a login-shell waterfall.
+    ///
+    /// 1. `$SHELL -lc "which claude"` — user's login shell (handles nvm/mise/asdf/custom PATH)
+    /// 2. `which claude` — server's inherited PATH
+    /// 3. Filesystem scan of known install locations
     fn find_claude_path() -> Option<String> {
-        // Try `which claude` first
-        let output = Self::run_with_timeout(Command::new("which").arg("claude"))?;
-
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .to_string();
-            if !path.is_empty() {
+        // Step 1: Login shell resolution (the fix-path pattern from VS Code/Electron)
+        if let Some(shell) = std::env::var("SHELL").ok() {
+            if let Some(path) = Self::which_via_shell(&shell) {
                 return Some(path);
             }
         }
 
-        // Fallback: check common installation paths
-        let common_paths = [
-            "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
-            "/usr/bin/claude",
-        ];
-
-        for path in common_paths {
-            if std::path::Path::new(path).exists() {
-                return Some(path.to_string());
-            }
+        // Step 2: Direct `which` using server's inherited PATH
+        if let Some(path) = Self::which_direct() {
+            return Some(path);
         }
 
+        // Step 3: Exhaustive filesystem scan
+        Self::scan_known_paths()
+    }
+
+    /// Resolve `claude` via the user's login shell.
+    fn which_via_shell(shell: &str) -> Option<String> {
+        let output = Self::run_with_timeout(
+            Command::new(shell).args(["-lc", "which claude"]),
+        )?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
         None
+    }
+
+    /// Resolve `claude` via the server's inherited PATH.
+    fn which_direct() -> Option<String> {
+        let output = Self::run_with_timeout(Command::new("which").arg("claude"))?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(path);
+            }
+        }
+        None
+    }
+
+    /// Scan known installation locations on the filesystem.
+    fn scan_known_paths() -> Option<String> {
+        let home = std::env::var("HOME").ok().unwrap_or_default();
+        let paths = [
+            format!("{home}/.local/bin/claude"),
+            "/opt/homebrew/bin/claude".to_string(),
+            "/usr/local/bin/claude".to_string(),
+            "/usr/bin/claude".to_string(),
+        ];
+        paths.into_iter().find(|p| std::path::Path::new(p).exists())
     }
 
     /// Get the claude CLI version.

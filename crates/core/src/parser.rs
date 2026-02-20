@@ -53,7 +53,7 @@ fn attach_common_fields(
 /// # Example
 /// ```ignore
 /// use std::path::Path;
-/// use vibe_recall_core::parse_session;
+/// use claude_view_core::parse_session;
 ///
 /// let session = parse_session(Path::new("session.jsonl")).await?;
 /// println!("Parsed {} messages", session.messages.len());

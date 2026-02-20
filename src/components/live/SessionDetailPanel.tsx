@@ -9,6 +9,7 @@ import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { CommitsPanel } from '../CommitsPanel'
 import { RichPane } from './RichPane'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { useHookEvents } from '../../hooks/use-hook-events'
 import { ActionLogTab } from './action-log'
 import { SwimLanes } from './SwimLanes'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
@@ -17,6 +18,7 @@ import { CostBreakdown } from './CostBreakdown'
 import { SubAgentPills } from './SubAgentPills'
 import { ContextGauge } from './ContextGauge'
 import { CacheCountdownBar } from './CacheCountdownBar'
+import { ViewModeControls } from './ViewModeControls'
 import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -107,17 +109,17 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   // ---- Local state ----
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const verboseMode = useMonitorStore((s) => s.verboseMode)
-  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
-  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
-  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
 
   // Live mode: WebSocket messages; History mode: pre-loaded messages
-  const { messages: liveMessages, bufferDone: liveBufferDone } = useLiveSessionMessages(
+  const { messages: liveMessages, hookEvents: liveHookEvents, bufferDone: liveBufferDone } = useLiveSessionMessages(
     data.id,
     isLive, // only connect WebSocket for live sessions
   )
   const richMessages = isLive ? liveMessages : (data.terminalMessages ?? [])
   const bufferDone = isLive ? liveBufferDone : true // history messages are always fully loaded
+
+  // Historical hook events (REST fetch for non-live sessions)
+  const historicalHookEvents = useHookEvents(data.id, !isLive)
 
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string; agentType: string; description: string
@@ -313,34 +315,11 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
           )
         })}
 
-        {/* Verbose mode toggle — only shown on Terminal tab */}
+        {/* Chat / Debug + Rich / JSON — only shown on Terminal tab */}
         {activeTab === 'terminal' && (
           <>
             <div className="flex-1" />
-            <button
-              onClick={toggleVerbose}
-              className={cn(
-                'text-[10px] px-1.5 py-0.5 rounded border',
-                verboseMode
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
-              )}
-            >
-              {verboseMode ? 'verbose' : 'compact'}
-            </button>
-            {verboseMode && (
-              <button
-                onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
-                className={cn(
-                  'text-[10px] px-1.5 py-0.5 rounded border mr-3',
-                  richRenderMode === 'rich'
-                    ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
-                )}
-              >
-                {richRenderMode === 'rich' ? 'rich' : 'json'}
-              </button>
-            )}
+            <ViewModeControls className="mr-2" />
           </>
         )}
       </div>
@@ -524,7 +503,11 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
 
         {/* ---- Log tab ---- */}
         {activeTab === 'log' && (
-          <ActionLogTab messages={richMessages} bufferDone={bufferDone} />
+          <ActionLogTab
+            messages={richMessages}
+            bufferDone={bufferDone}
+            hookEvents={isLive ? liveHookEvents : historicalHookEvents}
+          />
         )}
 
         {/* ---- Sub-Agents tab (merged with Timeline) ---- */}

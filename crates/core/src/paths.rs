@@ -4,9 +4,9 @@
 
 use std::path::PathBuf;
 
-/// App cache root: `~/Library/Caches/vibe-recall/` (macOS) or `~/.cache/vibe-recall/` (Linux).
+/// App cache root: `~/Library/Caches/claude-view/` (macOS) or `~/.cache/claude-view/` (Linux).
 pub fn app_cache_dir() -> Option<PathBuf> {
-    dirs::cache_dir().map(|d| d.join("vibe-recall"))
+    dirs::cache_dir().map(|d| d.join("claude-view"))
 }
 
 /// Tantivy search index directory: `<app_cache_dir>/search-index/`.
@@ -14,9 +14,9 @@ pub fn search_index_dir() -> Option<PathBuf> {
     app_cache_dir().map(|d| d.join("search-index"))
 }
 
-/// SQLite database file: `<app_cache_dir>/vibe-recall.db`.
+/// SQLite database file: `<app_cache_dir>/claude-view.db`.
 pub fn db_path() -> Option<PathBuf> {
-    app_cache_dir().map(|d| d.join("vibe-recall.db"))
+    app_cache_dir().map(|d| d.join("claude-view.db"))
 }
 
 #[cfg(test)]
@@ -28,7 +28,7 @@ mod tests {
         let dir = app_cache_dir();
         assert!(dir.is_some());
         let dir = dir.unwrap();
-        assert!(dir.to_string_lossy().contains("vibe-recall"));
+        assert!(dir.to_string_lossy().contains("claude-view"));
     }
 
     #[test]
@@ -44,6 +44,6 @@ mod tests {
         let path = db_path();
         assert!(path.is_some());
         let path = path.unwrap();
-        assert!(path.to_string_lossy().ends_with("vibe-recall.db"));
+        assert!(path.to_string_lossy().ends_with("claude-view.db"));
     }
 }

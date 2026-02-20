@@ -7,8 +7,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
-use vibe_recall_db::Database;
+use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
+use claude_view_db::Database;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,7 +78,7 @@ async fn ac1_server_responds_while_idle() {
     use axum::http::{Request, StatusCode};
     use std::sync::Arc;
     use tower::ServiceExt;
-    use vibe_recall_server::{create_app_with_indexing, IndexingState, IndexingStatus};
+    use claude_view_server::{create_app_with_indexing, IndexingState, IndexingStatus};
 
     let db = Database::new_in_memory().await.unwrap();
     let indexing = Arc::new(IndexingState::new());

@@ -8,8 +8,8 @@ dist/
 target/
 **/*.rs.bk
 *.pdb
-vibe-recall.db
-vibe-recall.db-*
+claude-view.db
+claude-view.db-*
 
 # Environment files
 .env

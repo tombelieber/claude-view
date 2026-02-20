@@ -11,9 +11,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use vibe_recall_core::{claude_projects_dir, DashboardStats};
-use vibe_recall_db::trends::{TrendMetric, WeekTrends};
-use vibe_recall_db::AIGenerationStats;
+use claude_view_core::{claude_projects_dir, DashboardStats};
+use claude_view_db::trends::{TrendMetric, WeekTrends};
+use claude_view_db::AIGenerationStats;
 
 use crate::error::ApiResult;
 use crate::metrics::record_request;
@@ -357,7 +357,7 @@ pub async fn storage_stats(
     };
 
     // Search index size — measured from actual directory on disk
-    let index_bytes = match vibe_recall_core::paths::search_index_dir() {
+    let index_bytes = match claude_view_core::paths::search_index_dir() {
         Some(dir) if dir.exists() => calculate_directory_size(&dir).await,
         _ => 0,
     };
@@ -375,9 +375,9 @@ pub async fn storage_stats(
     };
 
     let jsonl_path = shorten(claude_projects_dir().ok());
-    let sqlite_path = shorten(vibe_recall_core::paths::db_path());
-    let index_path = shorten(vibe_recall_core::paths::search_index_dir());
-    let app_data_path = shorten(vibe_recall_core::paths::app_cache_dir());
+    let sqlite_path = shorten(claude_view_core::paths::db_path());
+    let index_path = shorten(claude_view_core::paths::search_index_dir());
+    let app_data_path = shorten(claude_view_core::paths::app_cache_dir());
 
     record_request("storage_stats", "200", start.elapsed());
 
@@ -552,8 +552,8 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_core::{SessionInfo, ToolCounts};
-    use vibe_recall_db::Database;
+    use claude_view_core::{SessionInfo, ToolCounts};
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

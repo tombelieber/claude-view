@@ -1,5 +1,5 @@
 // crates/server/src/main.rs
-//! Vibe-recall server binary.
+//! Claude View server binary.
 //!
 //! Starts an Axum HTTP server **immediately**, then spawns background indexing.
 //! Pass 1 (read sessions-index.json, <10ms) populates the "Ready" line,
@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing_subscriber::FmtSubscriber;
-use vibe_recall_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
-use vibe_recall_db::Database;
-use vibe_recall_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus};
+use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
+use claude_view_db::Database;
+use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus};
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -50,7 +50,7 @@ async fn run_git_sync_logged(db: &Database, label: &str) {
     let start = Instant::now();
     tracing::info!(sync_type = label, "Starting git sync");
 
-    match vibe_recall_db::git_correlation::run_git_sync(db, |_| {}).await {
+    match claude_view_db::git_correlation::run_git_sync(db, |_| {}).await {
         Ok(r) => {
             let duration = start.elapsed();
             if r.repos_scanned > 0 || r.links_created > 0 {
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
 
     // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
     if std::env::consts::OS != "macos" {
-        eprintln!("\n\u{26a0}\u{fe0f}  vibe-recall currently supports macOS only.");
+        eprintln!("\n\u{26a0}\u{fe0f}  claude-view currently supports macOS only.");
         eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
         eprintln!("   Follow progress: https://github.com/anonymous-dev/claude-view/issues\n");
         std::process::exit(1);
@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
     init_metrics();
 
     // Print banner
-    eprintln!("\n\u{1f50d} vibe-recall v{}\n", env!("CARGO_PKG_VERSION"));
+    eprintln!("\n\u{1f50d} claude-view v{}\n", env!("CARGO_PKG_VERSION"));
 
     // Step 1: Open database
     let db = Database::open_default().await?;
@@ -174,10 +174,10 @@ async fn main() -> Result<()> {
 
     // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
     let search_index = {
-        let index_dir = vibe_recall_core::paths::search_index_dir()
+        let index_dir = claude_view_core::paths::search_index_dir()
             .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
 
-        match vibe_recall_search::SearchIndex::open(&index_dir) {
+        match claude_view_search::SearchIndex::open(&index_dir) {
             Ok(idx) => {
                 tracing::info!("Search index opened at {}", index_dir.display());
                 Some(Arc::new(idx))
@@ -337,7 +337,7 @@ async fn main() -> Result<()> {
         let sessions = tui_state.sessions_found();
         eprintln!(
             "  \u{2713} Ready in {} \u{2014} {} projects, {} sessions",
-            vibe_recall_core::format_duration(elapsed),
+            claude_view_core::format_duration(elapsed),
             projects,
             sessions,
         );
@@ -352,7 +352,7 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_path = std::env::temp_dir().join(format!("vibe-recall-{}.lock", port));
+        let lock_path = std::env::temp_dir().join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {
             // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
             lock_path.metadata()
@@ -424,7 +424,7 @@ async fn main() -> Result<()> {
                     "  \u{2713} Deep index complete \u{2014} {} sessions, {} processed ({})\n",
                     total,
                     format_bytes(bp),
-                    vibe_recall_core::format_duration(deep_elapsed),
+                    claude_view_core::format_duration(deep_elapsed),
                 );
             } else if let Some(err) = tui_state.error() {
                 eprintln!("  \u{2717} Indexing error: {}\n", err);
@@ -453,7 +453,7 @@ async fn main() -> Result<()> {
             if state_init.is_running() {
                 return;
             }
-            match vibe_recall_server::facet_ingest::run_facet_ingest(&db_init, &state_init, None)
+            match claude_view_server::facet_ingest::run_facet_ingest(&db_init, &state_init, None)
                 .await
             {
                 Ok(n) => {
@@ -478,7 +478,7 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 tracing::info!("Periodic facet re-ingest starting");
-                match vibe_recall_server::facet_ingest::run_facet_ingest(
+                match claude_view_server::facet_ingest::run_facet_ingest(
                     &db,
                     &ingest_state,
                     None,
@@ -505,7 +505,7 @@ async fn main() -> Result<()> {
             tokio::signal::ctrl_c().await.ok();
             tracing::info!("Shutting down, cleaning up hooks...");
             // File I/O is blocking but we're shutting down — acceptable.
-            vibe_recall_server::live::hook_registrar::cleanup(shutdown_port);
+            claude_view_server::live::hook_registrar::cleanup(shutdown_port);
         })
         .await?;
 
