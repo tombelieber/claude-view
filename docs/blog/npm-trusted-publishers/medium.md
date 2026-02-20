@@ -138,4 +138,4 @@ publish-npm:
 
 If you remember one thing from this post: `node-version: "24"`.
 
-*I'm building [claude-view](https://github.com/anonymous-dev/claude-view) — a local web UI for browsing Claude Code sessions. Try it: `npx claude-view`.*
+*I'm building [claude-view](https://github.com/tombelieber/claude-view) — a local web UI for browsing Claude Code sessions. Try it: `npx claude-view`.*

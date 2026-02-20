@@ -17,7 +17,7 @@ enableToc: true
 
 # The Setup
 
-I'm building [claude-view](https://github.com/anonymous-dev/claude-view) — browse your Claude Code sessions in a web UI. Ships as a Rust binary via `npx claude-view`.
+I'm building [claude-view](https://github.com/tombelieber/claude-view) — browse your Claude Code sessions in a web UI. Ships as a Rust binary via `npx claude-view`.
 
 My CI pipeline: push a git tag → build 4 platforms → GitHub Release → publish to npm.
 
@@ -168,4 +168,4 @@ npm trusted publishing works beautifully. Zero secrets, OIDC-only, Sigstore-atte
 
 ---
 
-*Written while shipping [claude-view](https://github.com/anonymous-dev/claude-view). Browse your Claude Code sessions: `npx claude-view`.*
+*Written while shipping [claude-view](https://github.com/tombelieber/claude-view). Browse your Claude Code sessions: `npx claude-view`.*

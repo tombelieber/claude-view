@@ -6,7 +6,7 @@
 
 ## The Setup
 
-I'm building [claude-view](https://github.com/anonymous-dev/claude-view) — a tool that lets you browse your Claude Code sessions in a pretty web UI. It ships as a Rust binary via `npx`:
+I'm building [claude-view](https://github.com/tombelieber/claude-view) — a tool that lets you browse your Claude Code sessions in a pretty web UI. It ships as a Rust binary via `npx`:
 
 ```bash
 npx claude-view
@@ -227,4 +227,4 @@ But the version requirement is a trap. The docs mention it, but it's easy to mis
 
 ---
 
-*Published from the [claude-view](https://github.com/anonymous-dev/claude-view) trenches. If you use Claude Code, give it a spin — `npx claude-view` — and star the repo if it saves you time.*
+*Published from the [claude-view](https://github.com/tombelieber/claude-view) trenches. If you use Claude Code, give it a spin — `npx claude-view` — and star the repo if it saves you time.*

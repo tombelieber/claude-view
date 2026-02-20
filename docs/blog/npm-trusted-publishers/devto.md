@@ -14,7 +14,7 @@ cover_image: ./images/cover-node-22-to-24.png  # Upload to dev.to image CDN firs
 
 ## The Setup
 
-I'm building [claude-view](https://github.com/anonymous-dev/claude-view) — browse your Claude Code sessions in a pretty web UI. Ships as a Rust binary via `npx claude-view`.
+I'm building [claude-view](https://github.com/tombelieber/claude-view) — browse your Claude Code sessions in a pretty web UI. Ships as a Rust binary via `npx claude-view`.
 
 The release pipeline:
 1. Push a git tag → GitHub Actions builds for 4 platforms
@@ -181,4 +181,4 @@ But the version trap is real. Every GH Actions tutorial defaults to `node-versio
 
 ---
 
-*Built while shipping [claude-view](https://github.com/anonymous-dev/claude-view) — browse your Claude Code sessions with `npx claude-view`.*
+*Built while shipping [claude-view](https://github.com/tombelieber/claude-view) — browse your Claude Code sessions with `npx claude-view`.*
