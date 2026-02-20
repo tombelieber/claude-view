@@ -124,7 +124,7 @@ impl Database {
     /// and the top 10 invocables by usage count.
     pub async fn get_stats_overview(&self) -> DbResult<StatsOverview> {
         let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions")
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
                 .fetch_one(self.pool())
                 .await?;
 

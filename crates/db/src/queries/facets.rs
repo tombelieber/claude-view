@@ -125,7 +125,7 @@ impl Database {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"
             SELECT s.id
-            FROM sessions s
+            FROM valid_sessions s
             LEFT JOIN session_facets f ON s.id = f.session_id
             WHERE f.session_id IS NULL
             ORDER BY s.last_message_at DESC
@@ -144,7 +144,7 @@ impl Database {
                 .await?;
 
         let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions")
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
                 .fetch_one(self.pool())
                 .await?;
 
@@ -240,7 +240,7 @@ impl Database {
             r#"
             SELECT f.satisfaction
             FROM session_facets f
-            JOIN sessions s ON s.id = f.session_id
+            JOIN valid_sessions s ON s.id = f.session_id
             ORDER BY s.last_message_at DESC
             LIMIT 7
             "#,

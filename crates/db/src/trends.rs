@@ -233,9 +233,8 @@ impl Database {
               COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN user_prompt_count ELSE 0 END), 0),
               COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN files_edited_count ELSE 0 END), 0),
               COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN reedited_files_count ELSE 0 END), 0)
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?3 AND last_message_at <= ?2
+            FROM valid_sessions
+            WHERE last_message_at >= ?3 AND last_message_at <= ?2
               AND (?5 IS NULL OR project_id = ?5)
               AND (?6 IS NULL OR git_branch = ?6)
             "#,
@@ -257,9 +256,8 @@ impl Database {
                 THEN COALESCE(s.total_input_tokens, 0) + COALESCE(s.total_output_tokens, 0) ELSE 0 END), 0),
               COALESCE(SUM(CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4
                 THEN COALESCE(s.total_input_tokens, 0) + COALESCE(s.total_output_tokens, 0) ELSE 0 END), 0)
-            FROM sessions s
-            WHERE s.is_sidechain = 0
-              AND s.last_message_at >= ?3 AND s.last_message_at <= ?2
+            FROM valid_sessions s
+            WHERE s.last_message_at >= ?3 AND s.last_message_at <= ?2
               AND (?5 IS NULL OR s.project_id = ?5)
               AND (?6 IS NULL OR s.git_branch = ?6)
             "#,
@@ -280,9 +278,8 @@ impl Database {
               COUNT(DISTINCT CASE WHEN s.last_message_at >= ?1 AND s.last_message_at <= ?2 THEN sc.commit_hash END),
               COUNT(DISTINCT CASE WHEN s.last_message_at >= ?3 AND s.last_message_at <= ?4 THEN sc.commit_hash END)
             FROM session_commits sc
-            INNER JOIN sessions s ON sc.session_id = s.id
-            WHERE s.is_sidechain = 0
-              AND s.last_message_at >= ?3 AND s.last_message_at <= ?2
+            INNER JOIN valid_sessions s ON sc.session_id = s.id
+            WHERE s.last_message_at >= ?3 AND s.last_message_at <= ?2
               AND (?5 IS NULL OR s.project_id = ?5)
               AND (?6 IS NULL OR s.git_branch = ?6)
             "#,

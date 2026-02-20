@@ -13,6 +13,7 @@ interface UseReportGenerateReturn {
   generate: (params: GenerateParams) => void
   isGenerating: boolean
   streamedText: string
+  contextDigest: string | null
   error: string | null
   reset: () => void
 }
@@ -20,12 +21,14 @@ interface UseReportGenerateReturn {
 export function useReportGenerate(): UseReportGenerateReturn {
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamedText, setStreamedText] = useState('')
+  const [contextDigest, setContextDigest] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const invalidateReports = useReportsMutate()
 
   const reset = useCallback(() => {
     setStreamedText('')
+    setContextDigest(null)
     setError(null)
     setIsGenerating(false)
   }, [])
@@ -83,7 +86,9 @@ export function useReportGenerate(): UseReportGenerateReturn {
               } else if (eventType === 'done') {
                 // Report was saved -- fetch the full report
                 invalidateReports()
-                // We don't have the full ReportRow from the SSE, but we know it's done
+                if (parsed.contextDigest) {
+                  setContextDigest(parsed.contextDigest)
+                }
                 setIsGenerating(false)
               } else if (eventType === 'error') {
                 setError(parsed.message || 'Generation failed')
@@ -104,5 +109,5 @@ export function useReportGenerate(): UseReportGenerateReturn {
     }
   }, [reset, invalidateReports])
 
-  return { generate, isGenerating, streamedText, error, reset }
+  return { generate, isGenerating, streamedText, contextDigest, error, reset }
 }

@@ -594,6 +594,13 @@ CREATE TABLE IF NOT EXISTS reports (
 "#,
     r#"CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date_start, date_end);"#,
     r#"CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type);"#,
+    // Migration 26: Canonical view for user-facing session queries.
+    //
+    // All user-facing queries should use `valid_sessions` instead of `sessions`
+    // to ensure consistent filtering (no sidechains, valid timestamps).
+    // System/classification queries that intentionally count ALL sessions
+    // should continue using the `sessions` table directly.
+    r#"CREATE VIEW IF NOT EXISTS valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0;"#,
 ];
 
 // ============================================================================

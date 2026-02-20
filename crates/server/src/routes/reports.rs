@@ -219,6 +219,7 @@ async fn generate_report(
                 let done_json = serde_json::json!({
                     "reportId": id,
                     "generationMs": generation_ms,
+                    "contextDigest": context_digest_json,
                 });
                 yield Ok(Event::default().event("done").data(done_json.to_string()));
             }
@@ -286,6 +287,12 @@ async fn build_context_digest(
     let top_skills = state.db.get_top_skills_in_range(start_ts, end_ts, 5).await
         .unwrap_or_default();
 
+    // Query token totals
+    let (total_input_tokens, total_output_tokens) = state.db
+        .get_token_totals_in_range(start_ts, end_ts)
+        .await
+        .unwrap_or((0, 0));
+
     // Build project digests
     let mut projects: Vec<ProjectDigest> = project_map
         .into_iter()
@@ -326,6 +333,8 @@ async fn build_context_digest(
         top_tools,
         top_skills,
         summary_line: format!("{total_sessions} sessions across {total_projects} projects"),
+        total_input_tokens: total_input_tokens as u64,
+        total_output_tokens: total_output_tokens as u64,
     })
 }
 

@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils'
 import { useReportPreview } from '../../hooks/use-report-preview'
 import { useReportGenerate } from '../../hooks/use-report-generate'
 import { ReportContent } from './ReportContent'
+import { ReportDetails } from './ReportDetails'
 import type { ReportRow } from '../../types/generated/ReportRow'
 
 interface ReportCardProps {
@@ -29,7 +30,7 @@ function formatCost(cents: number): string {
 
 export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, existingReport }: ReportCardProps) {
   const { data: preview, isLoading: previewLoading } = useReportPreview(startTs, endTs)
-  const { generate, isGenerating, streamedText, error, reset } = useReportGenerate()
+  const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, error, reset } = useReportGenerate()
   const [showExisting, setShowExisting] = useState(!!existingReport)
 
   const handleGenerate = () => {
@@ -88,6 +89,10 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, ex
           </button>
         </div>
         <ReportContent markdown={streamedText} />
+        <ReportDetails
+          contextDigestJson={completedContextDigest ?? existingReport?.contextDigest ?? null}
+          totalCostCents={existingReport?.totalCostCents ?? 0}
+        />
       </div>
     )
   }
@@ -111,6 +116,10 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, ex
           </button>
         </div>
         <ReportContent markdown={existingReport.contentMd} />
+        <ReportDetails
+          contextDigestJson={existingReport.contextDigest ?? null}
+          totalCostCents={existingReport.totalCostCents}
+        />
       </div>
     )
   }
