@@ -605,6 +605,7 @@ impl Database {
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -625,6 +626,7 @@ impl Database {
                 FROM sessions
                 WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND (?2 IS NULL OR git_branch = ?2)
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(&today_start)
@@ -648,6 +650,7 @@ impl Database {
                     WHERE s.project_id = ?1
                       AND datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -667,6 +670,7 @@ impl Database {
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(&today_start)
@@ -691,10 +695,10 @@ impl Database {
         })
     }
 
-    /// Get all-time contributions from snapshots + today's real-time data.
+    /// Get all-time contributions by querying sessions directly.
     ///
-    /// When `project_id` is Some, queries the `sessions` table directly because
-    /// snapshot generation only creates global (project_id = NULL) snapshots.
+    /// All branches use the canonical filter `is_sidechain = 0 AND last_message_at > 0`
+    /// to match the dashboard's session count.
     async fn get_all_contributions(
         &self,
         project_id: Option<&str>,
@@ -714,6 +718,7 @@ impl Database {
                 FROM sessions
                 WHERE project_id = ?1
                   AND (?2 IS NULL OR git_branch = ?2)
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -733,6 +738,7 @@ impl Database {
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -766,6 +772,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE git_branch = ?1
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(branch)
@@ -783,6 +790,7 @@ impl Database {
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN sessions s ON sc.session_id = s.id
                     WHERE s.git_branch = ?1
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(branch)
@@ -803,48 +811,59 @@ impl Database {
                 files_edited_count: row.5,
             })
         } else {
-            // Global: use snapshots (pre-aggregated) + today's live data
-            let snapshot: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            // Global: query sessions directly (consistent with dashboard canonical filter)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
                 r#"
                 SELECT
-                    COALESCE(SUM(sessions_count), 0),
-                    COALESCE(SUM(ai_lines_added), 0),
-                    COALESCE(SUM(ai_lines_removed), 0),
-                    COALESCE(SUM(commits_count), 0),
-                    COALESCE(SUM(commit_insertions), 0),
-                    COALESCE(SUM(commit_deletions), 0),
-                    COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0),
-                    COALESCE(SUM(files_edited_count), 0)
-                FROM contribution_snapshots
-                WHERE project_id IS NULL
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .fetch_one(self.pool())
             .await?;
 
-            // Add today's real-time data
-            let today = self.get_today_contributions(project_id, branch).await?;
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE s.is_sidechain = 0 AND s.last_message_at > 0
+                    "#,
+                )
+                .fetch_one(self.pool())
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
 
             Ok(AggregatedContributions {
-                sessions_count: snapshot.0 + today.sessions_count,
-                ai_lines_added: snapshot.1 + today.ai_lines_added,
-                ai_lines_removed: snapshot.2 + today.ai_lines_removed,
-                commits_count: snapshot.3 + today.commits_count,
-                commit_insertions: snapshot.4 + today.commit_insertions,
-                commit_deletions: snapshot.5 + today.commit_deletions,
-                tokens_used: snapshot.6 + today.tokens_used,
-                cost_cents: snapshot.7 + today.cost_cents,
-                files_edited_count: snapshot.8 + today.files_edited_count,
+                sessions_count: row.0,
+                ai_lines_added: row.1,
+                ai_lines_removed: row.2,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
             })
         }
     }
 
     /// Get contributions in a date range.
     ///
-    /// When `project_id` is Some, queries the `sessions` table directly because
-    /// snapshot generation only creates global (project_id = NULL) snapshots.
-    /// When `project_id` is None, uses pre-aggregated `contribution_snapshots`.
+    /// All branches query sessions directly with the canonical filter
+    /// `is_sidechain = 0 AND last_message_at > 0` to match the dashboard.
     async fn get_contributions_in_range(
         &self,
         from: &str,
@@ -868,6 +887,7 @@ impl Database {
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -891,6 +911,7 @@ impl Database {
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -928,6 +949,7 @@ impl Database {
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND git_branch = ?3
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(from)
@@ -949,6 +971,7 @@ impl Database {
                     WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                       AND s.git_branch = ?3
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(from)
@@ -971,21 +994,20 @@ impl Database {
                 files_edited_count: row.5,
             })
         } else {
-            // Global: use pre-aggregated snapshots
-            let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            // Global: query sessions directly (consistent with dashboard canonical filter)
+            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
                 r#"
                 SELECT
-                    COALESCE(SUM(sessions_count), 0),
-                    COALESCE(SUM(ai_lines_added), 0),
-                    COALESCE(SUM(ai_lines_removed), 0),
-                    COALESCE(SUM(commits_count), 0),
-                    COALESCE(SUM(commit_insertions), 0),
-                    COALESCE(SUM(commit_deletions), 0),
-                    COALESCE(SUM(tokens_used), 0),
-                    COALESCE(SUM(cost_cents), 0),
-                    COALESCE(SUM(files_edited_count), 0)
-                FROM contribution_snapshots
-                WHERE project_id IS NULL AND date >= ?1 AND date <= ?2
+                    COUNT(*) as sessions_count,
+                    COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
+                    COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
+                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(user_prompt_count), 0) as prompts,
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(from)
@@ -993,16 +1015,38 @@ impl Database {
             .fetch_one(self.pool())
             .await?;
 
+            let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
+                sqlx::query_as(
+                    r#"
+                    SELECT
+                        COUNT(DISTINCT c.hash) as commits_count,
+                        COALESCE(SUM(c.insertions), 0) as commit_insertions,
+                        COALESCE(SUM(c.deletions), 0) as commit_deletions
+                    FROM session_commits sc
+                    JOIN commits c ON sc.commit_hash = c.hash
+                    JOIN sessions s ON sc.session_id = s.id
+                    WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                      AND s.is_sidechain = 0 AND s.last_message_at > 0
+                    "#,
+                )
+                .bind(from)
+                .bind(to)
+                .fetch_one(self.pool())
+                .await?;
+
+            let cost_cents = estimate_cost_cents(row.3);
+
             Ok(AggregatedContributions {
                 sessions_count: row.0,
                 ai_lines_added: row.1,
                 ai_lines_removed: row.2,
-                commits_count: row.3,
-                commit_insertions: row.4,
-                commit_deletions: row.5,
-                tokens_used: row.6,
-                cost_cents: row.7,
-                files_edited_count: row.8,
+                commits_count,
+                commit_insertions,
+                commit_deletions,
+                tokens_used: row.3,
+                cost_cents,
+                files_edited_count: row.5,
             })
         }
     }
@@ -1051,18 +1095,23 @@ impl Database {
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
-                    date(last_message_at, 'unixepoch', 'localtime') as date,
-                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
-                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
-                    COALESCE(SUM(commit_count), 0) as commits_count,
+                    date(s.last_message_at, 'unixepoch', 'localtime') as date,
+                    COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
+                    COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
+                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      WHERE s2.project_id = ?1
+                        AND (?4 IS NULL OR s2.git_branch = ?4)
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
+                    ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
-                FROM sessions
-                WHERE project_id = ?1
-                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
-                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
-                  AND (?4 IS NULL OR git_branch = ?4)
-                GROUP BY date(last_message_at, 'unixepoch', 'localtime')
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                FROM sessions s
+                WHERE s.project_id = ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
+                  AND (?4 IS NULL OR s.git_branch = ?4)
+                GROUP BY date(s.last_message_at, 'unixepoch', 'localtime')
                 ORDER BY date ASC
                 "#,
             )
@@ -1092,17 +1141,21 @@ impl Database {
             let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
                 r#"
                 SELECT
-                    date(last_message_at, 'unixepoch', 'localtime') as date,
-                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
-                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
-                    COALESCE(SUM(commit_count), 0) as commits_count,
+                    date(s.last_message_at, 'unixepoch', 'localtime') as date,
+                    COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
+                    COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
+                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      WHERE s2.git_branch = ?3
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
+                    ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used
-                FROM sessions
-                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
-                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND git_branch = ?3
-                GROUP BY date(last_message_at, 'unixepoch', 'localtime')
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                FROM sessions s
+                WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                  AND s.git_branch = ?3
+                GROUP BY date(s.last_message_at, 'unixepoch', 'localtime')
                 ORDER BY date ASC
                 "#,
             )
@@ -1206,20 +1259,27 @@ impl Database {
             let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>)> = sqlx::query_as(
                 r#"
                 SELECT
-                    git_branch,
+                    s.git_branch,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
-                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
-                    COALESCE(SUM(commit_count), 0) as commits_count,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited,
-                    MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity
-                FROM sessions
-                WHERE project_id = ?1
-                  AND last_message_at > 0
-                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
-                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
-                  AND (?4 IS NULL OR git_branch = ?4)
-                GROUP BY git_branch
+                    COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
+                    COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
+                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      WHERE s2.project_id = ?1
+                        AND s2.last_message_at > 0
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') >= ?2
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') <= ?3
+                        AND s2.git_branch IS s.git_branch
+                    ), 0) as commits_count,
+                    COALESCE(SUM(s.files_edited_count), 0) as files_edited,
+                    MAX(CASE WHEN s.last_message_at > 0 THEN s.last_message_at ELSE NULL END) as last_activity
+                FROM sessions s
+                WHERE s.project_id = ?1
+                  AND s.last_message_at > 0
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
+                  AND (?4 IS NULL OR s.git_branch = ?4)
+                GROUP BY s.git_branch
                 ORDER BY sessions_count DESC
                 "#,
             )
@@ -1253,21 +1313,28 @@ impl Database {
             let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>, Option<String>, Option<String>)> = sqlx::query_as(
                 r#"
                 SELECT
-                    git_branch,
+                    s.git_branch,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(ai_lines_added), 0) as lines_added,
-                    COALESCE(SUM(ai_lines_removed), 0) as lines_removed,
-                    COALESCE(SUM(commit_count), 0) as commits_count,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited,
-                    MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity,
-                    project_id,
-                    COALESCE(project_display_name, project_id) as project_name
-                FROM sessions
-                WHERE last_message_at > 0
-                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
-                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND (?3 IS NULL OR git_branch = ?3)
-                GROUP BY project_id, git_branch
+                    COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
+                    COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
+                    COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
+                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      WHERE s2.last_message_at > 0
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') >= ?1
+                        AND date(s2.last_message_at, 'unixepoch', 'localtime') <= ?2
+                        AND s2.project_id IS s.project_id
+                        AND s2.git_branch IS s.git_branch
+                    ), 0) as commits_count,
+                    COALESCE(SUM(s.files_edited_count), 0) as files_edited,
+                    MAX(CASE WHEN s.last_message_at > 0 THEN s.last_message_at ELSE NULL END) as last_activity,
+                    s.project_id,
+                    COALESCE(s.project_display_name, s.project_id) as project_name
+                FROM sessions s
+                WHERE s.last_message_at > 0
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                  AND (?3 IS NULL OR s.git_branch = ?3)
+                GROUP BY s.project_id, s.git_branch
                 ORDER BY sessions_count DESC
                 "#,
             )
@@ -2250,6 +2317,7 @@ impl Database {
                 COALESCE(SUM(files_edited_count), 0) as files_edited_count
             FROM sessions
             WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
+              AND is_sidechain = 0 AND last_message_at > 0
             "#,
         )
         .bind(date)
@@ -2267,6 +2335,7 @@ impl Database {
             JOIN commits c ON sc.commit_hash = c.hash
             JOIN sessions s ON sc.session_id = s.id
             WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
+              AND s.is_sidechain = 0 AND s.last_message_at > 0
             "#,
         )
         .bind(date)
@@ -2332,6 +2401,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
                 FROM sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
+                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(date)
@@ -2348,6 +2418,7 @@ impl Database {
                 JOIN commits c ON sc.commit_hash = c.hash
                 JOIN sessions s ON sc.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
+                  AND s.is_sidechain = 0 AND s.last_message_at > 0
                 "#,
             )
             .bind(date)
