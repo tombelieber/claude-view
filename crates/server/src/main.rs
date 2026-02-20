@@ -144,7 +144,7 @@ async fn main() -> Result<()> {
     if std::env::consts::OS != "macos" {
         eprintln!("\n\u{26a0}\u{fe0f}  claude-view currently supports macOS only.");
         eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
-        eprintln!("   Follow progress: https://github.com/anonymous-dev/claude-view/issues\n");
+        eprintln!("   Follow progress: https://github.com/tombelieber/claude-view/issues\n");
         std::process::exit(1);
     }
 
