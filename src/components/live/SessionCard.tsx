@@ -10,6 +10,7 @@ import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { SubAgentPills } from './SubAgentPills'
+import { SessionToolChips } from './SessionToolChips'
 import { TaskProgressList } from './TaskProgressList'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { buildSessionUrl } from '../../lib/url-utils'
@@ -163,6 +164,13 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
       {session.subAgents && session.subAgents.length > 0 && (
         <div className="mb-2 -mx-1">
           <SubAgentPills subAgents={session.subAgents} />
+        </div>
+      )}
+
+      {/* Tool integrations (MCP servers, Skills) */}
+      {session.toolsUsed && session.toolsUsed.length > 0 && (
+        <div className="mb-2 -mx-1">
+          <SessionToolChips tools={session.toolsUsed} />
         </div>
       )}
 
