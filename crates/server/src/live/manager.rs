@@ -21,8 +21,8 @@ use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
 use super::process::{detect_claude_processes, has_running_process, is_pid_alive, ClaudeProcess};
 use super::state::{
-    AgentState, AgentStateGroup, LiveSession, SessionEvent, SessionSnapshot, SessionStatus,
-    SnapshotEntry,
+    status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
+    SessionSnapshot, SessionStatus, SnapshotEntry,
 };
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
@@ -114,6 +114,53 @@ struct JsonlMetadata {
     progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
     tools_used: Vec<super::state::ToolUsed>,
+}
+
+/// Build a skeleton LiveSession from a crash-recovery snapshot entry.
+/// The session will be enriched by `apply_jsonl_metadata` on the next JSONL poll.
+fn build_recovered_session(
+    session_id: &str,
+    entry: &SnapshotEntry,
+    file_path: &str,
+) -> LiveSession {
+    let path = Path::new(file_path);
+    let (project, project_display_name, project_path) = extract_project_info(path);
+
+    let status = match entry.status.as_str() {
+        "working" => SessionStatus::Working,
+        "paused" => SessionStatus::Paused,
+        _ => status_from_agent_state(&entry.agent_state),
+    };
+
+    LiveSession {
+        id: session_id.to_string(),
+        project,
+        project_display_name,
+        project_path,
+        file_path: file_path.to_string(),
+        status,
+        agent_state: entry.agent_state.clone(),
+        git_branch: None,
+        pid: Some(entry.pid),
+        title: String::new(),
+        last_user_message: String::new(),
+        current_activity: entry.agent_state.label.clone(),
+        turn_count: 0,
+        started_at: None,
+        last_activity_at: entry.last_activity_at,
+        model: None,
+        tokens: TokenUsage::default(),
+        context_window_tokens: 0,
+        cost: CostBreakdown::default(),
+        cache_status: CacheStatus::Unknown,
+        current_turn_started_at: None,
+        last_turn_task_seconds: None,
+        sub_agents: Vec::new(),
+        progress_items: Vec::new(),
+        tools_used: Vec::new(),
+        last_cache_hit_at: None,
+        hook_events: Vec::new(),
+    }
 }
 
 /// Apply JSONL metadata to an existing session without touching hook-owned fields
@@ -324,6 +371,153 @@ impl LiveSessionManager {
             // No sessions are created here — hooks are the sole authority.
             for path in &initial_paths {
                 manager.process_jsonl_update(path).await;
+            }
+
+            // 3. Promote sessions from crash-recovery snapshot.
+            //    Sessions with alive PIDs get full LiveSession entries immediately,
+            //    populated with metrics from accumulators and agent_state from snapshot.
+            {
+                let snapshot = load_session_snapshot(&pid_snapshot_path());
+                if !snapshot.sessions.is_empty() {
+                    let mut promoted = 0u32;
+                    let mut dead = 0u32;
+
+                    for (session_id, entry) in &snapshot.sessions {
+                        // Skip if hook already created this session
+                        if manager.sessions.read().await.contains_key(session_id) {
+                            continue;
+                        }
+                        if !is_pid_alive(entry.pid) {
+                            dead += 1;
+                            continue;
+                        }
+
+                        // Find the JSONL file path from the initial scan
+                        if let Some(path) = initial_paths
+                            .iter()
+                            .find(|p| extract_session_id(p) == *session_id)
+                        {
+                            let file_path_str = path.to_string_lossy().to_string();
+                            let mut session =
+                                build_recovered_session(session_id, entry, &file_path_str);
+
+                            // Enrich with accumulator metrics if available
+                            let (project, project_display_name, project_path) =
+                                extract_project_info(path);
+                            let accumulators = manager.accumulators.read().await;
+                            if let Some(acc) = accumulators.get(session_id) {
+                                let processes = manager.processes.read().await;
+                                let (_, pid) =
+                                    has_running_process(&processes, &project_path);
+                                drop(processes);
+
+                                let cost = manager
+                                    .pricing
+                                    .read()
+                                    .ok()
+                                    .map(|p| {
+                                        calculate_cost(&acc.tokens, acc.model.as_deref(), &p)
+                                    })
+                                    .unwrap_or_default();
+
+                                let cache_status = match acc.last_cache_hit_at {
+                                    Some(ts) => {
+                                        let secs = seconds_since_modified_from_timestamp(ts);
+                                        if secs < 300 {
+                                            CacheStatus::Warm
+                                        } else {
+                                            CacheStatus::Cold
+                                        }
+                                    }
+                                    None => CacheStatus::Unknown,
+                                };
+
+                                let metadata = JsonlMetadata {
+                                    git_branch: acc.git_branch.clone(),
+                                    pid: pid.or(Some(entry.pid)),
+                                    title: acc.first_user_message.clone(),
+                                    last_user_message: acc.last_user_message.clone(),
+                                    turn_count: acc.user_turn_count,
+                                    started_at: acc.started_at,
+                                    last_activity_at: entry.last_activity_at,
+                                    model: acc.model.clone(),
+                                    tokens: acc.tokens.clone(),
+                                    context_window_tokens: acc.context_window_tokens,
+                                    cost,
+                                    cache_status,
+                                    current_turn_started_at: acc.current_turn_started_at,
+                                    last_turn_task_seconds: acc.last_turn_task_seconds,
+                                    sub_agents: acc.sub_agents.clone(),
+                                    progress_items: {
+                                        let mut items = acc.todo_items.clone();
+                                        items.extend(acc.task_items.clone());
+                                        items
+                                    },
+                                    tools_used: {
+                                        let mut mcp: Vec<_> =
+                                            acc.mcp_servers.iter().cloned().collect();
+                                        mcp.sort();
+                                        let mut skill: Vec<_> =
+                                            acc.skills.iter().cloned().collect();
+                                        skill.sort();
+                                        let mut tools =
+                                            Vec::with_capacity(mcp.len() + skill.len());
+                                        for name in mcp {
+                                            tools.push(super::state::ToolUsed {
+                                                name,
+                                                kind: "mcp".to_string(),
+                                            });
+                                        }
+                                        for name in skill {
+                                            tools.push(super::state::ToolUsed {
+                                                name,
+                                                kind: "skill".to_string(),
+                                            });
+                                        }
+                                        tools
+                                    },
+                                    last_cache_hit_at: acc.last_cache_hit_at,
+                                };
+                                drop(accumulators);
+
+                                apply_jsonl_metadata(
+                                    &mut session,
+                                    &metadata,
+                                    &file_path_str,
+                                    &project,
+                                    &project_display_name,
+                                    &project_path,
+                                );
+                            } else {
+                                drop(accumulators);
+                            }
+
+                            manager
+                                .sessions
+                                .write()
+                                .await
+                                .insert(session_id.clone(), session.clone());
+                            let _ = manager
+                                .tx
+                                .send(SessionEvent::SessionDiscovered { session });
+                            promoted += 1;
+                        }
+                    }
+
+                    if promoted > 0 || dead > 0 {
+                        info!(
+                            promoted,
+                            dead,
+                            total = snapshot.sessions.len(),
+                            "Startup recovery: promoted sessions from crash snapshot"
+                        );
+                    }
+
+                    // Save cleaned snapshot (remove dead entries)
+                    if dead > 0 {
+                        manager.save_session_snapshot_from_state().await;
+                    }
+                }
             }
 
             // Start the file system watcher
@@ -1409,6 +1603,39 @@ mod tests {
         assert_eq!(entry.pid, 12345);
         // v1 migration: default agent_state is Autonomous/recovered
         assert_eq!(entry.agent_state.state, "recovered");
+    }
+
+    #[test]
+    fn test_build_recovered_session_from_snapshot() {
+        use crate::live::state::{
+            AgentState, AgentStateGroup, SessionStatus, SnapshotEntry,
+        };
+
+        let entry = SnapshotEntry {
+            pid: 12345,
+            status: "paused".to_string(),
+            agent_state: AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "awaiting_input".into(),
+                label: "Asked a question".into(),
+                context: None,
+            },
+            last_activity_at: 1708500000,
+        };
+
+        let session = build_recovered_session(
+            "session-abc",
+            &entry,
+            "/home/user/.claude/projects/-tmp/session-abc.jsonl",
+        );
+
+        assert_eq!(session.id, "session-abc");
+        assert_eq!(session.pid, Some(12345));
+        assert_eq!(session.status, SessionStatus::Paused);
+        assert_eq!(session.agent_state.state, "awaiting_input");
+        assert_eq!(session.last_activity_at, 1708500000);
+        assert_eq!(session.project_display_name, "tmp");
+        assert_eq!(session.project_path, "/tmp");
     }
 
     #[test]
