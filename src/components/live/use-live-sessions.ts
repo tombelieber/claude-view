@@ -46,6 +46,7 @@ export interface LiveSession {
   subAgents?: SubAgentInfo[]
   progressItems?: ProgressItem[]
   lastCacheHitAt?: number | null
+  toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
 }
 
 export interface LiveSummary {

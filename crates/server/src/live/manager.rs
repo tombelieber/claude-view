@@ -946,16 +946,20 @@ impl LiveSessionManager {
                 items
             },
             tools_used: {
-                let mut tools = Vec::new();
-                for name in &acc.mcp_servers {
+                let mut mcp: Vec<_> = acc.mcp_servers.iter().cloned().collect();
+                mcp.sort();
+                let mut skill: Vec<_> = acc.skills.iter().cloned().collect();
+                skill.sort();
+                let mut tools = Vec::with_capacity(mcp.len() + skill.len());
+                for name in mcp {
                     tools.push(super::state::ToolUsed {
-                        name: name.clone(),
+                        name,
                         kind: "mcp".to_string(),
                     });
                 }
-                for name in &acc.skills {
+                for name in skill {
                     tools.push(super::state::ToolUsed {
-                        name: name.clone(),
+                        name,
                         kind: "skill".to_string(),
                     });
                 }
