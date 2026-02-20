@@ -34,7 +34,7 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, ex
 
   const handleGenerate = () => {
     setShowExisting(false)
-    generate({ reportType: type, dateStart, dateEnd })
+    generate({ reportType: type, dateStart, dateEnd, startTs, endTs })
   }
 
   const handleRedo = () => {

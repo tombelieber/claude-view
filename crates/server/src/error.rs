@@ -60,6 +60,9 @@ pub enum ApiError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     #[error("Conflict: {0}")]
     Conflict(String),
 
@@ -155,6 +158,13 @@ impl IntoResponse for ApiError {
                 (
                     StatusCode::BAD_REQUEST,
                     ErrorResponse::with_details("Bad request", msg.clone()),
+                )
+            }
+            ApiError::NotFound(msg) => {
+                tracing::warn!(message = %msg, "Not found");
+                (
+                    StatusCode::NOT_FOUND,
+                    ErrorResponse::with_details("Not found", msg.clone()),
                 )
             }
             ApiError::Conflict(msg) => {
