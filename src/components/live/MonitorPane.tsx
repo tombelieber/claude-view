@@ -42,9 +42,9 @@ function contextPercent(session: LiveSession): number {
 
 /** Color class for context percentage text. */
 function contextColor(pct: number): string {
-  if (pct > 80) return 'text-red-500 dark:text-red-400'
-  if (pct >= 50) return 'text-amber-500 dark:text-amber-400'
-  return 'text-green-600 dark:text-green-400'
+  if (pct > 90) return 'text-red-500 dark:text-red-400'
+  if (pct >= 75) return 'text-amber-500 dark:text-amber-400'
+  return 'text-sky-600 dark:text-sky-400'
 }
 
 /** Status icon component based on agentState.group. */

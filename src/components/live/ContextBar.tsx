@@ -5,9 +5,9 @@ interface ContextBarProps {
 }
 
 function getFillColor(percent: number): string {
-  if (percent >= 85) return 'bg-red-500'
-  if (percent >= 60) return 'bg-amber-500'
-  return 'bg-green-500'
+  if (percent >= 90) return 'bg-red-500'
+  if (percent >= 75) return 'bg-amber-500'
+  return 'bg-sky-500'
 }
 
 export function ContextBar({ percent }: ContextBarProps) {
