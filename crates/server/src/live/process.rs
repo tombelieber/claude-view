@@ -82,6 +82,46 @@ pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
     (result, total_count)
 }
 
+/// Count running Claude Code processes without building the full HashMap.
+///
+/// This is a lightweight alternative to `detect_claude_processes()` for call
+/// sites that only need the total process count (e.g. the dashboard metric).
+/// Avoids allocating the HashMap, cloning PathBufs, and deduplicating by cwd.
+///
+/// This function does synchronous system calls and should be called from
+/// `tokio::task::spawn_blocking`.
+pub fn count_claude_processes() -> u32 {
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut total_count = 0u32;
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+
+        let is_claude = name.contains("claude")
+            || process.cmd().iter().any(|arg| {
+                arg.to_string_lossy().contains("@anthropic-ai/claude")
+            });
+
+        if !is_claude {
+            continue;
+        }
+
+        let pid_u32 = pid.as_u32();
+
+        // Only count processes where we can resolve a cwd (same filter as detect_claude_processes)
+        let cwd = process
+            .cwd()
+            .map(|p| p.to_path_buf())
+            .or_else(|| get_cwd_via_lsof(pid_u32));
+
+        if cwd.is_some() {
+            total_count += 1;
+        }
+    }
+    total_count
+}
+
 /// Fallback: get a process's working directory via `lsof`.
 ///
 /// On macOS, `sysinfo` cannot read cwd for other processes (security restriction).

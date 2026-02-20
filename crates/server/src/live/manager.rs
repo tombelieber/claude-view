@@ -19,7 +19,7 @@ use claude_view_core::pricing::{
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
-use super::process::{detect_claude_processes, is_pid_alive};
+use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
     status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
     SessionSnapshot, SessionStatus, SnapshotEntry,
@@ -323,7 +323,7 @@ impl LiveSessionManager {
 
     /// Run a one-shot process count scan (display metric only).
     async fn run_eager_process_scan(&self) {
-        let (_, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
+        let total_count = tokio::task::spawn_blocking(count_claude_processes)
             .await
             .unwrap_or_default();
         self.process_count.store(total_count, Ordering::Relaxed);
@@ -717,8 +717,8 @@ impl LiveSessionManager {
                 }
 
                 // 2.1 — Process count refresh (display metric only)
-                let (_, total_count) =
-                    tokio::task::spawn_blocking(detect_claude_processes)
+                let total_count =
+                    tokio::task::spawn_blocking(count_claude_processes)
                         .await
                         .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
