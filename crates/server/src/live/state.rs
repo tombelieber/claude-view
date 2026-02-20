@@ -147,6 +147,27 @@ pub struct HookEvent {
     pub context: Option<String>,
 }
 
+/// A per-session snapshot entry persisted to disk for crash recovery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotEntry {
+    /// Bound PID of the Claude process.
+    pub pid: u32,
+    /// Session status as string: "working", "paused", "done".
+    pub status: String,
+    /// Last known agent state (from hooks).
+    pub agent_state: AgentState,
+    /// Unix timestamp of last activity.
+    pub last_activity_at: i64,
+}
+
+/// The on-disk snapshot format (v2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSnapshot {
+    pub version: u8,
+    pub sessions: std::collections::HashMap<String, SnapshotEntry>,
+}
+
 /// Events broadcast over the SSE channel to connected Live Monitor clients.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
