@@ -20,16 +20,16 @@ export const KNOWN_STATES: Record<string, { icon: string; color: string }> = {
   awaiting_approval: { icon: 'FileCheck', color: 'amber' },
   needs_permission: { icon: 'Shield', color: 'red' },
   error: { icon: 'AlertTriangle', color: 'red' },
-  interrupted: { icon: 'CirclePause', color: 'orange' },
+  interrupted: { icon: 'CirclePause', color: 'amber' },
   idle: { icon: 'Clock', color: 'gray' },
   // Autonomous
   thinking: { icon: 'Sparkles', color: 'green' },
   acting: { icon: 'Terminal', color: 'green' },
   delegating: { icon: 'GitBranch', color: 'green' },
   // Terminal
-  task_complete: { icon: 'CheckCircle2', color: 'blue' },
+  task_complete: { icon: 'CheckCircle2', color: 'gray' },
   session_ended: { icon: 'LogOut', color: 'gray' },
-  work_delivered: { icon: 'Package', color: 'blue' },
+  work_delivered: { icon: 'Package', color: 'gray' },
 }
 
 // Unknown states get a generic icon/color for their group

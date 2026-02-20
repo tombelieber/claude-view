@@ -44,7 +44,7 @@ describe('SessionSummaryCard', () => {
   })
 
   describe('visual styling', () => {
-    it('should have a rose left border', () => {
+    it('should have a gray left border', () => {
       const { container } = render(
         <SessionSummaryCard
           summary="Test summary"
@@ -54,7 +54,7 @@ describe('SessionSummaryCard', () => {
       )
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toMatch(/border-l/)
-      expect(card.className).toMatch(/border-l-rose-300/)
+      expect(card.className).toMatch(/border-l-gray-300/)
     })
 
     it('should render the BookOpen icon', () => {

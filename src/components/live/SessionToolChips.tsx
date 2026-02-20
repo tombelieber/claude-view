@@ -48,11 +48,7 @@ function ToolChip({ tool }: { tool: ToolUsed }) {
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
         <span
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs font-medium cursor-default ${
-            isMcp
-              ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30'
-              : 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/30'
-          }`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs font-medium cursor-default bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700"
           aria-label={`${isMcp ? 'MCP' : 'Skill'}: ${tool.name}`}
         >
           {isMcp
@@ -95,8 +91,8 @@ function OverflowChip({ tools }: { tools: ToolUsed[] }) {
               return (
                 <div key={`${tool.kind}-${tool.name}`} className="flex items-center gap-2">
                   {isMcp
-                    ? <Plug2 className="h-3 w-3 flex-shrink-0 text-blue-500 dark:text-blue-400" />
-                    : <Zap className="h-3 w-3 flex-shrink-0 text-purple-500 dark:text-purple-400" />
+                    ? <Plug2 className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                    : <Zap className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
                   }
                   <span className="text-gray-900 dark:text-gray-100">
                     {tool.name}
