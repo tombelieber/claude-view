@@ -108,6 +108,8 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const setRichRenderMode = useMonitorStore((s) => s.setRichRenderMode)
 
   // Live mode: WebSocket messages; History mode: pre-loaded messages
   const { messages: liveMessages, bufferDone: liveBufferDone } = useLiveSessionMessages(
@@ -318,7 +320,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             <button
               onClick={toggleVerbose}
               className={cn(
-                'text-[10px] px-1.5 py-0.5 rounded border mr-3',
+                'text-[10px] px-1.5 py-0.5 rounded border',
                 verboseMode
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
@@ -326,6 +328,19 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             >
               {verboseMode ? 'verbose' : 'compact'}
             </button>
+            {verboseMode && (
+              <button
+                onClick={() => setRichRenderMode(richRenderMode === 'rich' ? 'json' : 'rich')}
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded border mr-3',
+                  richRenderMode === 'rich'
+                    ? 'border-emerald-500 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+                )}
+              >
+                {richRenderMode === 'rich' ? 'rich' : 'json'}
+              </button>
+            )}
           </>
         )}
       </div>
