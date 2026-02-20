@@ -28,7 +28,7 @@ impl Database {
                 SELECT
                   (SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0),
                   (SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0),
-                  (SELECT COUNT(*) FROM session_commits),
+                  (SELECT COUNT(DISTINCT commit_hash) FROM session_commits),
                   (SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0)
                 "#,
             )

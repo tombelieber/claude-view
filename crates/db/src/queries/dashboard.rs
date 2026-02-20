@@ -53,7 +53,7 @@ impl Database {
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
                 MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity_at
             FROM sessions
-            WHERE is_sidechain = 0
+            WHERE is_sidechain = 0 AND last_message_at > 0
             GROUP BY project_id
             ORDER BY last_activity_at DESC
             "#,
@@ -591,7 +591,7 @@ impl Database {
             r#"
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM sessions
-            WHERE is_sidechain = 0
+            WHERE is_sidechain = 0 AND last_message_at > 0
               AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
@@ -862,7 +862,7 @@ impl Database {
     /// Get the total count of sessions (excluding sidechains).
     pub async fn get_session_count(&self) -> DbResult<i64> {
         let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0")
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0")
                 .fetch_one(self.pool())
                 .await?;
         Ok(count)
@@ -871,18 +871,10 @@ impl Database {
     /// Get the total count of projects.
     pub async fn get_project_count(&self) -> DbResult<i64> {
         let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0",
+            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0",
         )
         .fetch_one(self.pool())
         .await?;
-        Ok(count)
-    }
-
-    /// Get the total count of linked commits.
-    pub async fn get_commit_count(&self) -> DbResult<i64> {
-        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_commits")
-            .fetch_one(self.pool())
-            .await?;
         Ok(count)
     }
 
