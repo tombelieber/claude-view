@@ -73,8 +73,14 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 
 **Rules:**
 - To find it: `ls ../ | grep gtm` from this repo root.
-- When business context is needed (pricing, product direction), read from that repo.
-- When the user says "execute a plan", check that repo's `plans/active/` for the matching plan file and follow it.
+- **Read:** When business context is needed (pricing, product direction), read from that repo.
+- **Write:** When creating docs about pricing, monetization, product vision, competitive analysis, GTM, or business strategy, ALWAYS write them to the private sibling repo — never to this repo. Match the directory by topic and status:
+  - `vision/` for product direction docs
+  - `plans/active/` for plans currently being worked on
+  - `plans/backlog/` for future/deferred plans
+  - `marketing/` for launch, blog, and content marketing
+- **Execute:** When the user says "execute a plan", check that repo's `plans/active/` for the matching plan file and follow it.
+- **Search:** When searching for context across both repos, check this repo for engineering docs and the sibling repo for business docs.
 - Never commit business/strategy docs to this repo.
 
 ## Development Priorities
