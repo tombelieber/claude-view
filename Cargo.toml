@@ -7,7 +7,7 @@ members = ["crates/*"]
 version = "0.5.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/anonymous-dev/claude-view"
+repository = "https://github.com/tombelieber/claude-view"
 
 [workspace.dependencies]
 # Async runtime
