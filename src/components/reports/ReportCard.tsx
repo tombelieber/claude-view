@@ -14,6 +14,7 @@ interface ReportCardProps {
   type: 'daily' | 'weekly'
   startTs: number
   endTs: number
+  suggested?: boolean
   existingReport?: ReportRow
 }
 
@@ -28,7 +29,7 @@ function formatCost(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, existingReport }: ReportCardProps) {
+export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, suggested, existingReport }: ReportCardProps) {
   const { data: preview, isLoading: previewLoading } = useReportPreview(startTs, endTs)
   const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, error, reset } = useReportGenerate()
   const [showExisting, setShowExisting] = useState(!!existingReport)
@@ -150,7 +151,10 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, ex
   const isEmpty = preview && preview.sessionCount === 0
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
+    <div className={cn(
+      'rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5',
+      suggested && 'border-l-2 border-l-blue-500 dark:border-l-blue-400'
+    )}>
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400">{dateLabel}</p>

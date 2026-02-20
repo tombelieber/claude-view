@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-interface CardConfig {
+export interface CardConfig {
   label: string
   dateStart: string
   dateEnd: string
@@ -9,24 +9,21 @@ interface CardConfig {
   endTs: number
 }
 
-interface SmartDefaults {
-  primary: CardConfig
-  secondary: CardConfig
+export interface SmartDefaults {
+  cards: CardConfig[]
+  suggestedIndex: number
 }
 
-/** Get YYYY-MM-DD for a Date in local time. */
 function toLocalDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** Get start-of-day unix timestamp for a Date. */
 function startOfDay(d: Date): number {
   const copy = new Date(d)
   copy.setHours(0, 0, 0, 0)
   return Math.floor(copy.getTime() / 1000)
 }
 
-/** Get end-of-day unix timestamp for a Date. */
 function endOfDay(d: Date): number {
   const copy = new Date(d)
   copy.setHours(23, 59, 59, 999)
@@ -46,7 +43,7 @@ export function useSmartDefaults(): SmartDefaults {
   return useMemo(() => {
     const now = new Date()
     const hour = now.getHours()
-    const dayOfWeek = now.getDay() // 0=Sun, 1=Mon
+    const dayOfWeek = now.getDay()
 
     const today = new Date(now)
     today.setHours(0, 0, 0, 0)
@@ -60,52 +57,52 @@ export function useSmartDefaults(): SmartDefaults {
     const lastSunday = new Date(thisMonday)
     lastSunday.setDate(lastSunday.getDate() - 1)
 
-    const todayConfig: CardConfig = {
-      label: 'Today',
-      dateStart: toLocalDate(today),
-      dateEnd: toLocalDate(today),
-      type: 'daily',
-      startTs: startOfDay(today),
-      endTs: endOfDay(today),
+    // Fixed order: Today, Yesterday, This Week, Last Week
+    const cards: CardConfig[] = [
+      {
+        label: 'Today',
+        dateStart: toLocalDate(today),
+        dateEnd: toLocalDate(today),
+        type: 'daily',
+        startTs: startOfDay(today),
+        endTs: endOfDay(today),
+      },
+      {
+        label: 'Yesterday',
+        dateStart: toLocalDate(yesterday),
+        dateEnd: toLocalDate(yesterday),
+        type: 'daily',
+        startTs: startOfDay(yesterday),
+        endTs: endOfDay(yesterday),
+      },
+      {
+        label: 'This Week',
+        dateStart: toLocalDate(thisMonday),
+        dateEnd: toLocalDate(today),
+        type: 'weekly',
+        startTs: startOfDay(thisMonday),
+        endTs: endOfDay(today),
+      },
+      {
+        label: 'Last Week',
+        dateStart: toLocalDate(lastMonday),
+        dateEnd: toLocalDate(lastSunday),
+        type: 'weekly',
+        startTs: startOfDay(lastMonday),
+        endTs: endOfDay(lastSunday),
+      },
+    ]
+
+    // Smart default: which card to emphasize
+    let suggestedIndex: number
+    if (dayOfWeek === 1 && hour < 12) {
+      suggestedIndex = 3 // Monday morning → Last Week
+    } else if (hour < 12) {
+      suggestedIndex = 1 // Other mornings → Yesterday
+    } else {
+      suggestedIndex = 0 // Afternoon/evening → Today
     }
 
-    const yesterdayConfig: CardConfig = {
-      label: 'Yesterday',
-      dateStart: toLocalDate(yesterday),
-      dateEnd: toLocalDate(yesterday),
-      type: 'daily',
-      startTs: startOfDay(yesterday),
-      endTs: endOfDay(yesterday),
-    }
-
-    const thisWeekConfig: CardConfig = {
-      label: 'This Week',
-      dateStart: toLocalDate(thisMonday),
-      dateEnd: toLocalDate(today),
-      type: 'weekly',
-      startTs: startOfDay(thisMonday),
-      endTs: endOfDay(today),
-    }
-
-    const lastWeekConfig: CardConfig = {
-      label: 'Last Week',
-      dateStart: toLocalDate(lastMonday),
-      dateEnd: toLocalDate(lastSunday),
-      type: 'weekly',
-      startTs: startOfDay(lastMonday),
-      endTs: endOfDay(lastSunday),
-    }
-
-    // Morning (before noon) -- show yesterday as primary
-    if (hour < 12) {
-      // Monday morning -- show last week
-      if (dayOfWeek === 1) {
-        return { primary: lastWeekConfig, secondary: todayConfig }
-      }
-      return { primary: yesterdayConfig, secondary: todayConfig }
-    }
-
-    // Afternoon/evening -- show today as primary
-    return { primary: todayConfig, secondary: thisWeekConfig }
+    return { cards, suggestedIndex }
   }, [])
 }
