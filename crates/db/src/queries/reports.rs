@@ -137,7 +137,7 @@ impl Database {
     ) -> DbResult<Vec<(String, String, String, Option<String>, i64, Option<String>)>> {
         let rows = sqlx::query_as(
             r#"SELECT id, project_display_name, preview, category_l2, duration_seconds, git_branch
-               FROM sessions
+               FROM valid_sessions
                WHERE first_message_at >= ? AND first_message_at <= ?
                ORDER BY project_display_name, git_branch, first_message_at"#,
         )
@@ -157,7 +157,7 @@ impl Database {
     ) -> DbResult<Vec<(String, i64)>> {
         let rows = sqlx::query_as(
             r#"SELECT s.project_display_name, COUNT(DISTINCT sc.commit_hash)
-               FROM sessions s
+               FROM valid_sessions s
                INNER JOIN session_commits sc ON sc.session_id = s.id
                WHERE s.first_message_at >= ?1 AND s.first_message_at <= ?2
                GROUP BY s.project_display_name"#,
@@ -180,7 +180,7 @@ impl Database {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"SELECT i.name
                FROM invocations i
-               JOIN sessions s ON i.session_id = s.id
+               JOIN valid_sessions s ON i.session_id = s.id
                WHERE s.first_message_at >= ? AND s.first_message_at <= ?
                  AND i.type = 'tool'
                GROUP BY i.name
@@ -206,7 +206,7 @@ impl Database {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"SELECT i.name
                FROM invocations i
-               JOIN sessions s ON i.session_id = s.id
+               JOIN valid_sessions s ON i.session_id = s.id
                WHERE s.first_message_at >= ? AND s.first_message_at <= ?
                  AND i.type = 'skill'
                GROUP BY i.name
@@ -221,6 +221,26 @@ impl Database {
         Ok(rows.into_iter().map(|(n,)| n).collect())
     }
 
+    /// Query total input and output tokens for sessions in a date range.
+    pub async fn get_token_totals_in_range(
+        &self,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> DbResult<(i64, i64)> {
+        let row: (i64, i64) = sqlx::query_as(
+            r#"SELECT
+                COALESCE(SUM(total_input_tokens), 0),
+                COALESCE(SUM(total_output_tokens), 0)
+               FROM valid_sessions
+               WHERE first_message_at >= ? AND first_message_at <= ?"#,
+        )
+        .bind(start_ts)
+        .bind(end_ts)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row)
+    }
+
     /// Aggregate preview stats for sessions in a date range.
     ///
     /// Uses `first_message_at` (unix timestamp) for filtering.
@@ -233,7 +253,7 @@ impl Database {
                 COUNT(DISTINCT project_display_name) as project_count,
                 COALESCE(SUM(duration_seconds), 0) as total_duration,
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total_tokens
-            FROM sessions
+            FROM valid_sessions
             WHERE first_message_at >= ? AND first_message_at <= ?"#,
         )
         .bind(start_ts)
@@ -244,7 +264,7 @@ impl Database {
         // Per-project breakdown
         let project_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"SELECT project_display_name, COUNT(*) as cnt
-               FROM sessions
+               FROM valid_sessions
                WHERE first_message_at >= ? AND first_message_at <= ?
                GROUP BY project_display_name
                ORDER BY cnt DESC"#,
@@ -324,18 +344,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_token_totals_in_range() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s1', 'p1', '/tmp/s1.jsonl', 'Test', 'proj', 1000, 1100, 100, 500000, 80000)"
+        ).execute(db.pool()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s2', 'p1', '/tmp/s2.jsonl', 'Test', 'proj', 1100, 1300, 200, 347000, 44000)"
+        ).execute(db.pool()).await.unwrap();
+
+        let (input, output) = db.get_token_totals_in_range(0, 2000).await.unwrap();
+        assert_eq!(input, 847000);
+        assert_eq!(output, 124000);
+    }
+
+    #[tokio::test]
+    async fn test_get_token_totals_empty_range() {
+        let db = Database::new_in_memory().await.unwrap();
+        let (input, output) = db.get_token_totals_in_range(0, 2000).await.unwrap();
+        assert_eq!(input, 0);
+        assert_eq!(output, 0);
+    }
+
+    #[tokio::test]
     async fn test_get_report_preview_with_sessions() {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert test sessions
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, duration_seconds) VALUES ('s1', 'p1', '/tmp/s1.jsonl', 'Test', 'claude-view', 1000, 3600)"
+            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s1', 'p1', '/tmp/s1.jsonl', 'Test', 'claude-view', 1000, 1100, 3600)"
         ).execute(db.pool()).await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, duration_seconds) VALUES ('s2', 'p1', '/tmp/s2.jsonl', 'Test', 'claude-view', 1100, 1800)"
+            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s2', 'p1', '/tmp/s2.jsonl', 'Test', 'claude-view', 1100, 1200, 1800)"
         ).execute(db.pool()).await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, duration_seconds) VALUES ('s3', 'p2', '/tmp/s3.jsonl', 'Test', 'vicky-wiki', 1200, 900)"
+            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s3', 'p2', '/tmp/s3.jsonl', 'Test', 'vicky-wiki', 1200, 1300, 900)"
         ).execute(db.pool()).await.unwrap();
 
         let preview = db.get_report_preview(0, 2000).await.unwrap();

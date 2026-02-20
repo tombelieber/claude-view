@@ -110,9 +110,8 @@ impl Database {
             SELECT
                 {group_by} as period,
                 {value_expr} as value
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?1
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND last_message_at <= ?2
             GROUP BY period
             ORDER BY period
@@ -143,7 +142,7 @@ impl Database {
     ) -> DbResult<Option<Vec<CategoryDataPoint>>> {
         // Check if any sessions have classification data
         let (classified_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE category_l1 IS NOT NULL")
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL")
                 .fetch_one(self.pool())
                 .await?;
 
@@ -165,9 +164,8 @@ impl Database {
                 CAST(SUM(CASE WHEN category_l1 = 'code_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as code_work,
                 CAST(SUM(CASE WHEN category_l1 = 'support_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as support_work,
                 CAST(SUM(CASE WHEN category_l1 = 'thinking_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as thinking_work
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?1
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND last_message_at <= ?2
               AND category_l1 IS NOT NULL
             GROUP BY period
@@ -210,9 +208,8 @@ impl Database {
                     CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0),
                     0.0
                 ) as avg_reedit
-            FROM sessions
-            WHERE is_sidechain = 0
-              AND last_message_at >= ?1
+            FROM valid_sessions
+            WHERE last_message_at >= ?1
               AND last_message_at <= ?2
             GROUP BY dow, hour
             ORDER BY dow, hour
@@ -245,7 +242,7 @@ impl Database {
         to: i64,
     ) -> DbResult<i64> {
         let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at >= ?1 AND last_message_at <= ?2",
+            "SELECT COUNT(*) FROM valid_sessions WHERE last_message_at >= ?1 AND last_message_at <= ?2",
         )
         .bind(from)
         .bind(to)

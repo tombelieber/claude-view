@@ -601,11 +601,10 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -623,10 +622,9 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND (?2 IS NULL OR git_branch = ?2)
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(&today_start)
@@ -646,11 +644,10 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
                       AND datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -667,10 +664,9 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(&today_start)
@@ -697,7 +693,7 @@ impl Database {
 
     /// Get all-time contributions by querying sessions directly.
     ///
-    /// All branches use the canonical filter `is_sidechain = 0 AND last_message_at > 0`
+    /// Uses `valid_sessions` view which filters `is_sidechain = 0 AND last_message_at > 0`
     /// to match the dashboard's session count.
     async fn get_all_contributions(
         &self,
@@ -715,10 +711,9 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND (?2 IS NULL OR git_branch = ?2)
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -735,10 +730,9 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -770,9 +764,8 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE git_branch = ?1
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(branch)
@@ -788,9 +781,8 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE s.git_branch = ?1
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(branch)
@@ -821,8 +813,7 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
-                WHERE is_sidechain = 0 AND last_message_at > 0
+                FROM valid_sessions
                 "#,
             )
             .fetch_one(self.pool())
@@ -837,8 +828,7 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
-                    WHERE s.is_sidechain = 0 AND s.last_message_at > 0
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     "#,
                 )
                 .fetch_one(self.pool())
@@ -862,8 +852,8 @@ impl Database {
 
     /// Get contributions in a date range.
     ///
-    /// All branches query sessions directly with the canonical filter
-    /// `is_sidechain = 0 AND last_message_at > 0` to match the dashboard.
+    /// All branches query `valid_sessions` directly (view pre-filters
+    /// `is_sidechain = 0 AND last_message_at > 0`) to match the dashboard.
     async fn get_contributions_in_range(
         &self,
         from: &str,
@@ -882,12 +872,11 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(pid)
@@ -906,12 +895,11 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(pid)
@@ -945,11 +933,10 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND git_branch = ?3
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(from)
@@ -967,11 +954,10 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                       AND s.git_branch = ?3
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(from)
@@ -1004,10 +990,9 @@ impl Database {
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(from)
@@ -1024,10 +1009,9 @@ impl Database {
                         COALESCE(SUM(c.deletions), 0) as commit_deletions
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
-                    JOIN sessions s ON sc.session_id = s.id
+                    JOIN valid_sessions s ON sc.session_id = s.id
                     WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                      AND s.is_sidechain = 0 AND s.last_message_at > 0
                     "#,
                 )
                 .bind(from)
@@ -1099,14 +1083,14 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
-                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                       WHERE s2.project_id = ?1
                         AND (?4 IS NULL OR s2.git_branch = ?4)
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
                     COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
-                FROM sessions s
+                FROM valid_sessions s
                 WHERE s.project_id = ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -1145,13 +1129,13 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
-                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                       WHERE s2.git_branch = ?3
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
                     COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
-                FROM sessions s
+                FROM valid_sessions s
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND s.git_branch = ?3
@@ -1264,18 +1248,16 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
-                      INNER JOIN sessions s2 ON sc.session_id = s2.id
+                      INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                       WHERE s2.project_id = ?1
-                        AND s2.last_message_at > 0
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') >= ?2
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') <= ?3
                         AND s2.git_branch IS s.git_branch
                     ), 0) as commits_count,
                     COALESCE(SUM(s.files_edited_count), 0) as files_edited,
-                    MAX(CASE WHEN s.last_message_at > 0 THEN s.last_message_at ELSE NULL END) as last_activity
-                FROM sessions s
+                    MAX(s.last_message_at) as last_activity
+                FROM valid_sessions s
                 WHERE s.project_id = ?1
-                  AND s.last_message_at > 0
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR s.git_branch = ?4)
@@ -1318,20 +1300,18 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
-                      INNER JOIN sessions s2 ON sc.session_id = s2.id
-                      WHERE s2.last_message_at > 0
-                        AND date(s2.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
+                      WHERE date(s2.last_message_at, 'unixepoch', 'localtime') >= ?1
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') <= ?2
                         AND s2.project_id IS s.project_id
                         AND s2.git_branch IS s.git_branch
                     ), 0) as commits_count,
                     COALESCE(SUM(s.files_edited_count), 0) as files_edited,
-                    MAX(CASE WHEN s.last_message_at > 0 THEN s.last_message_at ELSE NULL END) as last_activity,
+                    MAX(s.last_message_at) as last_activity,
                     s.project_id,
                     COALESCE(s.project_display_name, s.project_id) as project_name
-                FROM sessions s
-                WHERE s.last_message_at > 0
-                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                FROM valid_sessions s
+                WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR s.git_branch = ?3)
                 GROUP BY s.project_id, s.git_branch
@@ -1403,7 +1383,7 @@ impl Database {
                         COALESCE(ai_lines_removed, 0),
                         COALESCE(commit_count, 0),
                         last_message_at
-                    FROM sessions
+                    FROM valid_sessions
                     WHERE project_id = ?1
                       AND git_branch = ?2
                       AND date(last_message_at, 'unixepoch', 'localtime') >= ?3
@@ -1430,7 +1410,7 @@ impl Database {
                         COALESCE(ai_lines_removed, 0),
                         COALESCE(commit_count, 0),
                         last_message_at
-                    FROM sessions
+                    FROM valid_sessions
                     WHERE project_id = ?1
                       AND git_branch IS NULL
                       AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -1457,7 +1437,7 @@ impl Database {
                     COALESCE(ai_lines_removed, 0),
                     COALESCE(commit_count, 0),
                     last_message_at
-                FROM sessions
+                FROM valid_sessions
                 WHERE git_branch = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -1482,7 +1462,7 @@ impl Database {
                     COALESCE(ai_lines_removed, 0),
                     COALESCE(commit_count, 0),
                     last_message_at
-                FROM sessions
+                FROM valid_sessions
                 WHERE git_branch IS NULL
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1628,7 +1608,7 @@ impl Database {
                         SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
                         COUNT(DISTINCT t.session_id) as session_count
                     FROM turns t
-                    JOIN sessions s ON t.session_id = s.id
+                    JOIN valid_sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -1642,7 +1622,7 @@ impl Database {
                         COALESCE(t.model_id, 'unknown') as model_id,
                         CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
                     FROM turns t
-                    JOIN sessions s ON t.session_id = s.id
+                    JOIN valid_sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND s.project_id = ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -1678,7 +1658,7 @@ impl Database {
                         ), 0)) AS INTEGER) as files_edited
                     FROM model_weights w
                     JOIN session_totals st ON w.session_id = st.session_id
-                    JOIN sessions s ON w.session_id = s.id
+                    JOIN valid_sessions s ON w.session_id = s.id
                     GROUP BY w.model_id
                 )
                 SELECT
@@ -1714,7 +1694,7 @@ impl Database {
                         SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
                         COUNT(DISTINCT t.session_id) as session_count
                     FROM turns t
-                    JOIN sessions s ON t.session_id = s.id
+                    JOIN valid_sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1727,7 +1707,7 @@ impl Database {
                         COALESCE(t.model_id, 'unknown') as model_id,
                         CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
                     FROM turns t
-                    JOIN sessions s ON t.session_id = s.id
+                    JOIN valid_sessions s ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1762,7 +1742,7 @@ impl Database {
                         ), 0)) AS INTEGER) as files_edited
                     FROM model_weights w
                     JOIN session_totals st ON w.session_id = st.session_id
-                    JOIN sessions s ON w.session_id = s.id
+                    JOIN valid_sessions s ON w.session_id = s.id
                     GROUP BY w.model_id
                 )
                 SELECT
@@ -1841,7 +1821,7 @@ impl Database {
                     strftime('%Y-%m', datetime(last_message_at, 'unixepoch', 'localtime')) as period,
                     COALESCE(SUM(reedited_files_count), 0) as reedited,
                     COALESCE(SUM(files_edited_count), 0) as files_edited
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND last_message_at >= strftime('%s', 'now', '-6 months')
                   AND (?2 IS NULL OR git_branch = ?2)
@@ -1860,7 +1840,7 @@ impl Database {
                     strftime('%Y-%m', datetime(last_message_at, 'unixepoch', 'localtime')) as period,
                     COALESCE(SUM(reedited_files_count), 0) as reedited,
                     COALESCE(SUM(files_edited_count), 0) as files_edited
-                FROM sessions
+                FROM valid_sessions
                 WHERE last_message_at >= strftime('%s', 'now', '-6 months')
                   AND (?1 IS NULL OR git_branch = ?1)
                 GROUP BY period
@@ -1963,7 +1943,7 @@ impl Database {
                         0.0
                     ) as reedit_rate
                 FROM skill_sessions ss
-                JOIN sessions s ON ss.session_id = s.id
+                JOIN valid_sessions s ON ss.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND s.project_id = ?3
@@ -2003,7 +1983,7 @@ impl Database {
                         0.0
                     ) as reedit_rate
                 FROM skill_sessions ss
-                JOIN sessions s ON ss.session_id = s.id
+                JOIN valid_sessions s ON ss.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR s.git_branch = ?3)
@@ -2035,7 +2015,7 @@ impl Database {
                         NULLIF(SUM(s.files_edited_count), 0),
                         0.0
                     ) as reedit_rate
-                FROM sessions s
+                FROM valid_sessions s
                 LEFT JOIN (
                     SELECT DISTINCT i2.session_id
                     FROM invocations i2
@@ -2071,7 +2051,7 @@ impl Database {
                         NULLIF(SUM(s.files_edited_count), 0),
                         0.0
                     ) as reedit_rate
-                FROM sessions s
+                FROM valid_sessions s
                 LEFT JOIN (
                     SELECT DISTINCT i2.session_id
                     FROM invocations i2
@@ -2140,14 +2120,14 @@ impl Database {
                     s.git_branch,
                     COALESCE(SUM(s.ai_lines_added), 0) as lines_added,
                     COALESCE(SUM(s.files_edited_count), 0) as files_count,
-                    (SELECT id FROM sessions s2
+                    (SELECT id FROM valid_sessions s2
                      WHERE s2.project_id = s.project_id
                        AND (s2.git_branch = s.git_branch OR (s2.git_branch IS NULL AND s.git_branch IS NULL))
                        AND s2.commit_count = 0
                        AND s2.ai_lines_added > 0
                      ORDER BY s2.last_message_at DESC LIMIT 1
                     ) as last_session_id,
-                    (SELECT preview FROM sessions s2
+                    (SELECT preview FROM valid_sessions s2
                      WHERE s2.project_id = s.project_id
                        AND (s2.git_branch = s.git_branch OR (s2.git_branch IS NULL AND s.git_branch IS NULL))
                        AND s2.commit_count = 0
@@ -2155,7 +2135,7 @@ impl Database {
                      ORDER BY s2.last_message_at DESC LIMIT 1
                     ) as last_session_preview,
                     MAX(s.last_message_at) as last_activity_at
-                FROM sessions s
+                FROM valid_sessions s
                 WHERE s.commit_count = 0
                   AND s.ai_lines_added > 0
                   AND s.last_message_at >= strftime('%s', 'now', '-7 days')
@@ -2315,9 +2295,8 @@ impl Database {
                 COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                 COALESCE(SUM(files_edited_count), 0) as files_edited_count
-            FROM sessions
+            FROM valid_sessions
             WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
-              AND is_sidechain = 0 AND last_message_at > 0
             "#,
         )
         .bind(date)
@@ -2333,9 +2312,8 @@ impl Database {
                 COALESCE(SUM(c.deletions), 0) as commit_deletions
             FROM session_commits sc
             JOIN commits c ON sc.commit_hash = c.hash
-            JOIN sessions s ON sc.session_id = s.id
+            JOIN valid_sessions s ON sc.session_id = s.id
             WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
-              AND s.is_sidechain = 0 AND s.last_message_at > 0
             "#,
         )
         .bind(date)
@@ -2399,9 +2377,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
-                  AND is_sidechain = 0 AND last_message_at > 0
                 "#,
             )
             .bind(date)
@@ -2416,9 +2393,8 @@ impl Database {
                     COALESCE(SUM(c.deletions), 0) as commit_deletions
                 FROM session_commits sc
                 JOIN commits c ON sc.commit_hash = c.hash
-                JOIN sessions s ON sc.session_id = s.id
+                JOIN valid_sessions s ON sc.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') = ?1
-                  AND s.is_sidechain = 0 AND s.last_message_at > 0
                 "#,
             )
             .bind(date)
@@ -2666,7 +2642,7 @@ impl Database {
                 SELECT
                     COALESCE(SUM(reedited_files_count), 0),
                     COALESCE(SUM(files_edited_count), 0)
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -2685,7 +2661,7 @@ impl Database {
                 SELECT
                     COALESCE(SUM(reedited_files_count), 0),
                     COALESCE(SUM(files_edited_count), 0)
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
@@ -2747,7 +2723,7 @@ impl Database {
                 SELECT
                     SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -2766,7 +2742,7 @@ impl Database {
                 SELECT
                     SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
@@ -2822,7 +2798,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT COALESCE(SUM(user_prompt_count), 0)
-                FROM sessions
+                FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -2839,7 +2815,7 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT COALESCE(SUM(user_prompt_count), 0)
-                FROM sessions
+                FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
