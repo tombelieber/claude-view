@@ -136,7 +136,7 @@ SessionStart remains the only sync hook. All others are async.
 
 **Step 2: Verify build**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 
 No test needed — hook registration is an idempotent side-effect (writes to `~/.claude/settings.json`). Existing integration tests cover the format.
 
@@ -195,7 +195,7 @@ fn test_status_from_session_ended() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- live::state::tests::test_status_from`
+Run: `cargo test -p claude-view-server -- live::state::tests::test_status_from`
 Expected: FAIL (function doesn't exist yet, struct fields wrong)
 
 **Step 3: Simplify AgentState and add status_from_agent_state**
@@ -243,7 +243,7 @@ Every `AgentState { ... confidence, source, ... }` construction site must drop t
 
 **Step 5: Run tests**
 
-Run: `cargo test -p vibe-recall-server -- live::state`
+Run: `cargo test -p claude-view-server -- live::state`
 Expected: PASS (including new status_from tests)
 
 **Step 6: Delete `derive_status()` and its tests**
@@ -254,7 +254,7 @@ Keep `derive_activity()` and its tests — they're still useful as a fallback fo
 
 **Step 7: Run tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: PASS
 
 **Step 8: Commit**
@@ -380,7 +380,7 @@ fn test_teammate_idle_returns_delegating() {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p vibe-recall-server -- routes::hooks::tests`
+Run: `cargo test -p claude-view-server -- routes::hooks::tests`
 Expected: Some FAIL (PreToolUse tests, since current PostToolUse mapping handles AskUserQuestion differently)
 
 **Step 3: Rewrite resolve_state_from_hook with PreToolUse**
@@ -662,7 +662,7 @@ Add the new hook events to the match in `handle_hook`:
             // Mark matching sub-agent as idle in the sub_agents list
             for agent in &mut session.sub_agents {
                 if agent.name.as_deref() == Some(teammate) {
-                    agent.status = vibe_recall_core::subagent::SubAgentStatus::Completed;
+                    agent.status = claude_view_core::subagent::SubAgentStatus::Completed;
                 }
             }
         }
@@ -682,7 +682,7 @@ Add the new hook events to the match in `handle_hook`:
         if let Some(task_id) = &payload.task_id {
             for item in &mut session.progress_items {
                 if item.id.as_deref() == Some(task_id) {
-                    item.status = vibe_recall_core::progress::ProgressStatus::Completed;
+                    item.status = claude_view_core::progress::ProgressStatus::Completed;
                 }
             }
         }
@@ -700,7 +700,7 @@ Also update the existing match arms to derive status from agent_state:
 
 **Step 6: Run tests**
 
-Run: `cargo test -p vibe-recall-server -- routes::hooks`
+Run: `cargo test -p claude-view-server -- routes::hooks`
 Expected: PASS
 
 **Step 7: Commit**
@@ -839,12 +839,12 @@ Remove:
 
 **Step 5: Verify build**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Fix any compilation errors iteratively.
 
 **Step 6: Run tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: PASS (some old tests may need updating/removal if they tested JSONL→state derivation)
 
 **Step 7: Commit**
@@ -932,11 +932,11 @@ This replaces ~500 lines with ~40 lines. No 3-phase lock pattern needed.
 
 **Step 2: Verify build**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 
 **Step 3: Run tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: PASS
 
 **Step 4: Commit**
@@ -994,12 +994,12 @@ In `crates/server/src/lib.rs` (`create_app_with_git_sync`):
 
 **Step 6: Verify build**
 
-Run: `cargo check -p vibe-recall-server`
+Run: `cargo check -p claude-view-server`
 Fix any remaining references.
 
 **Step 7: Run all tests**
 
-Run: `cargo test -p vibe-recall-server`
+Run: `cargo test -p claude-view-server`
 Expected: PASS
 
 **Step 8: Commit**

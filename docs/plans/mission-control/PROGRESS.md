@@ -207,8 +207,8 @@ bun run vitest run src/components/live/SwimLanes.test.tsx
 bun run typecheck
 
 # Backend tests (when Task 5 complete)
-cargo test -p vibe-recall-core -- live_parser
-cargo test -p vibe-recall-core -- subagent
+cargo test -p claude-view-core -- live_parser
+cargo test -p claude-view-core -- subagent
 ```
 
 ### Next Session Goals

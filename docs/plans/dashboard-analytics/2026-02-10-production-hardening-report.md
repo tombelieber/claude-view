@@ -125,9 +125,9 @@ The only true back-and-forth on the entire branch was the model prefix match (`1
 
 | Suite | Passed | Failed |
 |-------|--------|--------|
-| `vibe-recall-core` | 318 | 0 |
-| `vibe-recall-db` | 342 | 0 |
-| `vibe-recall-server` | 209 | 0 |
+| `claude-view-core` | 318 | 0 |
+| `claude-view-db` | 342 | 0 |
+| `claude-view-server` | 209 | 0 |
 | Frontend (vitest) | 779 | 0 |
 | **Total** | **1,648** | **0** |
 

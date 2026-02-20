@@ -70,12 +70,12 @@ main() {
   url="https://github.com/${REPO}/releases/download/v${version}/${artifact}"
 
   # Check cache
-  if [[ -f "$VERSION_FILE" && -f "${BIN_DIR}/vibe-recall" ]]; then
+  if [[ -f "$VERSION_FILE" && -f "${BIN_DIR}/claude-view" ]]; then
     local cached
     cached=$(cat "$VERSION_FILE")
     if [[ "$cached" == "$version" ]]; then
       echo "claude-view v${version} (cached)"
-      STATIC_DIR="${BIN_DIR}/dist" exec "${BIN_DIR}/vibe-recall" "$@"
+      STATIC_DIR="${BIN_DIR}/dist" exec "${BIN_DIR}/claude-view" "$@"
     fi
   fi
 
@@ -91,7 +91,7 @@ main() {
     exit 1
   fi
 
-  chmod +x "${BIN_DIR}/vibe-recall"
+  chmod +x "${BIN_DIR}/claude-view"
 
   # macOS Gatekeeper: remove quarantine flag from downloaded binary
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -102,7 +102,7 @@ main() {
   echo "Installed to ${BIN_DIR}"
 
   # Run
-  STATIC_DIR="${BIN_DIR}/dist" exec "${BIN_DIR}/vibe-recall" "$@"
+  STATIC_DIR="${BIN_DIR}/dist" exec "${BIN_DIR}/claude-view" "$@"
 }
 
 main "$@"

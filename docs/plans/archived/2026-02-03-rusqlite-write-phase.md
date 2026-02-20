@@ -195,9 +195,9 @@ These are not in the hot path. Only `pass_2_deep_index` switches to rusqlite.
 
 ## Testing
 
-1. `cargo test -p vibe-recall-db` — all existing tests pass (they use in-memory
+1. `cargo test -p claude-view-db` — all existing tests pass (they use in-memory
    sqlx, don't hit the rusqlite path)
-2. `cargo run -p vibe-recall-server` — observe `[perf]` output:
+2. `cargo run -p claude-view-server` — observe `[perf]` output:
    - Write phase should drop from ~3,600ms to ~200-400ms
 3. `cargo check --release` — clean release build
 

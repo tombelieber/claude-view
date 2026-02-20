@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
-use vibe_recall_db::ModelWithStats;
+use claude_view_db::ModelWithStats;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -28,7 +28,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
-    use vibe_recall_db::Database;
+    use claude_view_db::Database;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

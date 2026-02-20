@@ -1,7 +1,7 @@
 // crates/db/src/queries/fluency.rs
 //! Database bridge for computing the current fluency score from session facets.
 
-use vibe_recall_core::fluency_score::{compute_fluency_score, FluencyScore, ScoreInput};
+use claude_view_core::fluency_score::{compute_fluency_score, FluencyScore, ScoreInput};
 
 impl crate::Database {
     /// Compute the current fluency score from aggregate facet data.

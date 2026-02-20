@@ -33,7 +33,7 @@ date: 2026-02-03
 ```
 $ npx claude-view
 
-  vibe-recall v0.3.0
+  claude-view v0.3.0
 
   Scanning your Claude Code history...
   Found 56,000 sessions across 42 projects (1.2s)
@@ -50,7 +50,7 @@ $ npx claude-view
 **Frontend cold start overlay:**
 ```
 ┌─────────────────────────────────────────────┐
-│  Setting up vibe-recall...                  │
+│  Setting up claude-view...                  │
 │                                             │
 │  ████████████░░░░░░░░  45%                  │
 │  23.4 GB / 52.1 GB  ·  2.7 GB/s            │

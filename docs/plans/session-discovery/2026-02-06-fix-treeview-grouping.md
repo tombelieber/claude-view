@@ -148,9 +148,9 @@ describe('buildProjectTree', () => {
     expect(group!.sessionCount).toBe(625);
 
     // project-a/web should be in the group, not orphaned at root
-    const project-aWeb = group!.children!.find((n) => n.name === 'enc-fw');
-    expect(project-aWeb).toBeDefined();
-    expect(project-aWeb!.displayName).toBe('project-a/web');
+    const projectAWeb = group!.children!.find((n) => n.name === 'enc-fw');
+    expect(projectAWeb).toBeDefined();
+    expect(projectAWeb!.displayName).toBe('project-a/web');
   });
 
   it('builds multi-level groups when paths diverge at multiple points', () => {

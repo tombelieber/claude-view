@@ -449,7 +449,7 @@ To match a JSONL session to a process:
 ```rust
 //! Cost calculation for live session monitoring.
 //!
-//! Reuses `ModelPricing` from `vibe-recall-db` for per-model rates.
+//! Reuses `ModelPricing` from `claude-view-db` for per-model rates.
 //! This module provides types and functions for real-time cost tracking.
 
 use serde::Serialize;
@@ -502,7 +502,7 @@ pub enum CacheStatus {
 ```rust
 /// Calculate cost breakdown for accumulated token usage.
 ///
-/// Uses the pricing table from `vibe-recall-db::pricing`. If the model
+/// Uses the pricing table from `claude-view-db::pricing`. If the model
 /// is not found, falls back to `FALLBACK_COST_PER_TOKEN_USD`.
 pub fn calculate_live_cost(
     tokens: &TokenUsage,
@@ -526,8 +526,8 @@ pub fn derive_cache_status(seconds_since_last_api_call: Option<u64>) -> CacheSta
 ```
 
 **Implementation requirements:**
-- Reuse `vibe_recall_db::pricing::lookup_pricing` for model lookup
-- Reuse `vibe_recall_db::pricing::FALLBACK_COST_PER_TOKEN_USD` for unknown models
+- Reuse `claude_view_db::pricing::lookup_pricing` for model lookup
+- Reuse `claude_view_db::pricing::FALLBACK_COST_PER_TOKEN_USD` for unknown models
 - Cache savings formula: `cache_read_tokens * (input_cost_per_token - cache_read_cost_per_token)`
 - All monetary values in USD as `f64`
 
@@ -1222,7 +1222,7 @@ export function sseUrl(path: string): string {
 
 ### Unit Tests
 
-**`cargo test -p vibe-recall-core -- live_parser`**
+**`cargo test -p claude-view-core -- live_parser`**
 
 | Test | Description |
 |------|-------------|
@@ -1236,7 +1236,7 @@ export function sseUrl(path: string): string {
 | `test_parse_tail_extracts_tools` | Verifies tool_use block name extraction |
 | `test_parse_tail_simd_filter` | Only lines matching SIMD filter are JSON-parsed |
 
-**`cargo test -p vibe-recall-core -- cost`**
+**`cargo test -p claude-view-core -- cost`**
 
 | Test | Description |
 |------|-------------|
@@ -1248,7 +1248,7 @@ export function sseUrl(path: string): string {
 | `test_cache_status_cold` | >300s = Cold |
 | `test_cache_status_unknown` | None = Unknown |
 
-**`cargo test -p vibe-recall-server -- live::state`**
+**`cargo test -p claude-view-server -- live::state`**
 
 | Test | Description |
 |------|-------------|
@@ -1261,7 +1261,7 @@ export function sseUrl(path: string): string {
 
 ### Integration Tests
 
-**`cargo test -p vibe-recall-server -- live::integration`**
+**`cargo test -p claude-view-server -- live::integration`**
 
 | Test | Description |
 |------|-------------|

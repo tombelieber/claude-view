@@ -1,6 +1,6 @@
 //! Integration tests for Database system/storage query methods (indexer state).
 
-use vibe_recall_db::Database;
+use claude_view_db::Database;
 
 #[tokio::test]
 async fn test_indexer_state_roundtrip() {
