@@ -19,6 +19,7 @@ pub mod trends;
 pub use queries::facets::{FacetAggregateStats, FacetRow};
 pub use queries::hook_events::{self as hook_events_queries, HookEventRow};
 pub use queries::reports::{ProjectPreview, ReportPreview, ReportRow};
+pub use queries::AggregateCostBreakdown;
 pub use queries::AIGenerationStats;
 pub use queries::ActivityPoint;
 pub use queries::BranchCount;
