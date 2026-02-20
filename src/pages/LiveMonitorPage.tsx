@@ -35,7 +35,7 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 
 export function LiveMonitorPage() {
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
-  const { sessions, summary: serverSummary, isConnected, lastUpdate, stalledSessions, currentTime } = liveSessions
+  const { sessions, summary: serverSummary, isConnected, isInitialized, lastUpdate, stalledSessions, currentTime } = liveSessions
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
@@ -163,8 +163,8 @@ export function LiveMonitorPage() {
     return () => setLiveContext(null)
   }, [setLiveContext])
 
-  // SSE not connected yet and no sessions — show skeleton instead of blank content
-  if (!isConnected && sessions.length === 0) {
+  // Show skeleton until the server's first summary event arrives.
+  if (!isInitialized) {
     return <LiveMonitorSkeleton />
   }
 
@@ -257,8 +257,8 @@ export function LiveMonitorPage() {
             <MonitorView sessions={filteredSessions} onSelectSession={handleMonitorExpand} />
           )}
 
-          {/* Empty state */}
-          {filteredSessions.length === 0 && isConnected && (
+          {/* Empty state — skip for kanban (columns have their own emptyMessage) */}
+          {filteredSessions.length === 0 && isConnected && viewMode !== 'kanban' && (
             <div className="text-center text-gray-400 dark:text-gray-500 py-16">
               <div className="text-4xl mb-4">~</div>
               {sessions.length === 0 ? (
