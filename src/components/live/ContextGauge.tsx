@@ -55,6 +55,9 @@ const SEGMENT_COLORS = {
   buffer: 'bg-amber-400 dark:bg-amber-500',
 }
 
+/** Approximate context percentage at which Claude Code triggers auto-compaction. */
+const AUTOCOMPACT_THRESHOLD_PCT = 80
+
 export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false, agentLabel }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
@@ -176,15 +179,29 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         )}
 
         {/* Stacked segmented bar */}
-        <div className={`h-2.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
-          {systemPct > 0 && (
-            <div className={`${SEGMENT_COLORS.system} h-full`} style={{ width: `${systemPct}%` }} />
-          )}
-          {msgPct > 0 && (
-            <div className={`${SEGMENT_COLORS.conversation} h-full`} style={{ width: `${msgPct}%` }} />
-          )}
-          {bufferPct > 0 && (
-            <div className={`${SEGMENT_COLORS.buffer} h-full opacity-50`} style={{ width: `${bufferPct}%` }} />
+        <div className={`relative h-2.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
+          <div className="h-full rounded-full overflow-hidden flex">
+            {systemPct > 0 && (
+              <div className={`${SEGMENT_COLORS.system} h-full`} style={{ width: `${systemPct}%` }} />
+            )}
+            {msgPct > 0 && (
+              <div className={`${SEGMENT_COLORS.conversation} h-full`} style={{ width: `${msgPct}%` }} />
+            )}
+            {bufferPct > 0 && (
+              <div className={`${SEGMENT_COLORS.buffer} h-full opacity-50`} style={{ width: `${bufferPct}%` }} />
+            )}
+          </div>
+          {/* Threshold marker */}
+          {!isCompacting && (
+            <div
+              className={`absolute top-[-1px] bottom-[-1px] w-[1.5px] rounded-full transition-opacity duration-300 ${
+                usedPct >= AUTOCOMPACT_THRESHOLD_PCT
+                  ? 'bg-white opacity-90'
+                  : 'bg-gray-400 dark:bg-gray-600 opacity-40'
+              }`}
+              style={{ left: `${AUTOCOMPACT_THRESHOLD_PCT}%` }}
+              title="~auto-compact threshold"
+            />
           )}
         </div>
 
@@ -201,6 +218,10 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
           <span className="flex items-center gap-1">
             <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.buffer} opacity-50`} />
             Buffer
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-[1.5px] h-2 rounded-full bg-gray-400 dark:bg-gray-600" />
+            ~auto-compact
           </span>
         </div>
 
@@ -261,11 +282,25 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
   // ---- Compact mode: bar + hover tooltip (unchanged for session cards) ----
   return (
     <div ref={containerRef} className="relative space-y-1" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      <div className={`h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
-        {usedPct > 0 && (
+      <div className={`relative h-1.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
+        <div className="h-full rounded-full overflow-hidden">
+          {usedPct > 0 && (
+            <div
+              className={`${barColor} h-full transition-all duration-300`}
+              style={{ width: `${usedPct}%` }}
+            />
+          )}
+        </div>
+        {/* Threshold marker */}
+        {!isInactive && !isCompacting && (
           <div
-            className={`${barColor} h-full transition-all duration-300`}
-            style={{ width: `${usedPct}%` }}
+            className={`absolute top-[-1px] bottom-[-1px] w-[1.5px] rounded-full transition-opacity duration-300 ${
+              usedPct >= AUTOCOMPACT_THRESHOLD_PCT
+                ? 'bg-white opacity-90'
+                : 'bg-gray-400 dark:bg-gray-600 opacity-40'
+            }`}
+            style={{ left: `${AUTOCOMPACT_THRESHOLD_PCT}%` }}
+            title="~auto-compact threshold"
           />
         )}
       </div>
