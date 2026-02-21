@@ -591,6 +591,14 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut first_timestamp: Option<i64> = None;
     let mut last_timestamp: Option<i64> = None;
 
+    // Dedup: track seen (message_id, request_id) pairs to avoid counting
+    // tokens multiple times when Claude Code splits one API response into
+    // multiple JSONL lines (one per content block: thinking, text, tool_use).
+    let mut seen_api_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Count of unique API calls (not inflated by content block splitting).
+    // For legacy data without IDs, each line counts as unique (no dedup possible).
+    let mut unique_api_call_count = 0u32;
+
     // Keep SIMD finders for string-level extraction within already-classified lines
     let content_finder = memmem::Finder::new(b"\"content\":\"");
     let text_finder = memmem::Finder::new(b"\"text\":\"");
@@ -765,6 +773,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         &mut files_edited_all,
                         &mut first_timestamp,
                         &mut last_timestamp,
+                        &mut seen_api_calls,
+                        &mut unique_api_call_count,
                     );
 
                     // Phase C: LOC estimation from Edit/Write tool_use blocks
@@ -1023,7 +1033,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
     result.deep.first_user_prompt = first_user_content.map(|c| truncate(&c, 500));
     result.deep.user_prompt_count = user_count;
-    result.deep.api_call_count = assistant_count;
+    result.deep.api_call_count = unique_api_call_count;
     result.deep.tool_call_count = tool_call_count;
 
     // files_read: deduplicated
@@ -1092,6 +1102,8 @@ fn handle_assistant_line(
     files_edited_all: &mut Vec<String>,
     first_timestamp: &mut Option<i64>,
     last_timestamp: &mut Option<i64>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+    unique_api_call_count: &mut u32,
 ) {
     diag.lines_assistant += 1;
     *assistant_count += 1;
@@ -1107,19 +1119,36 @@ fn handle_assistant_line(
     }
 
     if let Some(message) = parsed.message {
-        // Extract token usage
-        if let Some(ref usage) = message.usage {
-            if let Some(v) = usage.input_tokens {
-                deep.total_input_tokens += v;
+        // Dedup: check if this is a duplicate content block from the same API response.
+        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+        // each carrying the full message-level usage. Only count tokens for the first block.
+        let is_first_block = match (message.id.as_deref(), parsed.request_id.as_deref()) {
+            (Some(msg_id), Some(req_id)) => {
+                let key = format!("{}:{}", msg_id, req_id);
+                seen_api_calls.insert(key) // true if newly inserted
             }
-            if let Some(v) = usage.output_tokens {
-                deep.total_output_tokens += v;
-            }
-            if let Some(v) = usage.cache_read_input_tokens {
-                deep.cache_read_tokens += v;
-            }
-            if let Some(v) = usage.cache_creation_input_tokens {
-                deep.cache_creation_tokens += v;
+            _ => true, // no IDs available — count it (legacy data)
+        };
+
+        if is_first_block {
+            *unique_api_call_count += 1;
+        }
+
+        // Extract token usage — only for first content block per API response
+        if is_first_block {
+            if let Some(ref usage) = message.usage {
+                if let Some(v) = usage.input_tokens {
+                    deep.total_input_tokens += v;
+                }
+                if let Some(v) = usage.output_tokens {
+                    deep.total_output_tokens += v;
+                }
+                if let Some(v) = usage.cache_read_input_tokens {
+                    deep.cache_read_tokens += v;
+                }
+                if let Some(v) = usage.cache_creation_input_tokens {
+                    deep.cache_creation_tokens += v;
+                }
             }
         }
 
@@ -1143,16 +1172,28 @@ fn handle_assistant_line(
                 _ => "text".to_string(),
             };
 
+            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
+            let (inp, outp, cr, cc) = if is_first_block {
+                (
+                    message.usage.as_ref().and_then(|u| u.input_tokens),
+                    message.usage.as_ref().and_then(|u| u.output_tokens),
+                    message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
+                    message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                )
+            } else {
+                (Some(0), Some(0), Some(0), Some(0))
+            };
+
             turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: *assistant_count - 1,
                 model_id,
                 content_type,
-                input_tokens: message.usage.as_ref().and_then(|u| u.input_tokens),
-                output_tokens: message.usage.as_ref().and_then(|u| u.output_tokens),
-                cache_read_tokens: message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
-                cache_creation_tokens: message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                input_tokens: inp,
+                output_tokens: outp,
+                cache_read_tokens: cr,
+                cache_creation_tokens: cc,
                 service_tier: message.usage.as_ref().and_then(|u| u.service_tier.clone()),
                 timestamp: ts,
             });
