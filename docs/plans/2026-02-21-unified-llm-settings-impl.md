@@ -33,7 +33,7 @@ async fn test_migration27_app_settings_table() {
     .unwrap();
 
     assert_eq!(row.0, "haiku");
-    assert_eq!(row.1, 60);
+    assert_eq!(row.1, 120);
 
     // CHECK constraint: inserting id != 1 should fail
     let result = sqlx::query("INSERT INTO app_settings (id, llm_model) VALUES (2, 'sonnet')")
@@ -50,17 +50,24 @@ Expected: FAIL — table `app_settings` does not exist
 
 **Step 3: Write minimal implementation**
 
-Add two entries to the `MIGRATIONS` array in `crates/db/src/migrations.rs` (after line 603, before the closing `];`):
+Add **one** multi-statement migration entry to the `MIGRATIONS` array in `crates/db/src/migrations.rs` (after the last entry, before the closing `];`). This uses `BEGIN;`/`COMMIT;` so it occupies a single version slot. Note: the comment label "Migration 27" is a feature-group name — the runtime version number will be the array index + 1 (currently ~97), not 27:
 
 ```rust
-    // Migration 27: Unified LLM settings (replaces hardcoded "haiku" in classify + reports)
-    r#"CREATE TABLE IF NOT EXISTS app_settings (
-        id               INTEGER PRIMARY KEY CHECK (id = 1),
-        llm_model        TEXT NOT NULL DEFAULT 'haiku',
-        llm_timeout_secs INTEGER NOT NULL DEFAULT 60
-    );"#,
-    r#"INSERT OR IGNORE INTO app_settings (id) VALUES (1);"#,
+    // Migration 27: Unified LLM settings (replaces hardcoded "haiku" in classify + reports).
+    // Default timeout is 120s (matches the existing report generation timeout, which is the
+    // longest LLM operation). Classification also uses this timeout — 120s is fine for classify
+    // since it only affects the max wait, not the typical latency.
+    r#"BEGIN;
+CREATE TABLE IF NOT EXISTS app_settings (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    llm_model        TEXT NOT NULL DEFAULT 'haiku',
+    llm_timeout_secs INTEGER NOT NULL DEFAULT 120
+);
+INSERT OR IGNORE INTO app_settings (id) VALUES (1);
+COMMIT;"#,
 ```
+
+> **Why multi-statement?** The migration system already supports `BEGIN;`/`COMMIT;` blocks via `raw_sql()` (see `lib.rs:184-193`). Using a single array entry keeps comment-to-version alignment: "Migration 27" = version 27. This is safe here because both `CREATE TABLE IF NOT EXISTS` and `INSERT OR IGNORE` are fully idempotent — unlike `ALTER TABLE ADD COLUMN` which fails on re-run (see Task 6 for why ALTERs use separate entries).
 
 **Step 4: Run test to verify it passes**
 
@@ -79,8 +86,8 @@ feat(db): add app_settings table for unified LLM config (migration 27)
 
 **Files:**
 - Create: `crates/db/src/queries/settings.rs`
-- Modify: `crates/db/src/queries/mod.rs:16` (add `pub mod settings;`)
-- Modify: `crates/db/src/lib.rs:21` (add re-export)
+- Modify: `crates/db/src/queries/mod.rs` (add `pub mod settings;` after `pub mod reports;`)
+- Modify: `crates/db/src/lib.rs` (add re-export after the `pub use queries::reports::{...}` line)
 
 **Step 1: Write the failing test**
 
@@ -124,7 +131,7 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
         let settings = db.get_app_settings().await.unwrap();
         assert_eq!(settings.llm_model, "haiku");
-        assert_eq!(settings.llm_timeout_secs, 60);
+        assert_eq!(settings.llm_timeout_secs, 120);
     }
 
     #[tokio::test]
@@ -132,7 +139,7 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
         let settings = db.update_app_settings(Some("sonnet"), None).await.unwrap();
         assert_eq!(settings.llm_model, "sonnet");
-        assert_eq!(settings.llm_timeout_secs, 60); // unchanged
+        assert_eq!(settings.llm_timeout_secs, 120); // unchanged
 
         let read_back = db.get_app_settings().await.unwrap();
         assert_eq!(read_back.llm_model, "sonnet");
@@ -141,9 +148,9 @@ mod tests {
     #[tokio::test]
     async fn test_update_timeout() {
         let db = Database::new_in_memory().await.unwrap();
-        let settings = db.update_app_settings(None, Some(120)).await.unwrap();
+        let settings = db.update_app_settings(None, Some(90)).await.unwrap();
         assert_eq!(settings.llm_model, "haiku"); // unchanged
-        assert_eq!(settings.llm_timeout_secs, 120);
+        assert_eq!(settings.llm_timeout_secs, 90);
     }
 
     #[tokio::test]
@@ -203,12 +210,12 @@ impl Database {
 
 Then wire the module:
 
-In `crates/db/src/queries/mod.rs`, add after line 16:
+In `crates/db/src/queries/mod.rs`, add after `pub mod reports;`:
 ```rust
 pub mod settings;
 ```
 
-In `crates/db/src/lib.rs`, add after line 21 (the reports re-export):
+In `crates/db/src/lib.rs`, add after the `pub use queries::reports::{...}` line:
 ```rust
 pub use queries::settings::AppSettings;
 ```
@@ -304,7 +311,7 @@ pub fn router() -> Router<Arc<AppState>> {
 
 **Step 2: Register the router**
 
-In `crates/server/src/routes/mod.rs`, add `mod settings;` to the module declarations at the top, and add this line after line 115 (reports router):
+In `crates/server/src/routes/mod.rs`, add `pub mod settings;` to the module declarations (between `pub mod score;` and `pub mod search;` alphabetically), and add this line after the `.nest("/api", reports::router())` line:
 
 ```rust
         .nest("/api", settings::router())
@@ -329,47 +336,42 @@ feat(api): add GET/PUT /api/settings endpoints
 - Modify: `crates/core/src/llm/types.rs:46-51` (add `model` field)
 - Modify: `crates/core/src/llm/claude_cli.rs:326-340` (parse model + tokens from CLI JSON)
 
+> **CLI JSON format (verified empirically):** `claude -p "..." --output-format json --model haiku` returns:
+> ```json
+> {
+>   "type": "result", "subtype": "success",
+>   "result": "...",
+>   "usage": { "input_tokens": 10, "output_tokens": 321, ... },
+>   "modelUsage": { "claude-haiku-4-5-20251001": { "inputTokens": 10, "outputTokens": 321, "costUSD": 0.006 } },
+>   "total_cost_usd": 0.006163
+> }
+> ```
+> Key: there is **no top-level `model` field**. Model ID is the first key of `modelUsage`. Tokens are in `usage.input_tokens`/`usage.output_tokens`.
+
 **Step 1: Write the failing test**
 
-Add to `crates/core/src/llm/claude_cli.rs` tests:
+First, add a test that constructs a `CompletionResponse` with a `model` field — this will fail to compile before Step 3 adds the field. Add to `crates/core/src/llm/types.rs` tests:
 
 ```rust
 #[test]
-fn test_parse_cli_json_response_extracts_metadata() {
-    // Simulate Claude CLI --output-format json response
-    let cli_json = serde_json::json!({
-        "type": "result",
-        "result": "Here is the report content...",
-        "model": "claude-haiku-4-5-20251001",
-        "usage": {
-            "input_tokens": 1200,
-            "output_tokens": 340
-        }
-    });
-
-    let content = cli_json["result"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let model = cli_json["model"].as_str().map(|s| s.to_string());
-    let input_tokens = cli_json["usage"]["input_tokens"].as_u64();
-    let output_tokens = cli_json["usage"]["output_tokens"].as_u64();
-
-    assert_eq!(content, "Here is the report content...");
-    assert_eq!(model.as_deref(), Some("claude-haiku-4-5-20251001"));
-    assert_eq!(input_tokens, Some(1200));
-    assert_eq!(output_tokens, Some(340));
+fn test_completion_response_has_model_field() {
+    let resp = CompletionResponse {
+        content: "hello".to_string(),
+        model: Some("claude-haiku-4-5-20251001".to_string()),
+        input_tokens: Some(10),
+        output_tokens: Some(321),
+        latency_ms: 100,
+    };
+    assert_eq!(resp.model.as_deref(), Some("claude-haiku-4-5-20251001"));
 }
 ```
 
-**Step 2: Run test to verify it passes** (this test validates the parsing logic we'll use)
+Run: `cargo test -p claude-view-core test_completion_response_has_model`
+Expected: FAIL — `CompletionResponse` has no field named `model`
 
-Run: `cargo test -p claude-view-core test_parse_cli_json_response`
-Expected: PASS
+**Step 2: Add `model` field to `CompletionResponse`**
 
-**Step 3: Add `model` field to `CompletionResponse`**
-
-In `crates/core/src/llm/types.rs`, replace lines 44-51:
+In `crates/core/src/llm/types.rs`, add the `model` field (line 47, between `content` and `input_tokens`):
 
 ```rust
 /// Response from a general-purpose LLM completion.
@@ -383,7 +385,85 @@ pub struct CompletionResponse {
 }
 ```
 
-**Step 4: Update `complete()` to parse metadata from CLI JSON**
+**Step 3: Fix all existing `CompletionResponse {` constructions**
+
+Search for `CompletionResponse {` and add `model: None` where needed. There is currently one site at `claude_cli.rs:335`.
+
+**Step 4: Run Step 1 test again**
+
+Run: `cargo test -p claude-view-core test_completion_response_has_model`
+Expected: PASS
+
+**Step 5: Write the CLI JSON parsing test**
+
+Add to `crates/core/src/llm/claude_cli.rs` tests. This tests against the **actual** CLI JSON format:
+
+```rust
+#[test]
+fn test_parse_cli_json_response_extracts_metadata() {
+    // Actual Claude CLI --output-format json response shape (verified 2026-02-21)
+    let cli_json = serde_json::json!({
+        "type": "result",
+        "subtype": "success",
+        "result": "Here is the report content...",
+        "usage": {
+            "input_tokens": 1200,
+            "output_tokens": 340,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 45000
+        },
+        "modelUsage": {
+            "claude-haiku-4-5-20251001": {
+                "inputTokens": 1200,
+                "outputTokens": 340,
+                "costUSD": 0.006163
+            }
+        },
+        "total_cost_usd": 0.006163
+    });
+
+    // Extract content
+    let content = cli_json["result"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    assert_eq!(content, "Here is the report content...");
+
+    // Extract model from modelUsage keys (first key = model ID)
+    let model = cli_json["modelUsage"]
+        .as_object()
+        .and_then(|m| m.keys().next().cloned());
+    assert_eq!(model.as_deref(), Some("claude-haiku-4-5-20251001"));
+
+    // Extract tokens from usage (snake_case fields)
+    let input_tokens = cli_json["usage"]["input_tokens"].as_u64();
+    let output_tokens = cli_json["usage"]["output_tokens"].as_u64();
+    assert_eq!(input_tokens, Some(1200));
+    assert_eq!(output_tokens, Some(340));
+}
+
+#[test]
+fn test_parse_cli_json_missing_model_usage_returns_none() {
+    // Graceful fallback when modelUsage is absent
+    let cli_json = serde_json::json!({
+        "type": "result",
+        "result": "content"
+    });
+
+    let model = cli_json["modelUsage"]
+        .as_object()
+        .and_then(|m| m.keys().next().cloned());
+    assert!(model.is_none());
+
+    let input_tokens = cli_json["usage"]["input_tokens"].as_u64();
+    assert!(input_tokens.is_none());
+}
+```
+
+Run: `cargo test -p claude-view-core test_parse_cli_json`
+Expected: PASS (these test the parsing logic we'll inline next)
+
+**Step 6: Update `complete()` to parse metadata from CLI JSON**
 
 In `crates/core/src/llm/claude_cli.rs`, replace lines 326-340 (inside the `complete` method):
 
@@ -397,7 +477,11 @@ In `crates/core/src/llm/claude_cli.rs`, replace lines 326-340 (inside the `compl
             .unwrap_or_else(|| parsed["content"].as_str().unwrap_or(""))
             .to_string();
 
-        let model = parsed["model"].as_str().map(|s| s.to_string());
+        // Model ID is the first key of the "modelUsage" object (no top-level "model" field).
+        let model = parsed["modelUsage"]
+            .as_object()
+            .and_then(|m| m.keys().next().cloned());
+
         let input_tokens = parsed["usage"]["input_tokens"].as_u64();
         let output_tokens = parsed["usage"]["output_tokens"].as_u64();
 
@@ -410,16 +494,12 @@ In `crates/core/src/llm/claude_cli.rs`, replace lines 326-340 (inside the `compl
         })
 ```
 
-**Step 5: Fix any other places that construct `CompletionResponse`**
-
-Search for other `CompletionResponse {` constructions and add `model: None` where needed.
-
-**Step 6: Run tests**
+**Step 7: Run full core tests**
 
 Run: `cargo test -p claude-view-core`
 Expected: ALL PASS
 
-**Step 7: Commit**
+**Step 8: Commit**
 
 ```
 feat(core): parse model + tokens from Claude CLI JSON response
@@ -447,7 +527,7 @@ pub async fn create_llm_provider(
     let settings = db.get_app_settings().await
         .map_err(|e| ApiError::Internal(format!("Failed to read LLM settings: {e}")))?;
     Ok(claude_view_core::llm::ClaudeCliProvider::new(&settings.llm_model)
-        .with_timeout(settings.llm_timeout_secs as u64))
+        .with_timeout(settings.llm_timeout_secs.clamp(10, 300) as u64))
 }
 ```
 
@@ -479,14 +559,14 @@ with:
     let provider = super::settings::create_llm_provider(&state.db).await?;
 ```
 
-At line 627-628, replace:
+At line 627-628 (inside `run_classification`, within the `for input in batch` loop), replace:
 ```rust
             let single_provider =
                 claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
 ```
-with:
+with (`db` is already bound at line 541 as `let db = &state.db;`):
 ```rust
-            let single_provider = match super::settings::create_llm_provider(&db_clone).await {
+            let single_provider = match super::settings::create_llm_provider(db).await {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to create LLM provider");
@@ -538,16 +618,20 @@ refactor: replace all hardcoded ClaudeCliProvider::new("haiku") with settings fa
 - Modify: `crates/db/src/queries/reports.rs:94-107` (list_reports)
 - Modify: `crates/db/src/queries/reports.rs:110-121` (get_report)
 
-**Step 1: Add migration 28**
+**Step 1: Add migrations 28-30**
 
-In `crates/db/src/migrations.rs`, add after migration 27 entries:
+In `crates/db/src/migrations.rs`, add after the migration 27 entry. Use **separate entries** (one ALTER per version slot) so each is independently protected by the "duplicate column name" error handler:
 
 ```rust
-    // Migration 28: Report generation metadata (model + token counts)
+    // Migrations 28-30: Report generation metadata (model + token counts).
+    // Separate entries so each ALTER is independently idempotent — if one column
+    // already exists (branch collision), the others still get created.
     r#"ALTER TABLE reports ADD COLUMN generation_model TEXT;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_input_tokens INTEGER;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_output_tokens INTEGER;"#,
 ```
+
+> **Why NOT multi-statement here?** Unlike Task 1's `CREATE TABLE IF NOT EXISTS` (which is inherently idempotent), `ALTER TABLE ADD COLUMN` fails with "duplicate column name" on re-run. In a `BEGIN;`/`COMMIT;` block, the first failing ALTER would abort the entire transaction, preventing subsequent ALTERs from running. Separate entries ensure each ALTER is independently protected by the error handler at `lib.rs:196`.
 
 **Step 2: Add fields to ReportRow struct**
 
@@ -608,7 +692,43 @@ Replace the `insert_report` function signature and body to add three new paramet
 
 **Step 4: Update `list_reports` and `get_report` SELECT queries**
 
-Both queries need to select the 3 new columns and map them into `ReportRow`. Update the tuple types from 12 to 15 fields, add the new columns to the SELECT list, and map them in the `ReportRow` construction.
+Replace the entire `list_reports` method body (lines 94-107) with:
+
+```rust
+    pub async fn list_reports(&self) -> DbResult<Vec<ReportRow>> {
+        let rows = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, Option<String>, Option<i64>, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at FROM reports ORDER BY created_at DESC, id DESC"
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
+                id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
+            })
+            .collect())
+    }
+```
+
+Replace the entire `get_report` method body (lines 110-121) with:
+
+```rust
+    pub async fn get_report(&self, id: i64) -> DbResult<Option<ReportRow>> {
+        let row = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, Option<String>, Option<i64>, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at FROM reports WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
+            id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
+        }))
+    }
+```
+
+**IMPORTANT:** The 3 new columns (`generation_model`, `generation_input_tokens`, `generation_output_tokens`) are inserted BEFORE `created_at` in the tuple — matching the order they appear in `ReportRow` struct after the changes in Step 2. Column order in the tuple must match the SELECT list exactly.
 
 **Step 5: Update existing tests**
 
@@ -620,6 +740,19 @@ db.insert_report("daily", "2026-02-21", "2026-02-21", "content", None, 8, 3, 151
 
 // After:
 db.insert_report("daily", "2026-02-21", "2026-02-21", "content", None, 8, 3, 15120, 680, Some(14200), None, None, None)
+```
+
+**Also update `insert_report` calls in server tests** (`crates/server/src/routes/reports.rs`). There are 3 test calls at lines 433, 464, and 513 that also need the extra `None, None, None` arguments:
+
+```rust
+// Line 433: test_list_reports_with_data
+db.insert_report("daily", "2026-02-21", "2026-02-21", "- Did stuff", None, 5, 2, 3600, 100, None, None, None, None)
+
+// Line 464: test_get_report_by_id
+db.insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None, None, None, None)
+
+// Line 513: test_delete_report
+db.insert_report("daily", "2026-02-21", "2026-02-21", "test", None, 1, 1, 100, 10, None, None, None, None)
 ```
 
 Add a new test for generation metadata:
@@ -652,10 +785,12 @@ Run: `cargo test -p claude-view-db export_bindings` (or however ts-rs export is 
 
 Verify `src/types/generated/ReportRow.ts` now includes `generationModel`, `generationInputTokens`, `generationOutputTokens`.
 
+**IMPORTANT (full-stack wiring check):** After regeneration, run `bun run build` (or `tsc --noEmit`) to confirm the frontend compiles with the updated types. Per CLAUDE.md: `Option`/`undefined` silently absorbs gaps — if the TS type export failed, the frontend would compile silently but new fields would be `undefined` everywhere. A build check catches this before proceeding to Tasks 8-9.
+
 **Step 8: Commit**
 
 ```
-feat(db): add generation_model + token columns to reports table (migration 28)
+feat(db): add generation_model + token columns to reports table (migrations 28-30)
 ```
 
 ---
@@ -677,7 +812,7 @@ In `crates/server/src/routes/reports.rs`, after creating the provider (Task 5 al
     let generation_model = provider.model().to_string();
 ```
 
-Move `generation_model` into the stream closure alongside `report_type`, `date_start`, etc.
+`generation_model` will be implicitly captured by the `async_stream::stream!` macro (same as `report_type`, `date_start`, etc. at lines 180-183). No explicit `move` keyword is needed — `async_stream::stream!` automatically moves all referenced variables. Just reference `generation_model` inside the block (in Step 2 and Step 3 below) and the capture happens automatically.
 
 **Step 2: Update `insert_report` call**
 
@@ -737,23 +872,30 @@ feat(api): include generation model in report SSE done event
 
 **Step 1: Create the settings hook**
 
-Create `src/hooks/use-app-settings.ts`:
+Create `src/hooks/use-app-settings.ts` (uses `@tanstack/react-query`, matching project conventions — see `use-reports.ts` for the pattern):
 
 ```typescript
-import useSWR from 'swr'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 interface AppSettings {
   llmModel: string
   llmTimeoutSecs: number
 }
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+async function fetchSettings(): Promise<AppSettings> {
+  const res = await fetch('/api/settings')
+  if (!res.ok) throw new Error(`Failed to fetch settings: ${await res.text()}`)
+  return res.json()
+}
 
 export function useAppSettings() {
-  const { data, error, isLoading, mutate } = useSWR<AppSettings>(
-    '/api/settings',
-    fetcher
-  )
+  const queryClient = useQueryClient()
+
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['app-settings'],
+    queryFn: fetchSettings,
+    staleTime: 30_000,
+  })
 
   const updateSettings = async (updates: Partial<AppSettings>) => {
     const res = await fetch('/api/settings', {
@@ -762,8 +904,8 @@ export function useAppSettings() {
       body: JSON.stringify(updates),
     })
     if (!res.ok) throw new Error(await res.text())
-    const updated = await res.json()
-    mutate(updated, false)
+    const updated: AppSettings = await res.json()
+    queryClient.setQueryData(['app-settings'], updated)
     return updated
   }
 
@@ -852,7 +994,21 @@ if (parsed.generationModel) {
 }
 ```
 
-Add `generationModel` to the reset function and return value.
+Add `setGenerationModel(null)` to the reset function (line 30):
+```typescript
+const reset = useCallback(() => {
+  setStreamedText('')
+  setContextDigest(null)
+  setGenerationModel(null)
+  setError(null)
+  setIsGenerating(false)
+}, [])
+```
+
+Add `generationModel` to the return value (line 112):
+```typescript
+return { generate, isGenerating, streamedText, contextDigest, generationModel, error, reset }
+```
 
 Update the `UseReportGenerateReturn` interface to include `generationModel: string | null`.
 
@@ -902,7 +1058,14 @@ import { formatModelName } from '../../lib/format-model'
 
 **Step 4: Pass model through ReportCard**
 
-In `src/components/reports/ReportCard.tsx`, update both places where `<ReportDetails>` is rendered:
+In `src/components/reports/ReportCard.tsx`:
+
+First, update the destructuring at line 34 to include `generationModel`:
+```typescript
+const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, error, reset, generationModel } = useReportGenerate()
+```
+
+Then update both places where `<ReportDetails>` is rendered:
 
 For the COMPLETE state (around line 91-94):
 ```typescript
@@ -970,3 +1133,21 @@ Expected: Zero matches
 ```
 chore: unified LLM settings end-to-end verification complete
 ```
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Task 5 Site C: `db_clone` variable doesn't exist in `run_classification` — would fail to compile | Blocker | Changed `&db_clone` → `&db` (bound at line 541 as `let db = &state.db;`) |
+| 2 | Task 8: `useSWR` from `swr` used but `swr` is not installed — project uses `@tanstack/react-query` | Blocker | Rewrote `use-app-settings.ts` hook using `useQuery`/`useQueryClient` matching project conventions |
+| 3 | Task 3: Plan said `mod settings;` (private) but route modules need `pub mod` to expose `router()` | Warning | Changed to `pub mod settings;` with alphabetical placement guidance |
+| 4 | Task 2: Hardcoded line numbers (`:16`, `:21`) are fragile and off-by-one | Warning | Replaced with content-based anchors ("after `pub mod reports;`", "after the reports re-export line") |
+| 5 | Task 1: Plan implied "Migration 27 = version 27" but runtime version is array-index-based (~97) | Warning | Added clarifying note that comment label ≠ runtime version |
+| 6 | Task 3: Router registration line reference hardcoded to `:115` | Minor | Changed to content-based anchor ("after the reports router line") |
+| 7 | Task 5 Site C: Missing context about which function and variable scope | Minor | Added note that this is inside `run_classification` and `db` is from line 541 |
+| 8 | Task 6 Step 4: `list_reports`/`get_report` had only prose, no code — implementer would have to guess 15-element tuple ordering | Blocker | Added complete verbatim code for both methods with correct column ordering |
+| 9 | Task 6: `insert_report` calls in `crates/server/src/routes/reports.rs` tests (lines 433, 464, 513) would fail to compile — plan only mentioned db tests | Blocker | Added explicit list of 3 server test call sites that need `None, None, None` appended |
+| 10 | Task 7: "Move `generation_model` into the stream closure" was vague prose — unclear for someone unfamiliar with `async_stream` | Blocker | Added explicit explanation that `async_stream::stream!` auto-captures referenced variables |
+| 11 | Task 5: `settings.llm_timeout_secs as u64` could wrap negative `i64` to enormous `u64` if DB is corrupted | Important | Added `.clamp(10, 300)` before the `as u64` cast for defense-in-depth |

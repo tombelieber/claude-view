@@ -8,6 +8,7 @@ import { SessionMetricsBar } from '../SessionMetricsBar'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { CommitsPanel } from '../CommitsPanel'
 import { RichPane } from './RichPane'
+import { formatCostUsd } from '../../lib/format-utils'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { ActionLogTab } from './action-log'
@@ -55,11 +56,6 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatCostUsd(usd: number): string {
-  if (usd === 0) return '$0.00'
-  if (usd < 0.01) return `$${usd.toFixed(4)}`
-  return `$${usd.toFixed(2)}`
-}
 
 /** Format model name for display (strip long prefixes) */
 function formatModel(model: string | null): string {

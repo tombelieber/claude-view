@@ -2,6 +2,7 @@ import { DollarSign } from 'lucide-react'
 import { MetricCard, StackedBar } from './ui'
 import type { StackedBarSegment } from './ui/StackedBar'
 import type { AggregateCostBreakdown } from '../types/generated/AggregateCostBreakdown'
+import { formatCostUsd } from '../lib/format-utils'
 
 interface CostBreakdownCardProps {
   cost: AggregateCostBreakdown
@@ -20,18 +21,6 @@ const SEGMENTS: Array<{
   { key: 'inputCostUsd', label: 'Fresh Input', cardLabel: 'Fresh Input', color: 'bg-gray-400', darkColor: 'dark:bg-gray-500' },
 ]
 
-function formatCostUsd(usd: number): string {
-  if (usd === 0) return '$0.00'
-  if (usd < 0.01) return `$${usd.toFixed(4)}`
-  if (usd < 1) return `$${usd.toFixed(2)}`
-  if (usd < 1_000) return `$${usd.toFixed(2)}`
-  if (usd < 1_000_000) {
-    const k = usd / 1_000
-    return `$${k >= 100 ? k.toFixed(0) : k >= 10 ? k.toFixed(1) : k.toFixed(2)}K`
-  }
-  const m = usd / 1_000_000
-  return `$${m >= 10 ? m.toFixed(1) : m.toFixed(2)}M`
-}
 
 export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
   if (cost.totalCostUsd === 0) return null

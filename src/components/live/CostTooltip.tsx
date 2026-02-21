@@ -1,6 +1,7 @@
 import { useState, useRef, useLayoutEffect, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { formatCostUsd } from '../../lib/format-utils'
 
 interface CostTooltipProps {
   cost: {
@@ -98,7 +99,7 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
             {hasSubAgentCosts ? (
               <>
                 <div className="font-medium text-gray-900 dark:text-gray-100 mb-1">
-                  Session Cost: ${sessionTotalUsd.toFixed(2)}
+                  Session Cost: {formatCostUsd(sessionTotalUsd)}
                 </div>
                 <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
                   <AgentCostRow label="Main agent:" cost={mainAgentCost} isLast={false} />
@@ -126,7 +127,7 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
             )}
             {cost.cacheSavingsUsd > 0 && (
               <div className="text-green-600 dark:text-green-400 pt-1">
-                Saved ${cost.cacheSavingsUsd.toFixed(2)} via caching
+                Saved {formatCostUsd(cost.cacheSavingsUsd)} via caching
               </div>
             )}
             <div className={`pt-1 ${cacheStatusColor}`}>
@@ -149,7 +150,7 @@ function CostRow({ label, cost, bold }: { label: string; cost: number; bold?: bo
   return (
     <div className={`flex items-center justify-between ${bold ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
       <span>{label}</span>
-      <span className="tabular-nums font-mono">${cost.toFixed(4)}</span>
+      <span className="tabular-nums font-mono">{formatCostUsd(cost)}</span>
     </div>
   )
 }
@@ -161,7 +162,7 @@ function AgentCostRow({ label, cost, isLast }: { label: string; cost: number; is
       <span>
         {treeChar} {label}:
       </span>
-      <span className="tabular-nums">${cost.toFixed(4)}</span>
+      <span className="tabular-nums">{formatCostUsd(cost)}</span>
     </div>
   )
 }

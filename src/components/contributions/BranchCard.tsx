@@ -1,5 +1,6 @@
 import { GitBranch, Clock, ChevronRight, FileCode2, GitCommit, Filter } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { formatNumber } from '../../lib/format-utils'
 import { useBranchSessions, type ContributionsTimeRange } from '../../hooks/use-contributions'
 import type { BranchBreakdown, BranchSession } from '../../types/generated'
 
@@ -310,11 +311,3 @@ function formatDuration(seconds: number): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
 
-/**
- * Format large numbers with K/M suffixes.
- */
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString()
-}

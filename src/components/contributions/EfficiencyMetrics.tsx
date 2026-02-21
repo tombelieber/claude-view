@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DollarSign, ArrowRight } from 'lucide-react'
+import { formatNumber, formatCostUsd } from '../../lib/format-utils'
 import {
   AreaChart,
   Area,
@@ -58,11 +59,11 @@ export function EfficiencyMetricsSection({
   const heroValue = (() => {
     switch (metric) {
       case 'commit':
-        return costPerCommit !== null ? `$${costPerCommit.toFixed(2)}` : '--'
+        return costPerCommit !== null ? formatCostUsd(costPerCommit) : '--'
       case 'session':
-        return costPerSession !== null ? `$${costPerSession.toFixed(2)}` : '--'
+        return costPerSession !== null ? formatCostUsd(costPerSession) : '--'
       case 'line':
-        return costPerLine !== null ? `$${costPerLine.toFixed(4)}` : '--'
+        return costPerLine !== null ? formatCostUsd(costPerLine) : '--'
     }
   })()
 
@@ -116,7 +117,7 @@ export function EfficiencyMetricsSection({
       {/* Summary Flow */}
       <div className="flex flex-wrap items-center gap-2 text-lg mb-4">
         <span className="font-semibold text-gray-900 dark:text-gray-100">
-          ${totalCost.toFixed(2)} spent
+          {formatCostUsd(totalCost)} spent
           {costIsEstimated && (
             <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">(estimated)</span>
           )}
@@ -141,7 +142,7 @@ export function EfficiencyMetricsSection({
           <div>
             <span className="font-medium">Per commit:</span>{' '}
             <span className="text-gray-900 dark:text-gray-100 tabular-nums">
-              {costPerCommit !== null ? `$${costPerCommit.toFixed(2)}` : '--'}
+              {costPerCommit !== null ? formatCostUsd(costPerCommit) : '--'}
             </span>
           </div>
         )}
@@ -149,7 +150,7 @@ export function EfficiencyMetricsSection({
           <div>
             <span className="font-medium">Per session:</span>{' '}
             <span className="text-gray-900 dark:text-gray-100 tabular-nums">
-              {costPerSession !== null ? `$${costPerSession.toFixed(2)}` : '--'}
+              {costPerSession !== null ? formatCostUsd(costPerSession) : '--'}
             </span>
           </div>
         )}
@@ -157,7 +158,7 @@ export function EfficiencyMetricsSection({
           <div>
             <span className="font-medium">Per line:</span>{' '}
             <span className="text-gray-900 dark:text-gray-100 tabular-nums">
-              {costPerLine !== null ? `$${costPerLine.toFixed(4)}` : '--'}
+              {costPerLine !== null ? formatCostUsd(costPerLine) : '--'}
             </span>
           </div>
         )}
@@ -249,7 +250,7 @@ function CostTrendChart({
               tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
               tickLine={false}
               axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
-              tickFormatter={(v: number) => `$${v.toFixed(precision)}`}
+              tickFormatter={(v: number) => formatCostUsd(v)}
             />
             <RechartsTooltip
               contentStyle={{
@@ -258,7 +259,7 @@ function CostTrendChart({
                 borderRadius: '8px',
                 fontSize: '12px',
               }}
-              formatter={(value: number) => [`$${value.toFixed(precision + 1)}`, chartLabel]}
+              formatter={(value: number) => [formatCostUsd(value), chartLabel]}
             />
             <Area
               type="monotone"
@@ -290,11 +291,3 @@ function formatChartDate(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-/**
- * Format large numbers with K/M suffixes.
- */
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString()
-}

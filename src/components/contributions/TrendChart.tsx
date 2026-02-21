@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatNumber } from '../../lib/format-utils'
 import {
   LineChart,
   Line,
@@ -204,10 +205,6 @@ function formatDate(dateStr: string): string {
   return `${weekday} ${monthDay}`
 }
 
-/**
- * Format Y axis values (K suffix for thousands)
- */
 function formatYAxisValue(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
-  return value.toString()
+  return formatNumber(value)
 }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Cpu, Check, ChevronRight } from 'lucide-react'
+import { formatNumber, formatCostUsd } from '../../lib/format-utils'
 import {
   BarChart,
   Bar,
@@ -104,7 +105,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                 if (item.reeditRate !== null)
                   parts.push(`Re-edit: ${item.reeditRate.toFixed(2)}`)
                 if (item.costPerLine !== null)
-                  parts.push(`Cost/line: $${item.costPerLine.toFixed(4)}`)
+                  parts.push(`Cost/line: ${formatCostUsd(item.costPerLine)}`)
                 return [parts.join(' \u00b7 '), item.displayName]
               }}
             />
@@ -191,7 +192,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                      {model.costPerLine !== null ? `$${model.costPerLine.toFixed(4)}` : '--'}
+                      {model.costPerLine !== null ? formatCostUsd(model.costPerLine) : '--'}
                     </td>
                     <td className="py-3 pl-4 text-gray-600 dark:text-gray-400">
                       {model.insight || getDefaultInsight(model.model)}
@@ -277,8 +278,3 @@ function generateModelInsight(models: ModelStats[]): string | null {
 /**
  * Format large numbers with K/M suffixes.
  */
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString()
-}

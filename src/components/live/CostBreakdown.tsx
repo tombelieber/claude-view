@@ -1,6 +1,6 @@
 import type { LiveSession } from './use-live-sessions'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import { formatTokenCount } from '../../lib/format-utils'
+import { formatTokenCount, formatCostUsd } from '../../lib/format-utils'
 
 interface CostBreakdownProps {
   cost: LiveSession['cost']
@@ -136,8 +136,3 @@ function CostRow({ label, value, className }: { label: string; value: number; cl
   )
 }
 
-function formatCostUsd(usd: number): string {
-  if (usd === 0) return '$0.00'
-  if (usd < 0.01) return `$${usd.toFixed(4)}`
-  return `$${usd.toFixed(2)}`
-}

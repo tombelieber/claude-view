@@ -2,32 +2,29 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TimelineView } from './TimelineView'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-
-// Helper functions for testing formatter logic
-function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
-}
+import { formatCostUsd } from '../../lib/format-utils'
 
 function formatDurationSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-describe('formatCost', () => {
-  it('formats to 2 decimals with $ prefix', () => {
-    expect(formatCost(0.0342)).toBe('$0.03')
-    expect(formatCost(1.2567)).toBe('$1.26')
-    expect(formatCost(10)).toBe('$10.00')
-    expect(formatCost(0)).toBe('$0.00')
+describe('formatCostUsd (smart)', () => {
+  it('formats small amounts with decimals', () => {
+    expect(formatCostUsd(0.0342)).toBe('$0.03')
+    expect(formatCostUsd(1.2567)).toBe('$1.26')
+    expect(formatCostUsd(10)).toBe('$10.00')
+    expect(formatCostUsd(0)).toBe('$0.00')
   })
 
-  it('handles very small amounts', () => {
-    expect(formatCost(0.001)).toBe('$0.00')
-    expect(formatCost(0.005)).toBe('$0.01')
+  it('handles very small amounts with 4 decimals', () => {
+    expect(formatCostUsd(0.001)).toBe('$0.0010')
+    expect(formatCostUsd(0.005)).toBe('$0.0050')
   })
 
-  it('handles large amounts', () => {
-    expect(formatCost(123.456)).toBe('$123.46')
-    expect(formatCost(9999.99)).toBe('$9999.99')
+  it('scales large amounts to K', () => {
+    expect(formatCostUsd(123.456)).toBe('$123.46')
+    expect(formatCostUsd(9999.99)).toBe('$10.00K')
+    expect(formatCostUsd(11714)).toBe('$11.7K')
   })
 })
 

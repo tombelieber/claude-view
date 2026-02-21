@@ -11,7 +11,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search, FlaskConical } from 'lucide-react'
 import { cn } from '../lib/utils'
-import { formatNumber } from '../lib/format-utils'
+import { formatNumber, formatTokenCount } from '../lib/format-utils'
 import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 import { getSessionTitle } from '../utils/get-session-title'
@@ -66,10 +66,7 @@ function formatDuration(seconds: number): string {
 
 function formatTokens(inputTokens: bigint | null, outputTokens: bigint | null): string {
   const total = Number((inputTokens ?? 0n) + (outputTokens ?? 0n))
-  if (total === 0) return '0'
-  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`
-  if (total >= 1_000) return `${Math.round(total / 1_000)}K`
-  return total.toLocaleString()
+  return formatTokenCount(total)
 }
 
 function sessionUrl(session: SessionInfo): string {

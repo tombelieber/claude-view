@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { cn } from '../../lib/utils'
+import { formatCostUsd } from '../../lib/format-utils'
 
 interface SwimLanesProps {
   subAgents: SubAgentInfo[]
@@ -10,9 +11,8 @@ interface SwimLanesProps {
   onDrillDown?: (agentId: string, agentType: string, description: string) => void
 }
 
-/** Format cost as $X.XX */
 function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
+  return formatCostUsd(usd)
 }
 
 /** Format duration from milliseconds to human-readable string */
