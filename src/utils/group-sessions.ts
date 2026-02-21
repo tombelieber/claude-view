@@ -7,6 +7,7 @@
  */
 
 import type { SessionInfo } from '../types/generated/SessionInfo';
+import { formatTokenCount, formatNumber } from '../lib/format-utils';
 
 export type GroupBy = 'none' | 'branch' | 'project' | 'model' | 'day' | 'week' | 'month';
 
@@ -211,10 +212,7 @@ function formatGroupLabel(key: string, groupBy: GroupBy, stats: GroupStats): str
  * Format token count with K suffix (e.g., "145K tokens").
  */
 function formatTokens(tokens: number): string {
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(0)}K tokens`;
-  }
-  return `${tokens} tokens`;
+  return `${formatTokenCount(tokens)} tokens`;
 }
 
 /**
@@ -228,14 +226,7 @@ function formatLineChanges(stats: GroupStats): string {
     return '';
   }
 
-  const formatNum = (n: number) => {
-    if (n >= 1000) {
-      return `${(n / 1000).toFixed(1)}K`;
-    }
-    return String(n);
-  };
-
-  return `+${formatNum(added)} / -${formatNum(removed)} lines`;
+  return `+${formatNumber(added)} / -${formatNumber(removed)} lines`;
 }
 
 /**

@@ -2,6 +2,7 @@ import { useMemo, useEffect, useState } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { cn } from '../../lib/utils'
+import { formatCostUsd } from '../../lib/format-utils'
 
 interface TimelineViewProps {
   subAgents: SubAgentInfo[]
@@ -11,9 +12,8 @@ interface TimelineViewProps {
   sessionDurationMs: number
 }
 
-/** Format cost as $X.XX */
 function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
+  return formatCostUsd(usd)
 }
 
 /** Format duration in seconds with 1 decimal (e.g., "2.1s") */

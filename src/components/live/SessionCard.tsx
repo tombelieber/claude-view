@@ -7,6 +7,7 @@ import {
 import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import type { AgentState } from './types'
 import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
+import { formatCostUsd } from '../../lib/format-utils'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { SubAgentPills } from './SubAgentPills'
@@ -29,11 +30,6 @@ const COLOR_MAP: Record<string, string> = {
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 }
 
-function formatCostUsd(usd: number): string {
-  if (usd === 0) return '$0.00'
-  if (usd < 0.01) return `$${usd.toFixed(4)}`
-  return `$${usd.toFixed(2)}`
-}
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
   const known = KNOWN_STATES[agentState.state]
