@@ -26,6 +26,11 @@ pub struct ReportRow {
     pub total_cost_cents: i64,
     #[ts(type = "number | null")]
     pub generation_ms: Option<i64>,
+    pub generation_model: Option<String>,
+    #[ts(type = "number | null")]
+    pub generation_input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
+    pub generation_output_tokens: Option<i64>,
     pub created_at: String,
 }
 
@@ -69,10 +74,13 @@ impl Database {
         total_duration_secs: i64,
         total_cost_cents: i64,
         generation_ms: Option<i64>,
+        generation_model: Option<&str>,
+        generation_input_tokens: Option<i64>,
+        generation_output_tokens: Option<i64>,
     ) -> DbResult<i64> {
         let row: (i64,) = sqlx::query_as(
-            r#"INSERT INTO reports (report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            r#"INSERT INTO reports (report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                RETURNING id"#,
         )
         .bind(report_type)
@@ -85,6 +93,9 @@ impl Database {
         .bind(total_duration_secs)
         .bind(total_cost_cents)
         .bind(generation_ms)
+        .bind(generation_model)
+        .bind(generation_input_tokens)
+        .bind(generation_output_tokens)
         .fetch_one(self.pool())
         .await?;
         Ok(row.0)
@@ -92,31 +103,31 @@ impl Database {
 
     /// List all reports, newest first.
     pub async fn list_reports(&self) -> DbResult<Vec<ReportRow>> {
-        let rows = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, String)>(
-            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports ORDER BY created_at DESC, id DESC"
+        let rows = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, Option<String>, Option<i64>, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at FROM reports ORDER BY created_at DESC, id DESC"
         )
         .fetch_all(self.pool())
         .await?;
 
         Ok(rows
             .into_iter()
-            .map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
-                id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
+            .map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
+                id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
             })
             .collect())
     }
 
     /// Get a single report by id.
     pub async fn get_report(&self, id: i64) -> DbResult<Option<ReportRow>> {
-        let row = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, String)>(
-            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at FROM reports WHERE id = ?"
+        let row = sqlx::query_as::<_, (i64, String, String, String, String, Option<String>, i64, i64, i64, i64, Option<i64>, Option<String>, Option<i64>, Option<i64>, String)>(
+            "SELECT id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at FROM reports WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at)| ReportRow {
-            id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, created_at,
+        Ok(row.map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
+            id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
         }))
     }
 
@@ -302,7 +313,7 @@ mod tests {
     async fn test_insert_and_get_report() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("daily", "2026-02-21", "2026-02-21", "- Shipped search", None, 8, 3, 15120, 680, Some(14200))
+            .insert_report("daily", "2026-02-21", "2026-02-21", "- Shipped search", None, 8, 3, 15120, 680, Some(14200), None, None, None)
             .await
             .unwrap();
         assert!(id > 0);
@@ -316,8 +327,8 @@ mod tests {
     #[tokio::test]
     async fn test_list_reports_newest_first() {
         let db = Database::new_in_memory().await.unwrap();
-        db.insert_report("daily", "2026-02-20", "2026-02-20", "day 1", None, 5, 2, 3600, 100, None).await.unwrap();
-        db.insert_report("daily", "2026-02-21", "2026-02-21", "day 2", None, 8, 3, 7200, 200, None).await.unwrap();
+        db.insert_report("daily", "2026-02-20", "2026-02-20", "day 1", None, 5, 2, 3600, 100, None, None, None, None).await.unwrap();
+        db.insert_report("daily", "2026-02-21", "2026-02-21", "day 2", None, 8, 3, 7200, 200, None, None, None, None).await.unwrap();
 
         let reports = db.list_reports().await.unwrap();
         assert_eq!(reports.len(), 2);
@@ -328,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete_report() {
         let db = Database::new_in_memory().await.unwrap();
-        let id = db.insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None).await.unwrap();
+        let id = db.insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None, None, None, None).await.unwrap();
 
         assert!(db.delete_report(id).await.unwrap());
         assert!(db.get_report(id).await.unwrap().is_none());
@@ -391,5 +402,20 @@ mod tests {
         // claude-view should be first (most sessions)
         assert_eq!(preview.projects[0].name, "claude-view");
         assert_eq!(preview.projects[0].session_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_insert_report_with_generation_metadata() {
+        let db = Database::new_in_memory().await.unwrap();
+        let id = db.insert_report(
+            "daily", "2026-02-21", "2026-02-21", "content", None,
+            8, 3, 15120, 680, Some(14200),
+            Some("claude-haiku-4-5-20251001"), Some(1200), Some(340),
+        ).await.unwrap();
+
+        let report = db.get_report(id).await.unwrap().unwrap();
+        assert_eq!(report.generation_model.as_deref(), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(report.generation_input_tokens, Some(1200));
+        assert_eq!(report.generation_output_tokens, Some(340));
     }
 }
