@@ -1778,4 +1778,97 @@ mod tests {
             agent_state.group
         );
     }
+
+    #[tokio::test]
+    async fn test_derive_state_assistant_end_turn() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Done!"}}],"stop_reason":"end_turn"}}}}"#).unwrap();
+        f.flush().unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        let state = state.expect("should derive a state");
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "idle");
+    }
+
+    #[tokio::test]
+    async fn test_derive_state_assistant_tool_use() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"tool_use","name":"Read","id":"x","input":{{}}}}],"stop_reason":"tool_use"}}}}"#).unwrap();
+        f.flush().unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        let state = state.expect("should derive a state");
+        assert_eq!(state.group, AgentStateGroup::Autonomous);
+        assert_eq!(state.state, "acting");
+    }
+
+    #[tokio::test]
+    async fn test_derive_state_user_tool_result() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"x","content":"ok"}}]}}}}"#).unwrap();
+        f.flush().unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        let state = state.expect("should derive a state");
+        assert_eq!(state.group, AgentStateGroup::Autonomous);
+        assert_eq!(state.state, "thinking");
+    }
+
+    #[tokio::test]
+    async fn test_derive_state_result_line() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"result","subtype":"success","cost_usd":0.05,"duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
+        f.flush().unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        let state = state.expect("should derive state from result line");
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "idle");
+    }
+
+    #[tokio::test]
+    async fn test_derive_state_skips_progress_lines() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        // Real assistant line first, then progress lines after it
+        writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Done"}}],"stop_reason":"end_turn"}}}}"#).unwrap();
+        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
+        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
+        f.flush().unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        let state = state.expect("should derive state from assistant line, not progress");
+        assert_eq!(state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(state.state, "idle");
+    }
+
+    #[tokio::test]
+    async fn test_derive_state_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        std::fs::File::create(&path).unwrap();
+
+        let state = derive_agent_state_from_jsonl(&path).await;
+        assert!(state.is_none());
+    }
 }
