@@ -169,6 +169,85 @@ fn build_recovered_session(
     }
 }
 
+/// Derive agent state from the JSONL file's tail — ground truth for startup recovery.
+///
+/// Reads the last 10 lines, finds the last meaningful line (assistant, user, or result),
+/// and derives the agent state. Returns None if the file is empty, unreadable, or has
+/// no meaningful lines (falls back to NeedsYou/idle at the call site).
+async fn derive_agent_state_from_jsonl(path: &Path) -> Option<AgentState> {
+    let lines = claude_view_core::tail::tail_lines(path, 10).await.ok()?;
+    if lines.is_empty() {
+        return None;
+    }
+
+    let finders = claude_view_core::live_parser::TailFinders::new();
+
+    // Scan from the end to find the last meaningful line
+    for raw in lines.iter().rev() {
+        let parsed = claude_view_core::live_parser::parse_single_line(raw.as_bytes(), &finders);
+
+        match parsed.line_type {
+            LineType::Progress | LineType::System | LineType::Summary | LineType::Other => {
+                continue; // Skip non-meaningful lines
+            }
+            LineType::Result => {
+                return Some(AgentState {
+                    group: AgentStateGroup::NeedsYou,
+                    state: "idle".into(),
+                    label: "Waiting for your next prompt".into(),
+                    context: None,
+                });
+            }
+            LineType::Assistant => {
+                let has_tool_use = !parsed.tool_names.is_empty();
+                let stop = parsed.stop_reason.as_deref();
+                let is_tool_active = stop == Some("tool_use") || has_tool_use;
+
+                return Some(if stop == Some("end_turn") {
+                    AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Waiting for your next prompt".into(),
+                        context: None,
+                    }
+                } else if is_tool_active {
+                    AgentState {
+                        group: AgentStateGroup::Autonomous,
+                        state: "acting".into(),
+                        label: format!(
+                            "Using {}",
+                            parsed.tool_names.first().map(|s| s.as_str()).unwrap_or("tool")
+                        ),
+                        context: None,
+                    }
+                } else {
+                    // Unknown stop_reason (max_tokens, etc.) — safe default
+                    AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Waiting for your next prompt".into(),
+                        context: None,
+                    }
+                });
+            }
+            LineType::User => {
+                return Some(AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "thinking".into(),
+                    label: if parsed.is_tool_result_continuation {
+                        "Processing tool result...".into()
+                    } else {
+                        "Processing prompt...".into()
+                    },
+                    context: None,
+                });
+            }
+        }
+    }
+
+    None
+}
+
 /// Apply JSONL metadata to an existing session without touching hook-owned fields
 /// (agent_state, status, current_activity).
 fn apply_jsonl_metadata(
