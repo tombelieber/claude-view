@@ -1,16 +1,13 @@
 import { useSearchParams } from 'react-router-dom'
-import { FlaskConical } from 'lucide-react'
 import { StatsDashboard } from '../components/StatsDashboard'
 import { ContributionsPage } from './ContributionsPage'
-import { InsightsPage } from '../components/InsightsPage'
 import { cn } from '../lib/utils'
 
-type AnalyticsTab = 'overview' | 'contributions' | 'insights'
+type AnalyticsTab = 'overview' | 'contributions'
 
-const TABS: { id: AnalyticsTab; label: string; experimental?: boolean }[] = [
+const TABS: { id: AnalyticsTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'contributions', label: 'Contributions' },
-  { id: 'insights', label: 'Insights', experimental: true },
 ]
 
 function isValidTab(value: string | null): value is AnalyticsTab {
@@ -51,17 +48,6 @@ export function AnalyticsPage() {
             )}
           >
             {tab.label}
-            {tab.experimental && (
-              <span className={cn(
-                'inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border',
-                activeTab === tab.id
-                  ? 'border-white/30 text-white/80'
-                  : 'border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40'
-              )}>
-                <FlaskConical className="w-2.5 h-2.5" />
-                Experimental
-              </span>
-            )}
           </button>
         ))}
       </div>
@@ -70,7 +56,6 @@ export function AnalyticsPage() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'overview' && <StatsDashboard />}
         {activeTab === 'contributions' && <ContributionsPage />}
-        {activeTab === 'insights' && <InsightsPage />}
       </div>
     </div>
   )
