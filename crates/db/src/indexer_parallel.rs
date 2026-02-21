@@ -174,6 +174,10 @@ pub struct ExtendedMetadata {
     pub cache_creation_tokens: u64,
     pub thinking_block_count: u32,
 
+    /// Accumulated costUSD from JSONL entries (ccusage "auto" mode).
+    /// Sum of per-entry `costUSD` when present.
+    pub total_cost_usd: f64,
+
     // System line metrics
     pub turn_durations_ms: Vec<u64>,
     pub api_error_count: u32,
@@ -1186,6 +1190,14 @@ fn handle_assistant_line(
             }
         }
 
+        // Accumulate costUSD (top-level field, not inside message.usage)
+        // Only count on first block to avoid double-counting multi-block responses
+        if is_first_block {
+            if let Some(cost) = parsed.cost_usd {
+                deep.total_cost_usd += cost;
+            }
+        }
+
         // Extract turn data (model + tokens) for turns table
         if let Some(ref model) = message.model {
             let model_id = model.clone();
@@ -1356,6 +1368,13 @@ fn handle_assistant_value(
             if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
                 deep.cache_creation_tokens += v;
             }
+        }
+    }
+
+    // Accumulate costUSD from top-level field
+    if is_first_block {
+        if let Some(cost) = value.get("costUSD").and_then(|v| v.as_f64()) {
+            deep.total_cost_usd += cost;
         }
     }
 
