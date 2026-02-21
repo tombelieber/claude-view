@@ -219,11 +219,14 @@ async fn start_classification(
     }
 
     // Create the job in the database
+    let settings = state.db.get_app_settings().await.map_err(|e| {
+        ApiError::Internal(format!("Failed to read LLM settings: {e}"))
+    })?;
     let provider_name = "claude-cli";
-    let model_name = "haiku";
+    let model_name = settings.llm_model.clone();
     let db_job_id = state
         .db
-        .create_classification_job(session_count, provider_name, model_name, Some(estimated_cost))
+        .create_classification_job(session_count, provider_name, &model_name, Some(estimated_cost))
         .await?;
 
     let job_id_str = format!("cls_{}", db_job_id);
@@ -478,8 +481,7 @@ async fn classify_single_session(
     let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
 
     // 4. Classify via Claude CLI
-    let provider =
-        claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+    let provider = super::settings::create_llm_provider(&state.db).await?;
     let request = ClassificationRequest {
         session_id: session_id.clone(),
         first_prompt: preview,
@@ -624,8 +626,13 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                 break;
             }
 
-            let single_provider =
-                claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(60);
+            let single_provider = match super::settings::create_llm_provider(db).await {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to create LLM provider");
+                    continue;
+                }
+            };
             let single_request = ClassificationRequest {
                 session_id: input.session_id.clone(),
                 first_prompt: input.preview.clone(),
