@@ -4385,4 +4385,112 @@ mod tests {
         // api_call_count: 2 JSONL lines but only 1 unique API response
         assert_eq!(result.deep.api_call_count, 1, "fallback path: api_call_count inflated");
     }
+
+    #[test]
+    fn test_parse_bytes_dedup_different_api_calls_counted_separately() {
+        // Two different API responses (different message IDs) should each count
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"user","uuid":"u2","parentUuid":"a2","message":{"content":[{"type":"tool_result"}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"u2","requestId":"req_002","timestamp":"2026-01-01T00:00:01Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":150,"output_tokens":60,"cache_read_input_tokens":2000,"cache_creation_input_tokens":300}}}
+"#;
+        let result = parse_bytes(data);
+
+        // msg_001 (100 input) + msg_002 (150 input) = 250 total
+        assert_eq!(result.deep.total_input_tokens, 250);
+        assert_eq!(result.deep.total_output_tokens, 110); // 50 + 60
+        assert_eq!(result.deep.cache_read_tokens, 3000); // 1000 + 2000
+        assert_eq!(result.deep.cache_creation_tokens, 500); // 200 + 300
+
+        // 3 assistant JSONL lines, but only 2 unique API responses
+        assert_eq!(result.deep.api_call_count, 2, "should count 2 unique API calls");
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_legacy_data_without_ids() {
+        // Older JSONL lines without message.id/requestId should still count
+        // (graceful fallback — every line counted, no dedup possible)
+        let data = br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"model":"claude-opus-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/foo"}}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Without IDs, both lines count (can't dedup — legacy behavior preserved)
+        assert_eq!(result.deep.total_input_tokens, 200);
+        assert_eq!(result.deep.total_output_tokens, 100);
+
+        // Legacy: each line treated as a separate API call (no IDs to dedup with)
+        assert_eq!(result.deep.api_call_count, 2, "legacy lines each count as api call");
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_preserves_tool_counts() {
+        // Dedup should NOT affect tool counting — all tool_use blocks still tracked
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/b.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Tokens deduplicated
+        assert_eq!(result.deep.total_input_tokens, 100);
+
+        // But both tool_use blocks are counted
+        assert_eq!(result.deep.tool_counts.read, 1);
+        assert_eq!(result.deep.tool_counts.edit, 1);
+
+        // Only 1 unique API call
+        assert_eq!(result.deep.api_call_count, 1);
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_mixed_path_typed_and_fallback() {
+        // Mix of typed path (exact "type":"assistant") and fallback path
+        // (spacing variant "type" : "assistant"). Both share the same
+        // message_id:request_id and should dedup together via the shared HashSet.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"c1","parentUuid":"u1","requestId":"req_003","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_003","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":500,"output_tokens":100,"cache_read_input_tokens":3000,"cache_creation_input_tokens":400}}}
+{"type" : "assistant","uuid":"c2","parentUuid":"c1","requestId":"req_003","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_003","model":"claude-opus-4-6","content":[{"type":"text","text":"mixed"}],"usage":{"input_tokens":500,"output_tokens":100,"cache_read_input_tokens":3000,"cache_creation_input_tokens":400}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Tokens counted once despite one line going through typed path
+        // and the other through the Value fallback
+        assert_eq!(result.deep.total_input_tokens, 500);
+        assert_eq!(result.deep.total_output_tokens, 100);
+        assert_eq!(result.deep.api_call_count, 1, "mixed paths should share dedup");
+    }
+
+    #[test]
+    fn test_golden_dedup_content_blocks() {
+        let data = include_bytes!("../tests/golden_fixtures/dedup_content_blocks.jsonl");
+        let result = parse_bytes(data);
+
+        // 2 unique API responses (req_001 with 2 blocks, req_002 with 3 blocks)
+        assert_eq!(result.deep.api_call_count, 2, "should have 2 unique API calls");
+
+        // Tokens: req_001(1500+150+500+100) + req_002(2000+200+1500+0)
+        assert_eq!(result.deep.total_input_tokens, 3500);  // 1500 + 2000
+        assert_eq!(result.deep.total_output_tokens, 350);   // 150 + 200
+        assert_eq!(result.deep.cache_read_tokens, 2000);    // 500 + 1500
+        assert_eq!(result.deep.cache_creation_tokens, 100);  // 100 + 0
+
+        // Tools: Read from req_001, Edit from req_002 (both still counted)
+        assert_eq!(result.deep.tool_counts.read, 1);
+        assert_eq!(result.deep.tool_counts.edit, 1);
+
+        // 5 assistant JSONL lines → 5 turns, but only 2 carry token data
+        assert_eq!(result.turns.len(), 5);
+        // First block of each API call has tokens, rest zeroed
+        assert_eq!(result.turns[0].input_tokens, Some(1500)); // req_001 first
+        assert_eq!(result.turns[1].input_tokens, Some(0));     // req_001 dup
+        assert_eq!(result.turns[2].input_tokens, Some(2000)); // req_002 first
+        assert_eq!(result.turns[3].input_tokens, Some(0));     // req_002 dup
+        assert_eq!(result.turns[4].input_tokens, Some(0));     // req_002 dup
+
+        // user_prompt_count: 2 user lines (one is tool_result, still counted)
+        assert_eq!(result.deep.user_prompt_count, 2);
+    }
 }
