@@ -12,9 +12,11 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search, FlaskConical } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { computeWeight } from '../lib/session-weight'
 import { buildSessionUrl } from '../lib/url-utils'
 import type { SessionInfo } from '../hooks/use-projects'
 import { getSessionTitle } from '../utils/get-session-title'
+import { WeightIndicator } from './WeightIndicator'
 import { QualityBadge } from './QualityBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { ClassifyButton } from './ClassifyButton'
@@ -82,6 +84,26 @@ const columnHelper = createColumnHelper<SessionInfo>()
 
 function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<SessionInfo, any>[] {
   return [
+    columnHelper.display({
+      id: 'weight',
+      header: '',
+      size: 20,
+      cell: ({ row }) => {
+        const s = row.original
+        const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
+        const tier = computeWeight({
+          totalTokens,
+          userPromptCount: s.userPromptCount,
+          filesEditedCount: s.filesEditedCount,
+          durationSeconds: s.durationSeconds,
+        })
+        return (
+          <div className="flex items-center justify-center">
+            <WeightIndicator tier={tier} inline />
+          </div>
+        )
+      },
+    }),
     columnHelper.accessor('modifiedAt', {
       id: 'time',
       header: 'Time',

@@ -1,7 +1,9 @@
 import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit, Code2 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { computeWeight, weightBorderClass } from '../lib/session-weight'
 import type { SessionInfo } from '../hooks/use-projects'
+import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { ClassifyButton } from './ClassifyButton'
@@ -169,6 +171,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const aiLinesRemoved = session?.aiLinesRemoved ? Number(session.aiLinesRemoved) : null
   const hasLoc = aiLinesAdded !== null || aiLinesRemoved !== null
 
+  // Session weight for visual accent
+  const weightTier = computeWeight({
+    totalTokens,
+    userPromptCount: prompts,
+    filesEditedCount: filesEdited,
+    durationSeconds,
+  })
+
   // Calculate start timestamp from modifiedAt - durationSeconds
   const endTimestamp = Number(session?.modifiedAt ?? 0)
   const startTimestamp = endTimestamp - durationSeconds
@@ -187,17 +197,21 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   return (
     <article
       className={cn(
-        'w-full text-left p-3.5 rounded-lg border cursor-pointer',
+        'w-full text-left p-3.5 rounded-lg border border-l-[3px] cursor-pointer',
         'transition-all duration-200 ease-out',
         isSelected
           ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
-          : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+          : cn(
+              'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
+              weightBorderClass(weightTier)
+            )
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
-      {/* Header: Project badge + Branch badge + Time range + Duration */}
+      {/* Header: Weight dot + Project badge + Branch badge + Time range + Duration */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
+          <WeightIndicator tier={weightTier} />
           {projectLabel && (
             <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded flex-shrink-0">
               {projectLabel}
@@ -389,12 +403,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           )}
         </div>
 
-        {/* Message/turn count (if available and useful) */}
-        {(session.messageCount ?? 0) > 0 && prompts === 0 && (
-          <div className="flex items-center gap-1 text-xs text-gray-400">
+        {/* Turn/message count — always visible for scanning session length */}
+        {((session.turnCount ?? 0) > 0 || (session.messageCount ?? 0) > 0) && (
+          <div className="flex items-center gap-1 text-xs text-gray-400 tabular-nums">
             <MessageSquare className="w-3 h-3" />
             <span>
-              {session.messageCount} msgs
+              {(session.turnCount ?? 0) > 0
+                ? `${session.turnCount} turn${session.turnCount !== 1 ? 's' : ''}`
+                : `${session.messageCount} msg${(session.messageCount ?? 0) !== 1 ? 's' : ''}`}
             </span>
           </div>
         )}

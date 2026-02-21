@@ -44,11 +44,14 @@ pub enum Role {
 }
 
 /// A tool call made by the assistant
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 pub struct ToolCall {
     pub name: String,
     pub count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "any")]
+    pub input: Option<serde_json::Value>,
 }
 
 /// A message in a conversation
@@ -876,7 +879,7 @@ mod tests {
     #[test]
     fn test_message_with_tools() {
         let msg = Message::assistant("Let me help")
-            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2 }]);
+            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2, input: None }]);
 
         assert_eq!(msg.role, Role::Assistant);
         assert!(msg.tool_calls.is_some());

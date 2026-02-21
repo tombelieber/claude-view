@@ -74,16 +74,34 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       }
 
       case 'tool_use': {
-        const toolName = msg.tool_calls?.[0]?.name ?? 'tool'
-        const inputStr = msg.content || ''
-        result.push({
-          type: 'tool_use',
-          content: '',
-          name: toolName,
-          input: inputStr || undefined,
-          inputData: inputStr ? tryParseJson(inputStr) : undefined,
-          ts,
-        })
+        // Emit one RichMessage per tool_call (matches WebSocket behavior).
+        // Each ToolCall now carries its own input data from the Rust parser.
+        const toolCalls = msg.tool_calls ?? []
+        if (toolCalls.length === 0) {
+          // Fallback: legacy data without individual tool calls
+          const inputStr = msg.content || ''
+          result.push({
+            type: 'tool_use',
+            content: '',
+            name: 'tool',
+            input: inputStr || undefined,
+            inputData: inputStr ? tryParseJson(inputStr) : undefined,
+            ts,
+          })
+        } else {
+          for (const tc of toolCalls) {
+            const inputData = tc.input ?? undefined
+            const inputStr = inputData ? JSON.stringify(inputData, null, 2) : undefined
+            result.push({
+              type: 'tool_use',
+              content: '',
+              name: tc.name,
+              input: inputStr,
+              inputData,
+              ts,
+            })
+          }
+        }
         break
       }
 

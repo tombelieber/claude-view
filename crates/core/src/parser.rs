@@ -7,7 +7,6 @@
 use crate::error::ParseError;
 use crate::types::*;
 use regex_lite::Regex;
-use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -511,7 +510,7 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
         JsonlContent::Blocks(blocks) => {
             let mut text_parts: Vec<&str> = Vec::new();
             let mut thinking_parts: Vec<&str> = Vec::new();
-            let mut tool_counts: HashMap<String, usize> = HashMap::new();
+            let mut tool_calls: Vec<ToolCall> = Vec::new();
 
             for block in blocks {
                 match block {
@@ -521,18 +520,18 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
                     ContentBlock::Thinking { thinking } => {
                         thinking_parts.push(thinking);
                     }
-                    ContentBlock::ToolUse { name, .. } => {
-                        *tool_counts.entry(name.clone()).or_insert(0) += 1;
+                    ContentBlock::ToolUse { name, input } => {
+                        tool_calls.push(ToolCall {
+                            name: name.clone(),
+                            count: 1,
+                            input: input.clone(),
+                        });
                     }
                     _ => {} // Ignore tool_result and other blocks
                 }
             }
 
             let text = text_parts.join("\n");
-            let tool_calls: Vec<ToolCall> = tool_counts
-                .into_iter()
-                .map(|(name, count)| ToolCall { name, count })
-                .collect();
 
             let thinking = if thinking_parts.is_empty() {
                 None
@@ -646,9 +645,8 @@ mod tests {
         assert!(assistant_msg.tool_calls.is_some());
 
         let tools = assistant_msg.tool_calls.as_ref().unwrap();
-        let read_tool = tools.iter().find(|t| t.name == "Read");
-        assert!(read_tool.is_some());
-        assert_eq!(read_tool.unwrap().count, 2); // Two Read calls
+        let read_count = tools.iter().filter(|t| t.name == "Read").count();
+        assert_eq!(read_count, 2); // Two individual Read tool calls
     }
 
     #[tokio::test]
@@ -908,14 +906,15 @@ mod tests {
 
         let (text, tools, thinking) = extract_assistant_content(&content);
         assert_eq!(text, "Let me help");
-        assert_eq!(tools.len(), 2); // Read and Edit
+        assert_eq!(tools.len(), 3); // Individual entries: Read, Read, Edit
         assert!(thinking.is_none());
 
-        let read_tool = tools.iter().find(|t| t.name == "Read").unwrap();
-        assert_eq!(read_tool.count, 2);
-
-        let edit_tool = tools.iter().find(|t| t.name == "Edit").unwrap();
-        assert_eq!(edit_tool.count, 1);
+        assert_eq!(tools[0].name, "Read");
+        assert_eq!(tools[0].count, 1);
+        assert_eq!(tools[1].name, "Read");
+        assert_eq!(tools[1].count, 1);
+        assert_eq!(tools[2].name, "Edit");
+        assert_eq!(tools[2].count, 1);
     }
 
     #[test]

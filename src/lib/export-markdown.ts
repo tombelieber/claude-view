@@ -16,7 +16,10 @@ function formatTimestamp(timestamp?: string | null): string {
 
 function renderToolCalls(toolCalls?: ToolCall[] | null): string {
   if (!toolCalls || toolCalls.length === 0) return ''
-  const items = toolCalls.map((tc) => `- **${tc.name}** (x${tc.count})`).join('\n')
+  // Re-aggregate individual tool calls by name for display
+  const counts = new Map<string, number>()
+  for (const tc of toolCalls) counts.set(tc.name, (counts.get(tc.name) ?? 0) + tc.count)
+  const items = Array.from(counts).map(([name, count]) => `- **${name}** (x${count})`).join('\n')
   return `\n\n**Tools Used:**\n${items}`
 }
 
