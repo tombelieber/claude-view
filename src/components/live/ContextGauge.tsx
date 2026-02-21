@@ -35,8 +35,10 @@ interface ContextGaugeProps {
   turnCount?: number
   /** When true, shows breakdown inline (for side panel). When false, shows in hover tooltip (for cards). */
   expanded?: boolean
-  /** Current agent state label — used to detect compacting state. */
+  /** Current agent state label — shown in compacting overlay. */
   agentLabel?: string
+  /** The raw agent state key (e.g. "acting", "compacting"). Used for precise state detection. */
+  agentStateKey?: string
 }
 
 const formatTokens = (n: number) => {
@@ -58,25 +60,26 @@ const SEGMENT_COLORS = {
 /** Approximate context percentage at which Claude Code triggers auto-compaction. */
 const AUTOCOMPACT_THRESHOLD_PCT = 80
 
-export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false, agentLabel }: ContextGaugeProps) {
+export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false, agentLabel, agentStateKey }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
 
-  // Compacting state detection
-  const isCompacting = agentLabel ? /compacting/i.test(agentLabel) : false
-  const prevLabelRef = useRef(agentLabel)
+  // Compacting state detection — use the state key, not the label text
+  // (labels can contain "compacting" when the agent is searching/grepping for that word)
+  const isCompacting = agentStateKey === 'compacting'
+  const prevStateKeyRef = useRef(agentStateKey)
   const [justCompacted, setJustCompacted] = useState(false)
 
   useEffect(() => {
-    const wasCompacting = prevLabelRef.current ? /compacting/i.test(prevLabelRef.current) : false
+    const wasCompacting = prevStateKeyRef.current === 'compacting'
     if (wasCompacting && !isCompacting) {
       setJustCompacted(true)
       const timer = setTimeout(() => setJustCompacted(false), 5_000)
       return () => clearTimeout(timer)
     }
-    prevLabelRef.current = agentLabel
-  }, [agentLabel, isCompacting])
+    prevStateKeyRef.current = agentStateKey
+  }, [agentStateKey, isCompacting])
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
