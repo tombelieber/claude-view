@@ -919,6 +919,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     &mut tool_call_count,
                     &mut files_read_all,
                     &mut files_edited_all,
+                    &mut seen_api_calls,
+                    &mut unique_api_call_count,
                 );
 
                 // Phase C: LOC estimation from Edit/Write tool_use blocks
@@ -1289,20 +1291,39 @@ fn handle_assistant_value(
     tool_call_count: &mut u32,
     files_read_all: &mut Vec<String>,
     files_edited_all: &mut Vec<String>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+    unique_api_call_count: &mut u32,
 ) {
-    // Extract token usage from .message.usage
-    if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
-        if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
-            deep.total_input_tokens += v;
+    // Dedup check — same logic as handle_assistant_line
+    let msg_id = value.get("message").and_then(|m| m.get("id")).and_then(|v| v.as_str());
+    let req_id = value.get("requestId").and_then(|v| v.as_str());
+    let is_first_block = match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
         }
-        if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
-            deep.total_output_tokens += v;
-        }
-        if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
-            deep.cache_read_tokens += v;
-        }
-        if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
-            deep.cache_creation_tokens += v;
+        _ => true,
+    };
+
+    if is_first_block {
+        *unique_api_call_count += 1;
+    }
+
+    // Extract token usage from .message.usage — only for first block
+    if is_first_block {
+        if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+            if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                deep.total_input_tokens += v;
+            }
+            if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                deep.total_output_tokens += v;
+            }
+            if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                deep.cache_read_tokens += v;
+            }
+            if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+                deep.cache_creation_tokens += v;
+            }
         }
     }
 
@@ -1326,16 +1347,28 @@ fn handle_assistant_value(
                 .to_string();
             let timestamp = extract_timestamp_from_value(value);
 
+            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
+            let (inp, outp, cr, cc) = if is_first_block {
+                (
+                    usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                )
+            } else {
+                (Some(0), Some(0), Some(0), Some(0))
+            };
+
             turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: assistant_count - 1,
                 model_id,
                 content_type,
-                input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                input_tokens: inp,
+                output_tokens: outp,
+                cache_read_tokens: cr,
+                cache_creation_tokens: cc,
                 service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
                 timestamp,
             });
@@ -4330,5 +4363,26 @@ mod tests {
         assert_eq!(result.turns[0].input_tokens, Some(100));
         assert_eq!(result.turns[1].input_tokens, Some(0)); // zeroed duplicate
         assert_eq!(result.turns[2].input_tokens, Some(0)); // zeroed duplicate
+    }
+
+    #[test]
+    fn test_parse_bytes_deduplicates_fallback_path() {
+        // SIMD finder looks for exact bytes "type":"assistant" — a space before
+        // the colon causes the SIMD check to miss, falling through to the
+        // full Value parse + type dispatch. This exercises handle_assistant_value.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type" : "assistant","uuid":"b1","parentUuid":"u1","requestId":"req_002","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":5000,"cache_creation_input_tokens":300}}}
+{"type" : "assistant","uuid":"b2","parentUuid":"b1","requestId":"req_002","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"text","text":"world"}],"usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":5000,"cache_creation_input_tokens":300}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Should count tokens only once despite 2 blocks
+        assert_eq!(result.deep.total_input_tokens, 200, "fallback path: input_tokens counted 2x");
+        assert_eq!(result.deep.total_output_tokens, 80, "fallback path: output_tokens counted 2x");
+        assert_eq!(result.deep.cache_read_tokens, 5000, "fallback path: cache_read counted 2x");
+        assert_eq!(result.deep.cache_creation_tokens, 300, "fallback path: cache_create counted 2x");
+
+        // api_call_count: 2 JSONL lines but only 1 unique API response
+        assert_eq!(result.deep.api_call_count, 1, "fallback path: api_call_count inflated");
     }
 }
