@@ -28,7 +28,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 import { StorageOverview } from './StorageOverview'
-import { ClassificationStatus } from './ClassificationStatus'
 import { ProviderSettings } from './ProviderSettings'
 import type { IndexRunInfo } from '../types/generated'
 
@@ -327,18 +326,7 @@ export function SettingsPage() {
   const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [showProviderSettings, setShowProviderSettings] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
-
-  // Auto-expand provider settings when navigating with ?provider=show
-  useEffect(() => {
-    if (searchParams.get('provider') === 'show') {
-      setShowProviderSettings(true)
-      const next = new URLSearchParams(searchParams)
-      next.delete('provider')
-      setSearchParams(next, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
 
   const handleIntervalChange = useCallback(async (value: string) => {
     const secs = parseInt(value, 10)
@@ -385,13 +373,10 @@ export function SettingsPage() {
             <StorageOverview />
           </SettingsSection>
 
-          {/* CLASSIFICATION */}
-          <ClassificationStatus
-            onConfigure={() => setShowProviderSettings((v) => !v)}
-          />
+          {/* CLASSIFICATION — disabled (feature flag off) */}
 
-          {/* CLASSIFICATION PROVIDER SETTINGS */}
-          {showProviderSettings && <ProviderSettings cliStatus={systemData?.claudeCli} />}
+          {/* LLM PROVIDER (used by reports) */}
+          <ProviderSettings cliStatus={systemData?.claudeCli} />
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
