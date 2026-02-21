@@ -265,10 +265,15 @@ function markdownToHtml(markdown: string): string {
 function renderToolCalls(toolCalls: ToolCall[]): string {
   if (!toolCalls || toolCalls.length === 0) return ''
 
-  const totalCount = toolCalls.reduce((sum, tc) => sum + tc.count, 0)
-  const badges = toolCalls.map((tc) => `<span class="tool-badge">${escapeHtml(tc.name)}</span>`).join('')
+  // Re-aggregate individual tool calls by name for display
+  const counts = new Map<string, number>()
+  for (const tc of toolCalls) counts.set(tc.name, (counts.get(tc.name) ?? 0) + tc.count)
+  const aggregated = Array.from(counts, ([name, count]) => ({ name, count }))
 
-  const toolDetails = toolCalls
+  const totalCount = aggregated.reduce((sum, tc) => sum + tc.count, 0)
+  const badges = aggregated.map((tc) => `<span class="tool-badge">${escapeHtml(tc.name)}</span>`).join('')
+
+  const toolDetails = aggregated
     .map(
       (tc) =>
         `<div class="tool-item"><span class="tool-badge">${escapeHtml(tc.name)}</span><span class="tool-count">x${tc.count}</span></div>`
