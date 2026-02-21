@@ -20,6 +20,7 @@ pub mod reports;
 pub mod score;
 pub mod search;
 pub mod sessions;
+pub mod settings;
 pub mod stats;
 pub mod status;
 pub mod sync;
@@ -85,6 +86,8 @@ use crate::state::AppState;
 /// - GET  /api/live/pricing             - Model pricing table
 /// - GET /api/sessions/:id/turns - Per-turn breakdown for a session
 /// - GET /api/search?q=...&scope=...&limit=...&offset=... - Full-text search
+/// - GET /api/settings - Read current app settings (model, timeout)
+/// - PUT /api/settings - Update app settings (partial, validates model + timeout)
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
@@ -113,6 +116,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", hooks::router())
         .nest("/api", search::router())
         .nest("/api", reports::router())
+        .nest("/api", settings::router())
         .nest("/api", oauth::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())

@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
+use claude_view_core::llm::LlmProvider;
 use claude_view_core::report::{
     BranchDigest, ContextDigest, ProjectDigest, SessionDigest, build_report_prompt,
 };
@@ -164,7 +165,11 @@ async fn generate_report(
     })?;
 
     // Spawn Claude CLI for streaming
-    let provider = claude_view_core::llm::ClaudeCliProvider::new("haiku").with_timeout(120);
+    let provider = super::settings::create_llm_provider(&state.db).await.map_err(|e| {
+        GENERATING.store(false, Ordering::SeqCst);
+        e
+    })?;
+    let generation_model = provider.model().to_string();
     let (mut rx, _handle) = match provider.stream_completion(prompt) {
         Ok(pair) => pair,
         Err(e) => {
@@ -212,6 +217,9 @@ async fn generate_report(
             preview.total_duration_secs,
             preview.total_cost_cents,
             Some(generation_ms),
+            Some(&generation_model),
+            None, // input_tokens — stream_completion doesn't return usage
+            None, // output_tokens — stream_completion doesn't return usage
         ).await;
 
         match report_id {
@@ -219,6 +227,7 @@ async fn generate_report(
                 let done_json = serde_json::json!({
                     "reportId": id,
                     "generationMs": generation_ms,
+                    "generationModel": &generation_model,
                     "contextDigest": context_digest_json,
                 });
                 yield Ok(Event::default().event("done").data(done_json.to_string()));
@@ -430,7 +439,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_reports_with_data() {
         let db = Database::new_in_memory().await.unwrap();
-        db.insert_report("daily", "2026-02-21", "2026-02-21", "- Did stuff", None, 5, 2, 3600, 100, None)
+        db.insert_report("daily", "2026-02-21", "2026-02-21", "- Did stuff", None, 5, 2, 3600, 100, None, None, None, None)
             .await
             .unwrap();
 
@@ -461,7 +470,7 @@ mod tests {
     async fn test_get_report_by_id() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None)
+            .insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None, None, None, None)
             .await
             .unwrap();
 
@@ -510,7 +519,7 @@ mod tests {
     async fn test_delete_report() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("daily", "2026-02-21", "2026-02-21", "test", None, 1, 1, 100, 10, None)
+            .insert_report("daily", "2026-02-21", "2026-02-21", "test", None, 1, 1, 100, 10, None, None, None, None)
             .await
             .unwrap();
 

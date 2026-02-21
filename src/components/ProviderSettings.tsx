@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import type { ClaudeCliStatus } from '../types/generated'
+import { useAppSettings } from '../hooks/use-app-settings'
 
 type ProviderType = 'claude-cli' | 'anthropic-api' | 'openai-compatible'
 
@@ -52,23 +53,31 @@ const PROVIDERS: ProviderOption[] = [
 ]
 
 /**
- * Provider settings form for classification configuration.
+ * Provider settings form for AI feature configuration (classification, report generation).
  *
  * Currently only supports Claude CLI (default provider).
  * Anthropic API and OpenAI-compatible providers are planned for future releases.
  *
+ * Model selection is persisted to the backend via the app settings API
+ * and applies to all AI features.
+ *
  * Shows:
  * - Provider selection (radio group)
- * - Model selection per provider
+ * - Model selection per provider (persisted via /api/settings)
  * - API key input for API providers (future)
  * - Endpoint URL for OpenAI-compatible (future)
  * - Test connection button
  */
 export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSettingsProps) {
   const [selectedProvider, setSelectedProvider] = useState<ProviderType>('claude-cli')
-  const [model, setModel] = useState('haiku')
+  const { settings, updateSettings } = useAppSettings()
+  const model = settings?.llmModel ?? 'haiku'
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<'idle' | 'success' | 'error' | 'not-installed' | 'not-authenticated'>('idle')
+
+  const handleModelChange = async (newModel: string) => {
+    await updateSettings({ llmModel: newModel })
+  }
 
   const handleTestConnection = async () => {
     setIsTesting(true)
@@ -108,7 +117,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
         <div className="flex items-center gap-2">
           <Settings2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-            Classification Provider
+            AI Provider
           </h2>
           <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
             <FlaskConical className="w-2.5 h-2.5" />
@@ -120,7 +129,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
       {/* Body */}
       <div className="p-4">
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Choose how sessions are classified. The provider determines which LLM service is used for categorization.
+          Choose the LLM model for AI features (classification, report generation). Applies to all features.
         </p>
 
         {/* Provider selection */}
@@ -179,7 +188,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
             <select
               id="model-select"
               value={model}
-              onChange={(e) => setModel(e.target.value)}
+              onChange={(e) => handleModelChange(e.target.value)}
               className="text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none w-full"
             >
               <option value="haiku">Claude Haiku (fastest, cheapest)</option>

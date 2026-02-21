@@ -14,6 +14,7 @@ interface UseReportGenerateReturn {
   isGenerating: boolean
   streamedText: string
   contextDigest: string | null
+  generationModel: string | null
   error: string | null
   reset: () => void
 }
@@ -22,6 +23,7 @@ export function useReportGenerate(): UseReportGenerateReturn {
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamedText, setStreamedText] = useState('')
   const [contextDigest, setContextDigest] = useState<string | null>(null)
+  const [generationModel, setGenerationModel] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const invalidateReports = useReportsMutate()
@@ -29,6 +31,7 @@ export function useReportGenerate(): UseReportGenerateReturn {
   const reset = useCallback(() => {
     setStreamedText('')
     setContextDigest(null)
+    setGenerationModel(null)
     setError(null)
     setIsGenerating(false)
   }, [])
@@ -89,6 +92,9 @@ export function useReportGenerate(): UseReportGenerateReturn {
                 if (parsed.contextDigest) {
                   setContextDigest(parsed.contextDigest)
                 }
+                if (parsed.generationModel) {
+                  setGenerationModel(parsed.generationModel)
+                }
                 setIsGenerating(false)
               } else if (eventType === 'error') {
                 setError(parsed.message || 'Generation failed')
@@ -109,5 +115,5 @@ export function useReportGenerate(): UseReportGenerateReturn {
     }
   }, [reset, invalidateReports])
 
-  return { generate, isGenerating, streamedText, contextDigest, error, reset }
+  return { generate, isGenerating, streamedText, contextDigest, generationModel, error, reset }
 }
