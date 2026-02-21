@@ -94,6 +94,26 @@ impl Registry {
     pub fn is_empty(&self) -> bool {
         self.qualified.is_empty()
     }
+
+    /// Compute a stable fingerprint of the registry contents.
+    ///
+    /// Returns a hex-encoded hash of all sorted qualified IDs.
+    /// Used to detect when the registry changes (new plugins installed,
+    /// user skills added/removed) so the indexer can auto-reindex.
+    pub fn fingerprint(&self) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut ids: Vec<&str> = self.qualified.keys().map(|s| s.as_str()).collect();
+        ids.sort_unstable();
+
+        let mut hasher = DefaultHasher::new();
+        ids.len().hash(&mut hasher);
+        for id in &ids {
+            id.hash(&mut hasher);
+        }
+        format!("{:016x}", hasher.finish())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +279,16 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
                 }
             }
         }
+    }
+
+    // 2a. Scan user-level custom skills: {claude_dir}/skills/*/SKILL.md
+    let user_skills = scan_user_skills(claude_dir);
+    for s in user_skills {
+        if !global_seen_ids.insert(s.id.clone()) {
+            debug!("Skipping duplicate user skill: {}", s.id);
+            continue;
+        }
+        entries.push(s);
     }
 
     // 3. Register built-in tools
@@ -461,6 +491,41 @@ fn read_first_line_description(path: &Path) -> String {
         };
     }
     String::new()
+}
+
+/// Scan user-level custom skills at `{claude_dir}/skills/*/SKILL.md`.
+/// These are skills created by the user directly, not installed via plugins.
+fn scan_user_skills(claude_dir: &Path) -> Vec<InvocableInfo> {
+    let skills_dir = claude_dir.join("skills");
+    let entries = match std::fs::read_dir(&skills_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(), // dir doesn't exist, that's fine
+    };
+
+    let mut results = Vec::new();
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            let skill_md = entry_path.join("SKILL.md");
+            if skill_md.exists() {
+                let skill_name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let description = read_first_line_description(&skill_md);
+                results.push(InvocableInfo {
+                    id: format!("user:{skill_name}"),
+                    plugin_name: None,
+                    name: skill_name,
+                    kind: InvocableKind::Skill,
+                    description,
+                });
+            }
+        }
+    }
+
+    results
 }
 
 /// Build the qualified and bare lookup maps from a list of InvocableInfo entries.
@@ -971,5 +1036,149 @@ mod tests {
         assert_eq!(InvocableKind::Agent.to_string(), "agent");
         assert_eq!(InvocableKind::McpTool.to_string(), "mcp_tool");
         assert_eq!(InvocableKind::BuiltinTool.to_string(), "builtin_tool");
+    }
+
+    // -----------------------------------------------------------------------
+    // User-level custom skills
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_user_level_skills_registered() {
+        let tmp = TempDir::new().unwrap();
+        let claude_dir = tmp.path();
+
+        // Create user-level skill: {claude_dir}/skills/prove-it/SKILL.md
+        let skill_dir = claude_dir.join("skills/prove-it");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Prove It\nAudit proposed fixes.").unwrap();
+
+        // Create another user-level skill
+        let skill_dir2 = claude_dir.join("skills/shippable");
+        fs::create_dir_all(&skill_dir2).unwrap();
+        fs::write(skill_dir2.join("SKILL.md"), "# Shippable\nPost-implementation audit.").unwrap();
+
+        let registry = build_registry(claude_dir).await;
+
+        // User skills should be found by qualified name
+        let prove_it = registry.lookup("user:prove-it");
+        assert!(prove_it.is_some(), "User skill 'user:prove-it' not found");
+        assert_eq!(prove_it.unwrap().kind, InvocableKind::Skill);
+        assert_eq!(prove_it.unwrap().name, "prove-it");
+        assert!(prove_it.unwrap().plugin_name.is_none(), "User skills should have no plugin_name");
+        assert_eq!(prove_it.unwrap().description, "Audit proposed fixes.");
+
+        // User skills should also be found by bare name
+        let bare = registry.lookup("prove-it");
+        assert!(bare.is_some(), "Bare name 'prove-it' not found");
+        assert_eq!(bare.unwrap().id, "user:prove-it");
+
+        // Second skill should also be present
+        let shippable = registry.lookup("user:shippable");
+        assert!(shippable.is_some(), "User skill 'user:shippable' not found");
+
+        // Total: 2 user skills + builtins
+        assert_eq!(registry.len(), 2 + num_builtins());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_skills_take_precedence_over_user_skills() {
+        let tmp = TempDir::new().unwrap();
+        let claude_dir = tmp.path();
+
+        // Create a plugin skill named "brainstorming"
+        let install_path = claude_dir.join("plugins/cache/superpowers/1.0.0");
+        fs::create_dir_all(&install_path).unwrap();
+        fs::write(
+            install_path.join("plugin.json"),
+            r#"{"name": "superpowers", "description": "test"}"#,
+        ).unwrap();
+        let plugin_skill = install_path.join("brainstorming");
+        fs::create_dir_all(&plugin_skill).unwrap();
+        fs::write(plugin_skill.join("SKILL.md"), "# Brainstorming\nFrom plugin.").unwrap();
+
+        let plugins_dir = claude_dir.join("plugins");
+        fs::write(
+            plugins_dir.join("installed_plugins.json"),
+            serde_json::json!({
+                "version": 2,
+                "plugins": {
+                    "superpowers@marketplace": [{
+                        "scope": "user",
+                        "installPath": install_path.to_str().unwrap(),
+                        "version": "1.0.0",
+                        "installedAt": "2026-01-01T00:00:00Z"
+                    }]
+                }
+            }).to_string(),
+        ).unwrap();
+
+        // Also create a user-level skill with the SAME bare name "brainstorming"
+        let user_skill = claude_dir.join("skills/brainstorming");
+        fs::create_dir_all(&user_skill).unwrap();
+        fs::write(user_skill.join("SKILL.md"), "# Brainstorming\nFrom user.").unwrap();
+
+        let registry = build_registry(claude_dir).await;
+
+        // Plugin skill should exist under its qualified name
+        let plugin = registry.lookup("superpowers:brainstorming");
+        assert!(plugin.is_some());
+        assert_eq!(plugin.unwrap().description, "From plugin.");
+
+        // User skill should exist under its qualified name (different ID)
+        let user = registry.lookup("user:brainstorming");
+        assert!(user.is_some());
+        assert_eq!(user.unwrap().description, "From user.");
+
+        // Bare name lookup should return plugin (registered first)
+        let bare = registry.lookup("brainstorming");
+        assert!(bare.is_some());
+        assert_eq!(bare.unwrap().id, "superpowers:brainstorming",
+            "Plugin skill should win bare-name lookup (registered first)");
+    }
+
+    #[tokio::test]
+    async fn test_no_user_skills_dir_no_crash() {
+        let tmp = TempDir::new().unwrap();
+        let claude_dir = tmp.path();
+        // Don't create {claude_dir}/skills/ at all
+
+        let registry = build_registry(claude_dir).await;
+
+        // Should still work, just no user skills
+        assert_eq!(registry.len(), num_builtins());
+        assert!(registry.lookup("user:anything").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_fingerprint_deterministic() {
+        let tmp = TempDir::new().unwrap();
+        let claude_dir = tmp.path();
+
+        let r1 = build_registry(claude_dir).await;
+        let r2 = build_registry(claude_dir).await;
+
+        assert_eq!(r1.fingerprint(), r2.fingerprint());
+        assert!(!r1.fingerprint().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fingerprint_changes_with_new_skill() {
+        let tmp = TempDir::new().unwrap();
+        let claude_dir = tmp.path();
+
+        let before = build_registry(claude_dir).await;
+
+        // Add a user skill
+        let skill_dir = claude_dir.join("skills/my-new-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-new-skill\ndescription: test\n---\nHello",
+        )
+        .unwrap();
+
+        let after = build_registry(claude_dir).await;
+
+        assert_ne!(before.fingerprint(), after.fingerprint());
     }
 }
