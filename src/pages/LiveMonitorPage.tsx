@@ -16,7 +16,7 @@ import { TerminalOverlay } from '../components/live/TerminalOverlay'
 import { sessionTotalCost, type LiveSummary, type LiveSession, type UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
-import { formatTokenCount } from '../lib/format-utils'
+import { formatTokenCount, formatCostUsd } from '../lib/format-utils'
 import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { useLiveCommandStore } from '../store/live-command-context'
@@ -362,7 +362,7 @@ function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
       )}
       <div className="ml-auto flex gap-4">
         <span className="text-gray-600 dark:text-gray-300 font-mono tabular-nums">
-          ${summary.totalCostTodayUsd.toFixed(2)}
+          {formatCostUsd(summary.totalCostTodayUsd)}
           <span className="text-gray-400 dark:text-gray-500 font-sans ml-1">today</span>
         </span>
         <span className="text-gray-600 dark:text-gray-300 font-mono tabular-nums">

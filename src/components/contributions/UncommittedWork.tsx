@@ -1,5 +1,6 @@
 import { AlertTriangle, RefreshCw, ExternalLink, X, Clock, FileCode2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { formatNumber } from '../../lib/format-utils'
 import type { UncommittedWork as UncommittedWorkType } from '../../types/generated'
 
 interface UncommittedWorkSectionProps {
@@ -201,11 +202,3 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(diff / 604800)}w ago`
 }
 
-/**
- * Format large numbers with K/M suffixes.
- */
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString()
-}
