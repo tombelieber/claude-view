@@ -624,8 +624,10 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     context: None,
                 }
             } else {
+                // Tool failures are transient — agent usually retries immediately.
+                // Keep as autonomous to avoid false-positive notification dings.
                 AgentState {
-                    group: AgentStateGroup::NeedsYou,
+                    group: AgentStateGroup::Autonomous,
                     state: "error".into(),
                     label: format!("Failed: {}", payload.tool_name.as_deref().unwrap_or("tool")),
                     context: payload
@@ -708,7 +710,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             context: None,
         },
         "TaskCompleted" => AgentState {
-            group: AgentStateGroup::NeedsYou,
+            group: AgentStateGroup::Autonomous,
             state: "task_complete".into(),
             label: payload
                 .task_subject
@@ -985,7 +987,8 @@ mod tests {
         payload.tool_name = Some("Bash".into());
         let state = resolve_state_from_hook(&payload);
         assert_eq!(state.state, "error");
-        assert!(matches!(state.group, AgentStateGroup::NeedsYou));
+        // Transient failures stay autonomous — agent usually retries
+        assert!(matches!(state.group, AgentStateGroup::Autonomous));
         assert!(state.label.contains("Bash"));
     }
 
@@ -1083,7 +1086,8 @@ mod tests {
         payload.task_subject = Some("Fix login bug".into());
         let state = resolve_state_from_hook(&payload);
         assert_eq!(state.state, "task_complete");
-        assert!(matches!(state.group, AgentStateGroup::NeedsYou));
+        // Subagent task completion is autonomous — main agent keeps working
+        assert!(matches!(state.group, AgentStateGroup::Autonomous));
         assert!(state.label.contains("Fix login bug"));
     }
 
@@ -1264,8 +1268,7 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::OK);
 
-        // Verify: hook event should record "autonomous" (actual session group),
-        // NOT "needs_you" (what resolve_state_from_hook returns for TaskCompleted)
+        // Verify: hook event should record "autonomous" (actual session group)
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
         assert_eq!(session.hook_events.len(), 1);
@@ -1274,8 +1277,7 @@ mod tests {
         assert_eq!(event.label, "Fix login bug"); // label still from resolved state
         assert_eq!(
             event.group, "autonomous",
-            "TaskCompleted hook event should record the session's actual group (autonomous), \
-             not the resolved group (needs_you)"
+            "TaskCompleted hook event should record the session's actual group (autonomous)"
         );
         // Also verify session.agent_state was NOT changed
         assert!(matches!(

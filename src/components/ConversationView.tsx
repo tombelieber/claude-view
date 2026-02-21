@@ -565,6 +565,7 @@ export function ConversationView() {
                           indent={thread?.indent ?? 0}
                           isChildMessage={thread?.isChild ?? false}
                           onGetThreadChain={getThreadChainForUuid}
+                          showThinking={false}
                         />
                       </ErrorBoundary>
                     </div>

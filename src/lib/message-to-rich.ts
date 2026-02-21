@@ -1,6 +1,8 @@
 // src/lib/message-to-rich.ts
 import type { Message } from '../types/generated'
 import type { RichMessage } from '../components/live/RichPane'
+import type { ActionCategory } from '../components/live/action-log/types'
+import { categorizeTool } from './categorize-tool'
 
 /** Strip Claude Code internal command tags from content (same logic as RichPane). */
 function stripCommandTags(content: string): string {
@@ -33,17 +35,18 @@ function tryParseJson(str: string): unknown | undefined {
 /**
  * Convert paginated Message[] (from JSONL parser) to RichMessage[] (for RichPane).
  *
- * Mapping:
+ * Mapping (lossless — all 7 JSONL types emitted):
  * - user → user
  * - assistant → thinking (if has thinking) + assistant (if has content)
  * - tool_use → tool_use (extract tool name from tool_calls[0])
  * - tool_result → tool_result
- * - system → assistant (rendered as info)
- * - progress → skipped
- * - summary → skipped
+ * - system → system (with metadata)
+ * - progress → progress (with metadata)
+ * - summary → summary (with metadata)
  */
 export function messagesToRichMessages(messages: Message[]): RichMessage[] {
   const result: RichMessage[] = []
+  let lastToolCategory: ActionCategory | undefined
 
   for (const msg of messages) {
     const ts = parseTimestamp(msg.timestamp)
@@ -87,11 +90,14 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
             input: inputStr || undefined,
             inputData: inputStr ? tryParseJson(inputStr) : undefined,
             ts,
+            category: 'builtin',
           })
+          lastToolCategory = 'builtin'
         } else {
           for (const tc of toolCalls) {
             const inputData = tc.input ?? undefined
             const inputStr = inputData ? JSON.stringify(inputData, null, 2) : undefined
+            const category = categorizeTool(tc.name)
             result.push({
               type: 'tool_use',
               content: '',
@@ -99,7 +105,9 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
               input: inputStr,
               inputData,
               ts,
+              category,
             })
+            lastToolCategory = category
           }
         }
         break
@@ -108,21 +116,43 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       case 'tool_result': {
         const content = stripCommandTags(msg.content)
         if (content) {
-          result.push({ type: 'tool_result', content, ts })
+          result.push({ type: 'tool_result', content, ts, category: lastToolCategory })
         }
         break
       }
 
       case 'system': {
-        // Render system messages as assistant info
         const content = stripCommandTags(msg.content)
-        if (content) {
-          result.push({ type: 'assistant', content, ts })
-        }
+        result.push({
+          type: 'system',
+          content: content || '',
+          ts,
+          metadata: msg.metadata ?? undefined,
+        })
         break
       }
 
-      // progress, summary → skip (not useful in replay)
+      case 'progress': {
+        const content = stripCommandTags(msg.content)
+        result.push({
+          type: 'progress',
+          content: content || '',
+          ts,
+          metadata: msg.metadata ?? undefined,
+        })
+        break
+      }
+
+      case 'summary': {
+        result.push({
+          type: 'summary',
+          content: msg.content || '',
+          ts,
+          metadata: msg.metadata ?? undefined,
+        })
+        break
+      }
+
       default:
         break
     }

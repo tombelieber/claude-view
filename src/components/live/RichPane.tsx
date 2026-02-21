@@ -11,6 +11,8 @@ import {
   Brain,
   AlertTriangle,
   ArrowDown,
+  Zap,
+  BookOpen,
 } from 'lucide-react'
 import { ExpandProvider } from '../../contexts/ExpandContext'
 import { CompactCodeBlock } from './CompactCodeBlock'
@@ -19,17 +21,39 @@ import { JsonTree } from './JsonTree'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { toolRendererRegistry } from './ToolRenderers'
 import { useMonitorStore } from '../../store/monitor-store'
+import { categorizeTool } from '../../lib/categorize-tool'
+import type { ActionCategory } from './action-log/types'
+import { ActionFilterChips } from './action-log/ActionFilterChips'
 import { cn } from '../../lib/utils'
+// System event cards (reused from MessageTyped)
+import { TurnDurationCard } from '../TurnDurationCard'
+import { ApiErrorCard } from '../ApiErrorCard'
+import { CompactBoundaryCard } from '../CompactBoundaryCard'
+import { HookSummaryCard } from '../HookSummaryCard'
+import { LocalCommandEventCard } from '../LocalCommandEventCard'
+import { MessageQueueEventCard } from '../MessageQueueEventCard'
+import { FileSnapshotCard } from '../FileSnapshotCard'
+// Progress event cards
+import { AgentProgressCard } from '../AgentProgressCard'
+import { BashProgressCard } from '../BashProgressCard'
+import { HookProgressCard } from '../HookProgressCard'
+import { McpProgressCard } from '../McpProgressCard'
+import { TaskQueueCard } from '../TaskQueueCard'
+// Summary card
+import { SessionSummaryCard } from '../SessionSummaryCard'
 
 // --- Types ---
 
 export interface RichMessage {
   type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | 'error' | 'hook'
+      | 'system' | 'progress' | 'summary'
   content: string
   name?: string // tool name for tool_use
   input?: string // tool input summary for tool_use
   inputData?: unknown // raw parsed object for tool_use (avoids re-parsing)
   ts?: number // timestamp
+  category?: ActionCategory // set for tool_use, tool_result, hook, error
+  metadata?: Record<string, any> // system/progress/summary subtype data
 }
 
 export interface RichPaneProps {
@@ -95,6 +119,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         input: msg.input ? JSON.stringify(msg.input, null, 2) : undefined,
         inputData: msg.input ?? undefined,
         ts: parseTimestamp(msg.ts),
+        category: categorizeTool(msg.name),
       }
     }
     if (msg.type === 'tool_result') {
@@ -119,6 +144,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: 'error',
         content: typeof msg.message === 'string' ? msg.message : JSON.stringify(msg, null, 2),
+        category: 'error' as const,
       }
     }
     if (msg.type === 'line') {
@@ -604,6 +630,122 @@ function Timestamp({ ts }: { ts?: number }) {
   )
 }
 
+// --- System / Progress / Summary card dispatchers ---
+
+function SystemMessageCard({ message }: { message: RichMessage }) {
+  const m = message.metadata
+  const subtype = m?.type ?? m?.subtype
+
+  const card = (() => {
+    switch (subtype) {
+      case 'turn_duration':
+        return <TurnDurationCard durationMs={m.durationMs} startTime={m.startTime} endTime={m.endTime} />
+      case 'api_error':
+        return <ApiErrorCard error={m.error} retryAttempt={m.retryAttempt} maxRetries={m.maxRetries} retryInMs={m.retryInMs} />
+      case 'compact_boundary':
+        return <CompactBoundaryCard trigger={m.trigger} preTokens={m.preTokens} postTokens={m.postTokens} />
+      case 'hook_summary':
+        return <HookSummaryCard hookCount={m.hookCount} hookInfos={m.hookInfos} hookErrors={m.hookErrors} durationMs={m.durationMs} preventedContinuation={m.preventedContinuation} />
+      case 'local_command':
+        return <LocalCommandEventCard content={m.content ?? message.content} />
+      case 'queue-operation':
+        return <MessageQueueEventCard operation={m.operation} timestamp={m.timestamp || ''} content={m.content} />
+      case 'file-history-snapshot': {
+        const snapshot = m.snapshot || {}
+        const files = Object.keys(snapshot.trackedFileBackups || {})
+        return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={m.isSnapshotUpdate || false} />
+      }
+      default:
+        return null
+    }
+  })()
+
+  return (
+    <div className="border-l-2 border-amber-500/30 dark:border-amber-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <AlertTriangle className="w-3 h-3 text-amber-500/60 dark:text-amber-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">system</span>
+        {subtype && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
+        )}
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      {card ? (
+        <div className="mt-0.5 ml-5">{card}</div>
+      ) : message.content ? (
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+      ) : m ? (
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+      ) : null}
+    </div>
+  )
+}
+
+function ProgressMessageCard({ message }: { message: RichMessage }) {
+  const m = message.metadata
+  const subtype = m?.type
+
+  const card = (() => {
+    switch (subtype) {
+      case 'agent_progress':
+        return <AgentProgressCard agentId={m.agentId} prompt={m.prompt} model={m.model} tokens={m.tokens} normalizedMessages={m.normalizedMessages} indent={m.indent} />
+      case 'bash_progress':
+        return <BashProgressCard command={m.command} output={m.output} exitCode={m.exitCode} duration={m.duration} />
+      case 'hook_progress':
+        return <HookProgressCard hookEvent={m.hookEvent} hookName={m.hookName} command={m.command} output={m.output} />
+      case 'mcp_progress':
+        return <McpProgressCard server={m.server} method={m.method} params={m.params} result={m.result} />
+      case 'waiting_for_task':
+        return <TaskQueueCard waitDuration={m.waitDuration} position={m.position} queueLength={m.queueLength} />
+      default:
+        return null
+    }
+  })()
+
+  return (
+    <div className="border-l-2 border-indigo-500/30 dark:border-indigo-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <Zap className="w-3 h-3 text-indigo-500/60 dark:text-indigo-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400">progress</span>
+        {subtype && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
+        )}
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      {card ? (
+        <div className="mt-0.5 ml-5">{card}</div>
+      ) : message.content ? (
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+      ) : m ? (
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+      ) : null}
+    </div>
+  )
+}
+
+function SummaryMessageCard({ message }: { message: RichMessage }) {
+  const m = message.metadata
+  const summary = m?.summary || message.content
+  const leafUuid = m?.leafUuid || ''
+  const wordCount = (summary || '').split(/\s+/).filter(Boolean).length
+
+  return (
+    <div className="border-l-2 border-rose-500/30 dark:border-rose-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <BookOpen className="w-3 h-3 text-rose-500/60 dark:text-rose-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400">summary</span>
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      <div className="mt-0.5 ml-5">
+        <SessionSummaryCard summary={summary} leafUuid={leafUuid} wordCount={wordCount} />
+      </div>
+    </div>
+  )
+}
+
 // --- Message renderer dispatch ---
 
 function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
@@ -622,6 +764,12 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
       return <ErrorMessage message={message} index={index} />
     case 'hook':
       return <HookMessage message={message} />
+    case 'system':
+      return <SystemMessageCard message={message} />
+    case 'progress':
+      return <ProgressMessageCard message={message} />
+    case 'summary':
+      return <SummaryMessageCard message={message} />
     default:
       return null
   }
@@ -630,21 +778,46 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
 // --- Main Component ---
 
 export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false }: RichPaneProps) {
-  const displayMessages = useMemo(() => {
-    if (verboseMode) return messages
-    return messages.filter((m) => {
-      if (m.type === 'user' || m.type === 'error') return true
-      if (m.type === 'assistant') {
-        // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
-        const t = m.content.trim()
-        if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
-        return true
+  const verboseFilter = useMonitorStore((s) => s.verboseFilter)
+  const setVerboseFilter = useMonitorStore((s) => s.setVerboseFilter)
+
+  // Count filterable categories (only in verbose mode, only filterable types)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, hook: 0, error: 0 }
+    if (!verboseMode) return counts
+    for (const m of messages) {
+      if (m.category) {
+        counts[m.category] = (counts[m.category] || 0) + 1
       }
-      // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
-      if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
-      return false
-    })
+    }
+    return counts
   }, [messages, verboseMode])
+
+  const displayMessages = useMemo(() => {
+    if (!verboseMode) {
+      return messages.filter((m) => {
+        if (m.type === 'user' || m.type === 'error') return true
+        if (m.type === 'assistant') {
+          // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
+          const t = m.content.trim()
+          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
+          return true
+        }
+        // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
+        if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
+        return false
+      })
+    }
+    // Verbose mode: apply category filter
+    if (verboseFilter === 'all') return messages
+    return messages.filter((m) => {
+      // Always show conversation backbone + structural types
+      if (m.type === 'user' || m.type === 'assistant' || m.type === 'thinking') return true
+      if (m.type === 'system' || m.type === 'progress' || m.type === 'summary') return true
+      // Filter by category
+      return m.category === verboseFilter
+    })
+  }, [messages, verboseMode, verboseFilter])
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -721,7 +894,14 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   return (
     <ExpandProvider>
-      <div className="relative h-full w-full">
+      <div className="relative h-full w-full flex flex-col">
+        {verboseMode && (
+          <ActionFilterChips
+            counts={categoryCounts}
+            activeFilter={verboseFilter}
+            onFilterChange={setVerboseFilter as (filter: ActionCategory | 'all') => void}
+          />
+        )}
         <Virtuoso
           ref={virtuosoRef}
           data={displayMessages}
@@ -735,7 +915,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
               <MessageCard message={message} index={index} verboseMode={verboseMode} />
             </div>
           )}
-          className="h-full"
+          className="h-full flex-1 min-h-0"
         />
 
         {/* "New messages" floating pill — click to scroll to latest */}

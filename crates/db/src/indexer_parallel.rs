@@ -1727,15 +1727,17 @@ fn extract_first_text_content(
     content_finder: &memmem::Finder,
     text_finder: &memmem::Finder,
 ) -> Option<String> {
-    // Look for "content":"..." pattern (simple string content)
-    if let Some(pos) = content_finder.find(line) {
-        let start = pos + b"\"content\":\"".len();
+    // Check "text":"..." first — more specific to actual text content blocks.
+    // "content":"..." can match tool input fields (e.g. Write tool's file content),
+    // so it should only be used as a fallback.
+    if let Some(pos) = text_finder.find(line) {
+        let start = pos + b"\"text\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
 
-    // or "text":"..." in content blocks
-    if let Some(pos) = text_finder.find(line) {
-        let start = pos + b"\"text\":\"".len();
+    // Fall back to "content":"..." (simple string content, e.g. user messages)
+    if let Some(pos) = content_finder.find(line) {
+        let start = pos + b"\"content\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
 

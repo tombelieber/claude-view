@@ -61,6 +61,8 @@ interface MessageTypedProps {
   isChildMessage?: boolean
   /** Callback to get the full thread chain for highlighting */
   onGetThreadChain?: (uuid: string) => Set<string>
+  /** Whether to show thinking blocks. Default true. */
+  showThinking?: boolean
 }
 
 const TYPE_CONFIG = {
@@ -261,6 +263,7 @@ export function MessageTyped({
   indent = 0,
   isChildMessage = false,
   onGetThreadChain,
+  showThinking = true,
 }: MessageTypedProps) {
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
@@ -367,7 +370,7 @@ export function MessageTyped({
         {/* Content */}
         <div className="pl-11 space-y-3">
           {/* Thinking block */}
-          {message.thinking && (
+          {showThinking && message.thinking && (
             <ThinkingBlock thinking={message.thinking} />
           )}
 
