@@ -601,6 +601,10 @@ CREATE TABLE IF NOT EXISTS reports (
     // System/classification queries that intentionally count ALL sessions
     // should continue using the `sessions` table directly.
     r#"CREATE VIEW IF NOT EXISTS valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0;"#,
+    // Migration 27: costUSD parity — accumulate per-entry costUSD from JSONL
+    // REAL with no NOT NULL DEFAULT: NULL = "not yet parsed with costUSD support",
+    // distinguishable from 0.0 (parsed but zero cost).
+    r#"ALTER TABLE sessions ADD COLUMN total_cost_usd REAL;"#,
 ];
 
 // ============================================================================
