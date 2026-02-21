@@ -245,7 +245,7 @@ pub fn parse_tail(
 /// {"type": "user", "message": {"role": "user", "content": "..."}, "gitBranch": "...", "isMeta": true}
 /// ```
 /// We check both the top level and the nested `message` object for each field.
-fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
+pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // Fast classification via SIMD substring search (avoids JSON parse for
     // lines that don't contain the keys we care about).
     // Check result/progress/summary BEFORE user/assistant because these lines
