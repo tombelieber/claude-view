@@ -78,7 +78,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar projects={summaries ?? []} collapsed={sidebarCollapsed} />
 
-        <main id="main" className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
+        <main id="main" className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
           <Outlet context={{ summaries: summaries ?? [], liveSessions }} />
         </main>
       </div>
