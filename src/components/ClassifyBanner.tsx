@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Sparkles, X, Loader2, FlaskConical } from 'lucide-react'
 import { useClassification } from '../hooks/use-classification'
+import { formatCostUsd } from '../lib/format-utils'
 
 const CLASSIFY_COUNT_KEY = 'classify-single-count'
 const BANNER_DISMISSED_KEY = 'classify-banner-dismissed'
@@ -52,7 +53,7 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
 
   const costDisplay = estimatedCostCents < 1
     ? '<$0.01'
-    : `~$${(estimatedCostCents / 100).toFixed(2)}`
+    : `~${formatCostUsd(estimatedCostCents / 100)}`
 
   const handleClassifyAll = async () => {
     setIsStarting(true)

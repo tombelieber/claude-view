@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Loader2, Sparkles, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { formatCostUsd } from '../../lib/format-utils'
 import { useReportPreview } from '../../hooks/use-report-preview'
 import { useReportGenerate } from '../../hooks/use-report-generate'
 import { ReportContent } from './ReportContent'
@@ -26,16 +26,14 @@ function formatDuration(secs: number): string {
 }
 
 function formatCost(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`
+  return formatCostUsd(cents / 100)
 }
 
 export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, suggested, existingReport }: ReportCardProps) {
   const { data: preview, isLoading: previewLoading } = useReportPreview(startTs, endTs)
   const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, error, reset } = useReportGenerate()
-  const [showExisting, setShowExisting] = useState(!!existingReport)
 
   const handleGenerate = () => {
-    setShowExisting(false)
     generate({ reportType: type, dateStart, dateEnd, startTs, endTs })
   }
 
@@ -98,8 +96,31 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
     )
   }
 
-  // Showing existing report
-  if (showExisting && existingReport) {
+  // ERROR state (must precede EXISTING check — errors from regeneration
+  // would otherwise be hidden behind the existing report)
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-900 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{dateLabel}</p>
+          </div>
+        </div>
+        <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
+    )
+  }
+
+  // Showing existing report (derived — no stale state)
+  if (existingReport) {
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
         <div className="flex items-center justify-between mb-3">
@@ -121,28 +142,6 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
           contextDigestJson={existingReport.contextDigest ?? null}
           totalCostCents={existingReport.totalCostCents}
         />
-      </div>
-    )
-  }
-
-  // ERROR state
-  if (error) {
-    return (
-      <div className="rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-900 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{dateLabel}</p>
-          </div>
-        </div>
-        <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-        >
-          Try Again
-        </button>
       </div>
     )
   }
