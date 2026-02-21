@@ -565,6 +565,34 @@ impl LiveSessionManager {
                                 drop(accumulators);
                             }
 
+                            // Override snapshot agent_state with JSONL ground truth.
+                            // The snapshot may be stale if the Stop hook fired while
+                            // the server was down. The JSONL file is authoritative.
+                            if let Some(derived) = derive_agent_state_from_jsonl(path).await {
+                                if derived.group != session.agent_state.group
+                                    || derived.state != session.agent_state.state
+                                {
+                                    info!(
+                                        session_id = %session_id,
+                                        snapshot = %session.agent_state.state,
+                                        derived = %derived.state,
+                                        "JSONL ground truth overrides snapshot agent_state"
+                                    );
+                                }
+                                session.status = status_from_agent_state(&derived);
+                                session.current_activity = derived.label.clone();
+                                session.agent_state = derived;
+                            } else {
+                                // No meaningful JSONL lines — safe default to idle
+                                session.agent_state = AgentState {
+                                    group: AgentStateGroup::NeedsYou,
+                                    state: "idle".into(),
+                                    label: "Waiting for your next prompt".into(),
+                                    context: None,
+                                };
+                                session.status = SessionStatus::Paused;
+                            }
+
                             manager
                                 .sessions
                                 .write()
