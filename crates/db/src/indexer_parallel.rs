@@ -26,7 +26,8 @@ use crate::Database;
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
 /// Version 7: Search index uses project_display_name instead of encoded project_id.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
-pub const CURRENT_PARSE_VERSION: i32 = 8;
+/// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
+pub const CURRENT_PARSE_VERSION: i32 = 9;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
