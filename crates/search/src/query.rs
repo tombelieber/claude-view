@@ -153,6 +153,114 @@ impl SearchIndex {
     ) -> Result<SearchResponse, SearchError> {
         let start = Instant::now();
 
+        // Fast path: if the query is a bare UUID, do an exact session_id lookup
+        let trimmed_query = query_str.trim();
+        if is_session_id(trimmed_query) {
+            let session_id = trimmed_query.to_lowercase();
+            let term = Term::from_field_text(self.session_id_field, &session_id);
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            let searcher = self.reader.searcher();
+            let top_docs = searcher.search(&term_query, &TopDocs::with_limit(1000))?;
+
+            if top_docs.is_empty() {
+                return Ok(SearchResponse {
+                    query: query_str.to_string(),
+                    total_sessions: 0,
+                    total_matches: 0,
+                    elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    sessions: vec![],
+                });
+            }
+
+            // Build matches from all docs in this session
+            let mut matches = Vec::with_capacity(top_docs.len());
+            let mut project = String::new();
+            let mut branch = String::new();
+            let mut latest_timestamp: i64 = 0;
+
+            for (_score, doc_addr) in &top_docs {
+                let retrieved: TantivyDocument = searcher.doc(*doc_addr)?;
+
+                let role = retrieved
+                    .get_first(self.role_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let turn_number = retrieved
+                    .get_first(self.turn_number_field)
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let timestamp = retrieved
+                    .get_first(self.timestamp_field)
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let snippet = retrieved
+                    .get_first(self.content_field)
+                    .and_then(|v| v.as_str())
+                    .map(|s| truncate_utf8(s, 200))
+                    .unwrap_or_default();
+
+                if timestamp > latest_timestamp {
+                    latest_timestamp = timestamp;
+                }
+                if project.is_empty() {
+                    project = retrieved
+                        .get_first(self.project_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    branch = retrieved
+                        .get_first(self.branch_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                }
+
+                matches.push(MatchHit {
+                    role,
+                    turn_number,
+                    snippet,
+                    timestamp,
+                });
+            }
+
+            // Sort by turn number ascending for session ID lookups
+            matches.sort_by_key(|m| m.turn_number);
+
+            let top_match = matches.first().cloned().unwrap_or(MatchHit {
+                role: String::new(),
+                turn_number: 0,
+                snippet: String::new(),
+                timestamp: 0,
+            });
+
+            let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+            debug!(
+                query = query_str,
+                session_id = session_id,
+                matches = matches.len(),
+                elapsed_ms = elapsed_ms,
+                "session ID lookup completed"
+            );
+
+            return Ok(SearchResponse {
+                query: query_str.to_string(),
+                total_sessions: 1,
+                total_matches: matches.len(),
+                elapsed_ms,
+                sessions: vec![SessionHit {
+                    session_id,
+                    project,
+                    branch: if branch.is_empty() { None } else { Some(branch) },
+                    modified_at: latest_timestamp,
+                    match_count: matches.len(),
+                    best_score: 1.0,
+                    top_match,
+                    matches,
+                }],
+            });
+        }
+
         let (text_query, mut qualifiers) = parse_query_string(query_str);
 
         // Add scope as a qualifier if provided
@@ -525,5 +633,15 @@ mod tests {
     #[test]
     fn test_is_session_id_empty() {
         assert!(!is_session_id(""));
+    }
+
+    #[test]
+    fn test_parse_query_session_id_detected() {
+        // Verify that is_session_id is true for a UUID query
+        assert!(is_session_id("136ed96f-913d-4a1a-91a9-5e651469b2a0"));
+        // And that normal text is not
+        let (text, quals) = parse_query_string("136ed96f-913d-4a1a-91a9-5e651469b2a0");
+        assert_eq!(text, "136ed96f-913d-4a1a-91a9-5e651469b2a0");
+        assert!(quals.is_empty());
     }
 }
