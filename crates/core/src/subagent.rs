@@ -21,7 +21,7 @@ pub struct SubAgentInfo {
     /// the tool_result that signals completion.
     pub tool_use_id: String,
 
-    /// 7-character short hash agent identifier from `toolUseResult.agentId`.
+    /// Agent identifier from `toolUseResult.agentId` (variable length hex string).
     /// Matches the `agent-{id}.jsonl` filename in the subagents directory.
     /// None while status is Running (only available on completion).
     #[serde(default, skip_serializing_if = "Option::is_none")]

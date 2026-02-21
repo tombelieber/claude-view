@@ -141,6 +141,7 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
           isStalled={stalledSessions?.has(session.id)}
           agentStateGroup={session.agentState.group}
           agentStateLabel={session.agentState.label}
+          agentStateKey={session.agentState.state}
           spinnerVerb={pickVerb(session.id)}
           lastCacheHitAt={session.lastCacheHitAt}
           lastTurnTaskSeconds={session.lastTurnTaskSeconds}
@@ -180,6 +181,7 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
         tokens={session.tokens}
         turnCount={session.turnCount}
         agentLabel={session.agentState.label}
+        agentStateKey={session.agentState.state}
       />
 
       {/* Footer: turns */}

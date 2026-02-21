@@ -252,78 +252,67 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         </div>
       )}
 
-      {/* Metrics row: prompts, tokens, files, re-edits */}
-      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
-        {prompts > 0 && (
-          <>
-            <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {hasTokens && (
-          <>
-            <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {filesEdited > 0 && (
-          <>
-            <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {reeditedFiles > 0 && (
-          <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
-        )}
-        {longestTaskSeconds > 0 && (
-          <>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-            <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
-          </>
-        )}
-        {/* Fallback to legacy display if no new metrics */}
-        {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
-          <div className="flex items-center gap-2 text-gray-400">
-            {editCount > 0 && (
-              <span className="flex items-center gap-0.5" title="Edits">
-                <Pencil className="w-3 h-3" />
-                {editCount}
-              </span>
-            )}
-            {toolCounts.bash > 0 && (
-              <span className="flex items-center gap-0.5" title="Bash commands">
-                <Terminal className="w-3 h-3" />
-                {toolCounts.bash}
-              </span>
-            )}
-            {toolCounts.read > 0 && (
-              <span className="flex items-center gap-0.5" title="File reads">
-                <Eye className="w-3 h-3" />
-                {toolCounts.read}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* LOC Impact */}
-      {(session.linesAdded > 0 || session.linesRemoved > 0) && (
-        <div className="flex items-center gap-2 mt-2 text-xs">
-          {session.locSource === 2 && (
-            <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+      {/* Metrics box */}
+      {(prompts > 0 || hasTokens || filesEdited > 0 || totalTools > 0) && (
+        <div className="mt-2.5 rounded-md bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+          {/* Row 1: Usage — prompts, tokens, longest task */}
+          {(prompts > 0 || hasTokens || longestTaskSeconds > 0) && (
+            <div className="flex items-center gap-3">
+              {prompts > 0 && (
+                <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
+              )}
+              {hasTokens && (
+                <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
+              )}
+              {longestTaskSeconds > 0 && (
+                <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
+              )}
+            </div>
           )}
-          <span className="text-green-600 dark:text-green-400">
-            +{formatNumber(session.linesAdded)}
-          </span>
-          <span className="text-gray-400">/</span>
-          <span className="text-red-600 dark:text-red-400">
-            -{formatNumber(session.linesRemoved)}
-          </span>
-        </div>
-      )}
-      {session.linesAdded === 0 && session.linesRemoved === 0 && session.locSource > 0 && (
-        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          ±0
+          {/* Row 2: Output — files, re-edits, LOC */}
+          {(filesEdited > 0 || reeditedFiles > 0 || session.linesAdded > 0 || session.linesRemoved > 0) && (
+            <div className="flex items-center gap-3 mt-1">
+              {filesEdited > 0 && (
+                <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
+              )}
+              {reeditedFiles > 0 && (
+                <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+              )}
+              {(session.linesAdded > 0 || session.linesRemoved > 0) && (
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  {session.locSource === 2 && (
+                    <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+                  )}
+                  <span className="text-green-600 dark:text-green-400">+{formatNumber(session.linesAdded)}</span>
+                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                  <span className="text-red-600 dark:text-red-400">-{formatNumber(session.linesRemoved)}</span>
+                </span>
+              )}
+            </div>
+          )}
+          {/* Legacy fallback for old sessions without new metrics */}
+          {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
+            <div className="flex items-center gap-3">
+              {editCount > 0 && (
+                <span className="flex items-center gap-1" title="Edits">
+                  <Pencil className="w-3 h-3" />
+                  <span className="tabular-nums">{editCount}</span>
+                </span>
+              )}
+              {toolCounts.bash > 0 && (
+                <span className="flex items-center gap-1" title="Bash commands">
+                  <Terminal className="w-3 h-3" />
+                  <span className="tabular-nums">{toolCounts.bash}</span>
+                </span>
+              )}
+              {toolCounts.read > 0 && (
+                <span className="flex items-center gap-1" title="File reads">
+                  <Eye className="w-3 h-3" />
+                  <span className="tabular-nums">{toolCounts.read}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

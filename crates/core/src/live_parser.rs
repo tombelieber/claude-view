@@ -31,7 +31,7 @@ pub struct SubAgentSpawn {
 pub struct SubAgentProgress {
     /// Links back to the Task spawn's `tool_use_id`.
     pub parent_tool_use_id: String,
-    /// 7-char agent ID (available before completion!).
+    /// Agent ID (available before completion!).
     pub agent_id: String,
     /// Current tool the sub-agent is using (e.g., "Read", "Grep", "Edit").
     /// Extracted from the latest `tool_use` block in `data.message.content`.
@@ -51,7 +51,7 @@ pub struct SubAgentNotification {
 #[derive(Debug, Clone)]
 pub struct SubAgentResult {
     pub tool_use_id: String,
-    /// 7-char short hash from `toolUseResult.agentId` (e.g., "a33bda6").
+    /// Alphanumeric agent ID from `toolUseResult.agentId`.
     pub agent_id: Option<String>,
     pub status: String,  // "completed", "error", etc.
     pub total_duration_ms: Option<u64>,

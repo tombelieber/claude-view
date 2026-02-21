@@ -137,10 +137,11 @@ async fn ws_subagent_terminal_handler(
     Path((session_id, agent_id)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // SECURITY: Validate agent_id is alphanumeric (prevents path traversal)
+    // SECURITY: Validate agent_id is alphanumeric (prevents path traversal).
+    // Claude Code agent IDs vary in length (7-char short hashes, 17+ char hex strings).
     if agent_id.is_empty()
         || !agent_id.chars().all(|c| c.is_ascii_alphanumeric())
-        || agent_id.len() > 16
+        || agent_id.len() > 64
     {
         return ws.on_upgrade(move |mut socket| async move {
             let err_msg = serde_json::json!({

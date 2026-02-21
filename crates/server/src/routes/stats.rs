@@ -556,9 +556,13 @@ pub async fn ai_generation_stats(
             }
         }
 
-        // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc
+        // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc.
+        // Filter out 0.0 — sessions re-indexed without costUSD in JSONL produce SUM = 0.0,
+        // which would hide the cost card. Fall back to token-based in that case.
         let token_based_total = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
-        cost.total_cost_usd = stats.total_cost_usd_from_jsonl.unwrap_or(token_based_total);
+        cost.total_cost_usd = stats.total_cost_usd_from_jsonl
+            .filter(|&v| v > 0.0)
+            .unwrap_or(token_based_total);
         stats.cost = cost;
     }
 
