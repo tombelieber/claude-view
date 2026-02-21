@@ -4624,4 +4624,21 @@ mod tests {
         // user_prompt_count: 2 user lines (one is tool_result, still counted)
         assert_eq!(result.deep.user_prompt_count, 2);
     }
+
+    #[test]
+    fn test_cost_usd_accumulation() {
+        // Entry 1: has costUSD
+        let line1 = r#"{"type":"assistant","costUSD":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
+        // Entry 2: has costUSD
+        let line2 = r#"{"type":"assistant","costUSD":0.03,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
+        // Entry 3: no costUSD (fallback should not crash)
+        let line3 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"No cost"}],"usage":{"input_tokens":500,"output_tokens":200}}}"#;
+
+        let input = format!("{}\n{}\n{}\n", line1, line2, line3);
+        let result = parse_bytes(input.as_bytes());
+
+        let cost = result.deep.total_cost_usd;
+        // 0.05 + 0.03 = 0.08 (third entry has no costUSD, contributes 0)
+        assert!((cost - 0.08).abs() < 0.0001, "Expected 0.08, got {cost}");
+    }
 }
