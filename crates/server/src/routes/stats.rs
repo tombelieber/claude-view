@@ -556,7 +556,9 @@ pub async fn ai_generation_stats(
             }
         }
 
-        cost.total_cost_usd = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
+        // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc
+        let token_based_total = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
+        cost.total_cost_usd = stats.total_cost_usd_from_jsonl.unwrap_or(token_based_total);
         stats.cost = cost;
     }
 
