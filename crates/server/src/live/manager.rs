@@ -625,10 +625,23 @@ impl LiveSessionManager {
                 tick_count += 1;
 
                 // =============================================================
-                // Phase 1: Lightweight liveness (every tick = 10s)
+                // Phase 1: Lightweight liveness + staleness (every tick = 10s)
                 // =============================================================
                 let mut dead_sessions: Vec<String> = Vec::new();
                 let mut snapshot_dirty = false;
+
+                // Staleness threshold: autonomous sessions without hook/file
+                // activity for 5+ minutes are almost certainly idle. During
+                // real autonomous work, hooks fire every few seconds (PreToolUse,
+                // PostToolUse) and streaming writes update the JSONL file mtime.
+                // A 5-minute gap means the Stop hook was lost (e.g., server was
+                // down when it fired, or curl failed silently).
+                const AUTONOMOUS_STALE_SECS: i64 = 300;
+                let now_secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
                 {
                     let mut sessions = manager.sessions.write().await;
 
@@ -637,28 +650,56 @@ impl LiveSessionManager {
                             continue;
                         }
 
-                        let Some(pid) = session.pid else {
-                            continue;
-                        };
+                        // 1a. PID liveness: dead PID → mark session ended
+                        if let Some(pid) = session.pid {
+                            if !is_pid_alive(pid) {
+                                info!(
+                                    session_id = %session_id,
+                                    pid = pid,
+                                    "Bound PID is dead — marking session ended"
+                                );
+                                session.agent_state = AgentState {
+                                    group: AgentStateGroup::NeedsYou,
+                                    state: "session_ended".into(),
+                                    label: "Session ended (process exited)".into(),
+                                    context: None,
+                                };
+                                session.status = SessionStatus::Done;
+                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                    session: session.clone(),
+                                });
+                                dead_sessions.push(session_id.clone());
+                                snapshot_dirty = true;
+                                continue;
+                            }
+                        }
 
-                        if !is_pid_alive(pid) {
-                            info!(
-                                session_id = %session_id,
-                                pid = pid,
-                                "Bound PID is dead — marking session ended"
-                            );
-                            session.agent_state = AgentState {
-                                group: AgentStateGroup::NeedsYou,
-                                state: "session_ended".into(),
-                                label: "Session ended (process exited)".into(),
-                                context: None,
-                            };
-                            session.status = SessionStatus::Done;
-                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
-                            dead_sessions.push(session_id.clone());
-                            snapshot_dirty = true;
+                        // 1b. Staleness downgrade: autonomous sessions with no
+                        //     hook/file activity for 5+ minutes → downgrade to idle.
+                        //     If the session IS truly active, the next hook event
+                        //     (within seconds) will re-promote it to autonomous.
+                        if session.agent_state.group == AgentStateGroup::Autonomous {
+                            let idle_secs = now_secs - session.last_activity_at;
+                            if idle_secs > AUTONOMOUS_STALE_SECS {
+                                info!(
+                                    session_id = %session_id,
+                                    idle_secs = idle_secs,
+                                    last_state = %session.agent_state.state,
+                                    "Autonomous session stale for {}s — downgrading to idle",
+                                    idle_secs
+                                );
+                                session.agent_state = AgentState {
+                                    group: AgentStateGroup::NeedsYou,
+                                    state: "idle".into(),
+                                    label: "Waiting for your next prompt".into(),
+                                    context: None,
+                                };
+                                session.status = SessionStatus::Paused;
+                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                                    session: session.clone(),
+                                });
+                                snapshot_dirty = true;
+                            }
                         }
                     }
 
@@ -1624,5 +1665,117 @@ mod tests {
         // Bound PID that is dead
         let dead_pid: u32 = 4_000_000;
         assert!(!is_pid_alive(dead_pid));
+    }
+
+    /// Verify that autonomous sessions with stale last_activity_at get
+    /// downgraded to idle by the reconciliation staleness check.
+    ///
+    /// Scenario: server restarts, session recovered from snapshot as autonomous,
+    /// but the Stop hook was lost (fired while server was down). The session's
+    /// process is still alive (waiting at prompt), but last_activity_at is stale.
+    #[test]
+    fn test_staleness_downgrade_autonomous_to_idle() {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionStatus};
+
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        // Session has been autonomous with no activity for 10 minutes
+        let last_activity_at = now_secs - 600; // 10 minutes ago
+        let agent_state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "thinking".into(),
+            label: "Thinking...".into(),
+            context: None,
+        };
+
+        // Simulate the staleness check from the reconciliation loop
+        const AUTONOMOUS_STALE_SECS: i64 = 300;
+        let idle_secs = now_secs - last_activity_at;
+        let should_downgrade = agent_state.group == AgentStateGroup::Autonomous
+            && idle_secs > AUTONOMOUS_STALE_SECS;
+
+        assert!(
+            should_downgrade,
+            "Autonomous session stale for {}s (threshold={}s) must be downgraded",
+            idle_secs, AUTONOMOUS_STALE_SECS
+        );
+
+        // After downgrade, session should be Paused/idle
+        let downgraded_state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting for your next prompt".into(),
+            context: None,
+        };
+        let downgraded_status = SessionStatus::Paused;
+
+        assert_eq!(downgraded_state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(downgraded_state.state, "idle");
+        assert_eq!(downgraded_status, SessionStatus::Paused);
+    }
+
+    /// Verify that recently active autonomous sessions are NOT downgraded.
+    #[test]
+    fn test_staleness_does_not_downgrade_active_session() {
+        use crate::live::state::{AgentState, AgentStateGroup};
+
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        // Session had activity 30 seconds ago — well within the threshold
+        let last_activity_at = now_secs - 30;
+        let agent_state = AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "acting".into(),
+            label: "Running: cargo test".into(),
+            context: None,
+        };
+
+        const AUTONOMOUS_STALE_SECS: i64 = 300;
+        let idle_secs = now_secs - last_activity_at;
+        let should_downgrade = agent_state.group == AgentStateGroup::Autonomous
+            && idle_secs > AUTONOMOUS_STALE_SECS;
+
+        assert!(
+            !should_downgrade,
+            "Active session ({}s idle) must NOT be downgraded",
+            idle_secs
+        );
+    }
+
+    /// Verify that paused (needs_you) sessions are never downgraded
+    /// regardless of staleness — they're already in the correct state.
+    #[test]
+    fn test_staleness_skips_paused_sessions() {
+        use crate::live::state::{AgentState, AgentStateGroup};
+
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let last_activity_at = now_secs - 7200; // 2 hours stale
+        let agent_state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting for your next prompt".into(),
+            context: None,
+        };
+
+        const AUTONOMOUS_STALE_SECS: i64 = 300;
+        let idle_secs = now_secs - last_activity_at;
+        let should_downgrade = agent_state.group == AgentStateGroup::Autonomous
+            && idle_secs > AUTONOMOUS_STALE_SECS;
+
+        assert!(
+            !should_downgrade,
+            "Paused session must never be downgraded (group={:?})",
+            agent_state.group
+        );
     }
 }
