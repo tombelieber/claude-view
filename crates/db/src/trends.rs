@@ -453,6 +453,24 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    /// Get the stored registry fingerprint (if any).
+    pub async fn get_registry_hash(&self) -> DbResult<Option<String>> {
+        let (hash,): (Option<String>,) =
+            sqlx::query_as("SELECT registry_hash FROM index_metadata WHERE id = 1")
+                .fetch_one(self.pool())
+                .await?;
+        Ok(hash)
+    }
+
+    /// Store the registry fingerprint after successful indexing.
+    pub async fn set_registry_hash(&self, hash: &str) -> DbResult<()> {
+        sqlx::query("UPDATE index_metadata SET registry_hash = ?1 WHERE id = 1")
+            .bind(hash)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
 }
 
 // ============================================================================
