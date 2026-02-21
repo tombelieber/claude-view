@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import { persist, type StorageValue } from 'zustand/middleware'
+import type { ActionCategory } from '../components/live/action-log/types'
+
+export type VerboseFilter = ActionCategory | 'all'
 
 interface MonitorState {
   // Grid layout
@@ -12,6 +15,7 @@ interface MonitorState {
   pinnedPaneIds: Set<string>
   hiddenPaneIds: Set<string>
   verboseMode: boolean
+  verboseFilter: VerboseFilter
   richRenderMode: 'rich' | 'json'
 
   // Actions
@@ -24,6 +28,7 @@ interface MonitorState {
   hidePane: (id: string) => void
   showPane: (id: string) => void
   toggleVerbose: () => void
+  setVerboseFilter: (filter: VerboseFilter) => void
   setRichRenderMode: (mode: 'rich' | 'json') => void
 }
 
@@ -37,6 +42,7 @@ export const useMonitorStore = create<MonitorState>()(
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
       verboseMode: false,
+      verboseFilter: 'all' as VerboseFilter,
       richRenderMode: 'rich',
 
       setGridOverride: (override) => set({ gridOverride: override }),
@@ -70,6 +76,7 @@ export const useMonitorStore = create<MonitorState>()(
       }),
 
       toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
+      setVerboseFilter: (filter) => set({ verboseFilter: filter }),
       setRichRenderMode: (mode) => set({ richRenderMode: mode }),
     }),
     {
@@ -80,6 +87,7 @@ export const useMonitorStore = create<MonitorState>()(
         pinnedPaneIds: state.pinnedPaneIds,
         hiddenPaneIds: state.hiddenPaneIds,
         verboseMode: state.verboseMode,
+        verboseFilter: state.verboseFilter,
         richRenderMode: state.richRenderMode,
       }),
       storage: {

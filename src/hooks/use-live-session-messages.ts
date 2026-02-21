@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { parseRichMessage, type RichMessage } from '../components/live/RichPane'
 import { useTerminalSocket, type ConnectionState } from './use-terminal-socket'
-import type { HookEventItem } from '../components/live/action-log/types'
+import type { ActionCategory, HookEventItem } from '../components/live/action-log/types'
 
 export interface UseLiveSessionMessagesResult {
   messages: RichMessage[]
@@ -23,6 +23,7 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
   const [messages, setMessages] = useState<RichMessage[]>([])
   const [hookEvents, setHookEvents] = useState<HookEventItem[]>([])
   const [bufferDone, setBufferDone] = useState(false)
+  const lastToolCategoryRef = useRef<ActionCategory | undefined>()
 
   const handleMessage = useCallback((data: string) => {
     // Try to parse as hook_event first (JSON with type field)
@@ -46,6 +47,7 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
           name: json.eventName,
           input: json.context,
           ts: json.timestamp,
+          category: 'hook' as const,
         }])
         return
       }
@@ -55,6 +57,11 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
 
     const parsed = parseRichMessage(data)
     if (parsed) {
+      if (parsed.type === 'tool_use' && parsed.category) {
+        lastToolCategoryRef.current = parsed.category
+      } else if (parsed.type === 'tool_result') {
+        parsed.category = lastToolCategoryRef.current
+      }
       setMessages((prev) => [...prev, parsed])
     }
   }, [])
