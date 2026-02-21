@@ -704,4 +704,46 @@ mod tests {
             }
         );
     }
+
+    // -----------------------------------------------------------------------
+    // User-level custom skill classification
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_skill_with_user_level_lookup() {
+        // Build a registry that includes a user-level skill
+        let registry = tokio_test::block_on(async {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let claude_dir = tmp.path();
+
+            // Create user-level skill
+            let skill_dir = claude_dir.join("skills/prove-it");
+            std::fs::create_dir_all(&skill_dir).unwrap();
+            std::fs::write(skill_dir.join("SKILL.md"), "# Prove It\nTest.").unwrap();
+
+            crate::registry::build_registry(claude_dir).await
+        });
+
+        // Classify a Skill tool_use with bare name "prove-it"
+        let input = Some(serde_json::json!({"skill": "prove-it"}));
+        let result = classify_tool_use("Skill", &input, &registry);
+        assert_eq!(
+            result,
+            ClassifyResult::Valid {
+                invocable_id: "user:prove-it".into(),
+                kind: InvocableKind::Skill,
+            }
+        );
+
+        // Also works with qualified name
+        let input2 = Some(serde_json::json!({"skill": "user:prove-it"}));
+        let result2 = classify_tool_use("Skill", &input2, &registry);
+        assert_eq!(
+            result2,
+            ClassifyResult::Valid {
+                invocable_id: "user:prove-it".into(),
+                kind: InvocableKind::Skill,
+            }
+        );
+    }
 }
