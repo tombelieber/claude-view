@@ -249,11 +249,14 @@ struct AssistantLine {
     uuid: Option<String>,
     #[serde(rename = "parentUuid")]
     parent_uuid: Option<String>,
+    #[serde(rename = "requestId")]
+    request_id: Option<String>,
     message: Option<AssistantMessage>,
 }
 
 #[derive(Deserialize)]
 struct AssistantMessage {
+    id: Option<String>,
     model: Option<String>,
     usage: Option<UsageBlock>,
     #[serde(default, deserialize_with = "deserialize_content")]
@@ -4258,5 +4261,33 @@ mod tests {
             "first_user_prompt should be truncated to ~500 chars, got {} chars",
             prompt.chars().count()
         );
+    }
+
+    #[test]
+    fn test_parse_bytes_deduplicates_content_blocks() {
+        // Simulate one API response split across 3 JSONL lines (thinking, text, tool_use)
+        // All share the same message.id and requestId — tokens should only count ONCE
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a3","parentUuid":"a2","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/foo.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Session-level tokens: should be counted ONCE, not 3x
+        assert_eq!(result.deep.total_input_tokens, 100, "input_tokens counted 3x");
+        assert_eq!(result.deep.total_output_tokens, 50, "output_tokens counted 3x");
+        assert_eq!(result.deep.cache_read_tokens, 1000, "cache_read counted 3x");
+        assert_eq!(result.deep.cache_creation_tokens, 200, "cache_create counted 3x");
+
+        // api_call_count: 3 JSONL lines but only 1 unique API response
+        assert_eq!(result.deep.api_call_count, 1, "api_call_count inflated by content blocks");
+
+        // Should still create 3 turns (one per content block) for UI display,
+        // but only the FIRST turn should carry token counts
+        assert_eq!(result.turns.len(), 3);
+        assert_eq!(result.turns[0].input_tokens, Some(100));
+        assert_eq!(result.turns[1].input_tokens, Some(0)); // zeroed duplicate
+        assert_eq!(result.turns[2].input_tokens, Some(0)); // zeroed duplicate
     }
 }
