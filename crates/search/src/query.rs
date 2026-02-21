@@ -32,6 +32,24 @@ struct Qualifier {
     value: String,
 }
 
+/// Check if the query string is a bare UUID (session ID).
+/// Pattern: 8-4-4-4-12 hex digits, case-insensitive, whitespace-trimmed.
+fn is_session_id(query: &str) -> bool {
+    let trimmed = query.trim();
+    if trimmed.len() != 36 {
+        return false;
+    }
+    let bytes = trimmed.as_bytes();
+    // Check hyphens at positions 8, 13, 18, 23
+    if bytes[8] != b'-' || bytes[13] != b'-' || bytes[18] != b'-' || bytes[23] != b'-' {
+        return false;
+    }
+    // Check all other chars are hex digits
+    trimmed.chars().enumerate().all(|(i, c)| {
+        i == 8 || i == 13 || i == 18 || i == 23 || c.is_ascii_hexdigit()
+    })
+}
+
 /// Parse a raw query string into text query + qualifiers.
 ///
 /// Qualifiers are `key:value` pairs. Supported keys:
@@ -472,5 +490,40 @@ mod tests {
     fn test_tokenize_unterminated_quote() {
         let tokens = tokenize_query("hello \"world foo");
         assert_eq!(tokens, vec!["hello", "\"world foo\""]);
+    }
+
+    #[test]
+    fn test_is_session_id_valid_uuid() {
+        assert!(is_session_id("136ed96f-913d-4a1a-91a9-5e651469b2a0"));
+    }
+
+    #[test]
+    fn test_is_session_id_uppercase() {
+        assert!(is_session_id("136ED96F-913D-4A1A-91A9-5E651469B2A0"));
+    }
+
+    #[test]
+    fn test_is_session_id_with_whitespace() {
+        assert!(is_session_id("  136ed96f-913d-4a1a-91a9-5e651469b2a0  "));
+    }
+
+    #[test]
+    fn test_is_session_id_plain_text() {
+        assert!(!is_session_id("JWT authentication"));
+    }
+
+    #[test]
+    fn test_is_session_id_with_qualifier() {
+        assert!(!is_session_id("project:claude-view auth"));
+    }
+
+    #[test]
+    fn test_is_session_id_partial_uuid() {
+        assert!(!is_session_id("136ed96f-913d"));
+    }
+
+    #[test]
+    fn test_is_session_id_empty() {
+        assert!(!is_session_id(""));
     }
 }
