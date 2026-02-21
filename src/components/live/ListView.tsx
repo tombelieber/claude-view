@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils'
 import { GROUP_ORDER } from './types'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { sessionTotalCost, type LiveSession } from './use-live-sessions'
+import { formatCostUsd } from '../../lib/format-utils'
 import { StatusDot } from './StatusDot'
 import { StateBadge } from './SessionCard'
 import { ContextBar } from './ContextBar'
@@ -39,8 +40,7 @@ function formatRelativeTime(ts: number): string {
 
 function formatCost(session: LiveSession): string {
   const usd = sessionTotalCost(session)
-  const formatted = usd === 0 ? '$0.00' : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
-  return `${session.cost?.isEstimated ? '~' : ''}${formatted}`
+  return `${session.cost?.isEstimated ? '~' : ''}${formatCostUsd(usd)}`
 }
 
 const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] = [

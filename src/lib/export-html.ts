@@ -1,6 +1,7 @@
 import type { Message } from '../types/generated/Message'
 import type { ToolCall } from '../types/generated/ToolCall'
 import { buildThreadMap, type ThreadInfo } from './thread-map'
+import { formatTokenCount } from './format-utils'
 
 // ---------------------------------------------------------------------------
 // ExportMetadata
@@ -118,9 +119,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
+  return formatTokenCount(n)
 }
 
 function formatTime(timestamp?: string | null): string {
