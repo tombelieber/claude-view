@@ -253,6 +253,8 @@ struct AssistantLine {
     #[serde(rename = "requestId")]
     request_id: Option<String>,
     message: Option<AssistantMessage>,
+    #[serde(rename = "costUSD")]
+    cost_usd: Option<f64>,
 }
 
 #[derive(Deserialize)]
