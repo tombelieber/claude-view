@@ -167,6 +167,11 @@ pub struct AIGenerationStats {
     pub tokens_by_project: Vec<TokensByProject>,
     /// Aggregate cost breakdown (computed server-side using pricing engine).
     pub cost: AggregateCostBreakdown,
+    /// Pre-calculated total cost from JSONL costUSD entries.
+    /// None when sessions haven't been re-indexed yet.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub total_cost_usd_from_jsonl: Option<f64>,
 }
 
 /// Storage statistics for the system page.
