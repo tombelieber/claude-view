@@ -437,6 +437,7 @@ impl Database {
         primary_model: Option<&str>,
         last_message_at: Option<i64>,
         first_user_prompt: Option<&str>,
+        total_cost_usd: f64,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -492,7 +493,8 @@ impl Database {
                 git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
                 primary_model = ?49,
                 last_message_at = COALESCE(?50, last_message_at),
-                preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END
+                preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
+                total_cost_usd = ?52
             WHERE id = ?1
             "#,
         )
@@ -547,6 +549,7 @@ impl Database {
         .bind(primary_model)
         .bind(last_message_at)
         .bind(first_user_prompt)
+        .bind(total_cost_usd)
         .execute(self.pool())
         .await?;
 

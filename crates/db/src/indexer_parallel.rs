@@ -27,11 +27,12 @@ use crate::Database;
 /// Version 7: Search index uses project_display_name instead of encoded project_id.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
-pub const CURRENT_PARSE_VERSION: i32 = 10;
+/// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
+pub const CURRENT_PARSE_VERSION: i32 = 11;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (54 params).
+// Must match the sqlx `_tx` function in queries.rs exactly (55 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -88,7 +89,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
         total_task_time_seconds = ?52,
         longest_task_seconds = ?53,
-        longest_task_preview = ?54
+        longest_task_preview = ?54,
+        total_cost_usd = ?55
     WHERE id = ?1
 "#;
 
@@ -2331,7 +2333,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (54 params: ?1=id, ?2-?54=fields)
+                    // UPDATE session deep fields (55 params: ?1=id, ?2-?55=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -2387,6 +2389,7 @@ where
                         meta.total_task_time_seconds as i32,       // ?52
                         meta.longest_task_seconds.map(|v| v as i32), // ?53 (Option<i32>)
                         meta.longest_task_preview,        // ?54 (Option<String>)
+                        meta.total_cost_usd,              // ?55 (f64)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // DELETE stale turns/invocations before re-inserting
@@ -2639,6 +2642,7 @@ async fn write_results_sqlx(
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
+            meta.total_cost_usd,
         )
         .await
         .map_err(|e| {

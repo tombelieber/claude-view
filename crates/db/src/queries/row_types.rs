@@ -186,6 +186,7 @@ pub async fn update_session_deep_fields_tx(
     total_task_time_seconds: i32,
     longest_task_seconds: Option<i32>,
     longest_task_preview: Option<&str>,
+    total_cost_usd: f64,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -244,7 +245,8 @@ pub async fn update_session_deep_fields_tx(
             preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
             total_task_time_seconds = ?52,
             longest_task_seconds = ?53,
-            longest_task_preview = ?54
+            longest_task_preview = ?54,
+            total_cost_usd = ?55
         WHERE id = ?1
         "#,
     )
@@ -302,6 +304,7 @@ pub async fn update_session_deep_fields_tx(
     .bind(total_task_time_seconds)
     .bind(longest_task_seconds)
     .bind(longest_task_preview)
+    .bind(total_cost_usd)
     .execute(&mut **tx)
     .await?;
 

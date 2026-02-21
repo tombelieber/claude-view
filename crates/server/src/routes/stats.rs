@@ -1084,6 +1084,7 @@ mod tests {
             None,    // primary_model
             None,    // last_message_at
             None,    // first_user_prompt
+            0.0,     // total_cost_usd
         ).await.unwrap();
 
         // Update the primary_model column using the db pool directly
@@ -1216,6 +1217,7 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0.0,  // total_cost_usd
         ).await.unwrap();
 
         let app = build_app(db);

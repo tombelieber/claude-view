@@ -69,6 +69,7 @@ async fn test_get_ai_generation_stats() {
         Some("claude-opus-4-5-20251101"),
         None, // last_message_at
         None, // first_user_prompt
+        0.0,  // total_cost_usd
     )
     .await
     .unwrap();
@@ -100,6 +101,7 @@ async fn test_get_ai_generation_stats() {
         Some("claude-sonnet-4-20250514"),
         None, // last_message_at
         None, // first_user_prompt
+        0.0,  // total_cost_usd
     )
     .await
     .unwrap();
