@@ -601,6 +601,10 @@ CREATE TABLE IF NOT EXISTS reports (
     // System/classification queries that intentionally count ALL sessions
     // should continue using the `sessions` table directly.
     r#"CREATE VIEW IF NOT EXISTS valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0;"#,
+    // Migration 27: Registry fingerprint for auto-reindex on registry changes.
+    // When plugins are installed/removed or user skills are added/deleted,
+    // the stored hash differs from the live registry → triggers re-index.
+    r#"ALTER TABLE index_metadata ADD COLUMN registry_hash TEXT;"#,
 ];
 
 // ============================================================================

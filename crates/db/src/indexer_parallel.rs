@@ -2653,6 +2653,27 @@ where
             .map_err(|e| format!("Failed to seed invocables: {}", e))?;
     }
 
+    // Auto-reindex: compare registry fingerprint with stored hash.
+    // If the registry changed (new plugin, new user skill, etc.) we must
+    // re-classify all invocations against the updated registry.
+    let new_hash = registry.fingerprint();
+    match db.get_registry_hash().await {
+        Ok(Some(stored)) if stored == new_hash => {
+            tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
+        }
+        Ok(stored) => {
+            let reason = if stored.is_none() { "first run" } else { "registry changed" };
+            tracing::info!("Registry hash mismatch ({reason}), marking all sessions for re-index");
+            match db.mark_all_sessions_for_reindex().await {
+                Ok(n) => tracing::info!("Marked {n} sessions for re-index"),
+                Err(e) => tracing::warn!("Failed to mark sessions for re-index: {e}"),
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to read registry hash: {e}, skipping auto-reindex check");
+        }
+    }
+
     // Pass 2: use the registry for invocation classification + Tantivy search indexing
     let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), search_index, on_pass2_start, on_file_done).await?;
 
@@ -2670,6 +2691,11 @@ where
         Ok(n) if n > 0 => tracing::info!("Pruned {} stale sessions from DB", n),
         Ok(_) => {}
         Err(e) => tracing::warn!("Failed to prune stale sessions: {}", e),
+    }
+
+    // Persist the new registry fingerprint so next startup can detect changes.
+    if let Err(e) = db.set_registry_hash(&new_hash).await {
+        tracing::warn!("Failed to persist registry hash: {e}");
     }
 
     // Store registry in shared holder for API routes to use
