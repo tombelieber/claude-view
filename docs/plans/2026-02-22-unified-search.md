@@ -276,7 +276,12 @@ struct SearchBatch {
 }
 ```
 
-And in the SearchBatch construction (around line 2254), add the new fields:
+And in the SearchBatch construction (around line 2254), add the new fields.
+
+**Verified field paths** (from `ParseResult` → `ExtendedMetadata`):
+- Preview = `r.parse_result.deep.first_user_prompt` (`Option<String>`, line 214)
+- Last message = `r.parse_result.deep.last_message` (`String`, line 146)
+- Timestamp = `r.parse_result.deep.last_timestamp` (`Option<i64>`, line 170)
 
 ```rust
 .map(|r| SearchBatch {
@@ -286,13 +291,11 @@ And in the SearchBatch construction (around line 2254), add the new fields:
     primary_model: compute_primary_model(&r.parse_result.turns),
     messages: r.parse_result.search_messages.clone(),
     skills: r.parse_result.deep.skills_used.clone(),
-    preview: r.parse_result.preview.clone(),
-    last_message: r.parse_result.last_user_content.clone(),
-    timestamp: r.parse_result.last_message_at.unwrap_or(0),
+    preview: r.parse_result.deep.first_user_prompt.clone(),
+    last_message: if r.parse_result.deep.last_message.is_empty() { None } else { Some(r.parse_result.deep.last_message.clone()) },
+    timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
 })
 ```
-
-Note: Check that `parse_result` has `preview` and `last_user_content` fields — these are populated during JSONL parsing. If the field names differ, use the actual fields from `ParseResult`.
 
 **Step 5: Run tests**
 
@@ -429,12 +432,18 @@ if !text_query.trim().is_empty() {
 Run: `cargo test -p claude-view-search test_search_fuzzy_typo_tolerance`
 Expected: PASS — fuzzy terms match, quoted phrases don't.
 
-**Step 5: Run all search tests**
+**Step 5: Update snippet generator to use standard QueryParser**
+
+The snippet generator (`query.rs:363-367`) still uses `QueryParser::parse_query()` for highlighting. This is intentional — `SnippetGenerator` doesn't support `FuzzyTermQuery`. The standard parser will highlight exact term matches, which is good enough (user sees the right results, highlights cover the exact spelling). No change needed here, but be aware: a fuzzy match on "brainstormin" will find the doc but the snippet highlight will be on the exact token "brainstorming".
+
+**Step 6: Run all search tests**
 
 Run: `cargo test -p claude-view-search`
-Expected: All pass. If any existing tests break (e.g. tests that rely on exact BM25 scoring), adjust expectations — fuzzy matching changes scores slightly.
+Expected: All pass. Some existing tests may need adjustment:
+- Tests that assert exact `total_sessions` counts may find more results with fuzzy matching (e.g. a test for "authentication" might also match "authenticate").
+- Tests that assert exact BM25 scores will see different values. Adjust `best_score` comparisons if needed.
 
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
 git add crates/search/src/query.rs crates/search/src/lib.rs
@@ -454,7 +463,7 @@ When `q` is present on `/api/sessions`, call Tantivy first to get matching sessi
 
 **Step 1: Change `SessionFilterParams` to accept pre-resolved session IDs**
 
-In `crates/db/src/queries/dashboard.rs`, change `SessionFilterParams`:
+In `crates/db/src/queries/dashboard.rs`, change `SessionFilterParams` (line 15):
 
 ```rust
 pub struct SessionFilterParams {
@@ -462,6 +471,19 @@ pub struct SessionFilterParams {
     pub search_session_ids: Option<Vec<String>>,  // NEW: pre-resolved from Tantivy
     pub branches: Option<Vec<String>>,
     // ... rest unchanged
+}
+```
+
+Also update the `default_params()` test helper (line 1018) and all 6 inline `SessionFilterParams { ... }` constructions in tests (lines ~1056, 1077, 1097, 1116, 1134, 1154) — add `search_session_ids: None,` to each.
+
+```rust
+fn default_params() -> SessionFilterParams {
+    SessionFilterParams {
+        q: None,
+        search_session_ids: None,  // NEW
+        branches: None,
+        // ... rest unchanged
+    }
 }
 ```
 
