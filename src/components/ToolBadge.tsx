@@ -19,12 +19,20 @@ interface ToolBadgeProps {
   toolCalls: ToolCall[]
 }
 
+/** Re-aggregate individual tool calls by name for display */
+function aggregateToolCalls(toolCalls: ToolCall[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const tc of toolCalls) counts.set(tc.name, (counts.get(tc.name) ?? 0) + tc.count)
+  return Array.from(counts, ([name, count]) => ({ name, count }))
+}
+
 export function ToolBadge({ toolCalls }: ToolBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   if (toolCalls.length === 0) return null
 
-  const totalCount = toolCalls.reduce((sum, tc) => sum + tc.count, 0)
+  const aggregated = aggregateToolCalls(toolCalls)
+  const totalCount = aggregated.reduce((sum, tc) => sum + tc.count, 0)
 
   return (
     <div className="mt-3">
@@ -38,7 +46,7 @@ export function ToolBadge({ toolCalls }: ToolBadgeProps) {
           {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          {toolCalls.map((tc) => (
+          {aggregated.map((tc) => (
             <span key={tc.name} className="inline-flex items-center gap-0.5" aria-hidden="true">
               {getToolIcon(tc.name)}
               <span>{tc.name}</span>
@@ -50,7 +58,7 @@ export function ToolBadge({ toolCalls }: ToolBadgeProps) {
 
       {isExpanded && (
         <div className="mt-2 pl-6 space-y-2 text-sm text-gray-600">
-          {toolCalls.map((tc) => (
+          {aggregated.map((tc) => (
             <div key={tc.name} className="flex items-center gap-2">
               <span aria-hidden="true">{getToolIcon(tc.name)}</span>
               <span>{tc.name}</span>
