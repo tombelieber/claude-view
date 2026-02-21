@@ -16,6 +16,8 @@
 
 ## Recently Completed
 
+- Custom Skill Registry (user-level custom skill discovery and registry auto-reindex)
+- JSONL Ground Truth Recovery (startup state derivation from JSONL, staleness hack removed)
 - Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown)
 - AI Fluency Score (merged)
 - Process-Gated Discovery, Page Reorganization
@@ -73,6 +75,8 @@ Plans in `docs/plans/` (active work only):
 | `2026-02-19-sessions-infinite-scroll.md` | pending | Infinite scroll for session lists |
 | `2026-02-19-restore-sparkline-stats-grid.md` | pending | Restore sparkline stats grid |
 | `2026-02-19-oauth-usage-pill-design.md` | pending | OAuth usage pill feature |
+| `2026-02-21-custom-skill-registry-*.md` | done | User-level custom skill discovery and registry auto-reindex |
+| `2026-02-21-jsonl-ground-truth-recovery*.md` | done | Startup state from JSONL ground truth, removed staleness hack |
 | `2026-02-20-*` (8 files) | various | Recent active designs (pricing, liveness, history, renderers, etc.) |
 | `mission-control/` | in-progress | Phases A-D done, E-J pending (see `mission-control/PROGRESS.md`) |
 

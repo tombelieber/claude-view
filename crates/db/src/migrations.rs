@@ -605,6 +605,24 @@ CREATE TABLE IF NOT EXISTS reports (
     // When plugins are installed/removed or user skills are added/deleted,
     // the stored hash differs from the live registry → triggers re-index.
     r#"ALTER TABLE index_metadata ADD COLUMN registry_hash TEXT;"#,
+    // Migration 28: Unified LLM settings (replaces hardcoded "haiku" in classify + reports).
+    // Default timeout is 120s (matches the existing report generation timeout, which is the
+    // longest LLM operation). Classification also uses this timeout — 120s is fine for classify
+    // since it only affects the max wait, not the typical latency.
+    r#"BEGIN;
+CREATE TABLE IF NOT EXISTS app_settings (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    llm_model        TEXT NOT NULL DEFAULT 'haiku',
+    llm_timeout_secs INTEGER NOT NULL DEFAULT 120
+);
+INSERT OR IGNORE INTO app_settings (id) VALUES (1);
+COMMIT;"#,
+    // Migrations 29-31: Report generation metadata (model + token counts).
+    // Separate entries so each ALTER is independently idempotent — if one column
+    // already exists (branch collision), the others still get created.
+    r#"ALTER TABLE reports ADD COLUMN generation_model TEXT;"#,
+    r#"ALTER TABLE reports ADD COLUMN generation_input_tokens INTEGER;"#,
+    r#"ALTER TABLE reports ADD COLUMN generation_output_tokens INTEGER;"#,
 ];
 
 // ============================================================================
@@ -1738,5 +1756,31 @@ mod tests {
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
         assert!(index_names.contains(&"idx_reports_date"), "Missing idx_reports_date index");
         assert!(index_names.contains(&"idx_reports_type"), "Missing idx_reports_type index");
+    }
+
+    // ========================================================================
+    // Migration 27: Unified LLM settings (app_settings table)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration27_app_settings_table() {
+        let pool = setup_db().await;
+
+        // Table should exist with exactly one default row
+        let row: (String, i64) = sqlx::query_as(
+            "SELECT llm_model, llm_timeout_secs FROM app_settings WHERE id = 1"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, "haiku");
+        assert_eq!(row.1, 120);
+
+        // CHECK constraint: inserting id != 1 should fail
+        let result = sqlx::query("INSERT INTO app_settings (id, llm_model) VALUES (2, 'sonnet')")
+            .execute(&pool)
+            .await;
+        assert!(result.is_err());
     }
 }

@@ -45,6 +45,7 @@ pub enum ResponseFormat {
 #[derive(Debug, Clone)]
 pub struct CompletionResponse {
     pub content: String,
+    pub model: Option<String>,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub latency_ms: u64,
@@ -119,6 +120,18 @@ mod tests {
         }"#;
         let resp: ClassificationResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.reasoning, Some("User is building a new React component".to_string()));
+    }
+
+    #[test]
+    fn test_completion_response_has_model_field() {
+        let resp = CompletionResponse {
+            content: "hello".to_string(),
+            model: Some("claude-haiku-4-5-20251001".to_string()),
+            input_tokens: Some(10),
+            output_tokens: Some(321),
+            latency_ms: 100,
+        };
+        assert_eq!(resp.model.as_deref(), Some("claude-haiku-4-5-20251001"));
     }
 
     #[test]
