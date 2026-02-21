@@ -263,18 +263,10 @@ impl SearchIndex {
 
         let (text_query, mut qualifiers) = parse_query_string(query_str);
 
-        // Add scope as a qualifier if provided
+        // Add scope qualifiers (may contain multiple: "project:X branch:Y")
         if let Some(scope_str) = scope {
-            if let Some(colon_pos) = scope_str.find(':') {
-                let key = &scope_str[..colon_pos];
-                let value = &scope_str[colon_pos + 1..];
-                if !value.is_empty() {
-                    qualifiers.push(Qualifier {
-                        key: key.to_string(),
-                        value: value.to_string(),
-                    });
-                }
-            }
+            let (_, scope_qualifiers) = parse_query_string(scope_str);
+            qualifiers.extend(scope_qualifiers);
         }
 
         // Build the combined query
@@ -643,5 +635,38 @@ mod tests {
         let (text, quals) = parse_query_string("136ed96f-913d-4a1a-91a9-5e651469b2a0");
         assert_eq!(text, "136ed96f-913d-4a1a-91a9-5e651469b2a0");
         assert!(quals.is_empty());
+    }
+
+    #[test]
+    fn test_parse_scope_multiple_qualifiers() {
+        // This is the exact format the frontend sends as the scope parameter
+        let (text, quals) = parse_query_string("project:claude-view branch:main");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 2);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "claude-view");
+        assert_eq!(quals[1].key, "branch");
+        assert_eq!(quals[1].value, "main");
+    }
+
+    #[test]
+    fn test_parse_scope_single_qualifier() {
+        let (text, quals) = parse_query_string("project:claude-view");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 1);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "claude-view");
+    }
+
+    #[test]
+    fn test_parse_scope_with_all_qualifier_types() {
+        let (text, quals) =
+            parse_query_string("project:myapp branch:dev model:claude-opus-4-6 role:assistant");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 4);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[1].key, "branch");
+        assert_eq!(quals[2].key, "model");
+        assert_eq!(quals[3].key, "role");
     }
 }
