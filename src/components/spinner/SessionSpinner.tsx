@@ -24,6 +24,8 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   isStalled?: boolean
   agentStateGroup?: 'needs_you' | 'autonomous'
   agentStateLabel?: string
+  /** The raw agent state key (e.g. "acting", "compacting"). Used for precise state detection. */
+  agentStateKey?: string
   spinnerVerb?: string
   lastCacheHitAt?: number | null
   lastTurnTaskSeconds?: number | null
@@ -57,10 +59,11 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // Determine live-mode specifics via discriminant narrowing (no `as` casts)
   const agentStateGroup = props.mode === 'live' ? props.agentStateGroup ?? 'autonomous' : 'autonomous'
   const agentStateLabel = props.mode === 'live' ? props.agentStateLabel : undefined
+  const agentStateKey = props.mode === 'live' ? props.agentStateKey : undefined
   const isStalled = props.mode === 'live' ? props.isStalled ?? false : false
   const lastCacheHitAt = props.mode === 'live' ? props.lastCacheHitAt ?? null : null
 
-  const isCompacting = agentStateLabel?.toLowerCase().includes('compacting') ?? false
+  const isCompacting = agentStateKey === 'compacting'
 
   // ---------------------------------------------------------------------------
   // RAF animation — only runs in live + autonomous mode
