@@ -27,7 +27,7 @@ use crate::Database;
 /// Version 7: Search index uses project_display_name instead of encoded project_id.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
-pub const CURRENT_PARSE_VERSION: i32 = 9;
+pub const CURRENT_PARSE_VERSION: i32 = 10;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
@@ -577,6 +577,35 @@ fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
 /// on the `type` field: user, assistant, system, progress, queue-operation, summary,
 /// file-history-snapshot. This replaces the previous SIMD-selective parser that only
 /// handled user and assistant lines.
+/// Parse a JSONL file from disk, using mmap for large files.
+/// Returns a default ParseResult on any I/O error.
+fn parse_file_bytes(path: &std::path::Path) -> ParseResult {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return ParseResult::default(),
+    };
+    let len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return ParseResult::default(),
+    };
+    if len == 0 {
+        return ParseResult::default();
+    }
+    if len < 64 * 1024 {
+        match std::fs::read(path) {
+            Ok(data) => return parse_bytes(&data),
+            Err(_) => return ParseResult::default(),
+        }
+    }
+    match unsafe { memmap2::Mmap::map(&file) } {
+        Ok(mmap) => parse_bytes(&mmap),
+        Err(_) => match std::fs::read(path) {
+            Ok(data) => parse_bytes(&data),
+            Err(_) => ParseResult::default(),
+        },
+    }
+}
+
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut result = ParseResult::default();
     let diag = &mut result.diagnostics;
@@ -2051,21 +2080,45 @@ where
                     return (ParseResult::default(), fsize, fmtime);
                 }
                 // Small files: regular read (mmap overhead not worth it)
-                if len < 64 * 1024 {
+                let mut result = if len < 64 * 1024 {
                     match std::fs::read(&path) {
-                        Ok(data) => return (parse_bytes(&data), fsize, fmtime),
-                        Err(_) => return (ParseResult::default(), fsize, fmtime),
+                        Ok(data) => parse_bytes(&data),
+                        Err(_) => ParseResult::default(),
+                    }
+                } else {
+                    // Large files: zero-copy mmap — parse directly from mapped pages
+                    // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
+                    match unsafe { memmap2::Mmap::map(&file) } {
+                        Ok(mmap) => parse_bytes(&mmap), // zero-copy! mmap drops after parse
+                        Err(_) => match std::fs::read(&path) {
+                            Ok(data) => parse_bytes(&data),
+                            Err(_) => ParseResult::default(),
+                        },
+                    }
+                };
+
+                // Merge subagent tokens into the parent session.
+                // Claude Code spawns subagents (Task tool) that write to
+                // <session-uuid>/subagents/agent-*.jsonl — these are separate
+                // API calls not included in the parent JSONL's token counts.
+                let subagent_dir = path.with_extension("").join("subagents");
+                if subagent_dir.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
+                        for entry in entries.flatten() {
+                            let sub_path = entry.path();
+                            if sub_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                                continue;
+                            }
+                            let sub_result = parse_file_bytes(&sub_path);
+                            result.deep.total_input_tokens += sub_result.deep.total_input_tokens;
+                            result.deep.total_output_tokens += sub_result.deep.total_output_tokens;
+                            result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
+                            result.deep.cache_creation_tokens += sub_result.deep.cache_creation_tokens;
+                        }
                     }
                 }
-                // Large files: zero-copy mmap — parse directly from mapped pages
-                // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
-                match unsafe { memmap2::Mmap::map(&file) } {
-                    Ok(mmap) => (parse_bytes(&mmap), fsize, fmtime), // zero-copy! mmap drops after parse
-                    Err(_) => match std::fs::read(&path) {
-                        Ok(data) => (parse_bytes(&data), fsize, fmtime),
-                        Err(_) => (ParseResult::default(), fsize, fmtime),
-                    },
-                }
+
+                (result, fsize, fmtime)
             })
             .await
             .map_err(|e| format!("spawn_blocking join error: {}", e))?;
@@ -3501,6 +3554,58 @@ mod tests {
         assert_eq!(session.tool_counts.read, 1);
         assert_eq!(session.tool_counts.edit, 1);
         assert_eq!(session.last_message, "now edit it");
+    }
+
+    #[tokio::test]
+    async fn test_pass_2_merges_subagent_tokens() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        // Parent session JSONL with token usage
+        let parent_jsonl = project_dir.join("sess-sub.jsonl");
+        let parent_content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
+"#;
+        std::fs::write(&parent_jsonl, parent_content).unwrap();
+
+        // Create subagent directory: sess-sub/subagents/agent-abc.jsonl
+        let subagent_dir = project_dir.join("sess-sub").join("subagents");
+        std::fs::create_dir_all(&subagent_dir).unwrap();
+
+        let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
+{"type":"assistant","message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
+"#;
+        std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
+
+        let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
+{"type":"assistant","message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
+"#;
+        std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
+
+        // sessions-index.json
+        let index = format!(
+            r#"[{{"sessionId":"sess-sub","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            parent_jsonl.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 1);
+
+        // Verify tokens = parent + subagent1 + subagent2
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+        // Parent: 100+80+60=240 input, 50+30+20=100 output
+        assert_eq!(session.total_input_tokens, Some(240), "input = parent + sub1 + sub2");
+        assert_eq!(session.total_output_tokens, Some(100), "output = parent + sub1 + sub2");
+        assert_eq!(session.total_cache_read_tokens, Some(1800), "cache_read = 1000 + 500 + 300");
+        assert_eq!(session.total_cache_creation_tokens, Some(350), "cache_create = 200 + 100 + 50");
     }
 
     #[tokio::test]
