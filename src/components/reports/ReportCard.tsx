@@ -31,8 +31,7 @@ function formatCost(cents: number): string {
 
 export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, suggested, existingReport }: ReportCardProps) {
   const { data: preview, isLoading: previewLoading } = useReportPreview(startTs, endTs)
-  const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, error, reset } = useReportGenerate()
-
+  const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, generationModel, error, reset } = useReportGenerate()
   const handleGenerate = () => {
     generate({ reportType: type, dateStart, dateEnd, startTs, endTs })
   }
@@ -91,6 +90,9 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
         <ReportDetails
           contextDigestJson={completedContextDigest ?? existingReport?.contextDigest ?? null}
           totalCostCents={existingReport?.totalCostCents ?? 0}
+          generationModel={generationModel ?? existingReport?.generationModel}
+          generationInputTokens={existingReport?.generationInputTokens}
+          generationOutputTokens={existingReport?.generationOutputTokens}
         />
       </div>
     )
@@ -141,6 +143,9 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
         <ReportDetails
           contextDigestJson={existingReport.contextDigest ?? null}
           totalCostCents={existingReport.totalCostCents}
+          generationModel={existingReport.generationModel}
+          generationInputTokens={existingReport.generationInputTokens}
+          generationOutputTokens={existingReport.generationOutputTokens}
         />
       </div>
     )
@@ -166,7 +171,11 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
       ) : preview ? (
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
           {preview.sessionCount} sessions &middot; {preview.projectCount} projects &middot; {formatDuration(preview.totalDurationSecs)}
-          {preview.totalCostCents > 0 && ` \u00B7 ${formatCost(preview.totalCostCents)}`}
+          {preview.totalCostCents > 0 && (
+            <span title="Estimated API cost for sessions in this period">
+              {' \u00B7 ~'}{formatCost(preview.totalCostCents)}{' API usage'}
+            </span>
+          )}
         </p>
       ) : null}
 

@@ -332,10 +332,19 @@ impl LlmProvider for ClaudeCliProvider {
             .unwrap_or_else(|| parsed["content"].as_str().unwrap_or(""))
             .to_string();
 
+        // Model ID is the first key of the "modelUsage" object (no top-level "model" field).
+        let model = parsed["modelUsage"]
+            .as_object()
+            .and_then(|m| m.keys().next().cloned());
+
+        let input_tokens = parsed["usage"]["input_tokens"].as_u64();
+        let output_tokens = parsed["usage"]["output_tokens"].as_u64();
+
         Ok(CompletionResponse {
             content,
-            input_tokens: None,
-            output_tokens: None,
+            model,
+            input_tokens,
+            output_tokens,
             latency_ms: start.elapsed().as_millis() as u64,
         })
     }
@@ -528,6 +537,62 @@ mod tests {
         assert_eq!(provider.name(), "claude-cli");
         assert_eq!(provider.model(), "haiku");
         assert_eq!(provider.timeout_secs, 60);
+    }
+
+    #[test]
+    fn test_parse_cli_json_response_extracts_metadata() {
+        // Actual Claude CLI --output-format json response shape (verified 2026-02-21)
+        let cli_json = serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "result": "Here is the report content...",
+            "usage": {
+                "input_tokens": 1200,
+                "output_tokens": 340,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 45000
+            },
+            "modelUsage": {
+                "claude-haiku-4-5-20251001": {
+                    "inputTokens": 1200,
+                    "outputTokens": 340,
+                    "costUSD": 0.006163
+                }
+            },
+            "total_cost_usd": 0.006163
+        });
+
+        let content = cli_json["result"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        assert_eq!(content, "Here is the report content...");
+
+        let model = cli_json["modelUsage"]
+            .as_object()
+            .and_then(|m| m.keys().next().cloned());
+        assert_eq!(model.as_deref(), Some("claude-haiku-4-5-20251001"));
+
+        let input_tokens = cli_json["usage"]["input_tokens"].as_u64();
+        let output_tokens = cli_json["usage"]["output_tokens"].as_u64();
+        assert_eq!(input_tokens, Some(1200));
+        assert_eq!(output_tokens, Some(340));
+    }
+
+    #[test]
+    fn test_parse_cli_json_missing_model_usage_returns_none() {
+        let cli_json = serde_json::json!({
+            "type": "result",
+            "result": "content"
+        });
+
+        let model = cli_json["modelUsage"]
+            .as_object()
+            .and_then(|m| m.keys().next().cloned());
+        assert!(model.is_none());
+
+        let input_tokens = cli_json["usage"]["input_tokens"].as_u64();
+        assert!(input_tokens.is_none());
     }
 
     #[test]
