@@ -127,7 +127,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           type: 'system',
           content: content || '',
           ts,
-          category: (msg.category as ActionCategory) ?? undefined,
+          category: (msg.category as ActionCategory) ?? 'system',
           metadata: msg.metadata ?? undefined,
         })
         break
@@ -135,11 +135,15 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
 
       case 'progress': {
         const content = stripCommandTags(msg.content)
+        // hook_progress gets its own category (Rust maps it to "hook", we split them)
+        const progressCategory = msg.metadata?.type === 'hook_progress'
+          ? 'hook_progress' as ActionCategory
+          : (msg.category as ActionCategory) ?? undefined
         result.push({
           type: 'progress',
           content: content || '',
           ts,
-          category: (msg.category as ActionCategory) ?? undefined,
+          category: progressCategory,
           metadata: msg.metadata ?? undefined,
         })
         break
@@ -150,6 +154,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           type: 'summary',
           content: msg.content || '',
           ts,
+          category: 'summary' as ActionCategory,
           metadata: msg.metadata ?? undefined,
         })
         break

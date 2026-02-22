@@ -90,6 +90,19 @@ describe('messagesToRichMessages', () => {
         metadata: { type: 'agent_progress', agentId: 'abc', model: 'opus' },
       })
     })
+
+    it('overrides hook_progress category to "hook_progress" (parity with parseRichMessage)', () => {
+      const result = messagesToRichMessages([
+        makeMsg({
+          role: 'progress',
+          content: '',
+          category: 'hook',
+          metadata: { type: 'hook_progress', hookEvent: 'PostToolUse', hookName: 'test' },
+        }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0].category).toBe('hook_progress')
+    })
   })
 
   describe('summary messages (NEW — was skipped)', () => {
@@ -107,6 +120,45 @@ describe('messagesToRichMessages', () => {
         content: 'Session summary text',
         metadata: { summary: 'Session summary text', leafUuid: 'uuid-123' },
       })
+    })
+  })
+
+  describe('normalization: category defaults', () => {
+    it('defaults system category to "system" when not set', () => {
+      const result = messagesToRichMessages([
+        makeMsg({
+          role: 'system',
+          content: 'turn ended',
+          metadata: { type: 'turn_duration', durationMs: 1500 },
+        }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0].category).toBe('system')
+    })
+
+    it('preserves explicit system category', () => {
+      const result = messagesToRichMessages([
+        makeMsg({
+          role: 'system',
+          content: '',
+          category: 'snapshot',
+          metadata: { type: 'file-history-snapshot' },
+        }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0].category).toBe('snapshot')
+    })
+
+    it('sets summary category to "summary"', () => {
+      const result = messagesToRichMessages([
+        makeMsg({
+          role: 'summary',
+          content: 'Session summary',
+          metadata: { summary: 'Session summary', leafUuid: 'abc' },
+        }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0].category).toBe('summary')
     })
   })
 })

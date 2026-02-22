@@ -9,5 +9,7 @@
 {"type":"queue-operation","uuid":"q2","timestamp":"2026-01-28T10:03:20Z","operation":"dequeue"}
 {"type":"summary","uuid":"sum1","timestamp":"2026-01-28T10:04:00Z","summary":"Fixed authentication bug in auth.rs","leafUuid":"a2"}
 {"type":"file-history-snapshot","uuid":"fhs1","timestamp":"2026-01-28T10:04:05Z","messageId":"a2","snapshot":{"trackedFileBackups":{"/project/src/auth.rs":"backup-hash"}},"isSnapshotUpdate":false}
+{"type":"result","uuid":"r1","timestamp":"2026-01-28T10:04:08Z","subtype":"success","duration_ms":12345,"duration_api_ms":8000,"is_error":false,"num_turns":5,"session_id":"sess-abc-123"}
 {"type":"saved_hook_context","uuid":"shc1","timestamp":"2026-01-28T10:04:10Z","content":["hook context line 1","hook context line 2"]}
+{"type":"hook_event","uuid":"he1","timestamp":"2026-01-28T10:03:12Z","eventName":"PreToolUse","toolName":"Bash","label":"Bash command: git status","group":"approve"}
 {"type":"user","uuid":"u3","timestamp":"2026-01-28T10:00:00Z","isMeta":true,"message":{"role":"user","content":"System init"}}
