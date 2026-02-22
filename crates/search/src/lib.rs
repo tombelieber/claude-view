@@ -16,7 +16,7 @@ pub mod indexer;
 pub mod query;
 pub mod types;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
@@ -28,7 +28,9 @@ pub use types::{MatchHit, SearchResponse, SessionHit};
 /// Schema version for the Tantivy index. Bump when the schema changes
 /// (field types, new fields, removed fields). A mismatch triggers auto-rebuild.
 // Version 4: Enriched content — tool_result indexed, session summary document, fuzzy matching
-pub const SEARCH_SCHEMA_VERSION: u32 = 4;
+// Version 5: Force rebuild to repopulate after v4 wipe left index empty (needs_full_reindex fix)
+// Version 6: Fix schema_version written before indexing completes — deferred to post-commit
+pub const SEARCH_SCHEMA_VERSION: u32 = 6;
 // Version 1: Initial schema (project as STRING with encoded path)
 // Version 2: model field changed to TEXT for partial matching
 // Version 3: Force rebuild to ensure model TEXT schema is applied correctly
@@ -97,6 +99,18 @@ pub struct SearchIndex {
     /// The schema used by this index.
     pub schema: Schema,
 
+    /// True when the index was rebuilt from scratch (schema version mismatch
+    /// or missing version file). The indexer should force-reindex ALL sessions
+    /// to repopulate search data, because search_messages are ephemeral (not
+    /// stored in SQLite).
+    pub needs_full_reindex: bool,
+
+    /// Path to the schema_version file. Written only after successful indexing
+    /// via `mark_schema_synced()`, NOT during `open()`. This ensures that if
+    /// the process is interrupted before indexing completes, the next startup
+    /// re-triggers the full reindex.
+    version_file_path: Option<PathBuf>,
+
     // Pre-resolved field handles (avoid repeated schema.get_field() lookups)
     pub(crate) session_id_field: Field,
     pub(crate) project_field: Field,
@@ -125,7 +139,9 @@ impl SearchIndex {
         let version_path = path.join("schema_version");
         let needs_rebuild = match std::fs::read_to_string(&version_path) {
             Ok(v) => v.trim().parse::<u32>().unwrap_or(0) != SEARCH_SCHEMA_VERSION,
-            Err(_) => false, // no version file = first creation, not a rebuild
+            // No version file = first creation OR interrupted rebuild.
+            // Treat as needing rebuild so all sessions get indexed into Tantivy.
+            Err(_) => true,
         };
 
         if needs_rebuild {
@@ -161,22 +177,28 @@ impl SearchIndex {
             }
         };
 
-        // Write current schema version
-        let _ = std::fs::write(&version_path, format!("{}", SEARCH_SCHEMA_VERSION));
+        // Do NOT write schema_version here. It's deferred to mark_schema_synced()
+        // which is called after successful Tantivy indexing. This ensures that if
+        // the process is interrupted, the next startup re-triggers the full reindex.
 
-        Self::from_index(index, schema)
+        Self::from_index(index, schema, needs_rebuild, Some(version_path))
     }
 
     /// Create a Tantivy index entirely in RAM. Useful for tests.
     pub fn open_in_ram() -> Result<Self, SearchError> {
         let schema = build_schema();
         let index = Index::create_in_ram(schema.clone());
-        Self::from_index(index, schema)
+        Self::from_index(index, schema, false, None)
     }
 
     /// Internal helper: given an `Index` and `Schema`, set up the reader, writer,
     /// and field handles.
-    fn from_index(index: Index, schema: Schema) -> Result<Self, SearchError> {
+    fn from_index(
+        index: Index,
+        schema: Schema,
+        needs_full_reindex: bool,
+        version_file_path: Option<PathBuf>,
+    ) -> Result<Self, SearchError> {
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -219,6 +241,8 @@ impl SearchIndex {
             reader,
             writer: Mutex::new(writer),
             schema,
+            needs_full_reindex,
+            version_file_path,
             session_id_field,
             project_field,
             branch_field,
@@ -229,6 +253,25 @@ impl SearchIndex {
             timestamp_field,
             skills_field,
         })
+    }
+
+    /// Write the current schema version to the version file, marking the
+    /// Tantivy index as fully synced. Call this ONLY after a successful
+    /// `commit()` following a full reindex (`needs_full_reindex` was true).
+    ///
+    /// If the process is interrupted before this is called, the next startup
+    /// will detect the version mismatch and re-trigger the full reindex.
+    pub fn mark_schema_synced(&self) {
+        if let Some(path) = &self.version_file_path {
+            if let Err(e) = std::fs::write(path, format!("{}", SEARCH_SCHEMA_VERSION)) {
+                tracing::warn!(error = %e, "Failed to write search schema version file");
+            } else {
+                tracing::info!(
+                    version = SEARCH_SCHEMA_VERSION,
+                    "Search schema version file updated — index fully synced"
+                );
+            }
+        }
     }
 }
 
@@ -796,18 +839,47 @@ mod tests {
 
         // Create an index at version 1
         std::fs::create_dir_all(&idx_path).unwrap();
-        std::fs::write(idx_path.join("schema_version"), "1").unwrap();
-        let _idx = SearchIndex::open(&idx_path).unwrap();
-
-        // Now "upgrade" to version 999 and re-open
         let version_path = idx_path.join("schema_version");
-        std::fs::write(&version_path, "1").unwrap(); // simulate old version on disk
+        std::fs::write(&version_path, "1").unwrap();
+        let idx = SearchIndex::open(&idx_path).unwrap();
 
-        let current = format!("{}", SEARCH_SCHEMA_VERSION);
-        // After open(), the version file should always match SEARCH_SCHEMA_VERSION
-        let _idx2 = SearchIndex::open(&idx_path).unwrap();
+        // After open() with mismatch, needs_full_reindex should be true
+        assert!(idx.needs_full_reindex, "should need full reindex after version mismatch");
+
+        // Version file should NOT be updated yet (deferred to mark_schema_synced)
         let after = std::fs::read_to_string(&version_path).unwrap();
-        assert_eq!(after.trim(), current, "schema_version file should be updated to current version");
+        assert_eq!(after.trim(), "1", "schema_version should stay at old value until mark_schema_synced");
+
+        // After marking synced, version file should be updated
+        idx.mark_schema_synced();
+        let synced = std::fs::read_to_string(&version_path).unwrap();
+        assert_eq!(synced.trim(), format!("{}", SEARCH_SCHEMA_VERSION), "schema_version should match after sync");
+
+        // Drop the first index to release the writer lock before re-opening
+        drop(idx);
+
+        // Re-opening should now NOT need rebuild
+        let idx2 = SearchIndex::open(&idx_path).unwrap();
+        assert!(!idx2.needs_full_reindex, "should not need reindex after sync");
+    }
+
+    #[test]
+    fn test_missing_version_file_triggers_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let idx_path = dir.path().join("search");
+
+        // No version file at all
+        let idx = SearchIndex::open(&idx_path).unwrap();
+        assert!(idx.needs_full_reindex, "should need full reindex when no version file");
+
+        // After syncing, should not need rebuild
+        idx.mark_schema_synced();
+
+        // Drop the first index to release the writer lock before re-opening
+        drop(idx);
+
+        let idx2 = SearchIndex::open(&idx_path).unwrap();
+        assert!(!idx2.needs_full_reindex, "should not need reindex after sync");
     }
 
     #[test]
