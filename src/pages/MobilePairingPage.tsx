@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Camera, AlertTriangle, Loader } from 'lucide-react'
 import jsQR from 'jsqr'
-import { generatePhoneKeys, storeMacPublicKey } from '../lib/mobile-crypto.ts'
-import { setItem } from '../lib/mobile-storage.ts'
+import * as nacl from 'tweetnacl'
 import * as naclUtil from 'tweetnacl-util'
+import { generatePhoneKeys, storeMacPublicKey } from '../lib/mobile-crypto.ts'
+import { getItem, setItem } from '../lib/mobile-storage.ts'
 
 type ScanState = 'init' | 'scanning' | 'processing' | 'error'
 
@@ -55,8 +56,18 @@ export function MobilePairingPage() {
         await storeMacPublicKey(payload.k)
 
         // Generate a device ID
-        const deviceId = crypto.randomUUID()
+        const deviceId = 'phone-' + crypto.randomUUID().substring(0, 8)
         await setItem('device_id', deviceId)
+
+        // Encrypt phone's X25519 pubkey with Mac's X25519 pubkey (NaCl box)
+        const macPubKey = naclUtil.decodeBase64(payload.k)
+        const encSecret = (await getItem('enc_secret'))!
+        const encSecretKey = naclUtil.decodeBase64(encSecret)
+        const nonce = nacl.randomBytes(24)
+        const encrypted = nacl.box(encryptionPublicKey, nonce, macPubKey, encSecretKey)
+        const wire = new Uint8Array(nonce.length + encrypted.length)
+        wire.set(nonce)
+        wire.set(encrypted, nonce.length)
 
         // Claim the pairing token on the relay
         const claimUrl = new URL('/pair/claim', payload.r.replace('wss://', 'https://').replace('ws://', 'http://'))
@@ -64,15 +75,10 @@ export function MobilePairingPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            token: payload.t,
+            one_time_token: payload.t,
             device_id: deviceId,
-            encryption_public_key: naclUtil.encodeBase64(encryptionPublicKey),
-            signing_public_key: naclUtil.encodeBase64(signingPublicKey),
-            device_name: navigator.userAgent.includes('iPhone')
-              ? 'iPhone'
-              : navigator.userAgent.includes('Android')
-                ? 'Android'
-                : 'Mobile',
+            pubkey: naclUtil.encodeBase64(signingPublicKey),
+            pubkey_encrypted_blob: naclUtil.encodeBase64(wire),
           }),
         })
 
