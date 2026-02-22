@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use tantivy::collector::TopDocs;
+use tantivy::collector::{Count, TopDocs};
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
 use tantivy::schema::IndexRecordOption;
 use tantivy::snippet::SnippetGenerator;
@@ -358,12 +358,12 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
 
-        // Collect enough docs to handle offset + limit at the session level.
-        // Since multiple docs can belong to the same session, we need to
-        // over-fetch. A reasonable heuristic: fetch up to (limit + offset) * 20
-        // individual docs, capped at a sane maximum.
-        let max_docs = ((limit + offset) * 20).min(10_000);
-        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(max_docs))?;
+        // Two-phase search: Count gets true total, TopDocs gets scored results.
+        // Local tool — total doc count is small, no artificial caps needed.
+        let total_matches_all = searcher.search(&combined_query, &Count)?;
+
+        // Fetch all matching docs for accurate session grouping and ranking.
+        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(total_matches_all.max(1)))?;
 
         // Group by session_id
         let mut session_groups: HashMap<String, Vec<(f32, DocAddress)>> = HashMap::new();
@@ -382,7 +382,6 @@ impl SearchIndex {
         }
 
         let total_sessions_all = session_groups.len();
-        let total_matches_all: usize = session_groups.values().map(|v| v.len()).sum();
 
         // Build a snippet generator for the text query
         // (only if we have a text query to highlight)
