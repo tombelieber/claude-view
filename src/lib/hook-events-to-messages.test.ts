@@ -1,14 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { HookEventItem } from '../components/live/action-log/types'
-import type { Message } from '../types/generated'
-import type { RichMessage } from '../components/live/RichPane'
 import {
   hookEventsToMessages,
   hookEventsToRichMessages,
   getMessageSortTs,
   mergeByTimestamp,
-  suppressHookProgress,
-  suppressRichHookProgress,
 } from './hook-events-to-messages'
 
 function makeHookEvent(overrides: Partial<HookEventItem> = {}): HookEventItem {
@@ -139,43 +135,3 @@ describe('mergeByTimestamp', () => {
   })
 })
 
-describe('suppressHookProgress', () => {
-  it('filters out hook_progress messages', () => {
-    const messages = [
-      { role: 'user', content: 'hi', metadata: null } as any as Message,
-      { role: 'progress', content: '', metadata: { type: 'hook_progress' } } as any as Message,
-      { role: 'progress', content: '', metadata: { type: 'bash_progress' } } as any as Message,
-    ]
-    const filtered = suppressHookProgress(messages)
-    expect(filtered).toHaveLength(2)
-    expect(filtered[0].role).toBe('user')
-    expect(filtered[1].metadata?.type).toBe('bash_progress')
-  })
-
-  it('returns all messages when none are hook_progress', () => {
-    const messages = [
-      { role: 'user', content: 'hi', metadata: null } as any as Message,
-    ]
-    expect(suppressHookProgress(messages)).toHaveLength(1)
-  })
-
-  it('handles messages with null metadata', () => {
-    const messages = [
-      { role: 'user', content: 'hi', metadata: null } as any as Message,
-    ]
-    expect(suppressHookProgress(messages)).toHaveLength(1)
-  })
-})
-
-describe('suppressRichHookProgress', () => {
-  it('filters out hook_progress RichMessages', () => {
-    const messages: RichMessage[] = [
-      { type: 'user', content: 'hi' },
-      { type: 'progress', content: '', metadata: { type: 'hook_progress' } },
-      { type: 'progress', content: '', metadata: { type: 'hook_event' } },
-    ]
-    const filtered = suppressRichHookProgress(messages)
-    expect(filtered).toHaveLength(2)
-    expect(filtered[1].metadata!.type).toBe('hook_event')
-  })
-})

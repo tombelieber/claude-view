@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
 import { type LiveSession } from './use-live-sessions'
@@ -20,6 +20,7 @@ import { ContextGauge } from './ContextGauge'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ViewModeControls } from './ViewModeControls'
 import { useMonitorStore } from '../../store/monitor-store'
+import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 
@@ -117,6 +118,12 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   )
   const richMessages = isLive ? liveMessages : (data.terminalMessages ?? [])
   const bufferDone = isLive ? liveBufferDone : true // history messages are always fully loaded
+
+  // Shared category counts — computed once, passed to both Terminal and Log tabs
+  const categoryCounts = useMemo(
+    () => computeCategoryCounts(richMessages),
+    [richMessages]
+  )
 
   // Historical hook events (REST fetch for non-live sessions)
   const historicalHookEvents = useHookEvents(data.id, !isLive)
@@ -498,6 +505,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             isVisible={true}
             verboseMode={verboseMode}
             bufferDone={bufferDone}
+            categoryCounts={categoryCounts}
           />
         )}
 
@@ -506,7 +514,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
           <ActionLogTab
             messages={richMessages}
             bufferDone={bufferDone}
-            hookEvents={isLive ? liveHookEvents : historicalHookEvents}
+            categoryCounts={categoryCounts}
           />
         )}
 
