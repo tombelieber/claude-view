@@ -361,6 +361,7 @@ async fn test_update_session_deep_fields_phase3() {
         None,  // primary_model
         None,  // last_message_at
         None,  // first_user_prompt
+        0.0,   // total_cost_usd
     )
     .await
     .unwrap();
@@ -464,6 +465,7 @@ async fn test_list_sessions_for_project_includes_phase3_fields() {
         None,        // primary_model
         None,        // last_message_at
         None,        // first_user_prompt
+        0.0,         // total_cost_usd
     )
     .await
     .unwrap();

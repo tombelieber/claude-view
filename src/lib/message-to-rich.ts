@@ -1,6 +1,7 @@
 // src/lib/message-to-rich.ts
 import type { Message } from '../types/generated'
 import type { RichMessage } from '../components/live/RichPane'
+import type { ActionCategory } from '../components/live/action-log/types'
 
 /** Strip Claude Code internal command tags from content (same logic as RichPane). */
 function stripCommandTags(content: string): string {
@@ -33,17 +34,18 @@ function tryParseJson(str: string): unknown | undefined {
 /**
  * Convert paginated Message[] (from JSONL parser) to RichMessage[] (for RichPane).
  *
- * Mapping:
+ * Mapping (lossless — all 7 JSONL types emitted):
  * - user → user
  * - assistant → thinking (if has thinking) + assistant (if has content)
  * - tool_use → tool_use (extract tool name from tool_calls[0])
  * - tool_result → tool_result
- * - system → assistant (rendered as info)
- * - progress → skipped
- * - summary → skipped
+ * - system → system (with metadata)
+ * - progress → progress (with metadata)
+ * - summary → summary (with metadata)
  */
 export function messagesToRichMessages(messages: Message[]): RichMessage[] {
   const result: RichMessage[] = []
+  let lastToolCategory: ActionCategory | undefined
 
   for (const msg of messages) {
     const ts = parseTimestamp(msg.timestamp)
@@ -74,37 +76,90 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       }
 
       case 'tool_use': {
-        const toolName = msg.tool_calls?.[0]?.name ?? 'tool'
-        const inputStr = msg.content || ''
-        result.push({
-          type: 'tool_use',
-          content: '',
-          name: toolName,
-          input: inputStr || undefined,
-          inputData: inputStr ? tryParseJson(inputStr) : undefined,
-          ts,
-        })
+        // Emit one RichMessage per tool_call (matches WebSocket behavior).
+        // Each ToolCall now carries its own input data from the Rust parser.
+        const toolCalls = msg.tool_calls ?? []
+        if (toolCalls.length === 0) {
+          // Fallback: legacy data without individual tool calls
+          const inputStr = msg.content || ''
+          const category = (msg.category as ActionCategory) ?? 'builtin'
+          result.push({
+            type: 'tool_use',
+            content: '',
+            name: 'tool',
+            input: inputStr || undefined,
+            inputData: inputStr ? tryParseJson(inputStr) : undefined,
+            ts,
+            category,
+          })
+          lastToolCategory = category
+        } else {
+          for (const tc of toolCalls) {
+            const inputData = tc.input ?? undefined
+            const inputStr = inputData ? JSON.stringify(inputData, null, 2) : undefined
+            const category = (tc.category as ActionCategory) ?? 'builtin'
+            result.push({
+              type: 'tool_use',
+              content: '',
+              name: tc.name,
+              input: inputStr,
+              inputData,
+              ts,
+              category,
+            })
+            lastToolCategory = category
+          }
+        }
         break
       }
 
       case 'tool_result': {
         const content = stripCommandTags(msg.content)
         if (content) {
-          result.push({ type: 'tool_result', content, ts })
+          result.push({ type: 'tool_result', content, ts, category: lastToolCategory })
         }
         break
       }
 
       case 'system': {
-        // Render system messages as assistant info
         const content = stripCommandTags(msg.content)
-        if (content) {
-          result.push({ type: 'assistant', content, ts })
-        }
+        result.push({
+          type: 'system',
+          content: content || '',
+          ts,
+          category: (msg.category as ActionCategory) ?? 'system',
+          metadata: msg.metadata ?? undefined,
+        })
         break
       }
 
-      // progress, summary → skip (not useful in replay)
+      case 'progress': {
+        const content = stripCommandTags(msg.content)
+        // hook_progress gets its own category (Rust maps it to "hook", we split them)
+        const progressCategory = msg.metadata?.type === 'hook_progress'
+          ? 'hook_progress' as ActionCategory
+          : (msg.category as ActionCategory) ?? undefined
+        result.push({
+          type: 'progress',
+          content: content || '',
+          ts,
+          category: progressCategory,
+          metadata: msg.metadata ?? undefined,
+        })
+        break
+      }
+
+      case 'summary': {
+        result.push({
+          type: 'summary',
+          content: msg.content || '',
+          ts,
+          category: 'summary' as ActionCategory,
+          metadata: msg.metadata ?? undefined,
+        })
+        break
+      }
+
       default:
         break
     }

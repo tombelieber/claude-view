@@ -1,7 +1,9 @@
 import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit, Code2 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { computeWeight, weightBorderClass } from '../lib/session-weight'
 import type { SessionInfo } from '../hooks/use-projects'
+import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
 import { CategoryBadge } from './CategoryBadge'
 import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
@@ -168,6 +170,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   const aiLinesRemoved = session?.aiLinesRemoved ? Number(session.aiLinesRemoved) : null
   const hasLoc = aiLinesAdded !== null || aiLinesRemoved !== null
 
+  // Session weight for visual accent
+  const weightTier = computeWeight({
+    totalTokens,
+    userPromptCount: prompts,
+    filesEditedCount: filesEdited,
+    durationSeconds,
+  })
+
   // Calculate start timestamp from modifiedAt - durationSeconds
   const endTimestamp = Number(session?.modifiedAt ?? 0)
   const startTimestamp = endTimestamp - durationSeconds
@@ -186,17 +196,21 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
   return (
     <article
       className={cn(
-        'w-full text-left p-3.5 rounded-lg border cursor-pointer',
+        'w-full text-left p-3.5 rounded-lg border border-l-[3px] cursor-pointer',
         'transition-all duration-200 ease-out',
         isSelected
           ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
-          : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+          : cn(
+              'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
+              weightBorderClass(weightTier)
+            )
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
-      {/* Header: Project badge + Branch badge + Time range + Duration */}
+      {/* Header: Weight dot + Project badge + Branch badge + Time range + Duration */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
+          <WeightIndicator tier={weightTier} />
           {projectLabel && (
             <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded flex-shrink-0">
               {projectLabel}
@@ -251,78 +265,67 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         </div>
       )}
 
-      {/* Metrics row: prompts, tokens, files, re-edits */}
-      <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-500 dark:text-gray-400">
-        {prompts > 0 && (
-          <>
-            <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {hasTokens && (
-          <>
-            <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {filesEdited > 0 && (
-          <>
-            <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-          </>
-        )}
-        {reeditedFiles > 0 && (
-          <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
-        )}
-        {longestTaskSeconds > 0 && (
-          <>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-            <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
-          </>
-        )}
-        {/* Fallback to legacy display if no new metrics */}
-        {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
-          <div className="flex items-center gap-2 text-gray-400">
-            {editCount > 0 && (
-              <span className="flex items-center gap-0.5" title="Edits">
-                <Pencil className="w-3 h-3" />
-                {editCount}
-              </span>
-            )}
-            {toolCounts.bash > 0 && (
-              <span className="flex items-center gap-0.5" title="Bash commands">
-                <Terminal className="w-3 h-3" />
-                {toolCounts.bash}
-              </span>
-            )}
-            {toolCounts.read > 0 && (
-              <span className="flex items-center gap-0.5" title="File reads">
-                <Eye className="w-3 h-3" />
-                {toolCounts.read}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* LOC Impact */}
-      {(session.linesAdded > 0 || session.linesRemoved > 0) && (
-        <div className="flex items-center gap-2 mt-2 text-xs">
-          {session.locSource === 2 && (
-            <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+      {/* Metrics box */}
+      {(prompts > 0 || hasTokens || filesEdited > 0 || totalTools > 0) && (
+        <div className="mt-2.5 rounded-md bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+          {/* Row 1: Usage — prompts, tokens, longest task */}
+          {(prompts > 0 || hasTokens || longestTaskSeconds > 0) && (
+            <div className="flex items-center gap-3">
+              {prompts > 0 && (
+                <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
+              )}
+              {hasTokens && (
+                <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
+              )}
+              {longestTaskSeconds > 0 && (
+                <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
+              )}
+            </div>
           )}
-          <span className="text-green-600 dark:text-green-400">
-            +{formatNumber(session.linesAdded)}
-          </span>
-          <span className="text-gray-400">/</span>
-          <span className="text-red-600 dark:text-red-400">
-            -{formatNumber(session.linesRemoved)}
-          </span>
-        </div>
-      )}
-      {session.linesAdded === 0 && session.linesRemoved === 0 && session.locSource > 0 && (
-        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          ±0
+          {/* Row 2: Output — files, re-edits, LOC */}
+          {(filesEdited > 0 || reeditedFiles > 0 || session.linesAdded > 0 || session.linesRemoved > 0) && (
+            <div className="flex items-center gap-3 mt-1">
+              {filesEdited > 0 && (
+                <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
+              )}
+              {reeditedFiles > 0 && (
+                <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+              )}
+              {(session.linesAdded > 0 || session.linesRemoved > 0) && (
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  {session.locSource === 2 && (
+                    <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+                  )}
+                  <span className="text-green-600 dark:text-green-400">+{formatNumber(session.linesAdded)}</span>
+                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                  <span className="text-red-600 dark:text-red-400">-{formatNumber(session.linesRemoved)}</span>
+                </span>
+              )}
+            </div>
+          )}
+          {/* Legacy fallback for old sessions without new metrics */}
+          {prompts === 0 && !hasTokens && filesEdited === 0 && totalTools > 0 && (
+            <div className="flex items-center gap-3">
+              {editCount > 0 && (
+                <span className="flex items-center gap-1" title="Edits">
+                  <Pencil className="w-3 h-3" />
+                  <span className="tabular-nums">{editCount}</span>
+                </span>
+              )}
+              {toolCounts.bash > 0 && (
+                <span className="flex items-center gap-1" title="Bash commands">
+                  <Terminal className="w-3 h-3" />
+                  <span className="tabular-nums">{toolCounts.bash}</span>
+                </span>
+              )}
+              {toolCounts.read > 0 && (
+                <span className="flex items-center gap-1" title="File reads">
+                  <Eye className="w-3 h-3" />
+                  <span className="tabular-nums">{toolCounts.read}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -397,12 +400,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           )}
         </div>
 
-        {/* Message/turn count (if available and useful) */}
-        {(session.messageCount ?? 0) > 0 && prompts === 0 && (
-          <div className="flex items-center gap-1 text-xs text-gray-400">
+        {/* Turn/message count — always visible for scanning session length */}
+        {((session.turnCount ?? 0) > 0 || (session.messageCount ?? 0) > 0) && (
+          <div className="flex items-center gap-1 text-xs text-gray-400 tabular-nums">
             <MessageSquare className="w-3 h-3" />
             <span>
-              {session.messageCount} msgs
+              {(session.turnCount ?? 0) > 0
+                ? `${session.turnCount} turn${session.turnCount !== 1 ? 's' : ''}`
+                : `${session.messageCount} msg${(session.messageCount ?? 0) !== 1 ? 's' : ''}`}
             </span>
           </div>
         )}

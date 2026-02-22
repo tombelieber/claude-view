@@ -54,7 +54,7 @@ describe('SessionSummaryCard', () => {
       )
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toMatch(/border-l/)
-      expect(card.className).toMatch(/border-l-gray-300/)
+      expect(card.className).toMatch(/border-l-gray-400/)
     })
 
     it('should render the BookOpen icon', () => {

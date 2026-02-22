@@ -29,6 +29,8 @@ pub struct SessionAccumulator {
     pub todo_items: Vec<ProgressItem>,
     pub task_items: Vec<ProgressItem>,
     pub last_cache_hit_at: Option<i64>,
+    /// Accumulated costUSD from JSONL entries (sum of per-entry `costUSD`).
+    pub total_cost_usd: f64,
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
@@ -65,6 +67,7 @@ impl SessionAccumulator {
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
+            total_cost_usd: 0.0,
         }
     }
 
@@ -104,6 +107,13 @@ impl SessionAccumulator {
         }
         if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
             self.tokens.cache_creation_1hr_tokens += tokens_1hr;
+        }
+
+        // -----------------------------------------------------------------
+        // Accumulate costUSD from JSONL entries
+        // -----------------------------------------------------------------
+        if let Some(cost) = line.cost_usd {
+            self.total_cost_usd += cost;
         }
 
         // -----------------------------------------------------------------
@@ -507,6 +517,7 @@ mod tests {
             cache_creation_tokens: None,
             cache_creation_5m_tokens: None,
             cache_creation_1hr_tokens: None,
+            cost_usd: None,
             timestamp: None,
             stop_reason: None,
             git_branch: None,
