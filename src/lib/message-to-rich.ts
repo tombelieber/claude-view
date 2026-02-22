@@ -2,7 +2,6 @@
 import type { Message } from '../types/generated'
 import type { RichMessage } from '../components/live/RichPane'
 import type { ActionCategory } from '../components/live/action-log/types'
-import { categorizeTool } from './categorize-tool'
 
 /** Strip Claude Code internal command tags from content (same logic as RichPane). */
 function stripCommandTags(content: string): string {
@@ -83,6 +82,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
         if (toolCalls.length === 0) {
           // Fallback: legacy data without individual tool calls
           const inputStr = msg.content || ''
+          const category = (msg.category as ActionCategory) ?? 'builtin'
           result.push({
             type: 'tool_use',
             content: '',
@@ -90,14 +90,14 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
             input: inputStr || undefined,
             inputData: inputStr ? tryParseJson(inputStr) : undefined,
             ts,
-            category: 'builtin',
+            category,
           })
-          lastToolCategory = 'builtin'
+          lastToolCategory = category
         } else {
           for (const tc of toolCalls) {
             const inputData = tc.input ?? undefined
             const inputStr = inputData ? JSON.stringify(inputData, null, 2) : undefined
-            const category = categorizeTool(tc.name)
+            const category = (tc.category as ActionCategory) ?? 'builtin'
             result.push({
               type: 'tool_use',
               content: '',
@@ -127,6 +127,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           type: 'system',
           content: content || '',
           ts,
+          category: (msg.category as ActionCategory) ?? undefined,
           metadata: msg.metadata ?? undefined,
         })
         break
@@ -138,6 +139,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           type: 'progress',
           content: content || '',
           ts,
+          category: (msg.category as ActionCategory) ?? undefined,
           metadata: msg.metadata ?? undefined,
         })
         break
