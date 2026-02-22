@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import type { RichMessage } from '../RichPane'
 import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory, HookEventItem } from './types'
-import { categorizeTool } from '../../../lib/categorize-tool'
 
 function makeLabel(toolName: string, input?: string): string {
   if (!input) return toolName
@@ -85,7 +84,7 @@ export function useActionItems(messages: RichMessage[], hookEvents?: HookEventIt
         const action: ActionItem = {
           id: `action-${actionIndex++}`,
           timestamp: msg.ts,
-          category: categorizeTool(msg.name),
+          category: (msg.category as ActionCategory) ?? 'builtin',
           toolName: msg.name,
           label: makeLabel(msg.name, msg.input),
           status: 'pending',
