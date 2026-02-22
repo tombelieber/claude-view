@@ -17,7 +17,8 @@ use crate::crypto::{
 
 /// Configuration for the relay client.
 pub struct RelayClientConfig {
-    pub relay_url: String,
+    /// RELAY_URL env var (e.g. wss://host/ws). None = relay disabled.
+    pub relay_url: Option<String>,
     pub heartbeat_interval: Duration,
     pub max_reconnect_delay: Duration,
 }
@@ -25,7 +26,7 @@ pub struct RelayClientConfig {
 impl Default for RelayClientConfig {
     fn default() -> Self {
         Self {
-            relay_url: "ws://localhost:47893/ws".into(),
+            relay_url: std::env::var("RELAY_URL").ok(),
             heartbeat_interval: Duration::from_secs(30),
             max_reconnect_delay: Duration::from_secs(30),
         }
@@ -40,6 +41,14 @@ pub fn spawn_relay_client(
     config: RelayClientConfig,
 ) {
     tokio::spawn(async move {
+        let relay_url = match config.relay_url {
+            Some(ref url) => url.clone(),
+            None => {
+                info!("RELAY_URL not set — mobile relay disabled");
+                return;
+            }
+        };
+
         // Load identity (or create on first run)
         let identity = match load_or_create_identity() {
             Ok(id) => id,
@@ -49,7 +58,7 @@ pub fn spawn_relay_client(
             }
         };
 
-        info!(device_id = %identity.device_id, "relay client starting");
+        info!(device_id = %identity.device_id, %relay_url, "relay client starting");
 
         let mut backoff = Duration::from_secs(1);
 
@@ -61,7 +70,7 @@ pub fn spawn_relay_client(
                 continue;
             }
 
-            match connect_and_stream(&identity, &paired_devices, &tx, &sessions, &config).await {
+            match connect_and_stream(&identity, &paired_devices, &tx, &sessions, &relay_url, &config).await {
                 Ok(()) => {
                     info!("relay connection closed cleanly");
                     backoff = Duration::from_secs(1);
@@ -82,10 +91,11 @@ async fn connect_and_stream(
     paired_devices: &[PairedDevice],
     tx: &broadcast::Sender<SessionEvent>,
     sessions: &LiveSessionMap,
+    relay_url: &str,
     config: &RelayClientConfig,
 ) -> Result<(), String> {
     // Connect to relay
-    let (ws_stream, _) = connect_async(&config.relay_url)
+    let (ws_stream, _) = connect_async(relay_url)
         .await
         .map_err(|e| format!("WS connect failed: {e}"))?;
 

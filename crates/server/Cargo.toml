@@ -75,6 +75,7 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
 base64 = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
+dotenvy = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

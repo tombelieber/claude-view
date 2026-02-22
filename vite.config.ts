@@ -15,16 +15,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: true,
     proxy: {
       '/api/live/sessions': {
         target: 'http://localhost:47892',
         ws: true,
       },
       '/api': 'http://localhost:47892',
-      '/relay': {
-        target: 'http://localhost:47893',
-        ws: true,
-      },
     },
   },
   build: {

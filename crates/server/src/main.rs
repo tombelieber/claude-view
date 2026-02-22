@@ -127,6 +127,9 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if present (no-op if missing)
+    dotenvy::dotenv().ok();
+
     // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
     // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
     let subscriber = FmtSubscriber::builder()

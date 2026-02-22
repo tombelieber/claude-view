@@ -62,6 +62,7 @@
     "dompurify": "^3.3.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.562.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-day-picker": "^9.13.0",
     "react-dom": "^19.2.0",
