@@ -25,6 +25,7 @@ interface AgentProgressCardProps {
   tokens?: TokenCount
   normalizedMessages?: number
   indent?: number
+  verboseMode?: boolean
 }
 
 const MAX_PROMPT_LENGTH = 1000
@@ -36,8 +37,9 @@ export function AgentProgressCard({
   tokens,
   normalizedMessages,
   indent = 0,
+  verboseMode,
 }: AgentProgressCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const totalTokens = tokens
     ? (tokens.input || 0) + (tokens.output || 0)
