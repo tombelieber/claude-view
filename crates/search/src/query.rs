@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, Query, TermQuery};
+use tantivy::collector::{Count, TopDocs};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
 use tantivy::schema::IndexRecordOption;
 use tantivy::snippet::SnippetGenerator;
 use tantivy::schema::Value;
@@ -30,6 +30,24 @@ fn truncate_utf8(s: &str, max_bytes: usize) -> String {
 struct Qualifier {
     key: String,
     value: String,
+}
+
+/// Check if the query string is a bare UUID (session ID).
+/// Pattern: 8-4-4-4-12 hex digits, case-insensitive, whitespace-trimmed.
+fn is_session_id(query: &str) -> bool {
+    let trimmed = query.trim();
+    if trimmed.len() != 36 {
+        return false;
+    }
+    let bytes = trimmed.as_bytes();
+    // Check hyphens at positions 8, 13, 18, 23
+    if bytes[8] != b'-' || bytes[13] != b'-' || bytes[18] != b'-' || bytes[23] != b'-' {
+        return false;
+    }
+    // Check all other chars are hex digits
+    trimmed.chars().enumerate().all(|(i, c)| {
+        i == 8 || i == 13 || i == 18 || i == 23 || c.is_ascii_hexdigit()
+    })
 }
 
 /// Parse a raw query string into text query + qualifiers.
@@ -135,20 +153,120 @@ impl SearchIndex {
     ) -> Result<SearchResponse, SearchError> {
         let start = Instant::now();
 
+        // Fast path: if the query is a bare UUID, do an exact session_id lookup
+        let trimmed_query = query_str.trim();
+        if is_session_id(trimmed_query) {
+            let session_id = trimmed_query.to_lowercase();
+            let term = Term::from_field_text(self.session_id_field, &session_id);
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            let searcher = self.reader.searcher();
+            let top_docs = searcher.search(&term_query, &TopDocs::with_limit(1000))?;
+
+            if top_docs.is_empty() {
+                return Ok(SearchResponse {
+                    query: query_str.to_string(),
+                    total_sessions: 0,
+                    total_matches: 0,
+                    elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    sessions: vec![],
+                });
+            }
+
+            // Build matches from all docs in this session
+            let mut matches = Vec::with_capacity(top_docs.len());
+            let mut project = String::new();
+            let mut branch = String::new();
+            let mut latest_timestamp: i64 = 0;
+
+            for (_score, doc_addr) in &top_docs {
+                let retrieved: TantivyDocument = searcher.doc(*doc_addr)?;
+
+                let role = retrieved
+                    .get_first(self.role_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let turn_number = retrieved
+                    .get_first(self.turn_number_field)
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let timestamp = retrieved
+                    .get_first(self.timestamp_field)
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let snippet = retrieved
+                    .get_first(self.content_field)
+                    .and_then(|v| v.as_str())
+                    .map(|s| truncate_utf8(s, 200))
+                    .unwrap_or_default();
+
+                if timestamp > latest_timestamp {
+                    latest_timestamp = timestamp;
+                }
+                if project.is_empty() {
+                    project = retrieved
+                        .get_first(self.project_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    branch = retrieved
+                        .get_first(self.branch_field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                }
+
+                matches.push(MatchHit {
+                    role,
+                    turn_number,
+                    snippet,
+                    timestamp,
+                });
+            }
+
+            // Sort by turn number ascending for session ID lookups
+            matches.sort_by_key(|m| m.turn_number);
+
+            let top_match = matches.first().cloned().unwrap_or(MatchHit {
+                role: String::new(),
+                turn_number: 0,
+                snippet: String::new(),
+                timestamp: 0,
+            });
+
+            let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+            debug!(
+                query = query_str,
+                session_id = session_id,
+                matches = matches.len(),
+                elapsed_ms = elapsed_ms,
+                "session ID lookup completed"
+            );
+
+            return Ok(SearchResponse {
+                query: query_str.to_string(),
+                total_sessions: 1,
+                total_matches: matches.len(),
+                elapsed_ms,
+                sessions: vec![SessionHit {
+                    session_id,
+                    project,
+                    branch: if branch.is_empty() { None } else { Some(branch) },
+                    modified_at: latest_timestamp,
+                    match_count: matches.len(),
+                    best_score: 1.0,
+                    top_match,
+                    matches,
+                }],
+            });
+        }
+
         let (text_query, mut qualifiers) = parse_query_string(query_str);
 
-        // Add scope as a qualifier if provided
+        // Add scope qualifiers (may contain multiple: "project:X branch:Y")
         if let Some(scope_str) = scope {
-            if let Some(colon_pos) = scope_str.find(':') {
-                let key = &scope_str[..colon_pos];
-                let value = &scope_str[colon_pos + 1..];
-                if !value.is_empty() {
-                    qualifiers.push(Qualifier {
-                        key: key.to_string(),
-                        value: value.to_string(),
-                    });
-                }
-            }
+            let (_, scope_qualifiers) = parse_query_string(scope_str);
+            qualifiers.extend(scope_qualifiers);
         }
 
         // Build the combined query
@@ -156,10 +274,36 @@ impl SearchIndex {
 
         // Text query (the main BM25-scored part)
         if !text_query.trim().is_empty() {
-            let query_parser =
-                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-            let parsed = query_parser.parse_query(&text_query)?;
-            sub_queries.push((Occur::Must, parsed));
+            // Check if the query is a quoted phrase
+            let trimmed = text_query.trim();
+            if trimmed.starts_with('"') && trimmed.ends_with('"') {
+                // Quoted phrase: use standard query parser (exact phrase match)
+                let query_parser =
+                    tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
+                let parsed = query_parser.parse_query(trimmed)?;
+                sub_queries.push((Occur::Must, parsed));
+            } else {
+                // Unquoted: apply fuzzy matching per term (Levenshtein distance=1)
+                let tokens: Vec<&str> = trimmed.split_whitespace()
+                    .filter(|t| !t.is_empty())
+                    .collect();
+
+                if tokens.len() == 1 {
+                    // Single term: fuzzy match
+                    let term = Term::from_field_text(self.content_field, &tokens[0].to_lowercase());
+                    let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
+                    sub_queries.push((Occur::Must, Box::new(fuzzy_query)));
+                } else {
+                    // Multiple terms: each must match (fuzzy), combined with Must
+                    let mut term_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+                    for token in &tokens {
+                        let term = Term::from_field_text(self.content_field, &token.to_lowercase());
+                        let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
+                        term_queries.push((Occur::Must, Box::new(fuzzy_query)));
+                    }
+                    sub_queries.push((Occur::Must, Box::new(BooleanQuery::new(term_queries))));
+                }
+            }
         }
 
         // Qualifier term queries
@@ -214,12 +358,12 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
 
-        // Collect enough docs to handle offset + limit at the session level.
-        // Since multiple docs can belong to the same session, we need to
-        // over-fetch. A reasonable heuristic: fetch up to (limit + offset) * 20
-        // individual docs, capped at a sane maximum.
-        let max_docs = ((limit + offset) * 20).min(10_000);
-        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(max_docs))?;
+        // Two-phase search: Count gets true total, TopDocs gets scored results.
+        // Local tool — total doc count is small, no artificial caps needed.
+        let total_matches_all = searcher.search(&combined_query, &Count)?;
+
+        // Fetch all matching docs for accurate session grouping and ranking.
+        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(total_matches_all.max(1)))?;
 
         // Group by session_id
         let mut session_groups: HashMap<String, Vec<(f32, DocAddress)>> = HashMap::new();
@@ -238,7 +382,6 @@ impl SearchIndex {
         }
 
         let total_sessions_all = session_groups.len();
-        let total_matches_all: usize = session_groups.values().map(|v| v.len()).sum();
 
         // Build a snippet generator for the text query
         // (only if we have a text query to highlight)
@@ -472,5 +615,83 @@ mod tests {
     fn test_tokenize_unterminated_quote() {
         let tokens = tokenize_query("hello \"world foo");
         assert_eq!(tokens, vec!["hello", "\"world foo\""]);
+    }
+
+    #[test]
+    fn test_is_session_id_valid_uuid() {
+        assert!(is_session_id("136ed96f-913d-4a1a-91a9-5e651469b2a0"));
+    }
+
+    #[test]
+    fn test_is_session_id_uppercase() {
+        assert!(is_session_id("136ED96F-913D-4A1A-91A9-5E651469B2A0"));
+    }
+
+    #[test]
+    fn test_is_session_id_with_whitespace() {
+        assert!(is_session_id("  136ed96f-913d-4a1a-91a9-5e651469b2a0  "));
+    }
+
+    #[test]
+    fn test_is_session_id_plain_text() {
+        assert!(!is_session_id("JWT authentication"));
+    }
+
+    #[test]
+    fn test_is_session_id_with_qualifier() {
+        assert!(!is_session_id("project:claude-view auth"));
+    }
+
+    #[test]
+    fn test_is_session_id_partial_uuid() {
+        assert!(!is_session_id("136ed96f-913d"));
+    }
+
+    #[test]
+    fn test_is_session_id_empty() {
+        assert!(!is_session_id(""));
+    }
+
+    #[test]
+    fn test_parse_query_session_id_detected() {
+        // Verify that is_session_id is true for a UUID query
+        assert!(is_session_id("136ed96f-913d-4a1a-91a9-5e651469b2a0"));
+        // And that normal text is not
+        let (text, quals) = parse_query_string("136ed96f-913d-4a1a-91a9-5e651469b2a0");
+        assert_eq!(text, "136ed96f-913d-4a1a-91a9-5e651469b2a0");
+        assert!(quals.is_empty());
+    }
+
+    #[test]
+    fn test_parse_scope_multiple_qualifiers() {
+        // This is the exact format the frontend sends as the scope parameter
+        let (text, quals) = parse_query_string("project:claude-view branch:main");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 2);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "claude-view");
+        assert_eq!(quals[1].key, "branch");
+        assert_eq!(quals[1].value, "main");
+    }
+
+    #[test]
+    fn test_parse_scope_single_qualifier() {
+        let (text, quals) = parse_query_string("project:claude-view");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 1);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[0].value, "claude-view");
+    }
+
+    #[test]
+    fn test_parse_scope_with_all_qualifier_types() {
+        let (text, quals) =
+            parse_query_string("project:myapp branch:dev model:claude-opus-4-6 role:assistant");
+        assert!(text.is_empty());
+        assert_eq!(quals.len(), 4);
+        assert_eq!(quals[0].key, "project");
+        assert_eq!(quals[1].key, "branch");
+        assert_eq!(quals[2].key, "model");
+        assert_eq!(quals[3].key, "role");
     }
 }

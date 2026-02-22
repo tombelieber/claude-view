@@ -20,6 +20,8 @@ use memchr::memmem;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
+use claude_view_core::category::{categorize_tool, categorize_progress};
+
 use crate::state::AppState;
 
 /// RAII guard that calls `disconnect()` when dropped, ensuring connection
@@ -137,10 +139,11 @@ async fn ws_subagent_terminal_handler(
     Path((session_id, agent_id)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // SECURITY: Validate agent_id is alphanumeric (prevents path traversal)
+    // SECURITY: Validate agent_id is alphanumeric (prevents path traversal).
+    // Claude Code agent IDs vary in length (7-char short hashes, 17+ char hex strings).
     if agent_id.is_empty()
         || !agent_id.chars().all(|c| c.is_ascii_alphanumeric())
-        || agent_id.len() > 16
+        || agent_id.len() > 64
     {
         return ws.on_upgrade(move |mut socket| async move {
             let err_msg = serde_json::json!({
@@ -385,9 +388,99 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    // Skip non-displayable types (noise in the session log)
+    // Extract timestamp early so all match arms can use it
+    let timestamp = if finders.timestamp_key.find(line_bytes).is_some() {
+        parsed.get("timestamp").and_then(|v| v.as_str())
+    } else {
+        None
+    };
+
+    // Handle structured types with categories
     match line_type {
-        "progress" | "file-history-snapshot" => return vec![],
+        "progress" => {
+            let data = parsed.get("data");
+            let data_type = data
+                .and_then(|d| d.get("type"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown");
+
+            let category = categorize_progress(data_type);
+
+            let hook_name = data.and_then(|d| d.get("hookName")).and_then(|v| v.as_str());
+            let command = data.and_then(|d| d.get("command")).and_then(|v| v.as_str());
+            let content = if let Some(hn) = hook_name {
+                format!("{}: {}", data_type, hn)
+            } else if let Some(cmd) = command {
+                format!("{}: {}", data_type, cmd)
+            } else {
+                data_type.to_string()
+            };
+
+            let mut result = serde_json::json!({
+                "type": "progress",
+                "content": content,
+                "metadata": data,
+            });
+            if let Some(cat) = category {
+                result["category"] = serde_json::Value::String(cat.to_string());
+            }
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            return vec![result.to_string()];
+        }
+        "file-history-snapshot" => {
+            let mut result = serde_json::json!({
+                "type": "system",
+                "content": "file-history-snapshot",
+                "category": "snapshot",
+            });
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            return vec![result.to_string()];
+        }
+        "system" => {
+            let subtype = parsed.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let duration_ms = parsed.get("durationMs").and_then(|v| v.as_u64());
+            let content = if let Some(ms) = duration_ms {
+                format!("{}: {}ms", subtype, ms)
+            } else {
+                subtype.to_string()
+            };
+            let mut result = serde_json::json!({
+                "type": "system",
+                "content": content,
+                "category": "system",
+            });
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            return vec![result.to_string()];
+        }
+        "queue-operation" => {
+            let operation = parsed.get("operation").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let mut result = serde_json::json!({
+                "type": "system",
+                "content": format!("queue-{}", operation),
+                "category": "queue",
+            });
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            return vec![result.to_string()];
+        }
+        "summary" => {
+            let summary_text = parsed.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+            let mut result = serde_json::json!({
+                "type": "summary",
+                "content": summary_text,
+            });
+            if let Some(ts) = timestamp {
+                result["ts"] = serde_json::Value::String(ts.to_string());
+            }
+            return vec![result.to_string()];
+        }
         _ => {}
     }
 
@@ -405,13 +498,6 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
             .get("role")
             .or_else(|| msg_obj.and_then(|m| m.get("role")))
             .and_then(|v| v.as_str())
-    } else {
-        None
-    };
-
-    // Extract timestamp
-    let timestamp = if finders.timestamp_key.find(line_bytes).is_some() {
-        parsed.get("timestamp").and_then(|v| v.as_str())
     } else {
         None
     };
@@ -458,6 +544,8 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
     let mut thinking_parts: Vec<&str> = Vec::new();
     // Collect ALL text blocks (concatenated)
     let mut text_parts: Vec<&str> = Vec::new();
+    // Track the last tool category so tool_result can inherit it
+    let mut last_tool_category: Option<&str> = None;
 
     for block in blocks {
         let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -478,6 +566,8 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
                     .get("name")
                     .and_then(|n| n.as_str())
                     .unwrap_or("unknown");
+                let category = categorize_tool(tool_name);
+                last_tool_category = Some(category);
                 let input = block
                     .get("input")
                     .cloned()
@@ -486,6 +576,7 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
                     "type": "tool_use",
                     "name": tool_name,
                     "input": input,
+                    "category": category,
                 });
                 if let Some(ts) = timestamp {
                     result["ts"] = serde_json::Value::String(ts.to_string());
@@ -504,6 +595,9 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
                     "type": "tool_result",
                     "content": content,
                 });
+                if let Some(cat) = last_tool_category {
+                    result["category"] = serde_json::Value::String(cat.to_string());
+                }
                 if let Some(ts) = timestamp {
                     result["ts"] = serde_json::Value::String(ts.to_string());
                 }
@@ -1655,15 +1749,16 @@ mod tests {
     }
 
     #[test]
-    fn format_line_rich_mode_progress_skipped() {
+    fn format_line_rich_mode_progress_emits_category() {
         let finders = RichModeFinders::new();
         let line =
-            r#"{"type":"progress","data":{"type":"hook_progress","hookEvent":"SessionStart"}}"#;
+            r#"{"type":"progress","data":{"type":"hook_progress","hookName":"pre-commit"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
-        assert!(
-            result.is_empty(),
-            "Progress events should be skipped in rich mode"
-        );
+        assert_eq!(result.len(), 1, "Progress events should emit one message");
+        let parsed: serde_json::Value = serde_json::from_str(&result[0]).unwrap();
+        assert_eq!(parsed["type"], "progress");
+        assert_eq!(parsed["content"], "hook_progress: pre-commit");
+        assert_eq!(parsed["category"], "hook");
     }
 
     #[test]

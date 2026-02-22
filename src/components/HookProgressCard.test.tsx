@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import { HookProgressCard } from './HookProgressCard'
+
+vi.mock('./live/CompactCodeBlock', () => ({
+  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  ),
+}))
 
 describe('HookProgressCard', () => {
   describe('Title and status rendering', () => {
@@ -13,7 +19,7 @@ describe('HookProgressCard', () => {
         />
       )
 
-      expect(screen.getByText(/Hook: SessionStart/)).toBeInTheDocument()
+      expect(screen.getByText(/SessionStart/)).toBeInTheDocument()
       expect(screen.getByText(/setup-env\.sh/)).toBeInTheDocument()
     })
 
@@ -31,8 +37,8 @@ describe('HookProgressCard', () => {
     })
   })
 
-  describe('Collapsible behavior', () => {
-    it('should expand to show output on click when output exists', () => {
+  describe('Output rendering', () => {
+    it('should show output immediately via CompactCodeBlock', () => {
       render(
         <HookProgressCard
           hookEvent="SessionStart"
@@ -42,14 +48,25 @@ describe('HookProgressCard', () => {
         />
       )
 
-      expect(screen.queryByText(/Environment configured/)).not.toBeInTheDocument()
-
-      fireEvent.click(screen.getByRole('button'))
-
       expect(screen.getByText(/Environment configured successfully/)).toBeInTheDocument()
     })
 
-    it('should not be expandable when output is undefined', () => {
+    it('should render output via CompactCodeBlock with bash language', () => {
+      render(
+        <HookProgressCard
+          hookEvent="SessionStart"
+          hookName="pre-session"
+          command="setup.sh"
+          output="some output"
+        />
+      )
+
+      const codeBlock = screen.getByTestId('compact-code-block')
+      expect(codeBlock).toHaveAttribute('data-language', 'bash')
+      expect(codeBlock).toHaveTextContent('some output')
+    })
+
+    it('should not render code block when output is undefined', () => {
       render(
         <HookProgressCard
           hookEvent="SessionStart"
@@ -58,23 +75,21 @@ describe('HookProgressCard', () => {
         />
       )
 
-      // No chevron/expand indicator when no output
-      expect(screen.queryByTestId('hook-expand-icon')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('compact-code-block')).not.toBeInTheDocument()
     })
   })
 
-  describe('ARIA and keyboard', () => {
-    it('should have ARIA label', () => {
-      render(
+  describe('Accessibility', () => {
+    it('should have aria-hidden on decorative icon', () => {
+      const { container } = render(
         <HookProgressCard
           hookEvent="SessionStart"
           hookName="pre-session"
           command="cmd"
-          output="some output"
         />
       )
-
-      expect(screen.getByRole('button', { name: /hook/i })).toBeInTheDocument()
+      const svg = container.querySelector('svg')
+      expect(svg?.getAttribute('aria-hidden')).toBe('true')
     })
   })
 })

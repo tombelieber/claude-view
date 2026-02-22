@@ -26,11 +26,13 @@ use crate::Database;
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
 /// Version 7: Search index uses project_display_name instead of encoded project_id.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
-pub const CURRENT_PARSE_VERSION: i32 = 8;
+/// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
+/// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
+pub const CURRENT_PARSE_VERSION: i32 = 11;
 
 // ---------------------------------------------------------------------------
 // SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (54 params).
+// Must match the sqlx `_tx` function in queries.rs exactly (55 params).
 // ---------------------------------------------------------------------------
 
 const UPDATE_SESSION_DEEP_SQL: &str = r#"
@@ -87,7 +89,8 @@ const UPDATE_SESSION_DEEP_SQL: &str = r#"
         preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
         total_task_time_seconds = ?52,
         longest_task_seconds = ?53,
-        longest_task_preview = ?54
+        longest_task_preview = ?54,
+        total_cost_usd = ?55
     WHERE id = ?1
 "#;
 
@@ -173,6 +176,10 @@ pub struct ExtendedMetadata {
     pub cache_creation_tokens: u64,
     pub thinking_block_count: u32,
 
+    /// Accumulated costUSD from JSONL entries (ccusage "auto" mode).
+    /// Sum of per-entry `costUSD` when present.
+    pub total_cost_usd: f64,
+
     // System line metrics
     pub turn_durations_ms: Vec<u64>,
     pub api_error_count: u32,
@@ -249,11 +256,16 @@ struct AssistantLine {
     uuid: Option<String>,
     #[serde(rename = "parentUuid")]
     parent_uuid: Option<String>,
+    #[serde(rename = "requestId")]
+    request_id: Option<String>,
     message: Option<AssistantMessage>,
+    #[serde(rename = "costUSD")]
+    cost_usd: Option<f64>,
 }
 
 #[derive(Deserialize)]
 struct AssistantMessage {
+    id: Option<String>,
     model: Option<String>,
     usage: Option<UsageBlock>,
     #[serde(default, deserialize_with = "deserialize_content")]
@@ -573,6 +585,35 @@ fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
 /// on the `type` field: user, assistant, system, progress, queue-operation, summary,
 /// file-history-snapshot. This replaces the previous SIMD-selective parser that only
 /// handled user and assistant lines.
+/// Parse a JSONL file from disk, using mmap for large files.
+/// Returns a default ParseResult on any I/O error.
+fn parse_file_bytes(path: &std::path::Path) -> ParseResult {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return ParseResult::default(),
+    };
+    let len = match file.metadata() {
+        Ok(m) => m.len() as usize,
+        Err(_) => return ParseResult::default(),
+    };
+    if len == 0 {
+        return ParseResult::default();
+    }
+    if len < 64 * 1024 {
+        match std::fs::read(path) {
+            Ok(data) => return parse_bytes(&data),
+            Err(_) => return ParseResult::default(),
+        }
+    }
+    match unsafe { memmap2::Mmap::map(&file) } {
+        Ok(mmap) => parse_bytes(&mmap),
+        Err(_) => match std::fs::read(path) {
+            Ok(data) => parse_bytes(&data),
+            Err(_) => ParseResult::default(),
+        },
+    }
+}
+
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut result = ParseResult::default();
     let diag = &mut result.diagnostics;
@@ -587,6 +628,14 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut files_edited_all: Vec<String> = Vec::new();
     let mut first_timestamp: Option<i64> = None;
     let mut last_timestamp: Option<i64> = None;
+
+    // Dedup: track seen (message_id, request_id) pairs to avoid counting
+    // tokens multiple times when Claude Code splits one API response into
+    // multiple JSONL lines (one per content block: thinking, text, tool_use).
+    let mut seen_api_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Count of unique API calls (not inflated by content block splitting).
+    // For legacy data without IDs, each line counts as unique (no dedup possible).
+    let mut unique_api_call_count = 0u32;
 
     // Keep SIMD finders for string-level extraction within already-classified lines
     let content_finder = memmem::Finder::new(b"\"content\":\"");
@@ -717,8 +766,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     result.deep.current_turn_start_ts = current_ts;
                     result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
                 }
-                // Collect for search indexing (skip tool_result continuations and system messages)
-                if !is_tool_result && !is_system_user_content(&content) {
+                // Collect for search indexing (skip system messages but include tool_result)
+                if !is_system_user_content(&content) {
                     user_text_for_search = Some(content);
                 }
             }
@@ -730,10 +779,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 last_timestamp = Some(ts);
             }
-            // Push search message for user content
+            // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
+                let search_role = if is_tool_result { "tool" } else { "user" };
                 result.search_messages.push(claude_view_core::SearchableMessage {
-                    role: "user".to_string(),
+                    role: search_role.to_string(),
                     content: text,
                     timestamp: user_ts,
                 });
@@ -762,6 +812,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         &mut files_edited_all,
                         &mut first_timestamp,
                         &mut last_timestamp,
+                        &mut seen_api_calls,
+                        &mut unique_api_call_count,
                     );
 
                     // Phase C: LOC estimation from Edit/Write tool_use blocks
@@ -876,14 +928,17 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         // Start new turn
                         result.deep.current_turn_start_ts = current_ts;
                         result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
-                        // Collect for search indexing
+                    }
+                    // Collect for search indexing (skip system messages but include tool_result)
+                    if !is_system_user_content(&content) {
                         fallback_user_text = Some(content);
                     }
                 }
-                // Push search message for fallback user content
+                // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
+                    let search_role = if is_tool_result { "tool" } else { "user" };
                     result.search_messages.push(claude_view_core::SearchableMessage {
-                        role: "user".to_string(),
+                        role: search_role.to_string(),
                         content: text,
                         timestamp: fallback_user_ts,
                     });
@@ -906,6 +961,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     &mut tool_call_count,
                     &mut files_read_all,
                     &mut files_edited_all,
+                    &mut seen_api_calls,
+                    &mut unique_api_call_count,
                 );
 
                 // Phase C: LOC estimation from Edit/Write tool_use blocks
@@ -1020,7 +1077,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
     result.deep.first_user_prompt = first_user_content.map(|c| truncate(&c, 500));
     result.deep.user_prompt_count = user_count;
-    result.deep.api_call_count = assistant_count;
+    result.deep.api_call_count = unique_api_call_count;
     result.deep.tool_call_count = tool_call_count;
 
     // files_read: deduplicated
@@ -1089,6 +1146,8 @@ fn handle_assistant_line(
     files_edited_all: &mut Vec<String>,
     first_timestamp: &mut Option<i64>,
     last_timestamp: &mut Option<i64>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+    unique_api_call_count: &mut u32,
 ) {
     diag.lines_assistant += 1;
     *assistant_count += 1;
@@ -1104,19 +1163,44 @@ fn handle_assistant_line(
     }
 
     if let Some(message) = parsed.message {
-        // Extract token usage
-        if let Some(ref usage) = message.usage {
-            if let Some(v) = usage.input_tokens {
-                deep.total_input_tokens += v;
+        // Dedup: check if this is a duplicate content block from the same API response.
+        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+        // each carrying the full message-level usage. Only count tokens for the first block.
+        let is_first_block = match (message.id.as_deref(), parsed.request_id.as_deref()) {
+            (Some(msg_id), Some(req_id)) => {
+                let key = format!("{}:{}", msg_id, req_id);
+                seen_api_calls.insert(key) // true if newly inserted
             }
-            if let Some(v) = usage.output_tokens {
-                deep.total_output_tokens += v;
+            _ => true, // no IDs available — count it (legacy data)
+        };
+
+        if is_first_block {
+            *unique_api_call_count += 1;
+        }
+
+        // Extract token usage — only for first content block per API response
+        if is_first_block {
+            if let Some(ref usage) = message.usage {
+                if let Some(v) = usage.input_tokens {
+                    deep.total_input_tokens += v;
+                }
+                if let Some(v) = usage.output_tokens {
+                    deep.total_output_tokens += v;
+                }
+                if let Some(v) = usage.cache_read_input_tokens {
+                    deep.cache_read_tokens += v;
+                }
+                if let Some(v) = usage.cache_creation_input_tokens {
+                    deep.cache_creation_tokens += v;
+                }
             }
-            if let Some(v) = usage.cache_read_input_tokens {
-                deep.cache_read_tokens += v;
-            }
-            if let Some(v) = usage.cache_creation_input_tokens {
-                deep.cache_creation_tokens += v;
+        }
+
+        // Accumulate costUSD (top-level field, not inside message.usage)
+        // Only count on first block to avoid double-counting multi-block responses
+        if is_first_block {
+            if let Some(cost) = parsed.cost_usd {
+                deep.total_cost_usd += cost;
             }
         }
 
@@ -1140,16 +1224,28 @@ fn handle_assistant_line(
                 _ => "text".to_string(),
             };
 
+            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
+            let (inp, outp, cr, cc) = if is_first_block {
+                (
+                    message.usage.as_ref().and_then(|u| u.input_tokens),
+                    message.usage.as_ref().and_then(|u| u.output_tokens),
+                    message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
+                    message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                )
+            } else {
+                (Some(0), Some(0), Some(0), Some(0))
+            };
+
             turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: *assistant_count - 1,
                 model_id,
                 content_type,
-                input_tokens: message.usage.as_ref().and_then(|u| u.input_tokens),
-                output_tokens: message.usage.as_ref().and_then(|u| u.output_tokens),
-                cache_read_tokens: message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
-                cache_creation_tokens: message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                input_tokens: inp,
+                output_tokens: outp,
+                cache_read_tokens: cr,
+                cache_creation_tokens: cc,
                 service_tier: message.usage.as_ref().and_then(|u| u.service_tier.clone()),
                 timestamp: ts,
             });
@@ -1245,20 +1341,46 @@ fn handle_assistant_value(
     tool_call_count: &mut u32,
     files_read_all: &mut Vec<String>,
     files_edited_all: &mut Vec<String>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+    unique_api_call_count: &mut u32,
 ) {
-    // Extract token usage from .message.usage
-    if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
-        if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
-            deep.total_input_tokens += v;
+    // Dedup check — same logic as handle_assistant_line
+    let msg_id = value.get("message").and_then(|m| m.get("id")).and_then(|v| v.as_str());
+    let req_id = value.get("requestId").and_then(|v| v.as_str());
+    let is_first_block = match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
         }
-        if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
-            deep.total_output_tokens += v;
+        _ => true,
+    };
+
+    if is_first_block {
+        *unique_api_call_count += 1;
+    }
+
+    // Extract token usage from .message.usage — only for first block
+    if is_first_block {
+        if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+            if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                deep.total_input_tokens += v;
+            }
+            if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                deep.total_output_tokens += v;
+            }
+            if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+                deep.cache_read_tokens += v;
+            }
+            if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+                deep.cache_creation_tokens += v;
+            }
         }
-        if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
-            deep.cache_read_tokens += v;
-        }
-        if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
-            deep.cache_creation_tokens += v;
+    }
+
+    // Accumulate costUSD from top-level field
+    if is_first_block {
+        if let Some(cost) = value.get("costUSD").and_then(|v| v.as_f64()) {
+            deep.total_cost_usd += cost;
         }
     }
 
@@ -1282,16 +1404,28 @@ fn handle_assistant_value(
                 .to_string();
             let timestamp = extract_timestamp_from_value(value);
 
+            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
+            let (inp, outp, cr, cc) = if is_first_block {
+                (
+                    usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
+                    usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                )
+            } else {
+                (Some(0), Some(0), Some(0), Some(0))
+            };
+
             turns.push(claude_view_core::RawTurn {
                 uuid,
                 parent_uuid,
                 seq: assistant_count - 1,
                 model_id,
                 content_type,
-                input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                input_tokens: inp,
+                output_tokens: outp,
+                cache_read_tokens: cr,
+                cache_creation_tokens: cc,
                 service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
                 timestamp,
             });
@@ -1597,15 +1731,17 @@ fn extract_first_text_content(
     content_finder: &memmem::Finder,
     text_finder: &memmem::Finder,
 ) -> Option<String> {
-    // Look for "content":"..." pattern (simple string content)
-    if let Some(pos) = content_finder.find(line) {
-        let start = pos + b"\"content\":\"".len();
+    // Check "text":"..." first — more specific to actual text content blocks.
+    // "content":"..." can match tool input fields (e.g. Write tool's file content),
+    // so it should only be used as a fallback.
+    if let Some(pos) = text_finder.find(line) {
+        let start = pos + b"\"text\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
 
-    // or "text":"..." in content blocks
-    if let Some(pos) = text_finder.find(line) {
-        let start = pos + b"\"text\":\"".len();
+    // Fall back to "content":"..." (simple string content, e.g. user messages)
+    if let Some(pos) = content_finder.find(line) {
+        let start = pos + b"\"content\":\"".len();
         return extract_quoted_string(&line[start..]);
     }
 
@@ -1857,16 +1993,36 @@ where
         .await
         .map_err(|e| format!("Failed to query sessions needing deep index: {}", e))?;
 
+    // When the search index was rebuilt (schema version mismatch), force re-parse
+    // of ALL sessions so search_messages (which are ephemeral, not stored in SQLite)
+    // get regenerated and fed to Tantivy. Without this, a search schema bump would
+    // wipe the index but sessions already at the current parse_version would be
+    // skipped, leaving the search index empty.
+    let force_search_reindex = search_index
+        .map(|idx| idx.needs_full_reindex)
+        .unwrap_or(false);
+
+    if force_search_reindex {
+        tracing::info!(
+            sessions = all_sessions.len(),
+            "Search index was rebuilt — forcing full re-parse to repopulate search data"
+        );
+    }
+
     // Filter sessions that actually need (re-)indexing:
-    // 1. deep_indexed_at IS NULL → new session, never indexed
-    // 2. parse_version < CURRENT → parser upgraded
-    // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
-    // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
+    // 1. force_search_reindex → search index was rebuilt, must re-parse everything
+    // 2. deep_indexed_at IS NULL → new session, never indexed
+    // 3. parse_version < CURRENT → parser upgraded
+    // 4. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
+    // 5. Otherwise: stat() the file, compare size+mtime. Different → re-index.
     let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
         .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
-            let needs_index = if deep_indexed_at.is_none() {
+            let needs_index = if force_search_reindex {
+                // Search index was rebuilt — must re-parse to regenerate search_messages
+                true
+            } else if deep_indexed_at.is_none() {
                 // Never deep-indexed → must index
                 true
             } else if parse_version < CURRENT_PARSE_VERSION {
@@ -1973,21 +2129,45 @@ where
                     return (ParseResult::default(), fsize, fmtime);
                 }
                 // Small files: regular read (mmap overhead not worth it)
-                if len < 64 * 1024 {
+                let mut result = if len < 64 * 1024 {
                     match std::fs::read(&path) {
-                        Ok(data) => return (parse_bytes(&data), fsize, fmtime),
-                        Err(_) => return (ParseResult::default(), fsize, fmtime),
+                        Ok(data) => parse_bytes(&data),
+                        Err(_) => ParseResult::default(),
+                    }
+                } else {
+                    // Large files: zero-copy mmap — parse directly from mapped pages
+                    // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
+                    match unsafe { memmap2::Mmap::map(&file) } {
+                        Ok(mmap) => parse_bytes(&mmap), // zero-copy! mmap drops after parse
+                        Err(_) => match std::fs::read(&path) {
+                            Ok(data) => parse_bytes(&data),
+                            Err(_) => ParseResult::default(),
+                        },
+                    }
+                };
+
+                // Merge subagent tokens into the parent session.
+                // Claude Code spawns subagents (Task tool) that write to
+                // <session-uuid>/subagents/agent-*.jsonl — these are separate
+                // API calls not included in the parent JSONL's token counts.
+                let subagent_dir = path.with_extension("").join("subagents");
+                if subagent_dir.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
+                        for entry in entries.flatten() {
+                            let sub_path = entry.path();
+                            if sub_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                                continue;
+                            }
+                            let sub_result = parse_file_bytes(&sub_path);
+                            result.deep.total_input_tokens += sub_result.deep.total_input_tokens;
+                            result.deep.total_output_tokens += sub_result.deep.total_output_tokens;
+                            result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
+                            result.deep.cache_creation_tokens += sub_result.deep.cache_creation_tokens;
+                        }
                     }
                 }
-                // Large files: zero-copy mmap — parse directly from mapped pages
-                // SAFETY: Read-only mapping. Claude Code appends to JSONL (never truncates).
-                match unsafe { memmap2::Mmap::map(&file) } {
-                    Ok(mmap) => (parse_bytes(&mmap), fsize, fmtime), // zero-copy! mmap drops after parse
-                    Err(_) => match std::fs::read(&path) {
-                        Ok(data) => (parse_bytes(&data), fsize, fmtime),
-                        Err(_) => (ParseResult::default(), fsize, fmtime),
-                    },
-                }
+
+                (result, fsize, fmtime)
             })
             .await
             .map_err(|e| format!("spawn_blocking join error: {}", e))?;
@@ -2090,6 +2270,9 @@ where
         primary_model: Option<String>,
         messages: Vec<claude_view_core::SearchableMessage>,
         skills: Vec<String>,
+        preview: Option<String>,
+        last_message: Option<String>,
+        timestamp: i64,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
         results
@@ -2102,6 +2285,9 @@ where
                 primary_model: compute_primary_model(&r.parse_result.turns),
                 messages: r.parse_result.search_messages.clone(),
                 skills: r.parse_result.deep.skills_used.clone(),
+                preview: r.parse_result.deep.first_user_prompt.clone(),
+                last_message: if r.parse_result.deep.last_message.is_empty() { None } else { Some(r.parse_result.deep.last_message.clone()) },
+                timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
             })
             .collect()
     } else {
@@ -2179,7 +2365,7 @@ where
 
                     let primary_model = compute_primary_model(&result.parse_result.turns);
 
-                    // UPDATE session deep fields (54 params: ?1=id, ?2-?54=fields)
+                    // UPDATE session deep fields (55 params: ?1=id, ?2-?55=fields)
                     update_stmt.execute(rusqlite::params![
                         result.session_id,                // ?1
                         meta.last_message,                // ?2
@@ -2235,6 +2421,7 @@ where
                         meta.total_task_time_seconds as i32,       // ?52
                         meta.longest_task_seconds.map(|v| v as i32), // ?53 (Option<i32>)
                         meta.longest_task_preview,        // ?54 (Option<String>)
+                        meta.total_cost_usd,              // ?55 (f64)
                     ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
 
                     // DELETE stale turns/invocations before re-inserting
@@ -2301,7 +2488,7 @@ where
         if !search_batches.is_empty() {
             let mut search_errors = 0u32;
             for batch in &search_batches {
-                let docs: Vec<claude_view_search::SearchDocument> = batch
+                let mut docs: Vec<claude_view_search::SearchDocument> = batch
                     .messages
                     .iter()
                     .enumerate()
@@ -2318,6 +2505,35 @@ where
                     })
                     .collect();
 
+                // Add session summary document for metadata search
+                if let Some(preview) = &batch.preview {
+                    let mut summary_parts = Vec::new();
+                    if !preview.is_empty() {
+                        summary_parts.push(preview.as_str());
+                    }
+                    if !batch.project.is_empty() {
+                        summary_parts.push(batch.project.as_str());
+                    }
+                    if let Some(last_msg) = &batch.last_message {
+                        if !last_msg.is_empty() {
+                            summary_parts.push(last_msg.as_str());
+                        }
+                    }
+                    if !summary_parts.is_empty() {
+                        docs.push(claude_view_search::SearchDocument {
+                            session_id: batch.session_id.clone(),
+                            project: batch.project.clone(),
+                            branch: batch.branch.clone().unwrap_or_default(),
+                            model: batch.primary_model.clone().unwrap_or_default(),
+                            role: "summary".to_string(),
+                            content: summary_parts.join(" | "),
+                            turn_number: 0,
+                            timestamp: batch.timestamp,
+                            skills: batch.skills.clone(),
+                        });
+                    }
+                }
+
                 if let Err(e) = search.index_session(&batch.session_id, &docs) {
                     tracing::warn!(
                         session_id = %batch.session_id,
@@ -2329,12 +2545,26 @@ where
             }
             if let Err(e) = search.commit() {
                 tracing::warn!(error = %e, "Failed to commit search index");
-            } else if search_errors > 0 {
-                tracing::info!(
-                    indexed = search_batches.len() - search_errors as usize,
-                    errors = search_errors,
-                    "Search index write complete (with errors)"
-                );
+            } else {
+                // Reload the reader so queries see the newly committed data
+                // immediately. OnCommitWithDelay is unreliable for first-run
+                // scenarios where the reader was created on an empty index.
+                if let Err(e) = search.reader.reload() {
+                    tracing::warn!(error = %e, "Failed to reload search reader after commit");
+                }
+                if search_errors > 0 {
+                    tracing::info!(
+                        indexed = search_batches.len() - search_errors as usize,
+                        errors = search_errors,
+                        "Search index write complete (with errors)"
+                    );
+                }
+                // Commit succeeded — if this was a full reindex, mark the schema
+                // version file so the next startup won't re-trigger. This MUST
+                // happen after commit(), not before, so interrupted runs retry.
+                if force_search_reindex {
+                    search.mark_schema_synced();
+                }
             }
         }
     }
@@ -2487,6 +2717,7 @@ async fn write_results_sqlx(
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
+            meta.total_cost_usd,
         )
         .await
         .map_err(|e| {
@@ -3452,6 +3683,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_pass_2_merges_subagent_tokens() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        // Parent session JSONL with token usage
+        let parent_jsonl = project_dir.join("sess-sub.jsonl");
+        let parent_content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
+"#;
+        std::fs::write(&parent_jsonl, parent_content).unwrap();
+
+        // Create subagent directory: sess-sub/subagents/agent-abc.jsonl
+        let subagent_dir = project_dir.join("sess-sub").join("subagents");
+        std::fs::create_dir_all(&subagent_dir).unwrap();
+
+        let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
+{"type":"assistant","message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
+"#;
+        std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
+
+        let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
+{"type":"assistant","message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
+"#;
+        std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
+
+        // sessions-index.json
+        let index = format!(
+            r#"[{{"sessionId":"sess-sub","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            parent_jsonl.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 1);
+
+        // Verify tokens = parent + subagent1 + subagent2
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+        // Parent: 100+80+60=240 input, 50+30+20=100 output
+        assert_eq!(session.total_input_tokens, Some(240), "input = parent + sub1 + sub2");
+        assert_eq!(session.total_output_tokens, Some(100), "output = parent + sub1 + sub2");
+        assert_eq!(session.total_cache_read_tokens, Some(1800), "cache_read = 1000 + 500 + 300");
+        assert_eq!(session.total_cache_creation_tokens, Some(350), "cache_create = 200 + 100 + 50");
+    }
+
+    #[tokio::test]
     async fn test_pass_2_skips_already_indexed() {
         let (_tmp, claude_dir) = setup_test_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
@@ -4284,5 +4567,179 @@ mod tests {
             "first_user_prompt should be truncated to ~500 chars, got {} chars",
             prompt.chars().count()
         );
+    }
+
+    #[test]
+    fn test_parse_bytes_deduplicates_content_blocks() {
+        // Simulate one API response split across 3 JSONL lines (thinking, text, tool_use)
+        // All share the same message.id and requestId — tokens should only count ONCE
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a3","parentUuid":"a2","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/foo.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Session-level tokens: should be counted ONCE, not 3x
+        assert_eq!(result.deep.total_input_tokens, 100, "input_tokens counted 3x");
+        assert_eq!(result.deep.total_output_tokens, 50, "output_tokens counted 3x");
+        assert_eq!(result.deep.cache_read_tokens, 1000, "cache_read counted 3x");
+        assert_eq!(result.deep.cache_creation_tokens, 200, "cache_create counted 3x");
+
+        // api_call_count: 3 JSONL lines but only 1 unique API response
+        assert_eq!(result.deep.api_call_count, 1, "api_call_count inflated by content blocks");
+
+        // Should still create 3 turns (one per content block) for UI display,
+        // but only the FIRST turn should carry token counts
+        assert_eq!(result.turns.len(), 3);
+        assert_eq!(result.turns[0].input_tokens, Some(100));
+        assert_eq!(result.turns[1].input_tokens, Some(0)); // zeroed duplicate
+        assert_eq!(result.turns[2].input_tokens, Some(0)); // zeroed duplicate
+    }
+
+    #[test]
+    fn test_parse_bytes_deduplicates_fallback_path() {
+        // SIMD finder looks for exact bytes "type":"assistant" — a space before
+        // the colon causes the SIMD check to miss, falling through to the
+        // full Value parse + type dispatch. This exercises handle_assistant_value.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type" : "assistant","uuid":"b1","parentUuid":"u1","requestId":"req_002","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":5000,"cache_creation_input_tokens":300}}}
+{"type" : "assistant","uuid":"b2","parentUuid":"b1","requestId":"req_002","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"text","text":"world"}],"usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":5000,"cache_creation_input_tokens":300}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Should count tokens only once despite 2 blocks
+        assert_eq!(result.deep.total_input_tokens, 200, "fallback path: input_tokens counted 2x");
+        assert_eq!(result.deep.total_output_tokens, 80, "fallback path: output_tokens counted 2x");
+        assert_eq!(result.deep.cache_read_tokens, 5000, "fallback path: cache_read counted 2x");
+        assert_eq!(result.deep.cache_creation_tokens, 300, "fallback path: cache_create counted 2x");
+
+        // api_call_count: 2 JSONL lines but only 1 unique API response
+        assert_eq!(result.deep.api_call_count, 1, "fallback path: api_call_count inflated");
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_different_api_calls_counted_separately() {
+        // Two different API responses (different message IDs) should each count
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"user","uuid":"u2","parentUuid":"a2","message":{"content":[{"type":"tool_result"}]}}
+{"type":"assistant","uuid":"a3","parentUuid":"u2","requestId":"req_002","timestamp":"2026-01-01T00:00:01Z","message":{"id":"msg_002","model":"claude-opus-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":150,"output_tokens":60,"cache_read_input_tokens":2000,"cache_creation_input_tokens":300}}}
+"#;
+        let result = parse_bytes(data);
+
+        // msg_001 (100 input) + msg_002 (150 input) = 250 total
+        assert_eq!(result.deep.total_input_tokens, 250);
+        assert_eq!(result.deep.total_output_tokens, 110); // 50 + 60
+        assert_eq!(result.deep.cache_read_tokens, 3000); // 1000 + 2000
+        assert_eq!(result.deep.cache_creation_tokens, 500); // 200 + 300
+
+        // 3 assistant JSONL lines, but only 2 unique API responses
+        assert_eq!(result.deep.api_call_count, 2, "should count 2 unique API calls");
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_legacy_data_without_ids() {
+        // Older JSONL lines without message.id/requestId should still count
+        // (graceful fallback — every line counted, no dedup possible)
+        let data = br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"model":"claude-opus-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/foo"}}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Without IDs, both lines count (can't dedup — legacy behavior preserved)
+        assert_eq!(result.deep.total_input_tokens, 200);
+        assert_eq!(result.deep.total_output_tokens, 100);
+
+        // Legacy: each line treated as a separate API call (no IDs to dedup with)
+        assert_eq!(result.deep.api_call_count, 2, "legacy lines each count as api call");
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_preserves_tool_counts() {
+        // Dedup should NOT affect tool counting — all tool_use blocks still tracked
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_001","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_001","model":"claude-opus-4-6","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/b.rs"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Tokens deduplicated
+        assert_eq!(result.deep.total_input_tokens, 100);
+
+        // But both tool_use blocks are counted
+        assert_eq!(result.deep.tool_counts.read, 1);
+        assert_eq!(result.deep.tool_counts.edit, 1);
+
+        // Only 1 unique API call
+        assert_eq!(result.deep.api_call_count, 1);
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_mixed_path_typed_and_fallback() {
+        // Mix of typed path (exact "type":"assistant") and fallback path
+        // (spacing variant "type" : "assistant"). Both share the same
+        // message_id:request_id and should dedup together via the shared HashSet.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"c1","parentUuid":"u1","requestId":"req_003","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_003","model":"claude-opus-4-6","content":[{"type":"thinking"}],"usage":{"input_tokens":500,"output_tokens":100,"cache_read_input_tokens":3000,"cache_creation_input_tokens":400}}}
+{"type" : "assistant","uuid":"c2","parentUuid":"c1","requestId":"req_003","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_003","model":"claude-opus-4-6","content":[{"type":"text","text":"mixed"}],"usage":{"input_tokens":500,"output_tokens":100,"cache_read_input_tokens":3000,"cache_creation_input_tokens":400}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Tokens counted once despite one line going through typed path
+        // and the other through the Value fallback
+        assert_eq!(result.deep.total_input_tokens, 500);
+        assert_eq!(result.deep.total_output_tokens, 100);
+        assert_eq!(result.deep.api_call_count, 1, "mixed paths should share dedup");
+    }
+
+    #[test]
+    fn test_golden_dedup_content_blocks() {
+        let data = include_bytes!("../tests/golden_fixtures/dedup_content_blocks.jsonl");
+        let result = parse_bytes(data);
+
+        // 2 unique API responses (req_001 with 2 blocks, req_002 with 3 blocks)
+        assert_eq!(result.deep.api_call_count, 2, "should have 2 unique API calls");
+
+        // Tokens: req_001(1500+150+500+100) + req_002(2000+200+1500+0)
+        assert_eq!(result.deep.total_input_tokens, 3500);  // 1500 + 2000
+        assert_eq!(result.deep.total_output_tokens, 350);   // 150 + 200
+        assert_eq!(result.deep.cache_read_tokens, 2000);    // 500 + 1500
+        assert_eq!(result.deep.cache_creation_tokens, 100);  // 100 + 0
+
+        // Tools: Read from req_001, Edit from req_002 (both still counted)
+        assert_eq!(result.deep.tool_counts.read, 1);
+        assert_eq!(result.deep.tool_counts.edit, 1);
+
+        // 5 assistant JSONL lines → 5 turns, but only 2 carry token data
+        assert_eq!(result.turns.len(), 5);
+        // First block of each API call has tokens, rest zeroed
+        assert_eq!(result.turns[0].input_tokens, Some(1500)); // req_001 first
+        assert_eq!(result.turns[1].input_tokens, Some(0));     // req_001 dup
+        assert_eq!(result.turns[2].input_tokens, Some(2000)); // req_002 first
+        assert_eq!(result.turns[3].input_tokens, Some(0));     // req_002 dup
+        assert_eq!(result.turns[4].input_tokens, Some(0));     // req_002 dup
+
+        // user_prompt_count: 2 user lines (one is tool_result, still counted)
+        assert_eq!(result.deep.user_prompt_count, 2);
+    }
+
+    #[test]
+    fn test_cost_usd_accumulation() {
+        // Entry 1: has costUSD
+        let line1 = r#"{"type":"assistant","costUSD":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
+        // Entry 2: has costUSD
+        let line2 = r#"{"type":"assistant","costUSD":0.03,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
+        // Entry 3: no costUSD (fallback should not crash)
+        let line3 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"No cost"}],"usage":{"input_tokens":500,"output_tokens":200}}}"#;
+
+        let input = format!("{}\n{}\n{}\n", line1, line2, line3);
+        let result = parse_bytes(input.as_bytes());
+
+        let cost = result.deep.total_cost_usd;
+        // 0.05 + 0.03 = 0.08 (third entry has no costUSD, contributes 0)
+        assert!((cost - 0.08).abs() < 0.0001, "Expected 0.08, got {cost}");
     }
 }
