@@ -1,6 +1,6 @@
 //! Utility for resolving sub-agent JSONL file paths.
 //!
-//! Given a parent session's JSONL path and a sub-agent's 7-char ID,
+//! Given a parent session's JSONL path and a sub-agent's alphanumeric ID,
 //! resolves the path to the sub-agent's own JSONL file:
 //!
 //! ```text

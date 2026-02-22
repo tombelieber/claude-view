@@ -4,10 +4,10 @@
 //! This module provides battle-tested parsing of Claude Code's JSONL session format,
 //! handling malformed lines gracefully, aggregating tool calls, and cleaning command tags.
 
+use crate::category::{categorize_tool, categorize_progress};
 use crate::error::ParseError;
 use crate::types::*;
 use regex_lite::Regex;
-use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -233,6 +233,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
 
                         message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                         if has_tools {
+                            if let Some(first_tool) = tool_calls.first() {
+                                message = message.with_category(categorize_tool(&first_tool.name));
+                            }
                             message = message.with_tools(tool_calls);
                         }
                         // Attach thinking: prefer pending (from previous thinking-only message),
@@ -271,6 +274,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("system");
                 messages.push(message);
             }
             "progress" => {
@@ -295,6 +299,11 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::progress(content)
                     .with_metadata(metadata);
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = if let Some(cat) = categorize_progress(data_type) {
+                    message.with_category(cat)
+                } else {
+                    message
+                };
                 messages.push(message);
             }
             "queue-operation" => {
@@ -317,6 +326,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("queue");
                 messages.push(message);
             }
             "file-history-snapshot" => {
@@ -337,6 +347,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("snapshot");
                 messages.push(message);
             }
             "summary" => {
@@ -384,6 +395,42 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(display)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("context");
+                messages.push(message);
+            }
+            "result" => {
+                let mut meta = serde_json::Map::new();
+                meta.insert("type".into(), serde_json::json!("result"));
+                for (k, v) in value.as_object().unwrap_or(&serde_json::Map::new()) {
+                    if k != "type" { meta.insert(k.clone(), v.clone()); }
+                }
+                let subtype = value.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let display = format!("Session result: {subtype}");
+                let message = Message::system(display)
+                    .with_metadata(serde_json::json!(meta))
+                    .with_category("result");
+                messages.push(attach_common_fields(message, &timestamp, &uuid, &parent_uuid));
+            }
+            "hook_event" => {
+                let event_name = value.get("eventName").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let tool_name = value.get("toolName").and_then(|v| v.as_str());
+                let label = value.get("label").and_then(|v| v.as_str()).unwrap_or("");
+
+                let content = if let Some(tool) = tool_name {
+                    format!("Hook: {} — {} ({})", event_name, label, tool)
+                } else {
+                    format!("Hook: {} — {}", event_name, label)
+                };
+
+                // Carry the full original value as _hookEvent for the frontend's HookEventRow
+                let mut meta = serde_json::Map::new();
+                meta.insert("type".to_string(), serde_json::Value::String("hook_event".to_string()));
+                meta.insert("_hookEvent".to_string(), value.clone());
+
+                let message = Message::progress(content)
+                    .with_metadata(serde_json::Value::Object(meta));
+                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("hook");
                 messages.push(message);
             }
             _ => {
@@ -511,7 +558,7 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
         JsonlContent::Blocks(blocks) => {
             let mut text_parts: Vec<&str> = Vec::new();
             let mut thinking_parts: Vec<&str> = Vec::new();
-            let mut tool_counts: HashMap<String, usize> = HashMap::new();
+            let mut tool_calls: Vec<ToolCall> = Vec::new();
 
             for block in blocks {
                 match block {
@@ -521,18 +568,19 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
                     ContentBlock::Thinking { thinking } => {
                         thinking_parts.push(thinking);
                     }
-                    ContentBlock::ToolUse { name, .. } => {
-                        *tool_counts.entry(name.clone()).or_insert(0) += 1;
+                    ContentBlock::ToolUse { name, input } => {
+                        tool_calls.push(ToolCall {
+                            name: name.clone(),
+                            count: 1,
+                            input: input.clone(),
+                            category: Some(categorize_tool(name).to_string()),
+                        });
                     }
                     _ => {} // Ignore tool_result and other blocks
                 }
             }
 
             let text = text_parts.join("\n");
-            let tool_calls: Vec<ToolCall> = tool_counts
-                .into_iter()
-                .map(|(name, count)| ToolCall { name, count })
-                .collect();
 
             let thinking = if thinking_parts.is_empty() {
                 None
@@ -646,9 +694,8 @@ mod tests {
         assert!(assistant_msg.tool_calls.is_some());
 
         let tools = assistant_msg.tool_calls.as_ref().unwrap();
-        let read_tool = tools.iter().find(|t| t.name == "Read");
-        assert!(read_tool.is_some());
-        assert_eq!(read_tool.unwrap().count, 2); // Two Read calls
+        let read_count = tools.iter().filter(|t| t.name == "Read").count();
+        assert_eq!(read_count, 2); // Two individual Read tool calls
     }
 
     #[tokio::test]
@@ -908,14 +955,15 @@ mod tests {
 
         let (text, tools, thinking) = extract_assistant_content(&content);
         assert_eq!(text, "Let me help");
-        assert_eq!(tools.len(), 2); // Read and Edit
+        assert_eq!(tools.len(), 3); // Individual entries: Read, Read, Edit
         assert!(thinking.is_none());
 
-        let read_tool = tools.iter().find(|t| t.name == "Read").unwrap();
-        assert_eq!(read_tool.count, 2);
-
-        let edit_tool = tools.iter().find(|t| t.name == "Edit").unwrap();
-        assert_eq!(edit_tool.count, 1);
+        assert_eq!(tools[0].name, "Read");
+        assert_eq!(tools[0].count, 1);
+        assert_eq!(tools[1].name, "Read");
+        assert_eq!(tools[1].count, 1);
+        assert_eq!(tools[2].name, "Edit");
+        assert_eq!(tools[2].count, 1);
     }
 
     #[test]
@@ -1047,7 +1095,7 @@ mod tests {
     // All 8 JSONL Line Types Tests
     // ============================================================================
 
-    /// Fixture: all_types.jsonl has 13 lines:
+    /// Fixture: all_types.jsonl has 15 lines:
     ///   1. user (string content)         → Role::User
     ///   2. assistant (text+thinking+tool) → Role::Assistant
     ///   3. user (tool_result array)       → Role::ToolResult
@@ -1059,15 +1107,17 @@ mod tests {
     ///   9. queue-operation (dequeue)      → Role::System
     ///  10. summary                        → Role::Summary
     ///  11. file-history-snapshot          → Role::System
-    ///  12. saved_hook_context             → Role::System
-    ///  13. user (isMeta=true)             → skipped
-    /// = 12 messages total
+    ///  12. result                         → Role::System
+    ///  13. saved_hook_context             → Role::System
+    ///  14. hook_event                     → Role::Progress
+    ///  15. user (isMeta=true)             → skipped
+    /// = 14 messages total
 
     #[tokio::test]
     async fn test_parse_all_types_count() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
-        assert_eq!(session.messages.len(), 12);
+        assert_eq!(session.messages.len(), 14);
     }
 
     #[tokio::test]
@@ -1233,15 +1283,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_parse_result_type() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // Message index 11 is result
+        let msg = &session.messages[11];
+        assert_eq!(msg.role, Role::System);
+        assert!(msg.content.contains("Session result: success"));
+        assert_eq!(msg.category.as_deref(), Some("result"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "result");
+        assert_eq!(meta.get("subtype").unwrap().as_str().unwrap(), "success");
+        assert_eq!(meta.get("duration_ms").unwrap().as_i64().unwrap(), 12345);
+        assert_eq!(meta.get("num_turns").unwrap().as_i64().unwrap(), 5);
+        assert_eq!(meta.get("is_error").unwrap().as_bool().unwrap(), false);
+    }
+
+    #[tokio::test]
     async fn test_parse_saved_hook_context_role() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
 
-        // Message index 11 is saved_hook_context
-        let msg = &session.messages[11];
+        // Message index 12 is saved_hook_context (after result at index 11)
+        let msg = &session.messages[12];
         assert_eq!(msg.role, Role::System);
         assert!(msg.content.contains("saved_hook_context"));
         assert!(msg.content.contains("hook context line 1"));
+        assert_eq!(msg.category.as_deref(), Some("context"));
 
         let meta = msg.metadata.as_ref().unwrap();
         assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "saved_hook_context");
@@ -1251,13 +1321,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_parse_hook_event_role_and_category() {
+        let path = fixtures_path().join("all_types.jsonl");
+        let session = parse_session(&path).await.unwrap();
+
+        // hook_event is at index 13 (after saved_hook_context at 12)
+        let msg = &session.messages[13];
+        assert_eq!(msg.role, Role::Progress);
+        assert!(msg.content.contains("Hook: PreToolUse"));
+        assert!(msg.content.contains("Bash"));
+        assert_eq!(msg.category.as_deref(), Some("hook"));
+
+        let meta = msg.metadata.as_ref().unwrap();
+        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "hook_event");
+        // _hookEvent carries the full original JSONL entry
+        let hook = meta.get("_hookEvent").unwrap();
+        assert_eq!(hook.get("eventName").unwrap().as_str().unwrap(), "PreToolUse");
+        assert_eq!(hook.get("toolName").unwrap().as_str().unwrap(), "Bash");
+    }
+
+    #[tokio::test]
     async fn test_parse_meta_user_still_skipped() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
 
         // The last line is a user with isMeta=true, should be skipped
-        // So we should have 12 messages, not 13
-        assert_eq!(session.messages.len(), 12);
+        // So we should have 14 messages, not 15
+        assert_eq!(session.messages.len(), 14);
         // No message should contain "System init"
         for msg in &session.messages {
             assert!(!msg.content.contains("System init"));

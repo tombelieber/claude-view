@@ -24,13 +24,19 @@ import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { useMonitorStore } from '../store/monitor-store'
+import { computeCategoryCounts } from '../lib/compute-category-counts'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
+import { useHookEvents } from '../hooks/use-hook-events'
+import {
+  hookEventsToRichMessages,
+  mergeByTimestamp,
+} from '../lib/hook-events-to-messages'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
 /** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
-function HistoryRichPane({ messages }: { messages: import('./live/RichPane').RichMessage[] }) {
+function HistoryRichPane({ messages, categoryCounts }: { messages: import('./live/RichPane').RichMessage[]; categoryCounts?: import('../lib/compute-category-counts').CategoryCounts }) {
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   return (
     <RichPane
@@ -38,6 +44,7 @@ function HistoryRichPane({ messages }: { messages: import('./live/RichPane').Ric
       isVisible={true}
       verboseMode={verboseMode}
       bufferDone={true}
+      categoryCounts={categoryCounts}
     />
   )
 }
@@ -118,6 +125,9 @@ export function ConversationView() {
 
   // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
   const { data: richData } = useRichSessionData(sessionId || null)
+
+  // Fetch stored hook events from SQLite (enabled for all historical sessions)
+  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -236,7 +246,15 @@ export function ConversationView() {
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
     [pagesData]
   )
-  const totalMessages = pagesData?.pages[0]?.total ?? 0
+
+  // Full session messages for verbose/terminal view (loaded in background by useSession)
+  // Falls back to paginated data while session is still loading.
+  const verboseAllMessages = useMemo(
+    () => session?.messages ?? allMessages,
+    [session, allMessages]
+  )
+
+  const totalMessages = session?.messages?.length ?? pagesData?.pages[0]?.total ?? 0
 
   const filteredMessages = useMemo(
     () => allMessages.length > 0 ? filterMessages(allMessages, 'compact') : [],
@@ -244,19 +262,53 @@ export function ConversationView() {
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
+  // Virtuoso reverse-infinite-scroll: firstItemIndex must decrease as items
+  // are prepended so Virtuoso can adjust scroll position and keep firing
+  // startReached. See https://virtuoso.dev/prepend-items/
+  const FIRST_ITEM_START = 1_000_000
+  const firstItemIndex = useMemo(
+    () => FIRST_ITEM_START - filteredMessages.length,
+    [filteredMessages.length]
+  )
+
+  // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
+  // The compact chat view intentionally excludes them to keep focus on the user/assistant conversation.
+
   const [panelOpen, setPanelOpen] = useState(true)
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
   const richMessages = useMemo(
-    () => allMessages.length > 0 ? messagesToRichMessages(allMessages) : [],
-    [allMessages]
+    () => verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : [],
+    [verboseAllMessages]
+  )
+
+  // Merge hook events into Rich view (both hook_event and hook_progress show)
+  const richHookMessages = useMemo(
+    () => hookEventsToRichMessages(hookEvents),
+    [hookEvents]
+  )
+
+  // Skip SQLite hook-event merge when the parser already includes hook_event
+  // entries from JSONL (avoids duplicates). Fall back to SQLite merge for older
+  // sessions whose JSONL predates hook_event support.
+  const richMessagesWithHookEvents = useMemo(() => {
+    if (richHookMessages.length === 0 || richMessages.some(m => m.metadata?.type === 'hook_event')) {
+      return richMessages
+    }
+    return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
+  }, [richMessages, richHookMessages])
+
+  // Shared category counts for both verbose terminal and side panel
+  const historyCategoryCounts = useMemo(
+    () => computeCategoryCounts(richMessagesWithHookEvents),
+    [richMessagesWithHookEvents]
   )
 
   // Build panel data for SessionDetailPanel
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
-    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessages)
-  }, [sessionDetail, richData, sessionInfo, richMessages])
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessagesWithHookEvents)
+  }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
   // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
@@ -548,6 +600,7 @@ export function ConversationView() {
             <ExpandProvider>
               <Virtuoso
                 data={filteredMessages}
+                firstItemIndex={firstItemIndex}
                 startReached={handleStartReached}
                 initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
                 followOutput="smooth"
@@ -565,6 +618,7 @@ export function ConversationView() {
                           indent={thread?.indent ?? 0}
                           isChildMessage={thread?.isChild ?? false}
                           onGetThreadChain={getThreadChainForUuid}
+                          showThinking={false}
                         />
                       </ErrorBoundary>
                     </div>
@@ -606,7 +660,7 @@ export function ConversationView() {
             </ExpandProvider>
             </ThreadHighlightProvider>
           ) : (
-            <HistoryRichPane messages={richMessages} />
+            <HistoryRichPane messages={richMessagesWithHookEvents} categoryCounts={historyCategoryCounts} />
           )}
         </div>
 

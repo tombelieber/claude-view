@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import type { Components } from 'react-markdown'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -7,29 +6,59 @@ import rehypeRaw from 'rehype-raw'
 import {
   User,
   Bot,
-  Wrench,
   Brain,
   AlertTriangle,
   ArrowDown,
+  Zap,
+  BookOpen,
 } from 'lucide-react'
 import { ExpandProvider } from '../../contexts/ExpandContext'
 import { CompactCodeBlock } from './CompactCodeBlock'
-import { JsonKeyValueChips } from './JsonKeyValueChips'
 import { JsonTree } from './JsonTree'
-import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
-import { toolRendererRegistry } from './ToolRenderers'
+import { isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { useMonitorStore } from '../../store/monitor-store'
+import type { ActionCategory } from './action-log/types'
+import { ActionFilterChips } from './action-log/ActionFilterChips'
 import { cn } from '../../lib/utils'
+import {
+  tryParseJson, isJsonContent, isDiffContent, isCodeLikeContent,
+  stripLineNumbers, detectCodeLanguage,
+} from '../../lib/content-detection'
+import { markdownComponents } from '../../lib/markdown-components'
+import { usePairedMessages, type DisplayItem } from '../../hooks/use-paired-messages'
+import { PairedToolCard } from './PairedToolCard'
+// System event cards (reused from MessageTyped)
+import { TurnDurationCard } from '../TurnDurationCard'
+import { ApiErrorCard } from '../ApiErrorCard'
+import { CompactBoundaryCard } from '../CompactBoundaryCard'
+import { HookSummaryCard } from '../HookSummaryCard'
+import { LocalCommandEventCard } from '../LocalCommandEventCard'
+import { MessageQueueEventCard } from '../MessageQueueEventCard'
+import { FileSnapshotCard } from '../FileSnapshotCard'
+import { SavedHookContextCard } from '../SavedHookContextCard'
+import { SessionResultCard } from '../SessionResultCard'
+// Progress event cards
+import { AgentProgressCard } from '../AgentProgressCard'
+import { BashProgressCard } from '../BashProgressCard'
+import { HookProgressCard } from '../HookProgressCard'
+import { HookEventRow } from './action-log/HookEventRow'
+import { McpProgressCard } from '../McpProgressCard'
+import { TaskQueueCard } from '../TaskQueueCard'
+// Summary card
+import { SessionSummaryCard } from '../SessionSummaryCard'
 
 // --- Types ---
 
 export interface RichMessage {
   type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | 'error' | 'hook'
+      | 'system' | 'progress' | 'summary'
   content: string
   name?: string // tool name for tool_use
   input?: string // tool input summary for tool_use
   inputData?: unknown // raw parsed object for tool_use (avoids re-parsing)
   ts?: number // timestamp
+  category?: ActionCategory // set for tool_use, tool_result, hook, error
+  metadata?: Record<string, unknown> // system/progress/summary subtype data
 }
 
 export interface RichPaneProps {
@@ -40,6 +69,9 @@ export interface RichPaneProps {
   /** Signals that the initial WebSocket buffer has been fully loaded.
    *  Triggers an imperative scroll-to-bottom so panes start at the latest message. */
   bufferDone?: boolean
+  /** Pre-computed category counts from canonical message array. When provided,
+   *  used directly for filter chips instead of computing internally. */
+  categoryCounts?: Record<ActionCategory, number>
 }
 
 // --- Parser ---
@@ -95,6 +127,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         input: msg.input ? JSON.stringify(msg.input, null, 2) : undefined,
         inputData: msg.input ?? undefined,
         ts: parseTimestamp(msg.ts),
+        category: (msg.category as ActionCategory) ?? 'builtin',
       }
     }
     if (msg.type === 'tool_result') {
@@ -104,6 +137,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         type: 'tool_result',
         content,
         ts: parseTimestamp(msg.ts),
+        category: (msg.category as ActionCategory) ?? undefined,
       }
     }
     if (msg.type === 'thinking') {
@@ -119,6 +153,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: 'error',
         content: typeof msg.message === 'string' ? msg.message : JSON.stringify(msg, null, 2),
+        category: 'error' as const,
       }
     }
     if (msg.type === 'line') {
@@ -129,98 +164,50 @@ export function parseRichMessage(raw: string): RichMessage | null {
         content,
       }
     }
+    if (msg.type === 'progress') {
+      // Match messagesToRichMessages: hook_progress gets its own category
+      const progressCategory = msg.metadata?.type === 'hook_progress'
+        ? 'hook_progress' as ActionCategory
+        : (msg.category as ActionCategory) ?? undefined
+      return {
+        type: 'progress',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
+        metadata: msg.metadata,
+        category: progressCategory,
+      }
+    }
+    if (msg.type === 'system') {
+      return {
+        type: 'system',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
+        category: (msg.category as ActionCategory) ?? 'system',
+      }
+    }
+    if (msg.type === 'summary') {
+      return {
+        type: 'summary',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
+        category: 'summary' as ActionCategory,
+        metadata: msg.metadata,
+      }
+    }
+    if (msg.type === 'result') {
+      return {
+        type: 'system',
+        content: `Session result: ${msg.subtype || 'unknown'}`,
+        ts: parseTimestamp(msg.ts),
+        category: 'result' as ActionCategory,
+        metadata: msg,
+      }
+    }
     return null
-  } catch {
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn('[parseRichMessage] failed to parse:', e)
     return null
   }
-}
-
-// --- JSON Detection ---
-
-/** Try to parse a string as JSON. Returns parsed value or null. */
-function tryParseJson(str: string): unknown | null {
-  try {
-    const trimmed = str.trim()
-    if ((!trimmed.startsWith('{') && !trimmed.startsWith('[')) || trimmed.length < 2) return null
-    return JSON.parse(trimmed)
-  } catch {
-    return null
-  }
-}
-
-/** Check if a string is valid JSON object or array. */
-function isJsonContent(content: string): boolean {
-  return tryParseJson(content) !== null
-}
-
-/** Heuristic: content looks like a unified diff (git diff, patch output).
- *  Checks for diff headers or a high density of +/- prefixed lines. */
-function isDiffContent(content: string): boolean {
-  // Quick checks for diff headers
-  if (content.startsWith('diff --git') || content.startsWith('---') || content.startsWith('Index:')) return true
-  const lines = content.split('\n')
-  if (lines.length < 3) return false
-  const nonEmpty = lines.filter((l) => l.length > 0)
-  if (nonEmpty.length < 3) return false
-  // Count lines that look like diff hunks: @@, +line, -line
-  const diffLines = nonEmpty.filter((l) => /^[+-][^+-]/.test(l) || l.startsWith('@@')).length
-  return diffLines / nonEmpty.length >= 0.3
-}
-
-/** Heuristic: content looks like file output (Read tool, grep, etc.).
- *  Matches lines starting with optional whitespace + digits + → (cat -n format),
- *  or lines starting with filepath:line patterns like "src/foo.tsx:42:". */
-const LINE_NUM_RE = /^\s*\d+[→\t|:]/
-function isCodeLikeContent(content: string): boolean {
-  const lines = content.split('\n')
-  if (lines.length < 2) return false
-  // If ≥40% of non-empty lines match the pattern, treat as code
-  const nonEmpty = lines.filter((l) => l.trim().length > 0)
-  if (nonEmpty.length < 2) return false
-  const matching = nonEmpty.filter((l) => LINE_NUM_RE.test(l)).length
-  return matching / nonEmpty.length >= 0.4
-}
-
-/** Strip line-number prefixes (e.g. "  42→ ") so heuristics see actual code. */
-function stripLineNumbers(content: string): string {
-  return content.replace(/^\s*\d+[→\t|]\s?/gm, '')
-}
-
-/** Detect the best Shiki language hint for code-like content. */
-function detectCodeLanguage(content: string): string {
-  if (isDiffContent(content)) return 'diff'
-  const raw = stripLineNumbers(content)
-  // Rust — check early because `use` is common in other languages too
-  if (/\b(use\s+(std|crate|super|self)::|fn\s+\w+\s*[<(]|impl\s+(<.*>)?\s*\w+|pub\s+(fn|struct|enum|mod|type|trait|const|static)\b|let\s+mut\b|#\[derive)/.test(raw)) return 'rust'
-  // TypeScript / TSX / JS
-  if (/\bimport\s+.*\bfrom\s+['"]/.test(raw) || /\bexport\s+(default\s+)?(function|const|class|interface|type)\b/.test(raw) || /\bconst\s+\w+\s*[:=]/.test(raw) && /\b(string|number|boolean|Promise|async|await)\b/.test(raw)) {
-    return /\bReact\b|['"]react['"]|<\w+[A-Z]|className=|useState|useEffect/.test(raw) ? 'tsx' : 'typescript'
-  }
-  // Python
-  if (/\b(def\s+\w+\s*\(|class\s+\w+[\s:(]|from\s+\w+\s+import|import\s+\w+|self\.\w+|__\w+__|@\w+)/.test(raw)) return 'python'
-  // Go
-  if (/\bpackage\s+\w+/.test(raw) && /\bfunc\s+/.test(raw)) return 'go'
-  // SQL
-  if (/\b(SELECT|INSERT INTO|CREATE TABLE|ALTER TABLE|UPDATE\s+\w+\s+SET|DELETE FROM)\b/i.test(raw)) return 'sql'
-  // HTML / JSX (angle brackets with component names)
-  if (/<\/?[A-Z]\w+[\s/>]/.test(raw) || /<(div|span|section|header|footer|main|form|button|input)\b/i.test(raw)) return 'tsx'
-  // CSS
-  if (/[.#]\w+\s*\{[\s\S]*?[;}]/.test(raw) && /\b(color|background|margin|padding|display|flex|grid)\s*:/.test(raw)) return 'css'
-  // Bash / shell
-  if (/^#!\//.test(raw) || /\b(echo|export|source|chmod|mkdir|cd|ls|grep|sed|awk|curl|wget)\b/.test(raw)) return 'bash'
-  // JSON (didn't pass isJsonContent but has JSON-like structure)
-  if (/^\s*["{\[]/.test(raw.trim())) return 'json'
-  // YAML / TOML
-  if (/^\w[\w-]*\s*[:=]\s/.test(raw) && !/[;{}()]/.test(raw.slice(0, 200))) return 'yaml'
-  // C / C++
-  if (/\b(#include\s*<|int\s+main\s*\(|void\s+\w+\(|printf\s*\()/.test(raw)) return 'c'
-  // Java
-  if (/\b(public\s+class|private\s+|protected\s+|System\.out)/.test(raw)) return 'java'
-  // Ruby
-  if (/\b(require\s+['"]|module\s+\w+|class\s+\w+\s*<|end\b.*\n.*\bdef\b)/.test(raw)) return 'ruby'
-  // Markdown
-  if (/^#{1,6}\s+\w/.test(raw) && /\n#{1,6}\s+\w/.test(raw)) return 'markdown'
-  return 'text'
 }
 
 // --- Helpers ---
@@ -246,73 +233,6 @@ function formatTimestamp(ts: number | undefined): string | null {
   // Older: "Jan 15 '25, 10:30 AM"
   const month = date.toLocaleString(undefined, { month: 'short' })
   return `${month} ${date.getDate()} '${String(date.getFullYear()).slice(-2)}, ${time}`
-}
-
-// --- Markdown custom renderers ---
-
-/** Stable counter for generating unique code block IDs within a single render cycle. */
-let mdBlockCounter = 0
-
-/**
- * Custom react-markdown `components` that route fenced code blocks
- * through CompactCodeBlock (Shiki highlighting, copy, collapse) and
- * give inline `code` a distinct visual treatment.
- */
-const markdownComponents: Components = {
-  pre({ children }) {
-    const codeChild = Array.isArray(children) ? children[0] : children
-    if (codeChild && typeof codeChild === 'object' && 'props' in codeChild) {
-      const { className, children: codeText } = codeChild.props as {
-        className?: string
-        children?: React.ReactNode
-      }
-      const langMatch = /language-(\w+)/.exec(className || '')
-      const lang = langMatch ? langMatch[1] : 'text'
-      const text = String(codeText || '').replace(/\n$/, '')
-      const id = `md-code-${mdBlockCounter++}`
-      return <CompactCodeBlock code={text} language={lang} blockId={id} />
-    }
-    return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
-  },
-  code({ children, ...rest }) {
-    return (
-      <code
-        className="px-1 py-0.5 rounded text-[11px] font-mono bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400"
-        {...rest}
-      >
-        {children}
-      </code>
-    )
-  },
-}
-
-// --- Tool Name Helpers ---
-
-/** Shorten verbose MCP tool names: "mcp__chrome-devtools__take_snapshot" → "take_snapshot"
- *  Also strips common prefixes for readability in the terminal view. */
-function shortenToolName(name: string): { short: string; server?: string } {
-  // MCP tools: mcp__<server>__<tool_name>
-  const mcpMatch = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(name)
-  if (mcpMatch) {
-    return { short: mcpMatch[2], server: mcpMatch[1] }
-  }
-  return { short: name }
-}
-
-/** Pick a distinct color class based on tool category. */
-function toolChipColor(name: string): string {
-  // MCP tools
-  if (name.startsWith('mcp__')) return 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
-  // Task / sub-agent
-  if (name === 'Task') return 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
-  // Skill
-  if (name === 'Skill') return 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300'
-  // Common built-in tools
-  if (name === 'Read' || name === 'Glob' || name === 'Grep') return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-  if (name === 'Write' || name === 'Edit') return 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
-  if (name === 'Bash') return 'bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300'
-  // Default (orange for other tools)
-  return 'bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300'
 }
 
 // --- Message Card Components ---
@@ -362,99 +282,6 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
           ) : (
             <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
               <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
-            </div>
-          )}
-        </div>
-        <Timestamp ts={message.ts} />
-      </div>
-    </div>
-  )
-}
-
-function ToolUseMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
-  const [manualExpanded, setManualExpanded] = useState(verboseMode)
-  const expanded = verboseMode || manualExpanded
-  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
-  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
-  const rawName = message.name || 'Tool'
-  const { short: label, server } = shortenToolName(rawName)
-  const chipColor = toolChipColor(rawName)
-  const inputObj = message.inputData
-  const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
-  const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
-
-  const RichRenderer = toolRendererRegistry[rawName]
-  const effectiveMode = cardOverride ?? richRenderMode
-  const showRich = !!RichRenderer && effectiveMode === 'rich' && isObjectInput
-
-  if (isAskUserQuestion && !verboseMode) {
-    return (
-      <div className="py-0.5">
-        <AskUserQuestionDisplay inputData={inputObj} variant="amber" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="py-0.5 border-l-2 border-orange-500/30 dark:border-orange-500/20 pl-1">
-      <div className="flex items-start gap-1.5">
-        <Wrench className="w-3 h-3 text-orange-500 dark:text-orange-400 flex-shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-1.5 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 ${chipColor}`}>
-              {label}
-            </span>
-            {server && (
-              <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600 flex-shrink-0 self-center">
-                {server}
-              </span>
-            )}
-            {/* Per-card rich/json toggle */}
-            {RichRenderer && (
-              <button
-                onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
-                className={cn(
-                  'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
-                  effectiveMode === 'json'
-                    ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
-                    : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
-                )}
-                title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
-              >
-                {'{ }'}
-              </button>
-            )}
-            {!showRich && !expanded && isObjectInput && (
-              <JsonKeyValueChips
-                data={inputObj as Record<string, unknown>}
-                onExpand={() => setManualExpanded(true)}
-                verboseMode={verboseMode}
-              />
-            )}
-            {!showRich && !expanded && !isObjectInput && message.input && (
-              <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 break-all">{message.input}</span>
-            )}
-          </div>
-          {showRich && (
-            <div className="mt-1">
-              <RichRenderer inputData={inputObj as Record<string, unknown>} name={rawName} />
-            </div>
-          )}
-          {!showRich && expanded && (
-            <div className="mt-1">
-              {!verboseMode && (
-                <button
-                  onClick={() => setManualExpanded(false)}
-                  className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors cursor-pointer"
-                >
-                  [ Collapse ]
-                </button>
-              )}
-              {isObjectInput && effectiveMode !== 'json' ? (
-                <JsonTree data={inputObj} />
-              ) : (
-                <CompactCodeBlock code={isObjectInput ? JSON.stringify(inputObj, null, 2) : (message.input ?? '')} language="json" blockId={`tool-input-${index}`} />
-              )}
             </div>
           )}
         </div>
@@ -604,6 +431,199 @@ function Timestamp({ ts }: { ts?: number }) {
   )
 }
 
+// --- System / Progress / Summary card dispatchers ---
+
+function SystemMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+  const m = message.metadata
+  const subtype = m?.type ?? m?.subtype
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
+
+  const card = (() => {
+    switch (subtype) {
+      case 'turn_duration':
+        return <TurnDurationCard durationMs={m.durationMs} startTime={m.startTime} endTime={m.endTime} />
+      case 'api_error':
+        return <ApiErrorCard error={m.error} retryAttempt={m.retryAttempt} maxRetries={m.maxRetries} retryInMs={m.retryInMs} verboseMode={verboseMode} />
+      case 'compact_boundary':
+        return <CompactBoundaryCard trigger={m.trigger} preTokens={m.preTokens} postTokens={m.postTokens} />
+      case 'hook_summary':
+        return <HookSummaryCard hookCount={m.hookCount} hookInfos={m.hookInfos} hookErrors={m.hookErrors} durationMs={m.durationMs} preventedContinuation={m.preventedContinuation} verboseMode={verboseMode} />
+      case 'local_command':
+        return <LocalCommandEventCard content={m.content ?? message.content} />
+      case 'queue-operation':
+        return <MessageQueueEventCard operation={m.operation} timestamp={m.timestamp || ''} content={m.content} />
+      case 'file-history-snapshot': {
+        const snapshot = m.snapshot || {}
+        const files = Object.keys(snapshot.trackedFileBackups || {})
+        return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={m.isSnapshotUpdate || false} verboseMode={verboseMode} />
+      }
+      case 'saved_hook_context': {
+        const contentArr = Array.isArray(m.content) ? m.content : []
+        return <SavedHookContextCard content={contentArr} verboseMode={verboseMode} />
+      }
+      case 'result':
+        return <SessionResultCard subtype={m.subtype} durationMs={m.duration_ms} durationApiMs={m.duration_api_ms} numTurns={m.num_turns} isError={m.is_error} sessionId={m.session_id} />
+      default:
+        return null
+    }
+  })()
+
+  return (
+    <div className="border-l-2 border-amber-500/30 dark:border-amber-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <AlertTriangle className="w-3 h-3 text-amber-500/60 dark:text-amber-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">system</span>
+        {subtype && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
+        )}
+        {card !== null && (
+          <button
+            onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+            className={cn(
+              'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              effectiveMode === 'json'
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+            )}
+            title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+          >
+            {'{ }'}
+          </button>
+        )}
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      {card ? (
+        effectiveMode === 'json' ? (
+          <div className="mt-0.5 ml-5">
+            <CompactCodeBlock code={JSON.stringify(m, null, 2)} language="json" />
+          </div>
+        ) : (
+          <div className="mt-0.5 ml-5">{card}</div>
+        )
+      ) : message.content ? (
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+      ) : m ? (
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+      ) : null}
+    </div>
+  )
+}
+
+function ProgressMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+  const m = message.metadata
+  const subtype = m?.type
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
+
+  const card = (() => {
+    switch (subtype) {
+      case 'agent_progress':
+        return <AgentProgressCard agentId={m.agentId} prompt={m.prompt} model={m.model} tokens={m.tokens} normalizedMessages={m.normalizedMessages} indent={m.indent} verboseMode={verboseMode} />
+      case 'bash_progress':
+        return <BashProgressCard command={m.command} output={m.output} exitCode={m.exitCode} duration={m.duration} blockId={`bash-${message.ts ?? 0}`} />
+      case 'hook_progress':
+        return <HookProgressCard hookEvent={m.hookEvent} hookName={m.hookName} command={m.command} output={m.output} verboseMode={verboseMode} />
+      case 'mcp_progress':
+        return <McpProgressCard server={m.server} method={m.method} params={m.params} result={m.result} verboseMode={verboseMode} />
+      case 'waiting_for_task':
+        return <TaskQueueCard waitDuration={m.waitDuration} position={m.position} queueLength={m.queueLength} />
+      case 'hook_event':
+        return m._hookEvent
+          ? <HookEventRow event={m._hookEvent} />
+          : null
+      default:
+        return null
+    }
+  })()
+
+  return (
+    <div className="border-l-2 border-indigo-500/30 dark:border-indigo-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <Zap className="w-3 h-3 text-indigo-500/60 dark:text-indigo-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400">progress</span>
+        {subtype && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
+        )}
+        {card !== null && (
+          <button
+            onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+            className={cn(
+              'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              effectiveMode === 'json'
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+            )}
+            title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+          >
+            {'{ }'}
+          </button>
+        )}
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      {card ? (
+        effectiveMode === 'json' ? (
+          <div className="mt-0.5 ml-5">
+            <CompactCodeBlock code={JSON.stringify(m, null, 2)} language="json" />
+          </div>
+        ) : (
+          <div className="mt-0.5 ml-5">{card}</div>
+        )
+      ) : message.content ? (
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+      ) : m ? (
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+      ) : null}
+    </div>
+  )
+}
+
+function SummaryMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+  const m = message.metadata
+  const summary = m?.summary || message.content
+  const leafUuid = m?.leafUuid || ''
+  const wordCount = (summary || '').split(/\s+/).filter(Boolean).length
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
+
+  return (
+    <div className="border-l-2 border-rose-500/30 dark:border-rose-500/20 pl-2 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <BookOpen className="w-3 h-3 text-rose-500/60 dark:text-rose-400/50 flex-shrink-0" />
+        <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400">summary</span>
+        <button
+          onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+          className={cn(
+            'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+            effectiveMode === 'json'
+              ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+              : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+          )}
+          title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+        >
+          {'{ }'}
+        </button>
+        <div className="flex-1" />
+        <Timestamp ts={message.ts} />
+      </div>
+      {effectiveMode === 'json' ? (
+        <div className="mt-0.5 ml-5">
+          <CompactCodeBlock code={JSON.stringify(m || { summary, leafUuid, wordCount }, null, 2)} language="json" />
+        </div>
+      ) : (
+        <div className="mt-0.5 ml-5">
+          <SessionSummaryCard summary={summary} leafUuid={leafUuid} wordCount={wordCount} verboseMode={verboseMode} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // --- Message renderer dispatch ---
 
 function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
@@ -612,8 +632,6 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
       return <UserMessage message={message} index={index} verboseMode={verboseMode} />
     case 'assistant':
       return <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
-    case 'tool_use':
-      return <ToolUseMessage message={message} index={index} verboseMode={verboseMode} />
     case 'tool_result':
       return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
     case 'thinking':
@@ -622,77 +640,128 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
       return <ErrorMessage message={message} index={index} />
     case 'hook':
       return <HookMessage message={message} />
+    case 'system':
+      return <SystemMessageCard message={message} verboseMode={verboseMode} />
+    case 'progress':
+      return <ProgressMessageCard message={message} verboseMode={verboseMode} />
+    case 'summary':
+      return <SummaryMessageCard message={message} verboseMode={verboseMode} />
     default:
       return null
   }
 }
 
+function DisplayItemCard({ item, index, verboseMode = false }: { item: DisplayItem; index: number; verboseMode?: boolean }) {
+  if (item.kind === 'tool_pair') {
+    return <PairedToolCard toolUse={item.toolUse} toolResult={item.toolResult} index={index} verboseMode={verboseMode} />
+  }
+  // item.kind === 'message'
+  return <MessageCard message={item.message} index={index} verboseMode={verboseMode} />
+}
+
 // --- Main Component ---
 
-export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false }: RichPaneProps) {
-  const displayMessages = useMemo(() => {
-    if (verboseMode) return messages
-    return messages.filter((m) => {
-      if (m.type === 'user' || m.type === 'error') return true
-      if (m.type === 'assistant') {
-        // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
-        const t = m.content.trim()
-        if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
-        return true
+export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false, categoryCounts: countsProp }: RichPaneProps) {
+  const verboseFilter = useMonitorStore((s) => s.verboseFilter)
+  const setVerboseFilter = useMonitorStore((s) => s.setVerboseFilter)
+
+  // Use prop if provided, otherwise compute internally (backward compat)
+  const categoryCounts = useMemo(() => {
+    if (countsProp) return countsProp
+    const counts: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, hook: 0, hook_progress: 0, error: 0, system: 0, snapshot: 0, queue: 0, context: 0, result: 0, summary: 0 }
+    if (!verboseMode) return counts
+    for (const m of messages) {
+      if (m.category) {
+        counts[m.category] = (counts[m.category] || 0) + 1
       }
-      // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
-      if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
-      return false
+    }
+    return counts
+  }, [countsProp, messages, verboseMode])
+
+  const displayMessages = useMemo(() => {
+    if (!verboseMode) {
+      return messages.filter((m) => {
+        if (m.type === 'user' || m.type === 'error') return true
+        if (m.type === 'assistant') {
+          // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
+          const t = m.content.trim()
+          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
+          return true
+        }
+        // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
+        if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
+        return false
+      })
+    }
+    // Verbose mode: apply category filter
+    if (verboseFilter === 'all') return messages
+    return messages.filter((m) => {
+      // Always show conversation backbone
+      if (m.type === 'user' || m.type === 'assistant' || m.type === 'thinking') return true
+      // Structural types: show if their category matches the filter
+      if (m.type === 'system' || m.type === 'progress' || m.type === 'summary') {
+        return !m.category || m.category === verboseFilter
+      }
+      // Filter by category
+      return m.category === verboseFilter
     })
-  }, [messages, verboseMode])
+  }, [messages, verboseMode, verboseFilter])
+
+  const displayItems = usePairedMessages(displayMessages)
+
+  const renderItem = useCallback((index: number, item: DisplayItem) => (
+    <div className="px-2 py-0.5">
+      <DisplayItemCard item={item} index={index} verboseMode={verboseMode} />
+    </div>
+  ), [verboseMode])
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [hasNewMessages, setHasNewMessages] = useState(false)
-  const prevMessageCountRef = useRef(displayMessages.length)
+  const prevMessageCountRef = useRef(displayItems.length)
   const hasScrolledToBottomRef = useRef(false)
   const prevVerboseModeRef = useRef(verboseMode)
 
   // Jump to bottom once after initial buffer loads
   useEffect(() => {
-    if (bufferDone && !hasScrolledToBottomRef.current && displayMessages.length > 0) {
+    if (bufferDone && !hasScrolledToBottomRef.current && displayItems.length > 0) {
       hasScrolledToBottomRef.current = true
       // Use requestAnimationFrame to ensure Virtuoso has rendered the data
       requestAnimationFrame(() => {
         virtuosoRef.current?.scrollToIndex({
-          index: displayMessages.length - 1,
+          index: displayItems.length - 1,
           behavior: 'auto',
         })
       })
     }
-  }, [bufferDone, displayMessages.length])
+  }, [bufferDone, displayItems.length])
 
   // Scroll to bottom when verbose mode toggles (list length changes drastically)
   useEffect(() => {
     if (prevVerboseModeRef.current !== verboseMode) {
       prevVerboseModeRef.current = verboseMode
-      if (displayMessages.length > 0) {
+      if (displayItems.length > 0) {
         requestAnimationFrame(() => {
           virtuosoRef.current?.scrollToIndex({
-            index: displayMessages.length - 1,
+            index: displayItems.length - 1,
             behavior: 'auto',
           })
         })
       }
     }
-  }, [verboseMode, displayMessages.length])
+  }, [verboseMode, displayItems.length])
 
   // Track when new messages arrive while user is scrolled up
   useEffect(() => {
-    if (displayMessages.length > prevMessageCountRef.current) {
+    if (displayItems.length > prevMessageCountRef.current) {
       if (isAtBottom) {
         setHasNewMessages(false)
       } else {
         setHasNewMessages(true)
       }
     }
-    prevMessageCountRef.current = displayMessages.length
-  }, [displayMessages.length, isAtBottom])
+    prevMessageCountRef.current = displayItems.length
+  }, [displayItems.length, isAtBottom])
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setIsAtBottom(atBottom)
@@ -703,15 +772,15 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
-      index: displayMessages.length - 1,
+      index: displayItems.length - 1,
       behavior: 'smooth',
     })
     setHasNewMessages(false)
-  }, [displayMessages.length])
+  }, [displayItems.length])
 
   if (!isVisible) return null
 
-  if (displayMessages.length === 0) {
+  if (displayItems.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-gray-500 dark:text-gray-600">
         No messages yet
@@ -721,21 +790,24 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   return (
     <ExpandProvider>
-      <div className="relative h-full w-full">
+      <div className="relative h-full w-full flex flex-col">
+        {verboseMode && (
+          <ActionFilterChips
+            counts={categoryCounts}
+            activeFilter={verboseFilter}
+            onFilterChange={setVerboseFilter as (filter: ActionCategory | 'all') => void}
+          />
+        )}
         <Virtuoso
           ref={virtuosoRef}
-          data={displayMessages}
-          initialTopMostItemIndex={displayMessages.length - 1}
+          data={displayItems}
+          initialTopMostItemIndex={displayItems.length - 1}
           alignToBottom
           followOutput={'smooth'}
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={30}
-          itemContent={(index, message) => (
-            <div className="px-2 py-0.5">
-              <MessageCard message={message} index={index} verboseMode={verboseMode} />
-            </div>
-          )}
-          className="h-full"
+          itemContent={renderItem}
+          className="h-full flex-1 min-h-0"
         />
 
         {/* "New messages" floating pill — click to scroll to latest */}

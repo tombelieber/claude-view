@@ -13,22 +13,28 @@ const baseProps = {
 describe('ContextGauge compacting overlay', () => {
   afterEach(() => { vi.useRealTimers() })
 
-  it('shows compacting label when agentLabel contains "compacting"', () => {
-    render(<ContextGauge {...baseProps} agentLabel="Auto-compacting context..." />)
+  it('shows compacting label when agentStateKey is "compacting"', () => {
+    render(<ContextGauge {...baseProps} agentStateKey="compacting" agentLabel="Auto-compacting context..." />)
     expect(screen.getByText(/compacting/i)).toBeInTheDocument()
   })
 
   it('does not show compacting label during normal thinking', () => {
-    render(<ContextGauge {...baseProps} agentLabel="Thinking..." />)
+    render(<ContextGauge {...baseProps} agentStateKey="thinking" agentLabel="Thinking..." />)
     expect(screen.queryByText(/compacting/i)).not.toBeInTheDocument()
+  })
+
+  it('does not show compacting when label contains "compacting" but state is not compacting', () => {
+    // This is the key regression test: grepping for "compacting" should NOT trigger compacting UI
+    render(<ContextGauge {...baseProps} agentStateKey="acting" agentLabel="Searching: compacting" />)
+    expect(screen.queryByText(/compacting\.\.\./i)).not.toBeInTheDocument()
   })
 
   it('shows compacted label briefly after compacting ends', () => {
     vi.useFakeTimers()
-    const { rerender } = render(<ContextGauge {...baseProps} agentLabel="Compacting context..." />)
+    const { rerender } = render(<ContextGauge {...baseProps} agentStateKey="compacting" agentLabel="Compacting context..." />)
 
     // State transitions away from compacting
-    rerender(<ContextGauge {...baseProps} agentLabel="Using tools..." />)
+    rerender(<ContextGauge {...baseProps} agentStateKey="acting" agentLabel="Using tools..." />)
     expect(screen.getByText(/compacted/i)).toBeInTheDocument()
 
     // After 5 seconds, the label should disappear
@@ -36,8 +42,8 @@ describe('ContextGauge compacting overlay', () => {
     expect(screen.queryByText(/compacted/i)).not.toBeInTheDocument()
   })
 
-  it('does not show compacting in expanded mode either', () => {
-    render(<ContextGauge {...baseProps} agentLabel="Auto-compacting context..." expanded />)
+  it('shows compacting in expanded mode when state is compacting', () => {
+    render(<ContextGauge {...baseProps} agentStateKey="compacting" agentLabel="Auto-compacting context..." expanded />)
     expect(screen.getByText(/compacting/i)).toBeInTheDocument()
   })
 })

@@ -713,6 +713,7 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0.0,  // total_cost_usd
         )
         .await
         .unwrap();

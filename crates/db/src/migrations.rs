@@ -623,6 +623,10 @@ COMMIT;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_model TEXT;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_input_tokens INTEGER;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_output_tokens INTEGER;"#,
+    // Migration 32: costUSD parity — accumulate per-entry costUSD from JSONL
+    // REAL with no NOT NULL DEFAULT: NULL = "not yet parsed with costUSD support",
+    // distinguishable from 0.0 (parsed but zero cost).
+    r#"ALTER TABLE sessions ADD COLUMN total_cost_usd REAL;"#,
 ];
 
 // ============================================================================

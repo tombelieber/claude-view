@@ -37,6 +37,7 @@ import { BashProgressCard } from './BashProgressCard'
 import { HookProgressCard } from './HookProgressCard'
 import { McpProgressCard } from './McpProgressCard'
 import { TaskQueueCard } from './TaskQueueCard'
+import { HookEventRow } from './live/action-log/HookEventRow'
 
 // Track 4: Queue, Snapshot, Summary cards
 import { MessageQueueEventCard } from './MessageQueueEventCard'
@@ -61,6 +62,8 @@ interface MessageTypedProps {
   isChildMessage?: boolean
   /** Callback to get the full thread chain for highlighting */
   onGetThreadChain?: (uuid: string) => Set<string>
+  /** Whether to show thinking blocks. Default true. */
+  showThinking?: boolean
 }
 
 const TYPE_CONFIG = {
@@ -228,13 +231,17 @@ function renderProgressSubtype(metadata: Record<string, any>): React.ReactNode |
     case 'agent_progress':
       return <AgentProgressCard agentId={metadata.agentId} prompt={metadata.prompt} model={metadata.model} tokens={metadata.tokens} normalizedMessages={metadata.normalizedMessages} indent={metadata.indent} />
     case 'bash_progress':
-      return <BashProgressCard command={metadata.command} output={metadata.output} exitCode={metadata.exitCode} duration={metadata.duration} />
+      return <BashProgressCard command={metadata.command} output={metadata.output} exitCode={metadata.exitCode} duration={metadata.duration} blockId={`bash-${metadata.command?.slice(0, 40) ?? ''}`} />
     case 'hook_progress':
       return <HookProgressCard hookEvent={metadata.hookEvent} hookName={metadata.hookName} command={metadata.command} output={metadata.output} />
     case 'mcp_progress':
       return <McpProgressCard server={metadata.server} method={metadata.method} params={metadata.params} result={metadata.result} />
     case 'waiting_for_task':
       return <TaskQueueCard waitDuration={metadata.waitDuration} position={metadata.position} queueLength={metadata.queueLength} />
+    case 'hook_event':
+      return metadata._hookEvent
+        ? <HookEventRow event={metadata._hookEvent} />
+        : null
     default:
       return null
   }
@@ -261,6 +268,7 @@ export function MessageTyped({
   indent = 0,
   isChildMessage = false,
   onGetThreadChain,
+  showThinking = true,
 }: MessageTypedProps) {
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
@@ -367,7 +375,7 @@ export function MessageTyped({
         {/* Content */}
         <div className="pl-11 space-y-3">
           {/* Thinking block */}
-          {message.thinking && (
+          {showThinking && message.thinking && (
             <ThinkingBlock thinking={message.thinking} />
           )}
 

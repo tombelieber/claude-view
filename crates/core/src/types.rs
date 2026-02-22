@@ -44,11 +44,16 @@ pub enum Role {
 }
 
 /// A tool call made by the assistant
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 pub struct ToolCall {
     pub name: String,
     pub count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "any")]
+    pub input: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 /// A message in a conversation
@@ -70,6 +75,8 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub metadata: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 impl Message {
@@ -84,6 +91,7 @@ impl Message {
             uuid: None,
             parent_uuid: None,
             metadata: None,
+            category: None,
         }
     }
 
@@ -122,6 +130,11 @@ impl Message {
 
     pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
         self.metadata = Some(metadata);
+        self
+    }
+
+    pub fn with_category(mut self, category: impl Into<String>) -> Self {
+        self.category = Some(category.into());
         self
     }
 }
@@ -876,7 +889,7 @@ mod tests {
     #[test]
     fn test_message_with_tools() {
         let msg = Message::assistant("Let me help")
-            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2 }]);
+            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2, input: None, category: None }]);
 
         assert_eq!(msg.role, Role::Assistant);
         assert!(msg.tool_calls.is_some());

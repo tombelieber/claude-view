@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Plug, ChevronRight, ChevronDown } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { CompactCodeBlock } from './live/CompactCodeBlock'
 
 interface McpProgressCardProps {
   server: string
   method: string
   params?: object
   result?: object
+  blockId?: string
+  verboseMode?: boolean
 }
 
 export function McpProgressCard({
@@ -14,51 +16,49 @@ export function McpProgressCard({
   method,
   params,
   result,
+  blockId,
+  verboseMode,
 }: McpProgressCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const paramsLabel = params ? '' : ' (no params)'
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border border-purple-200 dark:border-purple-800 border-l-4 border-l-purple-400 bg-purple-50 dark:bg-purple-950/30 my-2 overflow-hidden'
-      )}
-    >
+    <div className="py-0.5 border-l-2 border-l-purple-400 pl-1 my-1">
+      {/* Status line — clickable to expand */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+        className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-label="MCP tool call"
         aria-expanded={expanded}
       >
-        <Plug className="w-4 h-4 text-purple-600 flex-shrink-0" aria-hidden="true" />
-        <span className="text-sm text-purple-900 dark:text-purple-200 truncate flex-1">
-          MCP: {server}.{method}{paramsLabel}
+        <Plug className="w-3 h-3 text-purple-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
+          {server}.{method}{paramsLabel}
         </span>
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-purple-400" />
+          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-purple-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
         )}
       </button>
 
+      {/* Expanded params/result via CompactCodeBlock */}
       {expanded && (
-        <div className="px-3 py-2 border-t border-purple-100 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 space-y-2">
+        <div className="mt-0.5 space-y-0.5">
           {params && (
-            <div>
-              <div className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">Params:</div>
-              <pre className="text-xs text-purple-800 dark:text-purple-300 font-mono whitespace-pre-wrap break-all">
-                {JSON.stringify(params, null, 2)}
-              </pre>
-            </div>
+            <CompactCodeBlock
+              code={JSON.stringify(params, null, 2)}
+              language="json"
+              blockId={blockId ? `${blockId}-params` : `mcp-${server}-${method}-params`}
+            />
           )}
           {result && (
-            <div>
-              <div className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">Result:</div>
-              <pre className="text-xs text-purple-800 dark:text-purple-300 font-mono whitespace-pre-wrap break-all">
-                {JSON.stringify(result, null, 2)}
-              </pre>
-            </div>
+            <CompactCodeBlock
+              code={JSON.stringify(result, null, 2)}
+              language="json"
+              blockId={blockId ? `${blockId}-result` : `mcp-${server}-${method}-result`}
+            />
           )}
         </div>
       )}

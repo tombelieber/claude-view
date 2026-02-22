@@ -14,6 +14,7 @@ use claude_view_core::{
 /// All fields are optional — omitted fields apply no filter.
 pub struct SessionFilterParams {
     pub q: Option<String>,
+    pub search_session_ids: Option<Vec<String>>, // pre-resolved from Tantivy
     pub branches: Option<Vec<String>>,
     pub models: Option<Vec<String>>,
     pub has_commits: Option<bool>,
@@ -291,8 +292,21 @@ impl Database {
         ) {
             qb.push(" WHERE 1=1");
 
-            // Text search
-            if let Some(q) = &params.q {
+            // Tantivy-resolved search: filter by pre-computed session IDs
+            if let Some(ids) = &params.search_session_ids {
+                if ids.is_empty() {
+                    // Tantivy returned no matches — short-circuit to zero results
+                    qb.push(" AND 1=0");
+                } else {
+                    qb.push(" AND s.id IN (");
+                    let mut sep = qb.separated(", ");
+                    for id in ids {
+                        sep.push_bind(id.as_str());
+                    }
+                    sep.push_unseparated(")");
+                }
+            } else if let Some(q) = &params.q {
+                // Fallback: SQLite LIKE if Tantivy is unavailable
                 let pattern = format!("%{}%", q);
                 qb.push(" AND (s.preview LIKE ");
                 qb.push_bind(pattern.clone());
@@ -1018,6 +1032,7 @@ mod filtered_query_tests {
     fn default_params() -> SessionFilterParams {
         SessionFilterParams {
             q: None,
+            search_session_ids: None,
             branches: None,
             models: None,
             has_commits: None,

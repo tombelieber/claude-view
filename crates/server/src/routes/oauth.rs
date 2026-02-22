@@ -83,12 +83,12 @@ struct RateLimitWindow {
 struct ExtraUsage {
     #[serde(default)]
     is_enabled: bool,
-    /// Cents (API returns float, e.g. 5125.0)
+    /// Cents (API returns float, e.g. 5125.0). Null when disabled.
     #[serde(default)]
-    used_credits: f64,
-    /// Cents cap (0 = unlimited; API returns float)
+    used_credits: Option<f64>,
+    /// Cents cap (0 = unlimited; API returns float). Null when disabled.
     #[serde(default)]
-    monthly_limit: f64,
+    monthly_limit: Option<f64>,
     /// 0–100 percentage
     #[serde(default)]
     utilization: Option<f64>,
@@ -238,17 +238,19 @@ fn build_tiers(resp: &AnthropicUsageResponse) -> Vec<UsageTier> {
 
     if let Some(extra) = &resp.extra_usage {
         if extra.is_enabled {
-            let used_dollars = extra.used_credits / 100.0;
-            let limit_dollars = extra.monthly_limit / 100.0;
+            let used_credits = extra.used_credits.unwrap_or(0.0);
+            let monthly_limit = extra.monthly_limit.unwrap_or(0.0);
+            let used_dollars = used_credits / 100.0;
+            let limit_dollars = monthly_limit / 100.0;
             // Use API-provided utilization if available, else compute
             let pct = extra.utilization.unwrap_or_else(|| {
-                if extra.monthly_limit > 0.0 {
-                    ((extra.used_credits / extra.monthly_limit) * 100.0).min(100.0)
+                if monthly_limit > 0.0 {
+                    ((used_credits / monthly_limit) * 100.0).min(100.0)
                 } else {
                     0.0
                 }
             });
-            let spent = if extra.monthly_limit > 0.0 {
+            let spent = if monthly_limit > 0.0 {
                 format!("${:.2} / ${:.2} spent", used_dollars, limit_dollars)
             } else {
                 format!("${:.2} spent (no limit)", used_dollars)
@@ -313,14 +315,19 @@ async fn fetch_usage(
         .map_err(|e| format!("Network error: {e}"))?;
 
     let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
         return Err(format!("API error {status}: {body}"));
     }
 
-    resp.json::<AnthropicUsageResponse>()
-        .await
-        .map_err(|e| format!("Parse error: {e}"))
+    tracing::debug!(body = %body, "Anthropic usage API raw response");
+
+    serde_json::from_str::<AnthropicUsageResponse>(&body)
+        .map_err(|e| {
+            tracing::warn!(error = %e, body = %body, "Failed to parse Anthropic usage response");
+            format!("Parse error: {e}")
+        })
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import { Bot, ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { CompactCodeBlock } from './live/CompactCodeBlock'
 
 interface TokenCount {
   input?: number
@@ -25,6 +26,8 @@ interface AgentProgressCardProps {
   tokens?: TokenCount
   normalizedMessages?: number
   indent?: number
+  blockId?: string
+  verboseMode?: boolean
 }
 
 const MAX_PROMPT_LENGTH = 1000
@@ -36,8 +39,10 @@ export function AgentProgressCard({
   tokens,
   normalizedMessages,
   indent = 0,
+  blockId,
+  verboseMode,
 }: AgentProgressCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const totalTokens = tokens
     ? (tokens.input || 0) + (tokens.output || 0)
@@ -45,12 +50,9 @@ export function AgentProgressCard({
 
   const displayName = agentId ? `Agent #${agentId}` : 'Sub-agent'
 
-  const tokenSuffix = totalTokens !== undefined ? ` (${totalTokens} tokens used)` : ''
-
-  const titleParts = [displayName]
-  if (model) titleParts.push(`(${model})`)
-
-  const title = titleParts.join(' ')
+  const statusParts: string[] = [displayName]
+  if (model) statusParts.push(`(${model})`)
+  if (totalTokens !== undefined) statusParts.push(`${totalTokens} tokens`)
 
   const truncatedPrompt =
     prompt && prompt.length > MAX_PROMPT_LENGTH
@@ -59,61 +61,59 @@ export function AgentProgressCard({
 
   return (
     <div
-      className={cn(
-        'rounded-lg border border-indigo-200 dark:border-indigo-800 border-l-4 border-l-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 my-2 overflow-hidden'
-      )}
+      className={cn('py-0.5 border-l-2 border-l-indigo-400 pl-1 my-1')}
       style={{ marginLeft: indent ? `${indent * 16}px` : undefined }}
     >
+      {/* Status line — clickable to expand */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
+        className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-label="Agent progress"
         aria-expanded={expanded}
       >
-        <Bot className="w-4 h-4 text-indigo-600 flex-shrink-0" aria-hidden="true" />
-        <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 truncate flex-1">
-          {title}
-          {tokenSuffix && (
-            <span className="font-normal text-indigo-700 dark:text-indigo-400">{tokenSuffix}</span>
-          )}
+        <Bot className="w-3 h-3 text-indigo-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
+          {statusParts.join(' ')}
         </span>
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-indigo-400" />
+          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-indigo-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
         )}
       </button>
 
+      {/* Expanded details */}
       {expanded && (
-        <div className="px-3 py-2 border-t border-indigo-100 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20">
+        <div className="mt-0.5">
           {truncatedPrompt && (
-            <div
-              className="text-sm text-indigo-800 dark:text-indigo-300 mb-2"
-              data-testid="agent-prompt"
-            >
-              {truncatedPrompt}
+            <div data-testid="agent-prompt">
+              <CompactCodeBlock
+                code={truncatedPrompt}
+                language="text"
+                blockId={blockId ? `${blockId}-prompt` : agentId ? `agent-${agentId}-prompt` : undefined}
+              />
             </div>
           )}
 
-          <div className="text-xs text-indigo-700 dark:text-indigo-400 space-y-1">
-            {model && (
-              <div>
-                <span className="font-medium">Model:</span> {model}
-              </div>
-            )}
-
-            {totalTokens !== undefined && (
-              <div>
-                <span className="font-medium">Tokens:</span> {totalTokens}
-              </div>
-            )}
-
-            {normalizedMessages !== undefined && (
-              <div>
-                <span className="font-medium">Messages:</span> {normalizedMessages}
-              </div>
-            )}
-          </div>
+          {(model || totalTokens !== undefined || normalizedMessages !== undefined) && (
+            <div className="flex items-center gap-2 ml-4 mt-0.5">
+              {model && (
+                <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                  model: {model}
+                </span>
+              )}
+              {totalTokens !== undefined && (
+                <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                  tokens: {totalTokens}
+                </span>
+              )}
+              {normalizedMessages !== undefined && (
+                <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                  msgs: {normalizedMessages}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

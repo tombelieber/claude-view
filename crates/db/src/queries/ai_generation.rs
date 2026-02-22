@@ -20,7 +20,7 @@ impl Database {
         let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
-        let (files_created, total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens): (i64, i64, i64, i64, i64) =
+        let (files_created, total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd): (i64, i64, i64, i64, i64, Option<f64>) =
             sqlx::query_as(
                 r#"
                 SELECT
@@ -28,7 +28,8 @@ impl Database {
                     COALESCE(SUM(total_input_tokens), 0),
                     COALESCE(SUM(total_output_tokens), 0),
                     COALESCE(SUM(cache_read_tokens), 0),
-                    COALESCE(SUM(cache_creation_tokens), 0)
+                    COALESCE(SUM(cache_creation_tokens), 0),
+                    SUM(total_cost_usd)
                 FROM valid_sessions
                 WHERE last_message_at >= ?1
                   AND last_message_at <= ?2
@@ -146,6 +147,7 @@ impl Database {
             tokens_by_model,
             tokens_by_project,
             cost: AggregateCostBreakdown::default(),
+            total_cost_usd_from_jsonl: total_cost_usd,
         })
     }
 

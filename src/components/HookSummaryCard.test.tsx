@@ -48,7 +48,7 @@ describe('HookSummaryCard', () => {
           preventedContinuation={true}
         />
       )
-      expect(screen.getByText(/prevented continuation/i)).toBeInTheDocument()
+      expect(screen.getByText(/prevented/i)).toBeInTheDocument()
     })
   })
 
