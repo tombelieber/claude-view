@@ -1,5 +1,4 @@
 import { Clock } from 'lucide-react'
-import { cn } from '../lib/utils'
 
 interface TurnDurationCardProps {
   durationMs?: number
@@ -10,21 +9,20 @@ interface TurnDurationCardProps {
 export function TurnDurationCard({ durationMs, startTime, endTime }: TurnDurationCardProps) {
   return (
     <div
-      className={cn(
-        'flex items-center gap-2 my-2 px-3 py-2 rounded-lg',
-        'border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30'
-      )}
+      className="py-0.5 border-l-2 border-l-amber-400 pl-1 my-1"
       role="status"
     >
-      <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-      <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-        Turn completed in {durationMs !== undefined ? `${durationMs}ms` : 'unknown duration'}
-      </span>
-      {startTime && endTime && (
-        <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
-          {startTime} — {endTime}
+      <div className="flex items-center gap-1.5">
+        <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          Turn completed in {durationMs !== undefined ? `${durationMs}ms` : 'unknown duration'}
         </span>
-      )}
+        {startTime && endTime && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-500 ml-auto">
+            {startTime} — {endTime}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
