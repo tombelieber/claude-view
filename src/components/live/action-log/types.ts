@@ -1,4 +1,4 @@
-export type ActionCategory = 'skill' | 'mcp' | 'builtin' | 'agent' | 'error' | 'hook'
+export type ActionCategory = 'skill' | 'mcp' | 'builtin' | 'agent' | 'hook' | 'hook_progress' | 'error' | 'system' | 'snapshot' | 'queue' | 'context' | 'result' | 'summary'
 
 export interface ActionItem {
   id: string
