@@ -96,20 +96,3 @@ export function mergeByTimestamp<T>(
 
   return merged
 }
-
-/**
- * Filter out hook_progress messages from a Message array.
- * Used when hook_events from SQLite are available — the richer data
- * replaces the sparser hook_progress from JSONL, avoiding duplicates.
- */
-export function suppressHookProgress(messages: Message[]): Message[] {
-  return messages.filter(m => m.metadata?.type !== 'hook_progress')
-}
-
-/**
- * Filter out hook_progress RichMessages.
- * Same dedup logic as suppressHookProgress but for the Rich view pipeline.
- */
-export function suppressRichHookProgress(messages: RichMessage[]): RichMessage[] {
-  return messages.filter(m => m.metadata?.type !== 'hook_progress')
-}
