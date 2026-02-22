@@ -335,7 +335,14 @@ impl LiveSessionManager {
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
 
-        info!("LiveSessionManager started with 3 background tasks (file watcher, reconciliation loop, cleanup)");
+        // Spawn relay client for mobile remote access
+        super::relay_client::spawn_relay_client(
+            tx.clone(),
+            sessions.clone(),
+            super::relay_client::RelayClientConfig::default(),
+        );
+
+        info!("LiveSessionManager started with 4 background tasks (file watcher, reconciliation loop, cleanup, relay client)");
 
         (manager, sessions, tx)
     }
