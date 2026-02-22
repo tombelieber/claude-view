@@ -766,8 +766,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     result.deep.current_turn_start_ts = current_ts;
                     result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
                 }
-                // Collect for search indexing (skip tool_result continuations and system messages)
-                if !is_tool_result && !is_system_user_content(&content) {
+                // Collect for search indexing (skip system messages but include tool_result)
+                if !is_system_user_content(&content) {
                     user_text_for_search = Some(content);
                 }
             }
@@ -779,10 +779,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 last_timestamp = Some(ts);
             }
-            // Push search message for user content
+            // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
+                let search_role = if is_tool_result { "tool" } else { "user" };
                 result.search_messages.push(claude_view_core::SearchableMessage {
-                    role: "user".to_string(),
+                    role: search_role.to_string(),
                     content: text,
                     timestamp: user_ts,
                 });
@@ -927,14 +928,17 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         // Start new turn
                         result.deep.current_turn_start_ts = current_ts;
                         result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
-                        // Collect for search indexing
+                    }
+                    // Collect for search indexing (skip system messages but include tool_result)
+                    if !is_system_user_content(&content) {
                         fallback_user_text = Some(content);
                     }
                 }
-                // Push search message for fallback user content
+                // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
+                    let search_role = if is_tool_result { "tool" } else { "user" };
                     result.search_messages.push(claude_view_core::SearchableMessage {
-                        role: "user".to_string(),
+                        role: search_role.to_string(),
                         content: text,
                         timestamp: fallback_user_ts,
                     });
@@ -2246,6 +2250,9 @@ where
         primary_model: Option<String>,
         messages: Vec<claude_view_core::SearchableMessage>,
         skills: Vec<String>,
+        preview: Option<String>,
+        last_message: Option<String>,
+        timestamp: i64,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
         results
@@ -2258,6 +2265,9 @@ where
                 primary_model: compute_primary_model(&r.parse_result.turns),
                 messages: r.parse_result.search_messages.clone(),
                 skills: r.parse_result.deep.skills_used.clone(),
+                preview: r.parse_result.deep.first_user_prompt.clone(),
+                last_message: if r.parse_result.deep.last_message.is_empty() { None } else { Some(r.parse_result.deep.last_message.clone()) },
+                timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
             })
             .collect()
     } else {
@@ -2458,7 +2468,7 @@ where
         if !search_batches.is_empty() {
             let mut search_errors = 0u32;
             for batch in &search_batches {
-                let docs: Vec<claude_view_search::SearchDocument> = batch
+                let mut docs: Vec<claude_view_search::SearchDocument> = batch
                     .messages
                     .iter()
                     .enumerate()
@@ -2474,6 +2484,35 @@ where
                         skills: batch.skills.clone(),
                     })
                     .collect();
+
+                // Add session summary document for metadata search
+                if let Some(preview) = &batch.preview {
+                    let mut summary_parts = Vec::new();
+                    if !preview.is_empty() {
+                        summary_parts.push(preview.as_str());
+                    }
+                    if !batch.project.is_empty() {
+                        summary_parts.push(batch.project.as_str());
+                    }
+                    if let Some(last_msg) = &batch.last_message {
+                        if !last_msg.is_empty() {
+                            summary_parts.push(last_msg.as_str());
+                        }
+                    }
+                    if !summary_parts.is_empty() {
+                        docs.push(claude_view_search::SearchDocument {
+                            session_id: batch.session_id.clone(),
+                            project: batch.project.clone(),
+                            branch: batch.branch.clone().unwrap_or_default(),
+                            model: batch.primary_model.clone().unwrap_or_default(),
+                            role: "summary".to_string(),
+                            content: summary_parts.join(" | "),
+                            turn_number: 0,
+                            timestamp: batch.timestamp,
+                            skills: batch.skills.clone(),
+                        });
+                    }
+                }
 
                 if let Err(e) = search.index_session(&batch.session_id, &docs) {
                     tracing::warn!(
