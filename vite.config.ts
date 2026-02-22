@@ -21,6 +21,10 @@ export default defineConfig({
         ws: true,
       },
       '/api': 'http://localhost:47892',
+      '/relay': {
+        target: 'http://localhost:47893',
+        ws: true,
+      },
     },
   },
   build: {

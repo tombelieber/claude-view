@@ -5,6 +5,7 @@
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
 pub mod classify_state;
+pub mod crypto;
 pub mod error;
 pub mod facet_ingest;
 pub mod file_tracker;

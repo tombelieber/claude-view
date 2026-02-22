@@ -15,6 +15,7 @@ pub mod live;
 pub mod metrics;
 pub mod models;
 pub mod oauth;
+pub mod pairing;
 pub mod projects;
 pub mod reports;
 pub mod score;
@@ -118,6 +119,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", reports::router())
         .nest("/api", settings::router())
         .nest("/api", oauth::router())
+        .nest("/api", pairing::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
