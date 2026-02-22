@@ -21,7 +21,6 @@ import { JsonTree } from './JsonTree'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { toolRendererRegistry } from './ToolRenderers'
 import { useMonitorStore } from '../../store/monitor-store'
-import { categorizeTool } from '../../lib/categorize-tool'
 import type { ActionCategory } from './action-log/types'
 import { ActionFilterChips } from './action-log/ActionFilterChips'
 import { cn } from '../../lib/utils'
@@ -119,7 +118,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         input: msg.input ? JSON.stringify(msg.input, null, 2) : undefined,
         inputData: msg.input ?? undefined,
         ts: parseTimestamp(msg.ts),
-        category: categorizeTool(msg.name),
+        category: (msg.category as ActionCategory) ?? 'builtin',
       }
     }
     if (msg.type === 'tool_result') {
@@ -129,6 +128,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         type: 'tool_result',
         content,
         ts: parseTimestamp(msg.ts),
+        category: (msg.category as ActionCategory) ?? undefined,
       }
     }
     if (msg.type === 'thinking') {
@@ -153,6 +153,30 @@ export function parseRichMessage(raw: string): RichMessage | null {
       return {
         type: 'assistant',
         content,
+      }
+    }
+    if (msg.type === 'progress') {
+      return {
+        type: 'progress',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
+        metadata: msg.metadata,
+        category: (msg.category as ActionCategory) ?? undefined,
+      }
+    }
+    if (msg.type === 'system') {
+      return {
+        type: 'system',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
+        category: (msg.category as ActionCategory) ?? 'system',
+      }
+    }
+    if (msg.type === 'summary') {
+      return {
+        type: 'summary',
+        content: typeof msg.content === 'string' ? msg.content : '',
+        ts: parseTimestamp(msg.ts),
       }
     }
     return null
@@ -783,7 +807,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   // Count filterable categories (only in verbose mode, only filterable types)
   const categoryCounts = useMemo(() => {
-    const counts: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, hook: 0, error: 0 }
+    const counts: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, hook: 0, error: 0, system: 0, snapshot: 0, queue: 0 }
     if (!verboseMode) return counts
     for (const m of messages) {
       if (m.category) {
