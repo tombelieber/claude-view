@@ -525,6 +525,7 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
                             name: name.clone(),
                             count: 1,
                             input: input.clone(),
+                            category: None,
                         });
                     }
                     _ => {} // Ignore tool_result and other blocks

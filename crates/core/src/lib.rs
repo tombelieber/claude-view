@@ -1,6 +1,7 @@
 // crates/core/src/lib.rs
 pub mod accumulator;
 pub mod branch_filter;
+pub mod category;
 pub mod classification;
 pub mod cli;
 pub mod contribution;
@@ -27,6 +28,7 @@ pub mod types;
 pub mod work_type;
 
 pub use branch_filter::*;
+pub use category::*;
 pub use cli::{resolved_cli_path, ClaudeCliStatus};
 pub use contribution::*;
 pub use discovery::*;
