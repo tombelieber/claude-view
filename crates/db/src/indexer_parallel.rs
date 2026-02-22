@@ -2546,6 +2546,12 @@ where
             if let Err(e) = search.commit() {
                 tracing::warn!(error = %e, "Failed to commit search index");
             } else {
+                // Reload the reader so queries see the newly committed data
+                // immediately. OnCommitWithDelay is unreliable for first-run
+                // scenarios where the reader was created on an empty index.
+                if let Err(e) = search.reader.reload() {
+                    tracing::warn!(error = %e, "Failed to reload search reader after commit");
+                }
                 if search_errors > 0 {
                     tracing::info!(
                         indexed = search_batches.len() - search_errors as usize,
