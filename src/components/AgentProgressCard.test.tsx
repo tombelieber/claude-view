@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentProgressCard } from './AgentProgressCard'
+
+vi.mock('./live/CompactCodeBlock', () => ({
+  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  ),
+}))
 
 describe('AgentProgressCard', () => {
   describe('React auto-escaping XSS prevention', () => {
@@ -65,7 +71,7 @@ describe('AgentProgressCard', () => {
 
       expect(screen.getByText(/Agent #agent-1/)).toBeInTheDocument()
       expect(screen.getByText(/claude-opus/)).toBeInTheDocument()
-      expect(screen.getByText(/500 tokens used/)).toBeInTheDocument()
+      expect(screen.getByText(/500 tokens/)).toBeInTheDocument()
     })
 
     it('should show "Sub-agent" when agentId is undefined', () => {
@@ -81,7 +87,7 @@ describe('AgentProgressCard', () => {
         <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />
       )
 
-      expect(screen.queryByText(/tokens used/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     })
   })
 
@@ -101,7 +107,7 @@ describe('AgentProgressCard', () => {
       // Click to expand
       fireEvent.click(screen.getByRole('button'))
 
-      // Prompt should now be visible
+      // Prompt should now be visible via CompactCodeBlock
       expect(screen.getByText('This is the full prompt text')).toBeInTheDocument()
     })
 
