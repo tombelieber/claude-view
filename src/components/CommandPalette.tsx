@@ -204,8 +204,18 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const handleSelect = useCallback((searchQuery: string) => {
     addRecentSearch(searchQuery)
     onClose()
-    navigate(`/search?q=${encodeURIComponent(searchQuery)}`)
-  }, [addRecentSearch, onClose, navigate])
+    // Build search URL, inheriting active sidebar project/branch filters as scope
+    const searchUrl = new URLSearchParams()
+    searchUrl.set('q', searchQuery)
+    const currentParams = new URLSearchParams(location.search)
+    const project = currentParams.get('project')
+    const branch = currentParams.get('branch')
+    const scopeParts: string[] = []
+    if (project) scopeParts.push(`project:${project}`)
+    if (branch) scopeParts.push(`branch:${branch}`)
+    if (scopeParts.length > 0) searchUrl.set('scope', scopeParts.join(' '))
+    navigate(`/search?${searchUrl}`)
+  }, [addRecentSearch, onClose, navigate, location.search])
 
   const handleSelectSearchResult = useCallback((sessionId: string) => {
     onClose()

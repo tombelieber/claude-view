@@ -34,6 +34,9 @@ vi.mock('./McpProgressCard', () => ({
 vi.mock('./TaskQueueCard', () => ({
   TaskQueueCard: (props: any) => <div data-testid="task-queue-card" data-props={JSON.stringify(props)} />
 }))
+vi.mock('./live/action-log/HookEventRow', () => ({
+  HookEventRow: (props: any) => <div data-testid="hook-event-row" data-event={JSON.stringify(props.event)} />
+}))
 
 function makeMessage(overrides: Partial<MessageType> = {}): MessageType {
   return {
@@ -194,6 +197,18 @@ describe('MessageTyped dispatch', () => {
         />
       )
       expect(screen.getByTestId('task-queue-card')).toBeInTheDocument()
+    })
+
+    it('dispatches hook_event to HookEventRow', () => {
+      const hookEvent = { id: '1', type: 'hook_event', timestamp: 1706400000, eventName: 'PreToolUse', toolName: 'Bash', label: 'Running: git status', group: 'autonomous', context: '{}' }
+      render(
+        <MessageTyped
+          message={makeMessage()}
+          messageType="progress"
+          metadata={{ type: 'hook_event', _hookEvent: hookEvent }}
+        />
+      )
+      expect(screen.getByTestId('hook-event-row')).toBeInTheDocument()
     })
 
     it('falls back to SystemMetadataCard for unknown progress subtype', () => {

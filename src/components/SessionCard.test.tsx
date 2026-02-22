@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { createElement } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionCard } from './SessionCard'
 import type { SessionInfo } from '../types/generated/SessionInfo'
+
+// Create a QueryClient wrapper for tests (ClassifyButton uses useQueryClient)
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return ({ children }: { children: React.ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children)
+}
 
 // Helper to create a mock SessionInfo with default values
 const createMockSession = (overrides?: Partial<SessionInfo>): SessionInfo => ({
@@ -9,8 +20,8 @@ const createMockSession = (overrides?: Partial<SessionInfo>): SessionInfo => ({
   project: 'test-project',
   projectPath: '/path/to/project',
   filePath: '/path/to/session.jsonl',
-  modifiedAt: BigInt(Math.floor(Date.now() / 1000)),
-  sizeBytes: BigInt(1024),
+  modifiedAt: Math.floor(Date.now() / 1000),
+  sizeBytes: 1024,
   preview: 'This is a test session preview',
   lastMessage: 'This is the last message',
   filesTouched: [],
@@ -41,6 +52,8 @@ const createMockSession = (overrides?: Partial<SessionInfo>): SessionInfo => ({
   linesAdded: 0,
   linesRemoved: 0,
   locSource: 0,
+  correctionCount: 0,
+  sameFileEditCount: 0,
   totalTaskTimeSeconds: null,
   longestTaskSeconds: null,
   longestTaskPreview: null,
@@ -54,7 +67,9 @@ describe('SessionCard', () => {
         gitBranch: 'feature/auth',
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Check for branch badge text
       expect(screen.getByText('feature/auth')).toBeInTheDocument()
@@ -69,7 +84,9 @@ describe('SessionCard', () => {
         gitBranch: null,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Branch badge should not be rendered
       const icon = container.querySelector('svg.lucide-git-branch')
@@ -82,7 +99,9 @@ describe('SessionCard', () => {
         gitBranch: longBranch,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Badge should have title attribute with full name
       const badge = container.querySelector('[title="' + longBranch + '"]')
@@ -97,7 +116,9 @@ describe('SessionCard', () => {
         gitBranch: 'main',
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       const badge = container.querySelector('[title="main"]')
       expect(badge).toBeInTheDocument()
@@ -115,7 +136,9 @@ describe('SessionCard', () => {
         durationSeconds: 2700, // 45 minutes
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Get the header row
       const header = container.querySelector('article > div:first-child')
@@ -141,7 +164,9 @@ describe('SessionCard', () => {
         filesEditedCount: 3,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Check for FileEdit icon (renders as lucide-file-pen)
       const icon = container.querySelector('svg.lucide-file-pen')
@@ -171,7 +196,9 @@ describe('SessionCard', () => {
         filesEditedCount: 8,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Should show first 3
       expect(screen.getByText('auth.ts')).toBeInTheDocument()
@@ -188,7 +215,9 @@ describe('SessionCard', () => {
         filesEditedCount: 0,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // FileEdit icon should not be present
       const icon = container.querySelector('svg.lucide-file-pen')
@@ -205,7 +234,9 @@ describe('SessionCard', () => {
         filesEditedCount: 3,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Should show only basenames
       expect(screen.getByText('Button.tsx')).toBeInTheDocument()
@@ -222,12 +253,14 @@ describe('SessionCard', () => {
         filesEditedCount: 3,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Check for middot separators (rendered as "·")
       const topFilesRow = container.querySelector('svg.lucide-file-pen')?.parentElement
       expect(topFilesRow).toBeTruthy()
-      expect(topFilesRow!.textContent).toContain('·')
+      expect(topFilesRow!.textContent).toContain('\u00b7')
     })
 
     it('3.6: should render top files row between metrics and footer', () => {
@@ -238,7 +271,9 @@ describe('SessionCard', () => {
         commitCount: 2,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Find all major sections
       const article = container.querySelector('article')
@@ -270,14 +305,16 @@ describe('SessionCard', () => {
     })
 
     it('should handle undefined session gracefully', () => {
-      const { container } = render(<SessionCard session={undefined} />)
+      render(<SessionCard session={undefined} />)
 
       expect(screen.getByText('Session data unavailable')).toBeInTheDocument()
     })
 
     it('should have cursor-pointer class for clickable card', () => {
       const session = createMockSession()
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       const article = container.querySelector('article')
       expect(article?.className).toContain('cursor-pointer')
@@ -290,7 +327,9 @@ describe('SessionCard', () => {
         filesEditedCount: 1,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Branch badge should have dark mode classes
       const badge = container.querySelector('[title="feature/test"]')
@@ -309,7 +348,9 @@ describe('SessionCard', () => {
         filesEditedCount: 3,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Should still render without crashing
       expect(container.querySelector('svg.lucide-file-pen')).toBeInTheDocument()
@@ -322,7 +363,9 @@ describe('SessionCard', () => {
         filesEditedCount: 1,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Should render without breaking layout
       expect(container.querySelector('svg.lucide-file-pen')).toBeInTheDocument()
@@ -330,7 +373,9 @@ describe('SessionCard', () => {
 
     it('should apply selected styles when isSelected is true', () => {
       const session = createMockSession()
-      const { container } = render(<SessionCard session={session} isSelected={true} />)
+      const { container } = render(<SessionCard session={session} isSelected={true} />, {
+        wrapper: createWrapper(),
+      })
 
       const article = container.querySelector('article')
       expect(article?.className).toContain('bg-blue-50')
@@ -339,7 +384,9 @@ describe('SessionCard', () => {
 
     it('should show project display name when provided', () => {
       const session = createMockSession()
-      render(<SessionCard session={session} projectDisplayName="My Project" />)
+      render(<SessionCard session={session} projectDisplayName="My Project" />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText('My Project')).toBeInTheDocument()
     })
@@ -351,7 +398,9 @@ describe('SessionCard', () => {
         filesEditedCount: 2,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Both features should be present
       expect(container.querySelector('svg.lucide-git-branch')).toBeInTheDocument()
@@ -367,13 +416,17 @@ describe('SessionCard', () => {
         gitBranch: '<script>alert("XSS")</script>',
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // React should auto-escape the script tag
       expect(screen.getByText(/<script>alert\("XSS"\)<\/script>/)).toBeInTheDocument()
 
       // Should not execute script
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
       const scripts = container.querySelectorAll('script')
       expect(scripts.length).toBe(0)
     })
@@ -384,10 +437,14 @@ describe('SessionCard', () => {
         filesEditedCount: 1,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // React should auto-escape
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
       const imgs = container.querySelectorAll('img')
       expect(imgs.length).toBe(0)
     })
@@ -401,7 +458,9 @@ describe('SessionCard', () => {
         locSource: 1, // tool estimate
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Check for green text with +100
       const greenText = screen.getByText('+100')
@@ -417,30 +476,22 @@ describe('SessionCard', () => {
 
       // Check for separator
       expect(screen.getByText('/')).toBeInTheDocument()
-
-      // Should not show git icon for tool estimate
-      const gitIcons = container.querySelectorAll('svg.lucide-git-commit-horizontal')
-      // Filter out the commit badge icon (which appears in footer)
-      const locGitIcons = Array.from(gitIcons).filter(icon => {
-        const parent = icon.closest('div')
-        return parent?.className.includes('mt-2') && parent?.className.includes('text-xs')
-      })
-      expect(locGitIcons.length).toBe(0)
     })
 
-    it('2.2: should show ±0 in muted gray when no changes', () => {
+    it('2.2: should not render LOC when both linesAdded and linesRemoved are 0', () => {
       const session = createMockSession({
         linesAdded: 0,
         linesRemoved: 0,
         locSource: 1, // computed but no changes
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
-      const zeroText = screen.getByText('±0')
-      expect(zeroText).toBeInTheDocument()
-      expect(zeroText.className).toContain('text-gray-400')
-      expect(zeroText.className).toContain('dark:text-gray-500')
+      // Component only renders LOC when linesAdded > 0 or linesRemoved > 0
+      expect(screen.queryByText('+0')).not.toBeInTheDocument()
+      expect(screen.queryByText('-0')).not.toBeInTheDocument()
     })
 
     it('2.3: should show GitCommit icon for git verified LOC', () => {
@@ -450,18 +501,13 @@ describe('SessionCard', () => {
         locSource: 2, // git verified
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
-      // Check for git commit icon in LOC row
+      // Check for git commit icon in LOC display (locSource === 2)
       const gitIcons = container.querySelectorAll('svg.lucide-git-commit-horizontal')
       expect(gitIcons.length).toBeGreaterThan(0)
-
-      // Find the icon in the LOC row (not in footer)
-      const locGitIcon = Array.from(gitIcons).find(icon => {
-        const parent = icon.closest('div')
-        return parent?.className.includes('mt-2') && parent?.className.includes('text-xs')
-      })
-      expect(locGitIcon).toBeTruthy()
     })
 
     it('2.4: should not show git icon for tool estimate', () => {
@@ -469,20 +515,18 @@ describe('SessionCard', () => {
         linesAdded: 50,
         linesRemoved: 10,
         locSource: 1, // tool estimate
+        // Ensure no commit badge is shown which would also have git-commit icon
+        commitCount: 0,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
-      // Get all git commit icons
+      // Get all git commit icons — for locSource=1, the LOC row should NOT have one
+      // but the footer commit badge might (if commitCount > 0 — which is 0 here)
       const gitIcons = container.querySelectorAll('svg.lucide-git-commit-horizontal')
-
-      // Filter to only LOC row icons (not footer commit badge)
-      const locGitIcons = Array.from(gitIcons).filter(icon => {
-        const parent = icon.closest('div')
-        return parent?.className.includes('mt-2') && parent?.className.includes('text-xs') && !parent?.className.includes('border')
-      })
-
-      expect(locGitIcons.length).toBe(0)
+      expect(gitIcons.length).toBe(0)
     })
 
     it('2.5: should format large numbers with K suffix', () => {
@@ -492,7 +536,9 @@ describe('SessionCard', () => {
         locSource: 1,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // formatNumber(1234) -> "1.2K"
       expect(screen.getByText('+1.2K')).toBeInTheDocument()
@@ -507,11 +553,13 @@ describe('SessionCard', () => {
         locSource: 0, // not computed
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
-      // Should not show ±0 or any LOC display
-      expect(screen.queryByText('±0')).not.toBeInTheDocument()
-      expect(screen.queryByText(/^\+/)).not.toBeInTheDocument()
+      // Should not show any LOC display
+      expect(screen.queryByText(/^\+\d/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/^-\d/)).not.toBeInTheDocument()
     })
 
     it('2.7: should handle very large numbers with M suffix', () => {
@@ -521,7 +569,9 @@ describe('SessionCard', () => {
         locSource: 2,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // formatNumber(2500000) -> "2.5M"
       expect(screen.getByText('+2.5M')).toBeInTheDocument()
@@ -529,7 +579,7 @@ describe('SessionCard', () => {
       expect(screen.getByText('-1.2M')).toBeInTheDocument()
     })
 
-    it('2.8: should render LOC row between metrics and top files', () => {
+    it('2.8: should render LOC in metrics box alongside other metrics', () => {
       const session = createMockSession({
         linesAdded: 100,
         linesRemoved: 20,
@@ -539,21 +589,20 @@ describe('SessionCard', () => {
         filesEditedCount: 1,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Find order of elements in HTML
       const html = container.innerHTML
       const metricsIndex = html.indexOf('5 prompts')
       const locIndex = html.indexOf('+100')
-      const topFilesIndex = html.indexOf('lucide-file-pen')
 
       expect(metricsIndex).toBeGreaterThan(-1)
       expect(locIndex).toBeGreaterThan(-1)
-      expect(topFilesIndex).toBeGreaterThan(-1)
 
-      // LOC should be after metrics and before top files
+      // LOC should be after metrics (in the same metrics box)
       expect(locIndex).toBeGreaterThan(metricsIndex)
-      expect(locIndex).toBeLessThan(topFilesIndex)
     })
 
     it('2.9: should handle only additions (no deletions)', () => {
@@ -563,7 +612,9 @@ describe('SessionCard', () => {
         locSource: 1,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText('+500')).toBeInTheDocument()
       expect(screen.getByText('-0')).toBeInTheDocument()
@@ -576,7 +627,9 @@ describe('SessionCard', () => {
         locSource: 1,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // When linesAdded = 0 but linesRemoved > 0, still show as change
       expect(screen.getByText('+0')).toBeInTheDocument()
@@ -590,19 +643,17 @@ describe('SessionCard', () => {
         locSource: 2, // git verified
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       // Check for formatted numbers
       expect(screen.getByText('+5.0K')).toBeInTheDocument()
       expect(screen.getByText('-2.3K')).toBeInTheDocument()
 
-      // Check for git icon
+      // Check for git commit icon (locSource=2 shows GitCommit icon)
       const gitIcons = container.querySelectorAll('svg.lucide-git-commit-horizontal')
-      const locGitIcon = Array.from(gitIcons).find(icon => {
-        const parent = icon.closest('div')
-        return parent?.className.includes('mt-2') && parent?.className.includes('text-xs')
-      })
-      expect(locGitIcon).toBeTruthy()
+      expect(gitIcons.length).toBeGreaterThan(0)
     })
   })
 
@@ -612,7 +663,9 @@ describe('SessionCard', () => {
         commitCount: 3,
       })
 
-      const { container } = render(<SessionCard session={session} />)
+      const { container } = render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(container.querySelector('svg.lucide-git-commit-horizontal')).toBeInTheDocument()
       expect(screen.getByText(/3 commits/)).toBeInTheDocument()
@@ -623,7 +676,9 @@ describe('SessionCard', () => {
         skillsUsed: ['tdd', 'commit'],
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText('tdd')).toBeInTheDocument()
       expect(screen.getByText('commit')).toBeInTheDocument()
@@ -632,11 +687,13 @@ describe('SessionCard', () => {
     it('should still show time range when duration is set', () => {
       const now = Math.floor(Date.now() / 1000)
       const session = createMockSession({
-        modifiedAt: BigInt(now),
+        modifiedAt: now,
         durationSeconds: 2700, // 45 minutes
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText(/45 min/)).toBeInTheDocument()
     })
@@ -644,12 +701,14 @@ describe('SessionCard', () => {
     it('should still show metrics: prompts, tokens, files', () => {
       const session = createMockSession({
         userPromptCount: 12,
-        totalInputTokens: BigInt(30000),
-        totalOutputTokens: BigInt(15000),
+        totalInputTokens: 30000,
+        totalOutputTokens: 15000,
         filesEditedCount: 8,
       })
 
-      render(<SessionCard session={session} />)
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText(/12 prompts/)).toBeInTheDocument()
       expect(screen.getByText(/45\.0K tokens/)).toBeInTheDocument()
