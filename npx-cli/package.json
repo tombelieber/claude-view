@@ -1,6 +1,6 @@
 {
   "name": "claude-view",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Browse and search your Claude Code sessions in a beautiful local web UI",
   "bin": {
     "claude-view": "./index.js"
