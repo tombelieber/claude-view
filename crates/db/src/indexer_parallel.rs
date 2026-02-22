@@ -1993,16 +1993,36 @@ where
         .await
         .map_err(|e| format!("Failed to query sessions needing deep index: {}", e))?;
 
+    // When the search index was rebuilt (schema version mismatch), force re-parse
+    // of ALL sessions so search_messages (which are ephemeral, not stored in SQLite)
+    // get regenerated and fed to Tantivy. Without this, a search schema bump would
+    // wipe the index but sessions already at the current parse_version would be
+    // skipped, leaving the search index empty.
+    let force_search_reindex = search_index
+        .map(|idx| idx.needs_full_reindex)
+        .unwrap_or(false);
+
+    if force_search_reindex {
+        tracing::info!(
+            sessions = all_sessions.len(),
+            "Search index was rebuilt — forcing full re-parse to repopulate search data"
+        );
+    }
+
     // Filter sessions that actually need (re-)indexing:
-    // 1. deep_indexed_at IS NULL → new session, never indexed
-    // 2. parse_version < CURRENT → parser upgraded
-    // 3. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
-    // 4. Otherwise: stat() the file, compare size+mtime. Different → re-index.
+    // 1. force_search_reindex → search index was rebuilt, must re-parse everything
+    // 2. deep_indexed_at IS NULL → new session, never indexed
+    // 3. parse_version < CURRENT → parser upgraded
+    // 4. file_size_at_index or file_mtime_at_index is NULL → never had metadata stored
+    // 5. Otherwise: stat() the file, compare size+mtime. Different → re-index.
     let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
         .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
-            let needs_index = if deep_indexed_at.is_none() {
+            let needs_index = if force_search_reindex {
+                // Search index was rebuilt — must re-parse to regenerate search_messages
+                true
+            } else if deep_indexed_at.is_none() {
                 // Never deep-indexed → must index
                 true
             } else if parse_version < CURRENT_PARSE_VERSION {
@@ -2525,12 +2545,20 @@ where
             }
             if let Err(e) = search.commit() {
                 tracing::warn!(error = %e, "Failed to commit search index");
-            } else if search_errors > 0 {
-                tracing::info!(
-                    indexed = search_batches.len() - search_errors as usize,
-                    errors = search_errors,
-                    "Search index write complete (with errors)"
-                );
+            } else {
+                if search_errors > 0 {
+                    tracing::info!(
+                        indexed = search_batches.len() - search_errors as usize,
+                        errors = search_errors,
+                        "Search index write complete (with errors)"
+                    );
+                }
+                // Commit succeeded — if this was a full reindex, mark the schema
+                // version file so the next startup won't re-trigger. This MUST
+                // happen after commit(), not before, so interrupted runs retry.
+                if force_search_reindex {
+                    search.mark_schema_synced();
+                }
             }
         }
     }
