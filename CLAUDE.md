@@ -141,7 +141,9 @@ Use `./scripts/release.sh {patch|minor|major}` then push with tags. Also bump `C
 
 ### Testing
 
-Scoped: `cargo test -p claude-view-{core,db,server,search}`. Full workspace only for cross-crate changes.
+- **Test only what changed.** Before running tests, check `git diff --name-only` to identify touched crates. Only run `cargo test -p claude-view-{crate}` for crates with actual changes. Never blanket-run `cargo test -p claude-view-core` (626 tests, ~60s) unless core was modified.
+- **Module-scoped filters** when only a few files changed: `cargo test -p claude-view-core parser::` instead of the full crate.
+- **Full workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
 
 ## UI/UX Rules
 

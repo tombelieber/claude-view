@@ -1,6 +1,5 @@
 import { Scissors } from 'lucide-react'
-import { cn } from '../lib/utils'
-import { formatTokenCount } from '../lib/format-utils'
+import { formatNumber } from '../lib/format-utils'
 
 interface CompactBoundaryCardProps {
   trigger: string
@@ -10,20 +9,17 @@ interface CompactBoundaryCardProps {
 
 export function CompactBoundaryCard({ trigger, preTokens, postTokens }: CompactBoundaryCardProps) {
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 my-2 px-3 py-2',
-        'border-t border-b border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30'
-      )}
-    >
-      <Scissors className="w-4 h-4 text-indigo-500 flex-shrink-0" aria-hidden="true" />
-      <span className="text-sm text-indigo-700 dark:text-indigo-300">
-        Context compacted: {formatTokenCount(preTokens)}
-        {postTokens !== undefined && (
-          <> {'\u2192'} {formatTokenCount(postTokens)}</>
-        )}
-        {' '}tokens ({trigger})
-      </span>
+    <div className="py-0.5 border-l-2 border-l-indigo-400 pl-1 my-1">
+      <div className="flex items-center gap-1.5">
+        <Scissors className="w-3 h-3 text-indigo-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          Context compacted: {formatNumber(preTokens)}
+          {postTokens !== undefined && (
+            <> {'\u2192'} {formatNumber(postTokens)}</>
+          )}
+          {' '}tokens ({trigger})
+        </span>
+      </div>
     </div>
   )
 }
