@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { McpProgressCard } from './McpProgressCard'
+
+vi.mock('./live/CompactCodeBlock', () => ({
+  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  ),
+}))
 
 describe('McpProgressCard', () => {
   describe('Title and status rendering', () => {
@@ -13,7 +19,7 @@ describe('McpProgressCard', () => {
         />
       )
 
-      expect(screen.getByText(/MCP: filesystem\.readFile/)).toBeInTheDocument()
+      expect(screen.getByText(/filesystem\.readFile/)).toBeInTheDocument()
     })
 
     it('should show "(no params)" when params is undefined', () => {

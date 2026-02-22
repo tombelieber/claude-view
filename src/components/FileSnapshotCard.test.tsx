@@ -56,7 +56,7 @@ describe('FileSnapshotCard', () => {
       )
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toMatch(/border-l/)
-      expect(card.className).toMatch(/border-l-blue-300/)
+      expect(card.className).toMatch(/border-l-blue-400/)
     })
 
     it('should render the Archive icon', () => {
