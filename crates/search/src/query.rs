@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, Query, TermQuery};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
 use tantivy::schema::IndexRecordOption;
 use tantivy::snippet::SnippetGenerator;
 use tantivy::schema::Value;
@@ -274,10 +274,36 @@ impl SearchIndex {
 
         // Text query (the main BM25-scored part)
         if !text_query.trim().is_empty() {
-            let query_parser =
-                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-            let parsed = query_parser.parse_query(&text_query)?;
-            sub_queries.push((Occur::Must, parsed));
+            // Check if the query is a quoted phrase
+            let trimmed = text_query.trim();
+            if trimmed.starts_with('"') && trimmed.ends_with('"') {
+                // Quoted phrase: use standard query parser (exact phrase match)
+                let query_parser =
+                    tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
+                let parsed = query_parser.parse_query(trimmed)?;
+                sub_queries.push((Occur::Must, parsed));
+            } else {
+                // Unquoted: apply fuzzy matching per term (Levenshtein distance=1)
+                let tokens: Vec<&str> = trimmed.split_whitespace()
+                    .filter(|t| !t.is_empty())
+                    .collect();
+
+                if tokens.len() == 1 {
+                    // Single term: fuzzy match
+                    let term = Term::from_field_text(self.content_field, &tokens[0].to_lowercase());
+                    let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
+                    sub_queries.push((Occur::Must, Box::new(fuzzy_query)));
+                } else {
+                    // Multiple terms: each must match (fuzzy), combined with Must
+                    let mut term_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+                    for token in &tokens {
+                        let term = Term::from_field_text(self.content_field, &token.to_lowercase());
+                        let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
+                        term_queries.push((Occur::Must, Box::new(fuzzy_query)));
+                    }
+                    sub_queries.push((Occur::Must, Box::new(BooleanQuery::new(term_queries))));
+                }
+            }
         }
 
         // Qualifier term queries
