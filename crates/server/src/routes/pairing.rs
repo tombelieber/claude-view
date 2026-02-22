@@ -16,6 +16,22 @@ use crate::crypto::{
 };
 use crate::state::AppState;
 
+/// Relay base URL for HTTP API calls (Mac server → relay).
+/// Derived from RELAY_URL env var (e.g. wss://host/ws → https://host).
+fn relay_http_url() -> Option<String> {
+    std::env::var("RELAY_URL").ok().map(|u| {
+        u.replace("wss://", "https://")
+            .replace("ws://", "http://")
+            .trim_end_matches("/ws")
+            .to_string()
+    })
+}
+
+/// Relay WebSocket URL for QR code (phone → relay). Read from RELAY_URL env var.
+fn relay_ws_url() -> Option<String> {
+    std::env::var("RELAY_URL").ok()
+}
+
 #[derive(Serialize)]
 struct QrPayload {
     /// Relay WebSocket URL.
@@ -47,14 +63,14 @@ async fn generate_qr(
 
     let token = uuid::Uuid::new_v4().to_string();
 
-    // Register pairing offer with relay (localhost in dev)
-    let relay_url = "ws://localhost:47893/ws";
+    let relay_ws = relay_ws_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let relay_http = relay_http_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let ed25519_pubkey =
         verifying_key_bytes(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let client = reqwest::Client::new();
     let _ = client
-        .post("http://localhost:47893/pair")
+        .post(format!("{relay_http}/pair"))
         .json(&serde_json::json!({
             "device_id": identity.device_id,
             "pubkey": STANDARD.encode(&ed25519_pubkey),
@@ -64,7 +80,7 @@ async fn generate_qr(
         .await;
 
     Ok(Json(QrPayload {
-        r: relay_url.to_string(),
+        r: relay_ws,
         k: STANDARD.encode(box_public.as_bytes()),
         t: token,
         v: 1,
