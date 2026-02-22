@@ -4,6 +4,8 @@ pub mod state;
 pub mod ws;
 
 use axum::{
+    http::{header, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -11,6 +13,8 @@ use state::RelayState;
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::debug;
+
+const MOBILE_HTML: &str = include_str!("../static/mobile.html");
 
 pub fn app(state: RelayState) -> Router {
     // Spawn background cleanup for expired pairing offers
@@ -33,9 +37,14 @@ pub fn app(state: RelayState) -> Router {
 
     Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/mobile", get(serve_mobile))
         .route("/ws", get(ws::ws_handler))
         .route("/pair", post(pairing::create_pair))
         .route("/pair/claim", post(pairing::claim_pair))
         .layer(cors)
         .with_state(state)
+}
+
+async fn serve_mobile() -> impl IntoResponse {
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/html")], MOBILE_HTML)
 }

@@ -61,7 +61,7 @@ export function PairingPanel() {
                 ) : qr ? (
                   <div className="text-center">
                     <QRCodeSVG
-                      value={JSON.stringify(qr)}
+                      value={qr.url}
                       size={144}
                       level="M"
                       className="mx-auto"

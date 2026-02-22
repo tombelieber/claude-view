@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 interface QrPayload {
+  url: string // mobile page URL (for QR code)
   r: string // relay URL
   k: string // X25519 pubkey
   t: string // one-time token
