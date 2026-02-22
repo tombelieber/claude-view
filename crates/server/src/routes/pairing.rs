@@ -34,6 +34,8 @@ fn relay_ws_url() -> Option<String> {
 
 #[derive(Serialize)]
 struct QrPayload {
+    /// Mobile page URL — the QR code encodes this directly.
+    url: String,
     /// Relay WebSocket URL.
     r: String,
     /// Mac X25519 public key (base64).
@@ -79,9 +81,18 @@ async fn generate_qr(
         .send()
         .await;
 
+    let k_b64 = STANDARD.encode(box_public.as_bytes());
+    let mobile_url = format!(
+        "{}/mobile?k={}&t={}",
+        relay_http,
+        urlencoding::encode(&k_b64),
+        urlencoding::encode(&token),
+    );
+
     Ok(Json(QrPayload {
+        url: mobile_url,
         r: relay_ws,
-        k: STANDARD.encode(box_public.as_bytes()),
+        k: k_b64,
         t: token,
         v: 1,
     }))

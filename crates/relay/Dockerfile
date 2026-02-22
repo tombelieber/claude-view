@@ -18,8 +18,9 @@ RUN mkdir -p crates/core/src && echo "" > crates/core/src/lib.rs && \
     mkdir -p crates/search/src && echo "" > crates/search/src/lib.rs && \
     mkdir -p crates/server/src && echo "" > crates/server/src/lib.rs
 
-# Copy relay source
+# Copy relay source and static assets
 COPY crates/relay/src crates/relay/src
+COPY crates/relay/static crates/relay/static
 
 # Build only the relay binary
 RUN cargo build -p claude-view-relay --release
