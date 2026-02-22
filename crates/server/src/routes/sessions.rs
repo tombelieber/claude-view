@@ -242,8 +242,45 @@ pub async fn list_sessions(
         _ => None,
     };
 
+    // Resolve text query via Tantivy (if available and q is present)
+    let search_session_ids = if let Some(ref q_text) = query.q {
+        let q_trimmed = q_text.trim();
+        if q_trimmed.is_empty() {
+            None
+        } else {
+            // Try to get search index
+            let search_index = state.search_index.read().ok().and_then(|guard| guard.clone());
+            match search_index {
+                Some(idx) => {
+                    const TANTIVY_SESSION_LIMIT: usize = 10_000;
+                    match idx.search(q_trimmed, None, TANTIVY_SESSION_LIMIT, 0) {
+                        Ok(response) => {
+                            let ids: Vec<String> = response.sessions.into_iter().map(|s| s.session_id).collect();
+                            if ids.len() >= TANTIVY_SESSION_LIMIT {
+                                tracing::warn!(
+                                    query = q_trimmed,
+                                    limit = TANTIVY_SESSION_LIMIT,
+                                    "Tantivy session limit saturated — results may be incomplete"
+                                );
+                            }
+                            Some(ids)
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, query = q_trimmed, "Tantivy search failed, falling back to LIKE");
+                            None // Fall back to SQLite LIKE
+                        }
+                    }
+                }
+                None => None, // Index not ready, fall back to SQLite LIKE
+            }
+        }
+    } else {
+        None
+    };
+
     let params = claude_view_db::SessionFilterParams {
         q: query.q,
+        search_session_ids,
         branches: query.branches.map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
         models: query.models.map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
         has_commits,
