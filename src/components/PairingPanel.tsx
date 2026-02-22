@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Smartphone, X, Trash2, QrCode, Loader2 } from 'lucide-react'
+import { Smartphone, X, Trash2, Loader2 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import * as Popover from '@radix-ui/react-popover'
 import { useQrCode, usePairedDevices, useUnpairDevice } from '../hooks/use-pairing'
 
@@ -59,7 +60,12 @@ export function PairingPanel() {
                   <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
                 ) : qr ? (
                   <div className="text-center">
-                    <QrCode className="w-32 h-32 text-gray-800 mx-auto" />
+                    <QRCodeSVG
+                      value={JSON.stringify(qr)}
+                      size={144}
+                      level="M"
+                      className="mx-auto"
+                    />
                     <p className="text-xs text-gray-500 mt-2">
                       Scan with your phone camera
                     </p>
