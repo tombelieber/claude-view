@@ -3,4 +3,4 @@
 /**
  * A tool call made by the assistant
  */
-export type ToolCall = { name: string, count: number, input?: any, };
+export type ToolCall = { name: string, count: number, input?: any, category?: string | null, };
