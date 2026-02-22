@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { AlertTriangle, ChevronRight, ChevronDown } from 'lucide-react'
-import { cn } from '../lib/utils'
 
 interface ApiErrorCardProps {
   error: Record<string, unknown>
   retryAttempt: number
   maxRetries: number
   retryInMs?: number
+  verboseMode?: boolean
 }
 
-export function ApiErrorCard({ error, retryAttempt, maxRetries, retryInMs }: ApiErrorCardProps) {
-  const [expanded, setExpanded] = useState(false)
+export function ApiErrorCard({ error, retryAttempt, maxRetries, retryInMs, verboseMode }: ApiErrorCardProps) {
+  const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const errorCode = error.code ?? null
   const errorMessage = error.message ?? null
@@ -22,50 +22,48 @@ export function ApiErrorCard({ error, retryAttempt, maxRetries, retryInMs }: Api
     : 'Unknown error'
 
   return (
-    <div
-      className={cn(
-        'border border-gray-200 dark:border-gray-700 border-l-4 border-l-red-400 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2'
-      )}
-    >
+    <div className="py-0.5 border-l-2 border-l-red-400 pl-1 my-1">
+      {/* Status line — clickable to expand */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50/50 dark:hover:bg-red-950/30 transition-colors focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-inset"
+        className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-expanded={expanded}
       >
-        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-sm font-medium text-red-700 dark:text-red-400 flex-1 truncate">
+        <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-red-600 dark:text-red-400 truncate flex-1">
           {summaryText}
         </span>
         {retriesExhausted && (
-          <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/40 px-1.5 py-0.5 rounded">
+          <span className="text-[9px] font-mono text-red-600 dark:text-red-400 bg-red-500/10 dark:bg-red-500/20 px-1 py-0.5 rounded flex-shrink-0">
             Retries exhausted
           </span>
         )}
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-red-400" aria-hidden="true" />
+          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-red-400" aria-hidden="true" />
+          <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
         )}
       </button>
 
+      {/* Expanded error details */}
       {expanded && (
-        <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-red-50 dark:bg-red-950/20 text-sm space-y-1">
+        <div className="ml-4 mt-0.5 space-y-0.5">
           {errorCode !== null && (
-            <div className="text-red-700 dark:text-red-400">
-              <span className="font-medium">Code:</span> {String(errorCode)}
+            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+              Code: {String(errorCode)}
             </div>
           )}
           {errorMessage !== null && (
-            <div className="text-red-700 dark:text-red-400">
-              <span className="font-medium">Message:</span> {String(errorMessage)}
+            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+              Message: {String(errorMessage)}
             </div>
           )}
-          <div className="text-red-700">
-            <span className="font-medium">Retry:</span> {retryAttempt}/{maxRetries}
+          <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+            Retry: {retryAttempt}/{maxRetries}
           </div>
           {retryInMs !== undefined && (
-            <div className="text-red-700 dark:text-red-400">
-              <span className="font-medium">Backoff:</span> {retryInMs}ms
+            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+              Backoff: {retryInMs}ms
             </div>
           )}
         </div>
