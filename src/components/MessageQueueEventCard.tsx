@@ -1,5 +1,4 @@
 import { ListOrdered } from 'lucide-react'
-import { cn } from '../lib/utils'
 
 interface MessageQueueEventCardProps {
   operation: 'enqueue' | 'dequeue'
@@ -23,30 +22,25 @@ export function MessageQueueEventCard({
 
   return (
     <div
-      className={cn(
-        'rounded-lg border border-gray-200 border-l-4 border-l-gray-300 bg-white p-3 my-2'
-      )}
+      className="py-0.5 border-l-2 border-l-gray-400 pl-1 my-1"
       aria-label="Message queue event"
     >
-      <div className="flex items-start gap-2">
-        <ListOrdered
-          className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0"
-          aria-hidden="true"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm text-gray-700">{messageText}</div>
-          {queueId && (
-            <div className="text-xs text-gray-500 mt-1">
-              Queue: {queueId}
-            </div>
-          )}
-          {content && content.length > 0 && (
-            <div className="text-xs text-gray-500 mt-1 truncate">
-              {content}
-            </div>
-          )}
-        </div>
+      <div className="flex items-center gap-1.5">
+        <ListOrdered className="w-3 h-3 text-gray-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          {messageText}
+        </span>
+        {queueId && (
+          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-500">
+            queue: {queueId}
+          </span>
+        )}
       </div>
+      {content && content.length > 0 && (
+        <div className="text-[10px] font-mono text-gray-400 dark:text-gray-500 ml-4 mt-0.5 truncate">
+          {content}
+        </div>
+      )}
     </div>
   )
 }

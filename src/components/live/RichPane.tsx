@@ -36,6 +36,7 @@ import { FileSnapshotCard } from '../FileSnapshotCard'
 import { AgentProgressCard } from '../AgentProgressCard'
 import { BashProgressCard } from '../BashProgressCard'
 import { HookProgressCard } from '../HookProgressCard'
+import { HookEventRow } from './action-log/HookEventRow'
 import { McpProgressCard } from '../McpProgressCard'
 import { TaskQueueCard } from '../TaskQueueCard'
 // Summary card
@@ -656,20 +657,23 @@ function Timestamp({ ts }: { ts?: number }) {
 
 // --- System / Progress / Summary card dispatchers ---
 
-function SystemMessageCard({ message }: { message: RichMessage }) {
+function SystemMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const subtype = m?.type ?? m?.subtype
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
 
   const card = (() => {
     switch (subtype) {
       case 'turn_duration':
         return <TurnDurationCard durationMs={m.durationMs} startTime={m.startTime} endTime={m.endTime} />
       case 'api_error':
-        return <ApiErrorCard error={m.error} retryAttempt={m.retryAttempt} maxRetries={m.maxRetries} retryInMs={m.retryInMs} />
+        return <ApiErrorCard error={m.error} retryAttempt={m.retryAttempt} maxRetries={m.maxRetries} retryInMs={m.retryInMs} verboseMode={verboseMode} />
       case 'compact_boundary':
         return <CompactBoundaryCard trigger={m.trigger} preTokens={m.preTokens} postTokens={m.postTokens} />
       case 'hook_summary':
-        return <HookSummaryCard hookCount={m.hookCount} hookInfos={m.hookInfos} hookErrors={m.hookErrors} durationMs={m.durationMs} preventedContinuation={m.preventedContinuation} />
+        return <HookSummaryCard hookCount={m.hookCount} hookInfos={m.hookInfos} hookErrors={m.hookErrors} durationMs={m.durationMs} preventedContinuation={m.preventedContinuation} verboseMode={verboseMode} />
       case 'local_command':
         return <LocalCommandEventCard content={m.content ?? message.content} />
       case 'queue-operation':
@@ -677,7 +681,7 @@ function SystemMessageCard({ message }: { message: RichMessage }) {
       case 'file-history-snapshot': {
         const snapshot = m.snapshot || {}
         const files = Object.keys(snapshot.trackedFileBackups || {})
-        return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={m.isSnapshotUpdate || false} />
+        return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={m.isSnapshotUpdate || false} verboseMode={verboseMode} />
       }
       default:
         return null
@@ -692,11 +696,31 @@ function SystemMessageCard({ message }: { message: RichMessage }) {
         {subtype && (
           <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
         )}
+        {card !== null && (
+          <button
+            onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+            className={cn(
+              'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              effectiveMode === 'json'
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+            )}
+            title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+          >
+            {'{ }'}
+          </button>
+        )}
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
       {card ? (
-        <div className="mt-0.5 ml-5">{card}</div>
+        effectiveMode === 'json' ? (
+          <div className="mt-0.5 ml-5">
+            <CompactCodeBlock code={JSON.stringify(m, null, 2)} language="json" />
+          </div>
+        ) : (
+          <div className="mt-0.5 ml-5">{card}</div>
+        )
       ) : message.content ? (
         <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
       ) : m ? (
@@ -706,22 +730,29 @@ function SystemMessageCard({ message }: { message: RichMessage }) {
   )
 }
 
-function ProgressMessageCard({ message }: { message: RichMessage }) {
+function ProgressMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const subtype = m?.type
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
 
   const card = (() => {
     switch (subtype) {
       case 'agent_progress':
-        return <AgentProgressCard agentId={m.agentId} prompt={m.prompt} model={m.model} tokens={m.tokens} normalizedMessages={m.normalizedMessages} indent={m.indent} />
+        return <AgentProgressCard agentId={m.agentId} prompt={m.prompt} model={m.model} tokens={m.tokens} normalizedMessages={m.normalizedMessages} indent={m.indent} verboseMode={verboseMode} />
       case 'bash_progress':
-        return <BashProgressCard command={m.command} output={m.output} exitCode={m.exitCode} duration={m.duration} />
+        return <BashProgressCard command={m.command} output={m.output} exitCode={m.exitCode} duration={m.duration} blockId={`bash-${message.ts ?? 0}`} />
       case 'hook_progress':
-        return <HookProgressCard hookEvent={m.hookEvent} hookName={m.hookName} command={m.command} output={m.output} />
+        return <HookProgressCard hookEvent={m.hookEvent} hookName={m.hookName} command={m.command} output={m.output} verboseMode={verboseMode} />
       case 'mcp_progress':
-        return <McpProgressCard server={m.server} method={m.method} params={m.params} result={m.result} />
+        return <McpProgressCard server={m.server} method={m.method} params={m.params} result={m.result} verboseMode={verboseMode} />
       case 'waiting_for_task':
         return <TaskQueueCard waitDuration={m.waitDuration} position={m.position} queueLength={m.queueLength} />
+      case 'hook_event':
+        return m._hookEvent
+          ? <HookEventRow event={m._hookEvent} />
+          : null
       default:
         return null
     }
@@ -735,11 +766,31 @@ function ProgressMessageCard({ message }: { message: RichMessage }) {
         {subtype && (
           <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{subtype}</span>
         )}
+        {card !== null && (
+          <button
+            onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+            className={cn(
+              'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              effectiveMode === 'json'
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+            )}
+            title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+          >
+            {'{ }'}
+          </button>
+        )}
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
       {card ? (
-        <div className="mt-0.5 ml-5">{card}</div>
+        effectiveMode === 'json' ? (
+          <div className="mt-0.5 ml-5">
+            <CompactCodeBlock code={JSON.stringify(m, null, 2)} language="json" />
+          </div>
+        ) : (
+          <div className="mt-0.5 ml-5">{card}</div>
+        )
       ) : message.content ? (
         <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
       ) : m ? (
@@ -749,23 +800,44 @@ function ProgressMessageCard({ message }: { message: RichMessage }) {
   )
 }
 
-function SummaryMessageCard({ message }: { message: RichMessage }) {
+function SummaryMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const summary = m?.summary || message.content
   const leafUuid = m?.leafUuid || ''
   const wordCount = (summary || '').split(/\s+/).filter(Boolean).length
+  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
+  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
+  const effectiveMode = cardOverride ?? richRenderMode
 
   return (
     <div className="border-l-2 border-rose-500/30 dark:border-rose-500/20 pl-2 py-0.5">
       <div className="flex items-center gap-1.5">
         <BookOpen className="w-3 h-3 text-rose-500/60 dark:text-rose-400/50 flex-shrink-0" />
         <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400">summary</span>
+        <button
+          onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
+          className={cn(
+            'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+            effectiveMode === 'json'
+              ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+              : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
+          )}
+          title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
+        >
+          {'{ }'}
+        </button>
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
-      <div className="mt-0.5 ml-5">
-        <SessionSummaryCard summary={summary} leafUuid={leafUuid} wordCount={wordCount} />
-      </div>
+      {effectiveMode === 'json' ? (
+        <div className="mt-0.5 ml-5">
+          <CompactCodeBlock code={JSON.stringify(m || { summary, leafUuid, wordCount }, null, 2)} language="json" />
+        </div>
+      ) : (
+        <div className="mt-0.5 ml-5">
+          <SessionSummaryCard summary={summary} leafUuid={leafUuid} wordCount={wordCount} verboseMode={verboseMode} />
+        </div>
+      )}
     </div>
   )
 }
@@ -789,11 +861,11 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
     case 'hook':
       return <HookMessage message={message} />
     case 'system':
-      return <SystemMessageCard message={message} />
+      return <SystemMessageCard message={message} verboseMode={verboseMode} />
     case 'progress':
-      return <ProgressMessageCard message={message} />
+      return <ProgressMessageCard message={message} verboseMode={verboseMode} />
     case 'summary':
-      return <SummaryMessageCard message={message} />
+      return <SummaryMessageCard message={message} verboseMode={verboseMode} />
     default:
       return null
   }
