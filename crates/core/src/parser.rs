@@ -4,6 +4,7 @@
 //! This module provides battle-tested parsing of Claude Code's JSONL session format,
 //! handling malformed lines gracefully, aggregating tool calls, and cleaning command tags.
 
+use crate::category::{categorize_tool, categorize_progress};
 use crate::error::ParseError;
 use crate::types::*;
 use regex_lite::Regex;
@@ -232,6 +233,9 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
 
                         message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                         if has_tools {
+                            if let Some(first_tool) = tool_calls.first() {
+                                message = message.with_category(categorize_tool(&first_tool.name));
+                            }
                             message = message.with_tools(tool_calls);
                         }
                         // Attach thinking: prefer pending (from previous thinking-only message),
@@ -270,6 +274,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("system");
                 messages.push(message);
             }
             "progress" => {
@@ -294,6 +299,11 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::progress(content)
                     .with_metadata(metadata);
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = if let Some(cat) = categorize_progress(data_type) {
+                    message.with_category(cat)
+                } else {
+                    message
+                };
                 messages.push(message);
             }
             "queue-operation" => {
@@ -316,6 +326,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("queue");
                 messages.push(message);
             }
             "file-history-snapshot" => {
@@ -336,6 +347,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(content)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("snapshot");
                 messages.push(message);
             }
             "summary" => {
@@ -383,6 +395,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = Message::system(display)
                     .with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                let message = message.with_category("hook");
                 messages.push(message);
             }
             _ => {
@@ -525,7 +538,7 @@ fn extract_assistant_content(content: &JsonlContent) -> (String, Vec<ToolCall>, 
                             name: name.clone(),
                             count: 1,
                             input: input.clone(),
-                            category: None,
+                            category: Some(categorize_tool(name).to_string()),
                         });
                     }
                     _ => {} // Ignore tool_result and other blocks
