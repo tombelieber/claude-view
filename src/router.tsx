@@ -5,6 +5,9 @@ import { SearchResults } from './components/SearchResults'
 import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
+import { MobileLayout } from './pages/MobileLayout'
+import { MobilePairingPage } from './pages/MobilePairingPage'
+import { MobileMonitorPageMobile } from './pages/MobileMonitorPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
@@ -43,6 +46,14 @@ function OldProjectRedirect() {
 }
 
 export const router = createBrowserRouter([
+  {
+    path: '/mobile',
+    element: <MobileLayout />,
+    children: [
+      { index: true, element: <MobilePairingPage /> },
+      { path: 'monitor', element: <MobileMonitorPageMobile /> },
+    ],
+  },
   {
     path: '/',
     element: <App />,
