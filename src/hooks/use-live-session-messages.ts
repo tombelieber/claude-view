@@ -40,15 +40,46 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
           group: json.group,
           context: json.context,
         }])
-        // Also push into RichMessage stream so verbose mode shows hook events
-        setMessages((prev) => [...prev, {
-          type: 'hook' as const,
-          content: json.label,
-          name: json.eventName,
-          input: json.context,
-          ts: json.timestamp,
-          category: 'hook' as const,
-        }])
+        // Insert hook event at correct chronological position
+        // (scrollback replay sends hook events after all regular messages,
+        //  so append-only would place them at the end instead of inline)
+        setMessages((prev) => {
+          const newMsg: RichMessage = {
+            type: 'progress' as const,
+            content: `Hook: ${json.eventName} — ${json.label}`,
+            ts: json.timestamp,
+            category: 'hook' as ActionCategory,
+            metadata: {
+              type: 'hook_event',
+              _hookEvent: {
+                id: `hook-${prev.length}`,
+                type: 'hook_event' as const,
+                timestamp: json.timestamp,
+                eventName: json.eventName,
+                toolName: json.toolName,
+                label: json.label,
+                group: json.group,
+                context: json.context,
+              },
+            },
+          }
+          const ts = json.timestamp
+          // Fast path: no timestamp or empty array — just append
+          if (!ts || ts <= 0 || prev.length === 0) return [...prev, newMsg]
+          // Fast path: timestamp >= last message — append (common for live events)
+          const lastTs = prev[prev.length - 1].ts ?? 0
+          if (ts >= lastTs) return [...prev, newMsg]
+          // Slow path: binary search for correct insertion point
+          let lo = 0, hi = prev.length
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1
+            if ((prev[mid].ts ?? 0) <= ts) lo = mid + 1
+            else hi = mid
+          }
+          const result = prev.slice()
+          result.splice(lo, 0, newMsg)
+          return result
+        })
         return
       }
     } catch {

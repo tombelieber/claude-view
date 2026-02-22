@@ -2,11 +2,175 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make terminal tab and log tab show identical badge counts, and make live/history views produce the same canonical `RichMessage[]` array.
+**Goal:** Make terminal tab and log tab show identical badge counts, make live/history views produce structurally equivalent `RichMessage[]` arrays, and ensure NO message type is dropped in verbose mode or the log tab.
 
-**Architecture:** Extract `computeCategoryCounts()` as a shared utility. Parent components (`SessionDetailPanel` for live, `ConversationView` for history) compute counts once from the canonical `RichMessage[]` and pass them down to both `RichPane` and `ActionLogTab`. Expand `useActionItems` to handle system/progress/summary message types so the log tab shows everything except chat text.
+**Architecture:** First normalize the live and history pipelines so they produce identical `RichMessage` shapes (same types, categories, metadata). Then extract `computeCategoryCounts()` as a shared utility. Parent components compute counts once from the canonical `RichMessage[]` and pass them down. Expand `useActionItems` to handle ALL message types including thinking.
 
 **Tech Stack:** React, TypeScript, Vitest
+
+---
+
+### Task 0: Normalize live/history pipeline asymmetries
+
+**Problem:** Three asymmetries cause live and history views to produce different `RichMessage[]` for the same session:
+
+| Asymmetry | Live (`parseRichMessage` / `useLiveSessionMessages`) | History (`messagesToRichMessages` / `hookEventsToRichMessages`) |
+|---|---|---|
+| Hook event type | `type: 'hook'` (no metadata) | `type: 'progress'` with `metadata.type: 'hook_event'` |
+| System category default | `category ?? 'system'` | `category ?? undefined` |
+| Summary category | not set | not set |
+
+**Files:**
+- Modify: `src/hooks/use-live-session-messages.ts` (hook event shape)
+- Modify: `src/lib/message-to-rich.ts` (system + summary category defaults)
+- Modify: `src/components/live/RichPane.tsx` (summary category in parseRichMessage)
+
+**Step 1: Write failing tests**
+
+Create `src/lib/message-to-rich.test.ts` (add to existing if present, or create):
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { messagesToRichMessages } from './message-to-rich'
+import type { Message } from '../types/generated'
+
+describe('messagesToRichMessages normalization', () => {
+  it('defaults system category to "system" when not set', () => {
+    const msgs: Message[] = [{
+      uuid: '1', role: 'system', content: 'turn ended', timestamp: null,
+      thinking: null, tool_calls: null,
+      metadata: { type: 'turn_duration', durationMs: 1500 },
+    }]
+    const rich = messagesToRichMessages(msgs)
+    expect(rich).toHaveLength(1)
+    expect(rich[0].category).toBe('system')
+  })
+
+  it('sets summary category to "system"', () => {
+    const msgs: Message[] = [{
+      uuid: '1', role: 'summary', content: 'Session summary', timestamp: null,
+      thinking: null, tool_calls: null,
+      metadata: { summary: 'Session summary', leafUuid: 'abc' },
+    }]
+    const rich = messagesToRichMessages(msgs)
+    expect(rich).toHaveLength(1)
+    expect(rich[0].category).toBe('system')
+  })
+})
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `bunx vitest run src/lib/message-to-rich.test.ts`
+Expected: FAIL — system category is `undefined`, summary category is `undefined`
+
+**Step 3: Fix `messagesToRichMessages` — system default + summary category**
+
+In `src/lib/message-to-rich.ts`, change the `system` case (line ~130):
+
+```ts
+case 'system': {
+  const content = stripCommandTags(msg.content)
+  result.push({
+    type: 'system',
+    content: content || '',
+    ts,
+    category: (msg.category as ActionCategory) ?? 'system',  // was: ?? undefined
+    metadata: msg.metadata ?? undefined,
+  })
+  break
+}
+```
+
+And the `summary` case (line ~153):
+
+```ts
+case 'summary': {
+  result.push({
+    type: 'summary',
+    content: msg.content || '',
+    ts,
+    category: 'system' as ActionCategory,  // NEW: summaries always counted as system
+    metadata: msg.metadata ?? undefined,
+  })
+  break
+}
+```
+
+**Step 4: Fix `parseRichMessage` — summary category**
+
+In `src/components/live/RichPane.tsx`, change the summary handler (line ~179):
+
+```ts
+if (msg.type === 'summary') {
+  return {
+    type: 'summary',
+    content: typeof msg.content === 'string' ? msg.content : '',
+    ts: parseTimestamp(msg.ts),
+    category: 'system' as ActionCategory,  // NEW: summaries always counted as system
+    metadata: msg.metadata,
+  }
+}
+```
+
+Note: Need to add `import type { ActionCategory } from './action-log/types'` if not already imported. Check existing imports first — it's already imported at line 20.
+
+**Step 5: Fix `useLiveSessionMessages` — normalize hook event shape**
+
+In `src/hooks/use-live-session-messages.ts`, change the hook_event handling (lines 43-51):
+
+FROM:
+```ts
+setMessages((prev) => [...prev, {
+  type: 'hook' as const,
+  content: json.label,
+  name: json.eventName,
+  input: json.context,
+  ts: json.timestamp,
+  category: 'hook' as const,
+}])
+```
+
+TO:
+```ts
+// Push normalized shape matching history pipeline (hookEventsToRichMessages)
+setMessages((prev) => [...prev, {
+  type: 'progress' as const,
+  content: `Hook: ${json.eventName} — ${json.label}`,
+  ts: json.timestamp,
+  category: 'hook' as ActionCategory,
+  metadata: {
+    type: 'hook_event',
+    _hookEvent: {
+      id: `hook-${prev.length}`,
+      type: 'hook_event' as const,
+      timestamp: json.timestamp,
+      eventName: json.eventName,
+      toolName: json.toolName,
+      label: json.label,
+      group: json.group,
+      context: json.context,
+    },
+  },
+}])
+```
+
+Note: Need to add `import type { ActionCategory } from '../components/live/action-log/types'` at the top of the file.
+
+**Step 6: Run tests**
+
+Run: `bunx vitest run src/lib/message-to-rich.test.ts`
+Expected: PASS
+
+Run: `bunx tsc --noEmit`
+Expected: No errors
+
+**Step 7: Commit**
+
+```bash
+git add src/hooks/use-live-session-messages.ts src/lib/message-to-rich.ts src/components/live/RichPane.tsx src/lib/message-to-rich.test.ts
+git commit -m "fix: normalize live/history pipelines for identical RichMessage shape"
+```
 
 ---
 
@@ -44,11 +208,12 @@ describe('computeCategoryCounts', () => {
       { type: 'system', content: '', category: 'system' },
       { type: 'progress', content: '', category: 'hook_progress' },
       { type: 'error', content: 'fail', category: 'error' },
+      { type: 'summary', content: 'summary', category: 'system' },
     ]
     const counts = computeCategoryCounts(messages)
     expect(counts.builtin).toBe(3) // 2 tool_use + 1 tool_result
     expect(counts.skill).toBe(1)
-    expect(counts.system).toBe(1)
+    expect(counts.system).toBe(2) // 1 system + 1 summary
     expect(counts.hook_progress).toBe(1)
     expect(counts.error).toBe(1)
   })
@@ -108,12 +273,18 @@ git commit -m "feat: add computeCategoryCounts shared utility"
 
 ---
 
-### Task 2: Expand `useActionItems` to handle system, progress, and summary types
+### Task 2: Expand `useActionItems` to handle ALL message types (including thinking)
 
 **Files:**
 - Modify: `src/components/live/action-log/use-action-items.ts`
+- Create: `src/components/live/action-log/use-action-items.test.ts`
 
-Currently `useActionItems` only handles: user/assistant (turn separators), tool_use, tool_result, hook_progress progress, and error. It silently drops system, non-hook progress, summary, and thinking. We need to add handling for system, progress (all subtypes), and summary.
+Currently `useActionItems` only handles: user/assistant (turn separators), tool_use, tool_result, hook_progress progress, and error. It silently drops system, non-hook progress, summary, and thinking. We need to handle ALL of them. **No message type should be dropped.**
+
+**hookEvents param removed.** After Task 0 normalization, hook events are already in `messages[]` as `type: 'progress'` with `metadata.type: 'hook_event'` and `category: 'hook'`. So `buildActionItems` processes them directly from messages via the progress handler — no separate `hookEvents` merge needed. This means:
+- `hook_progress` (JSONL) → ActionItem with `category: 'hook_progress'`
+- `hook_event` (SQLite) → ActionItem with `category: 'hook'`
+- Both present. No dedup. No skipping.
 
 **Step 1: Write failing tests**
 
@@ -123,11 +294,6 @@ Create `src/components/live/action-log/use-action-items.test.ts`:
 import { describe, it, expect } from 'vitest'
 import type { RichMessage } from '../RichPane'
 import type { ActionItem, TurnSeparator } from './types'
-
-// We need to test the pure logic, not the hook. Extract or call directly.
-// useActionItems uses useMemo internally — for unit tests, we test the
-// transform logic by calling a pure version. We'll refactor useActionItems
-// to call a pure function internally.
 
 import { buildActionItems } from './use-action-items'
 
@@ -143,12 +309,16 @@ describe('buildActionItems', () => {
     expect(items[1]).toMatchObject({ type: 'turn', role: 'assistant' })
   })
 
-  it('drops thinking messages', () => {
+  it('creates ActionItem for thinking messages (not dropped)', () => {
     const msgs: RichMessage[] = [
-      { type: 'thinking', content: 'pondering...' },
+      { type: 'thinking', content: 'pondering the meaning of life...' },
     ]
     const items = buildActionItems(msgs)
-    expect(items).toHaveLength(0)
+    expect(items).toHaveLength(1)
+    const item = items[0] as ActionItem
+    expect(item.category).toBe('system')
+    expect(item.toolName).toBe('thinking')
+    expect(item.label).toContain('pondering')
   })
 
   it('creates ActionItem for system messages', () => {
@@ -215,9 +385,20 @@ describe('buildActionItems', () => {
     expect(item.category).toBe('mcp')
   })
 
+  it('creates ActionItem for hook_event progress (from SQLite via normalization)', () => {
+    const msgs: RichMessage[] = [
+      { type: 'progress', content: 'Hook: PreToolUse — lint', category: 'hook', metadata: { type: 'hook_event', _hookEvent: {} } },
+    ]
+    const items = buildActionItems(msgs)
+    expect(items).toHaveLength(1)
+    const item = items[0] as ActionItem
+    expect(item.category).toBe('hook')
+    expect(item.toolName).toBe('hook_event')
+  })
+
   it('creates ActionItem for summary messages', () => {
     const msgs: RichMessage[] = [
-      { type: 'summary', content: 'Session summary text', metadata: { summary: 'Session summary text', leafUuid: 'abc' } },
+      { type: 'summary', content: 'Session summary text', category: 'system', metadata: { summary: 'Session summary text', leafUuid: 'abc' } },
     ]
     const items = buildActionItems(msgs)
     expect(items).toHaveLength(1)
@@ -249,16 +430,14 @@ describe('buildActionItems', () => {
     expect(item.category).toBe('hook_progress')
   })
 
-  it('merges hookEvents into timeline sorted by timestamp', () => {
+  it('handles hook type messages (legacy live path, before normalization)', () => {
     const msgs: RichMessage[] = [
-      { type: 'tool_use', content: '', name: 'Read', category: 'builtin', ts: 100 },
+      { type: 'hook', content: 'lint check', name: 'PreToolUse', category: 'hook', ts: 100 },
     ]
-    const hookEvents = [
-      { id: 'h1', type: 'hook_event' as const, timestamp: 50, eventName: 'PreToolUse', label: 'lint', group: 'autonomous' as const },
-    ]
-    const items = buildActionItems(msgs, hookEvents)
-    // Hook event at ts=50 should come before tool_use at ts=100
-    expect(items[0]).toMatchObject({ type: 'hook_event' })
+    const items = buildActionItems(msgs)
+    expect(items).toHaveLength(1)
+    const item = items[0] as ActionItem
+    expect(item.category).toBe('hook')
   })
 })
 ```
@@ -272,13 +451,14 @@ Expected: FAIL — `buildActionItems` is not exported
 
 Modify `src/components/live/action-log/use-action-items.ts`. The key changes:
 1. Extract the inner logic into an exported `buildActionItems()` pure function
-2. Add handlers for `system`, non-hook `progress`, and `summary` types
-3. `useActionItems` becomes a thin wrapper calling `buildActionItems` inside `useMemo`
+2. Add handlers for `thinking`, `system`, ALL `progress` subtypes (including `hook_event`), `summary`, and `hook` (legacy)
+3. Remove `hookEvents` parameter — after Task 0 normalization, hook events are in `messages[]`
+4. `useActionItems` becomes a thin wrapper calling `buildActionItems` inside `useMemo`
 
 ```ts
 import { useMemo } from 'react'
 import type { RichMessage } from '../RichPane'
-import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory, HookEventItem } from './types'
+import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory } from './types'
 
 function makeLabel(toolName: string, input?: string): string {
   // ... existing makeLabel unchanged ...
@@ -291,6 +471,7 @@ function progressCategory(subtype: string | undefined): ActionCategory {
     case 'bash_progress': return 'builtin'
     case 'mcp_progress': return 'mcp'
     case 'hook_progress': return 'hook_progress'
+    case 'hook_event': return 'hook'
     case 'waiting_for_task': return 'queue'
     default: return 'system'
   }
@@ -310,6 +491,10 @@ function progressLabel(m: Record<string, any>): string {
       return m.command
         ? `${m.hookEvent || m.hookName || 'hook'} → ${m.command}`
         : (m.hookEvent || m.hookName || 'hook progress')
+    case 'hook_event': {
+      const he = m._hookEvent
+      return he ? `${he.eventName} — ${he.label}` : 'Hook event'
+    }
     case 'waiting_for_task':
       return `Waiting (pos ${m.position ?? '?'})`
     default:
@@ -318,10 +503,14 @@ function progressLabel(m: Record<string, any>): string {
 }
 
 /**
- * Pure function: convert RichMessage[] + optional HookEventItem[] into TimelineItem[].
+ * Pure function: convert RichMessage[] into TimelineItem[].
  * Exported for unit testing.
+ *
+ * IMPORTANT: No message type is dropped. Every RichMessage produces a TimelineItem.
+ * After Task 0 normalization, hook events are in messages[] as progress subtypes,
+ * so no separate hookEvents parameter is needed.
  */
-export function buildActionItems(messages: RichMessage[], hookEvents?: HookEventItem[]): TimelineItem[] {
+export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
   const items: TimelineItem[] = []
   let actionIndex = 0
   const pendingToolUses: ActionItem[] = []
@@ -342,8 +531,20 @@ export function buildActionItems(messages: RichMessage[], hookEvents?: HookEvent
       continue
     }
 
-    // Thinking → dropped (trimmed with chat text)
-    if (msg.type === 'thinking') continue
+    // Thinking → ActionItem (NOT dropped — shown in log tab)
+    if (msg.type === 'thinking') {
+      const preview = msg.content.split('\n')[0] || 'thinking...'
+      items.push({
+        id: `action-${actionIndex++}`,
+        timestamp: msg.ts,
+        category: 'system',
+        toolName: 'thinking',
+        label: preview.length > 60 ? preview.slice(0, 57) + '...' : preview,
+        status: 'success',
+        output: msg.content,
+      } satisfies ActionItem)
+      continue
+    }
 
     // Tool use → create pending action
     if (msg.type === 'tool_use' && msg.name) {
@@ -378,7 +579,7 @@ export function buildActionItems(messages: RichMessage[], hookEvents?: HookEvent
       continue
     }
 
-    // Progress events (all subtypes)
+    // Progress events (ALL subtypes — including hook_event and hook_progress)
     if (msg.type === 'progress') {
       const m = msg.metadata ?? {}
       const subtype = m.type as string | undefined
@@ -416,11 +617,27 @@ export function buildActionItems(messages: RichMessage[], hookEvents?: HookEvent
       items.push({
         id: `action-${actionIndex++}`,
         timestamp: msg.ts,
-        category: 'system', // summaries are system-level events
+        category: msg.category ?? 'system',
         toolName: 'summary',
         label: summary.length > 60 ? `Session summary (${summary.split(/\s+/).length}w)` : `Summary: ${summary}`,
         status: 'success',
         output: summary,
+      } satisfies ActionItem)
+      continue
+    }
+
+    // Hook messages (legacy live path — before Task 0 normalization)
+    // After normalization these become type: 'progress' with metadata.type: 'hook_event',
+    // but keep this handler for backwards compatibility.
+    if (msg.type === 'hook') {
+      items.push({
+        id: `action-${actionIndex++}`,
+        timestamp: msg.ts,
+        category: 'hook',
+        toolName: msg.name ?? 'hook',
+        label: msg.content.length > 60 ? msg.content.slice(0, 57) + '...' : msg.content,
+        status: 'success',
+        output: msg.input,
       } satisfies ActionItem)
       continue
     }
@@ -439,24 +656,11 @@ export function buildActionItems(messages: RichMessage[], hookEvents?: HookEvent
     }
   }
 
-  // Merge hook events into timeline
-  if (hookEvents && hookEvents.length > 0) {
-    for (const event of hookEvents) {
-      items.push(event)
-    }
-    items.sort((a, b) => {
-      const tsA = 'timestamp' in a ? (a.timestamp ?? 0) : 0
-      const tsB = 'timestamp' in b ? (b.timestamp ?? 0) : 0
-      return tsA - tsB
-    })
-  }
-
   return items
 }
 
-export function useActionItems(messages: RichMessage[], hookEvents?: HookEventItem[]): TimelineItem[] {
-  const hookEventsLength = hookEvents?.length ?? 0
-  return useMemo(() => buildActionItems(messages, hookEvents), [messages, hookEventsLength])
+export function useActionItems(messages: RichMessage[]): TimelineItem[] {
+  return useMemo(() => buildActionItems(messages), [messages])
 }
 ```
 
@@ -469,7 +673,7 @@ Expected: ALL PASS
 
 ```bash
 git add src/components/live/action-log/use-action-items.ts src/components/live/action-log/use-action-items.test.ts
-git commit -m "feat: expand useActionItems to handle system, progress, summary types"
+git commit -m "feat: expand useActionItems to handle ALL message types including thinking"
 ```
 
 ---
@@ -478,11 +682,9 @@ git commit -m "feat: expand useActionItems to handle system, progress, summary t
 
 **Files:**
 - Modify: `src/components/live/RichPane.tsx:62-70` (RichPaneProps)
-- Modify: `src/components/live/RichPane.tsx:675-689` (RichPane function — remove internal computation)
+- Modify: `src/components/live/RichPane.tsx:637` (RichPane function — use prop or fallback)
 
 **Step 1: Update RichPaneProps interface**
-
-At `src/components/live/RichPane.tsx:62-70`, change `RichPaneProps`:
 
 ```ts
 export interface RichPaneProps {
@@ -497,8 +699,6 @@ export interface RichPaneProps {
 ```
 
 **Step 2: Update RichPane to use prop or fallback to internal computation**
-
-At `src/components/live/RichPane.tsx:675`, update the function signature and categoryCounts logic:
 
 ```ts
 export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false, categoryCounts: countsProp }: RichPaneProps) {
@@ -522,7 +722,7 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 **Step 3: Run existing tests**
 
 Run: `bunx vitest run src/components/live/ --reporter=verbose`
-Expected: PASS (no behavior change when countsProp is undefined)
+Expected: PASS
 
 **Step 4: Commit**
 
@@ -536,24 +736,20 @@ git commit -m "feat: RichPane accepts optional categoryCounts prop"
 ### Task 4: Make `ActionLogTab` accept `categoryCounts` as a prop
 
 **Files:**
-- Modify: `src/components/live/action-log/ActionLogTab.tsx:13-17` (props interface)
-- Modify: `src/components/live/action-log/ActionLogTab.tsx:28-38` (remove internal counting)
+- Modify: `src/components/live/action-log/ActionLogTab.tsx`
 
 **Step 1: Update ActionLogTabProps and use the prop**
-
-At `src/components/live/action-log/ActionLogTab.tsx`, update the interface and component:
 
 ```ts
 interface ActionLogTabProps {
   messages: RichMessage[]
   bufferDone: boolean
-  hookEvents?: HookEventItem[]
   /** Pre-computed category counts from canonical message array. */
   categoryCounts?: Record<ActionCategory, number>
 }
 
-export function ActionLogTab({ messages, bufferDone, hookEvents, categoryCounts: countsProp }: ActionLogTabProps) {
-  const allItems = useActionItems(messages, hookEvents)
+export function ActionLogTab({ messages, bufferDone, categoryCounts: countsProp }: ActionLogTabProps) {
+  const allItems = useActionItems(messages)
   const [activeFilter, setActiveFilter] = useState<ActionCategory | 'all'>('all')
   // ...
 
@@ -562,9 +758,7 @@ export function ActionLogTab({ messages, bufferDone, hookEvents, categoryCounts:
     if (countsProp) return countsProp
     const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0, hook: 0, hook_progress: 0, system: 0, snapshot: 0, queue: 0 }
     for (const item of allItems) {
-      if (isHookEvent(item)) {
-        c.hook++
-      } else if (!isTurnSeparator(item)) {
+      if (!isTurnSeparator(item)) {
         c[item.category]++
       }
     }
@@ -589,12 +783,11 @@ git commit -m "feat: ActionLogTab accepts optional categoryCounts prop"
 ### Task 5: Wire shared `categoryCounts` in `SessionDetailPanel` (live sessions)
 
 **Files:**
-- Modify: `src/components/live/SessionDetailPanel.tsx:103-120` (add categoryCounts computation)
-- Modify: `src/components/live/SessionDetailPanel.tsx:494-511` (pass prop to both tabs)
+- Modify: `src/components/live/SessionDetailPanel.tsx`
+
+After Task 0 normalization, `richMessages` in live mode includes hook events (as `type: 'progress'` with `category: 'hook'`). So `computeCategoryCounts(richMessages)` correctly counts all categories including hooks.
 
 **Step 1: Import and compute shared counts**
-
-At `src/components/live/SessionDetailPanel.tsx`, add import and computation:
 
 ```ts
 // Add import at top
@@ -608,8 +801,6 @@ const categoryCounts = useMemo(
 ```
 
 **Step 2: Pass categoryCounts to both terminal and log tabs**
-
-At `src/components/live/SessionDetailPanel.tsx:494-511`:
 
 ```ts
         {/* ---- Terminal tab ---- */}
@@ -628,7 +819,6 @@ At `src/components/live/SessionDetailPanel.tsx:494-511`:
           <ActionLogTab
             messages={richMessages}
             bufferDone={bufferDone}
-            hookEvents={isLive ? liveHookEvents : historicalHookEvents}
             categoryCounts={categoryCounts}
           />
         )}
@@ -651,15 +841,9 @@ git commit -m "feat: wire shared categoryCounts in SessionDetailPanel"
 ### Task 6: Wire shared `categoryCounts` in `ConversationView` (history)
 
 **Files:**
-- Modify: `src/components/ConversationView.tsx:19` (add import)
-- Modify: `src/components/ConversationView.tsx:39-50` (update HistoryRichPane)
-- Modify: `src/components/ConversationView.tsx:276-296` (add categoryCounts computation)
-- Modify: `src/components/ConversationView.tsx:647` (pass prop to HistoryRichPane)
-- Modify: `src/components/ConversationView.tsx:652-658` (pass prop to SessionDetailPanel)
+- Modify: `src/components/ConversationView.tsx`
 
 **Step 1: Import computeCategoryCounts**
-
-At `src/components/ConversationView.tsx:19` area, add:
 
 ```ts
 import { computeCategoryCounts, type CategoryCounts } from '../lib/compute-category-counts'
@@ -695,17 +879,13 @@ const categoryCounts = useMemo(
 
 **Step 4: Pass categoryCounts to HistoryRichPane**
 
-At line ~647:
-
 ```ts
 <HistoryRichPane messages={richMessagesWithHookEvents} categoryCounts={categoryCounts} />
 ```
 
-**Step 5: Pass categoryCounts through panelData to SessionDetailPanel**
+**Step 5: SessionDetailPanel counts**
 
-This requires updating the `SessionPanelData` type to carry `categoryCounts`. Alternatively, since `ConversationView` already passes `richMessagesWithHookEvents` via `panelData.terminalMessages`, and `SessionDetailPanel` already computes richMessages from that... we can just let `SessionDetailPanel` compute its own counts from `data.terminalMessages` using the same `computeCategoryCounts` function (already wired in Task 5).
-
-Actually — the simplest approach: `SessionDetailPanel` in Task 5 already computes `categoryCounts` from `richMessages` (which in history mode is `data.terminalMessages`). So no additional prop threading is needed here. The history panel will compute counts from the same canonical array.
+`SessionDetailPanel` in Task 5 already computes `categoryCounts` from `richMessages` (which in history mode is `data.terminalMessages` = `richMessagesWithHookEvents`). No additional prop threading needed.
 
 **Step 6: Verify**
 
@@ -724,32 +904,26 @@ git commit -m "feat: wire shared categoryCounts in ConversationView"
 ### Task 7: Delete dead code
 
 **Files:**
-- Modify: `src/lib/hook-events-to-messages.ts:100-115` (delete suppressHookProgress, suppressRichHookProgress)
-- Modify: `src/lib/hook-events-to-messages.test.ts:142-181` (delete corresponding tests)
+- Modify: `src/lib/hook-events-to-messages.ts` (delete suppressHookProgress, suppressRichHookProgress)
+- Modify: `src/lib/hook-events-to-messages.test.ts` (delete corresponding tests)
 
-**Step 1: Remove the functions**
+**Step 1: Remove the functions and their tests**
 
-Delete `suppressHookProgress` and `suppressRichHookProgress` from `src/lib/hook-events-to-messages.ts` (lines 100-115).
+Delete `suppressHookProgress` and `suppressRichHookProgress` from `src/lib/hook-events-to-messages.ts`.
+Delete the corresponding `describe(...)` blocks from `src/lib/hook-events-to-messages.test.ts`.
+Remove them from the import statement in the test file.
 
-**Step 2: Remove the tests**
-
-Delete the `describe('suppressHookProgress', ...)` and `describe('suppressRichHookProgress', ...)` blocks from `src/lib/hook-events-to-messages.test.ts` (lines 142-181).
-
-**Step 3: Remove the imports**
-
-In `src/lib/hook-events-to-messages.test.ts`, remove `suppressHookProgress` and `suppressRichHookProgress` from the import.
-
-**Step 4: Verify no other files import these functions**
+**Step 2: Verify no other files import these functions**
 
 Run: `grep -r 'suppressHookProgress\|suppressRichHookProgress' src/`
-Expected: No matches (they were never called from production code)
+Expected: No matches
 
-**Step 5: Run tests**
+**Step 3: Run tests**
 
 Run: `bunx vitest run src/lib/hook-events-to-messages.test.ts`
 Expected: PASS
 
-**Step 6: Commit**
+**Step 4: Commit**
 
 ```bash
 git add src/lib/hook-events-to-messages.ts src/lib/hook-events-to-messages.test.ts
@@ -761,8 +935,7 @@ git commit -m "chore: remove dead suppressHookProgress functions"
 ### Task 8: ActionRow badge labels for new categories
 
 **Files:**
-- Modify: `src/components/live/action-log/ActionRow.tsx:6-12` (extend CATEGORY_BADGE)
-- Modify: `src/components/live/action-log/ActionRow.tsx:67-75` (extend badgeLabel logic)
+- Modify: `src/components/live/action-log/ActionRow.tsx`
 
 The `ActionRow` currently only has badge styles for `skill`, `mcp`, `builtin`, `agent`, `error`. It needs to handle the new categories: `hook_progress`, `system`, `snapshot`, `queue`, `hook`.
 
@@ -785,11 +958,15 @@ const CATEGORY_BADGE: Record<string, string> = {
 
 **Step 2: Extend badgeLabel**
 
-Replace the nested ternary with a map:
-
 ```ts
-const BADGE_LABELS: Record<string, string | null> = {
-  builtin: null, // uses toolName
+const badgeLabel = action.category === 'builtin'
+  ? action.toolName
+  : (BADGE_LABELS[action.category] ?? action.category)
+```
+
+Where `BADGE_LABELS` is:
+```ts
+const BADGE_LABELS: Record<string, string> = {
   mcp: 'MCP',
   skill: 'Skill',
   agent: 'Agent',
@@ -800,17 +977,6 @@ const BADGE_LABELS: Record<string, string | null> = {
   snapshot: 'Snapshot',
   queue: 'Queue',
 }
-
-// Inside ActionRow:
-const badgeLabel = BADGE_LABELS[action.category] ?? action.toolName
-```
-
-Wait — for `builtin`, the existing code shows `action.toolName` (the actual tool name like "Read", "Bash"). Let's preserve that:
-
-```ts
-const badgeLabel = action.category === 'builtin'
-  ? action.toolName
-  : (BADGE_LABELS[action.category] ?? action.category)
 ```
 
 **Step 3: Run TypeScript check**
@@ -857,19 +1023,59 @@ For a historical session:
 3. Open side panel, check terminal tab and log tab badge counts
 4. Verify all three match
 
+Specifically verify:
+- System events appear in both terminal and log tabs
+- Hook events appear in both terminal and log tabs
+- Thinking blocks appear in the log tab
+- Summary events appear in both terminal and log tabs
+- Badge counts for "system" include summaries and thinking in the log tab count
+
 **Step 5: Final commit (if any fixups needed)**
 
 ---
+
+## Normalization Guarantees
+
+After this plan, both pipelines produce structurally equivalent `RichMessage[]`:
+
+| Field | Live (WebSocket) | History (REST+SQLite) | Match? |
+|---|---|---|---|
+| Hook event type | `'progress'` | `'progress'` | YES |
+| Hook event metadata | `{ type: 'hook_event', _hookEvent: HookEventItem }` | `{ type: 'hook_event', _hookEvent: HookEventItem }` | YES |
+| Hook event category | `'hook'` | `'hook'` | YES |
+| System category default | `'system'` | `'system'` | YES |
+| Summary category | `'system'` | `'system'` | YES |
+| Thinking | Preserved (type: 'thinking') | Preserved (type: 'thinking') | YES |
+
+## No-Drop Guarantee
+
+| RichMessage type | Terminal tab (verbose) | Log tab | Counted in badges? |
+|---|---|---|---|
+| user | Shown (UserMessage) | TurnSeparator | No (chat text) |
+| assistant | Shown (AssistantMessage) | TurnSeparator | No (chat text) |
+| thinking | Shown (ThinkingMessage) | ActionItem (system) | Yes (system) |
+| tool_use | Shown (PairedToolCard) | ActionItem (paired) | Yes (by category) |
+| tool_result | Shown (PairedToolCard) | Paired with tool_use | Yes (by category) |
+| progress (hook_event) | Shown (ProgressMessageCard) | ActionItem (hook) | Yes (hook) |
+| progress (hook_progress) | Shown (ProgressMessageCard) | ActionItem | Yes (hook_progress) |
+| progress (other) | Shown (ProgressMessageCard) | ActionItem | Yes (by subtype) |
+| system | Shown (SystemMessageCard) | ActionItem | Yes (system/snapshot/queue) |
+| summary | Shown (SummaryMessageCard) | ActionItem | Yes (system) |
+| error | Shown (ErrorMessage) | ActionItem | Yes (error) |
+| hook (legacy) | Shown (HookMessage) | ActionItem | Yes (hook) |
 
 ## Summary of Changes
 
 | File | Change |
 |------|--------|
+| `src/hooks/use-live-session-messages.ts` | Normalize hook event shape to match history pipeline |
+| `src/lib/message-to-rich.ts` | Default system category to `'system'`, set summary category to `'system'` |
+| `src/lib/message-to-rich.test.ts` | NEW — normalization tests |
+| `src/components/live/RichPane.tsx` | Set summary category in `parseRichMessage`, accept optional `categoryCounts` prop |
 | `src/lib/compute-category-counts.ts` | NEW — shared `computeCategoryCounts()` utility |
 | `src/lib/compute-category-counts.test.ts` | NEW — unit tests |
-| `src/components/live/action-log/use-action-items.ts` | Extract `buildActionItems()` pure fn, add system/progress/summary handlers |
+| `src/components/live/action-log/use-action-items.ts` | Extract `buildActionItems()` pure fn, handle ALL types including thinking, skip hook_event dedup |
 | `src/components/live/action-log/use-action-items.test.ts` | NEW — unit tests for pure function |
-| `src/components/live/RichPane.tsx` | Accept optional `categoryCounts` prop |
 | `src/components/live/action-log/ActionLogTab.tsx` | Accept optional `categoryCounts` prop |
 | `src/components/live/SessionDetailPanel.tsx` | Compute + pass shared `categoryCounts` |
 | `src/components/ConversationView.tsx` | Compute + pass shared `categoryCounts` |

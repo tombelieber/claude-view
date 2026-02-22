@@ -9,6 +9,23 @@ const CATEGORY_BADGE: Record<string, string> = {
   builtin: 'bg-gray-500/10 text-gray-400',
   agent: 'bg-indigo-500/10 text-indigo-400',
   error: 'bg-red-500/10 text-red-400',
+  hook: 'bg-amber-500/10 text-amber-400',
+  hook_progress: 'bg-yellow-500/10 text-yellow-400',
+  system: 'bg-cyan-500/10 text-cyan-400',
+  snapshot: 'bg-teal-500/10 text-teal-400',
+  queue: 'bg-orange-500/10 text-orange-400',
+}
+
+const BADGE_LABELS: Record<string, string> = {
+  mcp: 'MCP',
+  skill: 'Skill',
+  agent: 'Agent',
+  error: 'Error',
+  hook: 'Hook',
+  hook_progress: 'Hook',
+  system: 'System',
+  snapshot: 'Snapshot',
+  queue: 'Queue',
 }
 
 function statusDotColor(status: ActionItem['status']): string {
@@ -64,15 +81,9 @@ export function ActionRow({ action }: ActionRowProps) {
   const duration = formatDuration(action.duration)
   const badgeClass = CATEGORY_BADGE[action.category] || CATEGORY_BADGE.builtin
 
-  const badgeLabel = action.category === 'mcp'
-    ? 'mcp'
-    : action.category === 'builtin'
-      ? action.toolName
-      : action.category === 'skill'
-        ? 'Skill'
-        : action.category === 'agent'
-          ? 'Task'
-          : 'Error'
+  const badgeLabel = action.category === 'builtin'
+    ? action.toolName
+    : (BADGE_LABELS[action.category] ?? action.category)
 
   return (
     <div

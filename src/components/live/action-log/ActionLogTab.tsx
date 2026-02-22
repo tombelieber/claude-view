@@ -6,43 +6,41 @@ import { useActionItems } from './use-action-items'
 import { ActionFilterChips } from './ActionFilterChips'
 import { ActionRow } from './ActionRow'
 import { TurnSeparatorRow } from './TurnSeparatorRow'
-import { HookEventRow } from './HookEventRow'
-import { isTurnSeparator, isHookEvent } from './types'
-import type { ActionCategory, HookEventItem } from './types'
+import { isTurnSeparator } from './types'
+import type { ActionCategory } from './types'
 
 interface ActionLogTabProps {
   messages: RichMessage[]
   bufferDone: boolean
-  hookEvents?: HookEventItem[]
+  /** Pre-computed category counts from canonical message array. */
+  categoryCounts?: Record<ActionCategory, number>
 }
 
-export function ActionLogTab({ messages, bufferDone, hookEvents }: ActionLogTabProps) {
-  const allItems = useActionItems(messages, hookEvents)
+export function ActionLogTab({ messages, bufferDone, categoryCounts: countsProp }: ActionLogTabProps) {
+  const allItems = useActionItems(messages)
   const [activeFilter, setActiveFilter] = useState<ActionCategory | 'all'>('all')
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [showNewIndicator, setShowNewIndicator] = useState(false)
   const prevCountRef = useRef(0)
 
-  // Category counts (actions + hooks only, not turn separators)
+  // Use prop if provided, otherwise compute from allItems (backward compat)
   const counts = useMemo(() => {
-    const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0, hook: 0 }
+    if (countsProp) return countsProp
+    const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0, hook: 0, hook_progress: 0, system: 0, snapshot: 0, queue: 0, context: 0, result: 0, summary: 0 }
     for (const item of allItems) {
-      if (isHookEvent(item)) {
-        c.hook++
-      } else if (!isTurnSeparator(item)) {
+      if (!isTurnSeparator(item)) {
         c[item.category]++
       }
     }
     return c
-  }, [allItems])
+  }, [countsProp, allItems])
 
   // Filtered items
   const filteredItems = useMemo(() => {
     if (activeFilter === 'all') return allItems
     return allItems.filter((item) => {
       if (isTurnSeparator(item)) return true // always show turn separators
-      if (isHookEvent(item)) return activeFilter === 'hook'
       return item.category === activeFilter
     })
   }, [allItems, activeFilter])
@@ -89,8 +87,6 @@ export function ActionLogTab({ messages, bufferDone, hookEvents }: ActionLogTabP
             itemContent={(_, item) =>
               isTurnSeparator(item) ? (
                 <TurnSeparatorRow role={item.role} content={item.content} />
-              ) : isHookEvent(item) ? (
-                <HookEventRow event={item} />
               ) : (
                 <ActionRow action={item} />
               )

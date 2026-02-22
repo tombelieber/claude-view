@@ -24,22 +24,19 @@ import { showToast } from '../lib/toast'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { useMonitorStore } from '../store/monitor-store'
+import { computeCategoryCounts } from '../lib/compute-category-counts'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import { useHookEvents } from '../hooks/use-hook-events'
 import {
-  hookEventsToMessages,
   hookEventsToRichMessages,
-  getMessageSortTs,
   mergeByTimestamp,
-  suppressHookProgress,
-  suppressRichHookProgress,
 } from '../lib/hook-events-to-messages'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
 /** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
-function HistoryRichPane({ messages }: { messages: import('./live/RichPane').RichMessage[] }) {
+function HistoryRichPane({ messages, categoryCounts }: { messages: import('./live/RichPane').RichMessage[]; categoryCounts?: import('../lib/compute-category-counts').CategoryCounts }) {
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   return (
     <RichPane
@@ -47,6 +44,7 @@ function HistoryRichPane({ messages }: { messages: import('./live/RichPane').Ric
       isVisible={true}
       verboseMode={verboseMode}
       bufferDone={true}
+      categoryCounts={categoryCounts}
     />
   )
 }
@@ -248,7 +246,15 @@ export function ConversationView() {
     () => pagesData?.pages.flatMap(page => page.messages) ?? [],
     [pagesData]
   )
-  const totalMessages = pagesData?.pages[0]?.total ?? 0
+
+  // Full session messages for verbose/terminal view (loaded in background by useSession)
+  // Falls back to paginated data while session is still loading.
+  const verboseAllMessages = useMemo(
+    () => session?.messages ?? allMessages,
+    [session, allMessages]
+  )
+
+  const totalMessages = session?.messages?.length ?? pagesData?.pages[0]?.total ?? 0
 
   const filteredMessages = useMemo(
     () => allMessages.length > 0 ? filterMessages(allMessages, 'compact') : [],
@@ -256,47 +262,46 @@ export function ConversationView() {
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
-  // Dedup: when hook_events exist (richer data), suppress hook_progress from JSONL
-  const hasHookEvents = hookEvents.length > 0
-  const dedupedMessages = useMemo(
-    () => hasHookEvents ? suppressHookProgress(filteredMessages) : filteredMessages,
-    [filteredMessages, hasHookEvents]
+  // Virtuoso reverse-infinite-scroll: firstItemIndex must decrease as items
+  // are prepended so Virtuoso can adjust scroll position and keep firing
+  // startReached. See https://virtuoso.dev/prepend-items/
+  const FIRST_ITEM_START = 1_000_000
+  const firstItemIndex = useMemo(
+    () => FIRST_ITEM_START - filteredMessages.length,
+    [filteredMessages.length]
   )
 
-  // Convert hook events to synthetic Message objects
-  const syntheticHookMessages = useMemo(
-    () => hookEventsToMessages(hookEvents),
-    [hookEvents]
-  )
-
-  // Merge hook events into the message list by timestamp
-  const messagesWithHookEvents = useMemo(
-    () => mergeByTimestamp(dedupedMessages, syntheticHookMessages, getMessageSortTs),
-    [dedupedMessages, syntheticHookMessages]
-  )
+  // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
+  // The compact chat view intentionally excludes them to keep focus on the user/assistant conversation.
 
   const [panelOpen, setPanelOpen] = useState(true)
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
   const richMessages = useMemo(
-    () => allMessages.length > 0 ? messagesToRichMessages(allMessages) : [],
-    [allMessages]
+    () => verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : [],
+    [verboseAllMessages]
   )
 
-  // Dedup + merge for Rich view
-  const dedupedRichMessages = useMemo(
-    () => hasHookEvents ? suppressRichHookProgress(richMessages) : richMessages,
-    [richMessages, hasHookEvents]
-  )
-
+  // Merge hook events into Rich view (both hook_event and hook_progress show)
   const richHookMessages = useMemo(
     () => hookEventsToRichMessages(hookEvents),
     [hookEvents]
   )
 
-  const richMessagesWithHookEvents = useMemo(
-    () => mergeByTimestamp(dedupedRichMessages, richHookMessages, (m) => m.ts),
-    [dedupedRichMessages, richHookMessages]
+  // Skip SQLite hook-event merge when the parser already includes hook_event
+  // entries from JSONL (avoids duplicates). Fall back to SQLite merge for older
+  // sessions whose JSONL predates hook_event support.
+  const richMessagesWithHookEvents = useMemo(() => {
+    if (richHookMessages.length === 0 || richMessages.some(m => m.metadata?.type === 'hook_event')) {
+      return richMessages
+    }
+    return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
+  }, [richMessages, richHookMessages])
+
+  // Shared category counts for both verbose terminal and side panel
+  const historyCategoryCounts = useMemo(
+    () => computeCategoryCounts(richMessagesWithHookEvents),
+    [richMessagesWithHookEvents]
   )
 
   // Build panel data for SessionDetailPanel
@@ -594,9 +599,10 @@ export function ConversationView() {
             <ThreadHighlightProvider>
             <ExpandProvider>
               <Virtuoso
-                data={messagesWithHookEvents}
+                data={filteredMessages}
+                firstItemIndex={firstItemIndex}
                 startReached={handleStartReached}
-                initialTopMostItemIndex={Math.max(0, messagesWithHookEvents.length - 1)}
+                initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
                 followOutput="smooth"
                 itemContent={(index, message) => {
                   const thread = message.uuid ? threadMap.get(message.uuid) : undefined
@@ -626,7 +632,7 @@ export function ConversationView() {
                       </div>
                     ) : hasPreviousPage ? (
                       <div className="h-6" />
-                    ) : messagesWithHookEvents.length > 0 ? (
+                    ) : filteredMessages.length > 0 ? (
                       <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
                         Beginning of conversation
                       </div>
@@ -635,7 +641,7 @@ export function ConversationView() {
                     )
                   ),
                   Footer: () => (
-                    messagesWithHookEvents.length > 0 ? (
+                    filteredMessages.length > 0 ? (
                       <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                         {totalMessages} messages
                         {hiddenCount > 0 && (
@@ -654,7 +660,7 @@ export function ConversationView() {
             </ExpandProvider>
             </ThreadHighlightProvider>
           ) : (
-            <HistoryRichPane messages={richMessagesWithHookEvents} />
+            <HistoryRichPane messages={richMessagesWithHookEvents} categoryCounts={historyCategoryCounts} />
           )}
         </div>
 

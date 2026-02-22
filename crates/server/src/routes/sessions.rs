@@ -502,11 +502,41 @@ pub async fn list_branches(
     Ok(Json(branches))
 }
 
-/// GET /api/sessions/:id/hook-events — Fetch stored hook events for a historical session.
+/// GET /api/sessions/:id/hook-events — Fetch hook events for a session.
+///
+/// For live sessions, hook events are in memory (not flushed to SQLite until
+/// SessionEnd). Check the live state first, then fall back to SQLite.
 async fn get_session_hook_events(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> Json<serde_json::Value> {
+    // Check live sessions first — hooks accumulate in memory and are only
+    // flushed to SQLite on SessionEnd. Without this, the history view shows
+    // hook=0 for any session that hasn't ended yet.
+    {
+        let sessions = state.live_sessions.read().await;
+        if let Some(session) = sessions.get(&session_id) {
+            if !session.hook_events.is_empty() {
+                let json_events: Vec<serde_json::Value> = session
+                    .hook_events
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "timestamp": e.timestamp,
+                            "eventName": e.event_name,
+                            "toolName": e.tool_name,
+                            "label": e.label,
+                            "group": e.group,
+                            "context": e.context,
+                        })
+                    })
+                    .collect();
+                return Json(serde_json::json!({ "hookEvents": json_events }));
+            }
+        }
+    }
+
+    // Fall back to SQLite for completed sessions
     match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await {
         Ok(events) => {
             let json_events: Vec<serde_json::Value> = events
@@ -1501,5 +1531,92 @@ mod tests {
         assert_eq!(hook_events[1]["toolName"], "Bash");
         assert_eq!(hook_events[1]["label"], "Running: git status");
         assert!(hook_events[1]["context"].as_str().unwrap().contains("git status"));
+    }
+
+    #[tokio::test]
+    async fn test_get_hook_events_from_live_session() {
+        use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+        use crate::live::state::{AgentState, AgentStateGroup, HookEvent, LiveSession, SessionStatus};
+
+        let db = test_db().await;
+
+        // Build app state — new_with_indexing returns Arc<AppState>
+        let state = crate::state::AppState::new_with_indexing(
+            db,
+            Arc::new(crate::indexing_state::IndexingState::new()),
+        );
+
+        // Insert a live session with hook events into the live_sessions map
+        let mut session = LiveSession {
+            id: "live-hook-test".to_string(),
+            project: "test-project".to_string(),
+            project_display_name: "test-project".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: String::new(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                state: "working".to_string(),
+                group: AgentStateGroup::Autonomous,
+                label: "Running".to_string(),
+                context: None,
+            },
+            git_branch: None,
+            pid: Some(12345),
+            title: String::new(),
+            last_user_message: String::new(),
+            current_activity: String::new(),
+            turn_count: 1,
+            started_at: Some(1000),
+            last_activity_at: 1001,
+            model: Some("claude-sonnet-4-5-20250929".to_string()),
+            tokens: TokenUsage::default(),
+            context_window_tokens: 200000,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            hook_events: Vec::new(),
+        };
+        session.hook_events.push(HookEvent {
+            timestamp: 1000,
+            event_name: "SessionStart".to_string(),
+            tool_name: None,
+            label: "Waiting for prompt".to_string(),
+            group: "needs_you".to_string(),
+            context: None,
+        });
+        session.hook_events.push(HookEvent {
+            timestamp: 1001,
+            event_name: "PreToolUse".to_string(),
+            tool_name: Some("Read".to_string()),
+            label: "Reading file".to_string(),
+            group: "autonomous".to_string(),
+            context: Some(r#"{"file_path":"/foo/bar.rs"}"#.to_string()),
+        });
+
+        state
+            .live_sessions
+            .write()
+            .await
+            .insert("live-hook-test".to_string(), session);
+
+        // Build app from the state (already Arc<AppState>)
+        let app = crate::api_routes(state);
+
+        // Should return hook events from live session (not SQLite)
+        let (status, body) = do_get(app, "/api/sessions/live-hook-test/hook-events").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let hook_events = json["hookEvents"].as_array().unwrap();
+        assert_eq!(hook_events.len(), 2);
+        assert_eq!(hook_events[0]["eventName"], "SessionStart");
+        assert_eq!(hook_events[0]["group"], "needs_you");
+        assert_eq!(hook_events[1]["eventName"], "PreToolUse");
+        assert_eq!(hook_events[1]["toolName"], "Read");
+        assert_eq!(hook_events[1]["label"], "Reading file");
     }
 }
