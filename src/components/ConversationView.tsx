@@ -26,6 +26,15 @@ import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
 import { useMonitorStore } from '../store/monitor-store'
 import { cn } from '../lib/utils'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
+import { useHookEvents } from '../hooks/use-hook-events'
+import {
+  hookEventsToMessages,
+  hookEventsToRichMessages,
+  getMessageSortTs,
+  mergeByTimestamp,
+  suppressHookProgress,
+  suppressRichHookProgress,
+} from '../lib/hook-events-to-messages'
 import type { Message } from '../types/generated'
 import type { ProjectSummary } from '../hooks/use-projects'
 
@@ -118,6 +127,9 @@ export function ConversationView() {
 
   // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
   const { data: richData } = useRichSessionData(sessionId || null)
+
+  // Fetch stored hook events from SQLite (enabled for all historical sessions)
+  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -244,6 +256,25 @@ export function ConversationView() {
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
+  // Dedup: when hook_events exist (richer data), suppress hook_progress from JSONL
+  const hasHookEvents = hookEvents.length > 0
+  const dedupedMessages = useMemo(
+    () => hasHookEvents ? suppressHookProgress(filteredMessages) : filteredMessages,
+    [filteredMessages, hasHookEvents]
+  )
+
+  // Convert hook events to synthetic Message objects
+  const syntheticHookMessages = useMemo(
+    () => hookEventsToMessages(hookEvents),
+    [hookEvents]
+  )
+
+  // Merge hook events into the message list by timestamp
+  const messagesWithHookEvents = useMemo(
+    () => mergeByTimestamp(dedupedMessages, syntheticHookMessages, getMessageSortTs),
+    [dedupedMessages, syntheticHookMessages]
+  )
+
   const [panelOpen, setPanelOpen] = useState(true)
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
@@ -252,11 +283,27 @@ export function ConversationView() {
     [allMessages]
   )
 
+  // Dedup + merge for Rich view
+  const dedupedRichMessages = useMemo(
+    () => hasHookEvents ? suppressRichHookProgress(richMessages) : richMessages,
+    [richMessages, hasHookEvents]
+  )
+
+  const richHookMessages = useMemo(
+    () => hookEventsToRichMessages(hookEvents),
+    [hookEvents]
+  )
+
+  const richMessagesWithHookEvents = useMemo(
+    () => mergeByTimestamp(dedupedRichMessages, richHookMessages, (m) => m.ts),
+    [dedupedRichMessages, richHookMessages]
+  )
+
   // Build panel data for SessionDetailPanel
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
-    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessages)
-  }, [sessionDetail, richData, sessionInfo, richMessages])
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessagesWithHookEvents)
+  }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
   // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
@@ -547,9 +594,9 @@ export function ConversationView() {
             <ThreadHighlightProvider>
             <ExpandProvider>
               <Virtuoso
-                data={filteredMessages}
+                data={messagesWithHookEvents}
                 startReached={handleStartReached}
-                initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                initialTopMostItemIndex={Math.max(0, messagesWithHookEvents.length - 1)}
                 followOutput="smooth"
                 itemContent={(index, message) => {
                   const thread = message.uuid ? threadMap.get(message.uuid) : undefined
@@ -579,7 +626,7 @@ export function ConversationView() {
                       </div>
                     ) : hasPreviousPage ? (
                       <div className="h-6" />
-                    ) : filteredMessages.length > 0 ? (
+                    ) : messagesWithHookEvents.length > 0 ? (
                       <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
                         Beginning of conversation
                       </div>
@@ -588,7 +635,7 @@ export function ConversationView() {
                     )
                   ),
                   Footer: () => (
-                    filteredMessages.length > 0 ? (
+                    messagesWithHookEvents.length > 0 ? (
                       <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                         {totalMessages} messages
                         {hiddenCount > 0 && (
@@ -607,7 +654,7 @@ export function ConversationView() {
             </ExpandProvider>
             </ThreadHighlightProvider>
           ) : (
-            <HistoryRichPane messages={richMessages} />
+            <HistoryRichPane messages={richMessagesWithHookEvents} />
           )}
         </div>
 
