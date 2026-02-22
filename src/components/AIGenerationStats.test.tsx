@@ -31,6 +31,8 @@ function makeStats(overrides = {}) {
     filesCreated: 5,
     totalInputTokens: 50000,
     totalOutputTokens: 30000,
+    cacheReadTokens: 10000,
+    cacheCreationTokens: 5000,
     tokensByModel: [
       { model: 'claude-opus-4-5-20251101', inputTokens: 30000, outputTokens: 20000 },
       { model: 'claude-sonnet-4-20250514', inputTokens: 20000, outputTokens: 10000 },
@@ -39,6 +41,14 @@ function makeStats(overrides = {}) {
       { project: 'my-app', inputTokens: 40000, outputTokens: 25000 },
       { project: 'my-lib', inputTokens: 10000, outputTokens: 5000 },
     ],
+    cost: {
+      totalCostUsd: 1.50,
+      inputCostUsd: 0.50,
+      outputCostUsd: 0.60,
+      cacheReadCostUsd: 0.10,
+      cacheCreationCostUsd: 0.30,
+      cacheSavingsUsd: 0.25,
+    },
     ...overrides,
   }
 }
@@ -109,34 +119,32 @@ describe('AIGenerationStats', () => {
       })
     })
 
-    it('should render 3 MetricCards', () => {
+    it('should render token usage by model and project sections', () => {
       render(<AIGenerationStats />)
 
-      expect(screen.getByText('Lines Generated')).toBeInTheDocument()
-      expect(screen.getByText('Files Edited')).toBeInTheDocument()
-      expect(screen.getByText('Tokens Used')).toBeInTheDocument()
+      expect(screen.getByText('Token Usage by Model')).toBeInTheDocument()
+      expect(screen.getByText('Top Projects by Token Usage')).toBeInTheDocument()
     })
 
-    it('should render lines generated with remove count', () => {
+    it('should render TokenBreakdown with total tokens processed', () => {
       render(<AIGenerationStats />)
-      expect(screen.getByText('+100')).toBeInTheDocument()
-      expect(screen.getByText('-20 removed')).toBeInTheDocument()
+      // Total: 50000 + 30000 + 10000 + 5000 = 95000 -> 95.0k
+      expect(screen.getByText('Total Tokens Processed')).toBeInTheDocument()
+      expect(screen.getByText('95.0k')).toBeInTheDocument()
     })
 
-    it('should render files created value', () => {
+    it('should render TokenBreakdown detail cards', () => {
       render(<AIGenerationStats />)
-      expect(screen.getByText('5')).toBeInTheDocument()
-      expect(screen.getByText('modified by AI')).toBeInTheDocument()
+      // The 4 detail cards: Cache Read, Cache Write, Output, Fresh Input
+      expect(screen.getAllByText('Cache Read').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Cache Write').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Output').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Fresh Input').length).toBeGreaterThanOrEqual(1)
     })
 
-    it('should render token total with input/output breakdown', () => {
+    it('should render CostBreakdownCard when cost data is present', () => {
       render(<AIGenerationStats />)
-      // Total: 80000 -> 80.0k
-      expect(screen.getByText('80.0k')).toBeInTheDocument()
-      // Input: 50000 -> 50.0k
-      expect(screen.getByText('input: 50.0k')).toBeInTheDocument()
-      // Output: 30000 -> 30.0k
-      expect(screen.getByText('output: 30.0k')).toBeInTheDocument()
+      expect(screen.getByText('Estimated Total Cost')).toBeInTheDocument()
     })
   })
 
@@ -194,41 +202,53 @@ describe('AIGenerationStats', () => {
     })
   })
 
-  describe('lines generated card visibility', () => {
-    it('should hide Lines Generated card when linesAdded and linesRemoved are both 0', () => {
+  describe('token breakdown visibility', () => {
+    it('should show TokenBreakdown when token data is present', () => {
       mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats({ linesAdded: 0, linesRemoved: 0 }),
+        data: makeStats(),
         isLoading: false,
         error: null,
       })
       render(<AIGenerationStats />)
 
-      expect(screen.queryByText('Lines Generated')).not.toBeInTheDocument()
-      // Other cards should still be visible
-      expect(screen.getByText('Files Edited')).toBeInTheDocument()
-      expect(screen.getByText('Tokens Used')).toBeInTheDocument()
+      expect(screen.getByText('Total Tokens Processed')).toBeInTheDocument()
     })
 
-    it('should show Lines Generated card when linesAdded is greater than 0', () => {
+    it('should hide TokenBreakdown when all token values are zero', () => {
       mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats({ linesAdded: 50, linesRemoved: 0 }),
+        data: makeStats({
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          filesCreated: 1,
+        }),
         isLoading: false,
         error: null,
       })
       render(<AIGenerationStats />)
 
-      expect(screen.getByText('Lines Generated')).toBeInTheDocument()
+      expect(screen.queryByText('Total Tokens Processed')).not.toBeInTheDocument()
     })
 
-    it('should show Lines Generated card when linesRemoved is greater than 0', () => {
+    it('should hide CostBreakdownCard when cost totalCostUsd is zero', () => {
       mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats({ linesAdded: 0, linesRemoved: 10 }),
+        data: makeStats({
+          cost: {
+            totalCostUsd: 0,
+            inputCostUsd: 0,
+            outputCostUsd: 0,
+            cacheReadCostUsd: 0,
+            cacheCreationCostUsd: 0,
+            cacheSavingsUsd: 0,
+          },
+        }),
         isLoading: false,
         error: null,
       })
       render(<AIGenerationStats />)
 
-      expect(screen.getByText('Lines Generated')).toBeInTheDocument()
+      expect(screen.queryByText('Estimated Total Cost')).not.toBeInTheDocument()
     })
   })
 

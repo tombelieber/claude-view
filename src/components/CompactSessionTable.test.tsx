@@ -10,8 +10,8 @@ const mockSession: SessionInfo = {
   project: 'test-project',
   projectPath: '/test/path',
   filePath: '/test/path/session.jsonl',
-  modifiedAt: BigInt(Math.floor(Date.now() / 1000) - 3600), // 1 hour ago
-  sizeBytes: BigInt(1024),
+  modifiedAt: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+  sizeBytes: 1024,
   preview: 'Test session preview text',
   lastMessage: 'Last message in session',
   filesTouched: ['file1.ts', 'file2.ts'],
@@ -23,8 +23,8 @@ const mockSession: SessionInfo = {
   gitBranch: 'feature/test',
   isSidechain: false,
   deepIndexed: true,
-  totalInputTokens: BigInt(25000),
-  totalOutputTokens: BigInt(20000),
+  totalInputTokens: 25000,
+  totalOutputTokens: 20000,
   totalCacheReadTokens: null,
   totalCacheCreationTokens: null,
   turnCountApi: null,
@@ -52,6 +52,15 @@ const mockSession: SessionInfo = {
   linesRemoved: 45,
   locSource: 1,
   parseVersion: 1,
+  categoryL1: null,
+  categoryL2: null,
+  categoryL3: null,
+  categoryConfidence: null,
+  categorySource: null,
+  classifiedAt: null,
+  promptWordCount: null,
+  correctionCount: 0,
+  sameFileEditCount: 0,
   totalTaskTimeSeconds: null,
   longestTaskSeconds: null,
   longestTaskPreview: null,
@@ -64,11 +73,11 @@ const mockSessions: SessionInfo[] = [
     id: 'test-session-2',
     preview: 'Another session preview',
     gitBranch: 'main',
-    modifiedAt: BigInt(Math.floor(Date.now() / 1000) - 7200), // 2 hours ago
+    modifiedAt: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
     durationSeconds: 1800, // 30 minutes
     userPromptCount: 5,
-    totalInputTokens: BigInt(10000),
-    totalOutputTokens: BigInt(8000),
+    totalInputTokens: 10000,
+    totalOutputTokens: 8000,
     filesEditedCount: 3,
     linesAdded: 75,
     linesRemoved: 20,
@@ -90,16 +99,17 @@ function renderTable(sessions: SessionInfo[] = mockSessions, onSort?: (column: s
 
 describe('CompactSessionTable', () => {
   describe('Table structure and columns', () => {
-    it('renders table with all 7 required columns', () => {
+    it('renders table with all required columns', () => {
       renderTable()
 
       expect(screen.getByRole('columnheader', { name: /time/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /branch/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /preview/i })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /type/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /activity/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /changes/i })).toBeInTheDocument()
       expect(screen.getByRole('columnheader', { name: /commits/i })).toBeInTheDocument()
-      expect(screen.getByRole('columnheader', { name: /dur/i })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /task/i })).toBeInTheDocument()
     })
 
     it('does not render old Tokens or LOC columns', () => {
@@ -216,7 +226,8 @@ describe('CompactSessionTable', () => {
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
 
-      const timeCell = within(firstDataRow).getAllByRole('cell')[0]
+      // Weight column is at index 0; Time column is at index 1
+      const timeCell = within(firstDataRow).getAllByRole('cell')[1]
       expect(timeCell.textContent).toMatch(/(Today|Yest\.|\w+ \d+)/)
       expect(timeCell.textContent).toMatch(/\d+:\d+ (AM|PM)/)
     })
@@ -226,7 +237,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const branchCell = within(firstDataRow).getAllByRole('cell')[1]
+      // Branch column is at index 2 (after weight + time)
+      const branchCell = within(firstDataRow).getAllByRole('cell')[2]
 
       expect(branchCell.textContent).toContain('feature/test')
 
@@ -241,7 +253,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const activityCell = within(firstDataRow).getAllByRole('cell')[3]
+      // Activity column is at index 5 (weight, time, branch, preview, category, activity)
+      const activityCell = within(firstDataRow).getAllByRole('cell')[5]
 
       // "8/45K" — prompt count, separator, token count
       expect(activityCell.textContent).toContain('8')
@@ -253,7 +266,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+      // Changes column is at index 6
+      const changesCell = within(firstDataRow).getAllByRole('cell')[6]
 
       // "2f +150/-45"
       expect(changesCell.textContent).toContain('2f')
@@ -266,7 +280,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const durationCell = within(firstDataRow).getAllByRole('cell')[6]
+      // Task/duration column is at index 8 (last column)
+      const durationCell = within(firstDataRow).getAllByRole('cell')[8]
 
       // 2700 seconds = 45 minutes
       expect(durationCell.textContent).toBe('45m')
@@ -278,11 +293,13 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const previewCell = within(firstDataRow).getAllByRole('cell')[2]
+      // Preview column is at index 3 (weight, time, branch, preview)
+      const previewCell = within(firstDataRow).getAllByRole('cell')[3]
 
+      // Structure: td > Link > span.inline-flex.truncate > [QualityBadge, span.truncate]
       const link = previewCell.firstElementChild as HTMLElement
-      const span = link.firstElementChild as HTMLElement
-      expect(span).toHaveClass('truncate')
+      const outerSpan = link.firstElementChild as HTMLElement
+      expect(outerSpan).toHaveClass('truncate')
     })
 
     it('shows commit badge with green background when commits > 0', () => {
@@ -290,7 +307,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const commitsCell = within(firstDataRow).getAllByRole('cell')[5]
+      // Commits column is at index 7
+      const commitsCell = within(firstDataRow).getAllByRole('cell')[7]
 
       const badge = commitsCell.querySelector('.bg-emerald-50')
       expect(badge).toBeInTheDocument()
@@ -305,12 +323,12 @@ describe('CompactSessionTable', () => {
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
 
-      // Check Activity column (index 3)
-      const activityCell = within(firstDataRow).getAllByRole('cell')[3]
+      // Check Activity column (index 5)
+      const activityCell = within(firstDataRow).getAllByRole('cell')[5]
       expect(activityCell).toHaveClass('tabular-nums')
 
-      // Check Changes column (index 4)
-      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+      // Check Changes column (index 6)
+      const changesCell = within(firstDataRow).getAllByRole('cell')[6]
       expect(changesCell).toHaveClass('tabular-nums')
     })
 
@@ -364,7 +382,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const branchCell = within(firstDataRow).getAllByRole('cell')[1]
+      // Branch column is at index 2
+      const branchCell = within(firstDataRow).getAllByRole('cell')[2]
 
       expect(branchCell.textContent).toBe('--')
     })
@@ -374,7 +393,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+      // Changes column is at index 6
+      const changesCell = within(firstDataRow).getAllByRole('cell')[6]
 
       // Should still show file count but no LOC breakdown
       expect(changesCell.textContent).toContain('2f')
@@ -385,7 +405,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const commitsCell = within(firstDataRow).getAllByRole('cell')[5]
+      // Commits column is at index 7
+      const commitsCell = within(firstDataRow).getAllByRole('cell')[7]
 
       expect(commitsCell.textContent).toBe('--')
     })
@@ -395,7 +416,8 @@ describe('CompactSessionTable', () => {
 
       const rows = screen.getAllByRole('row')
       const firstDataRow = rows[1]
-      const changesCell = within(firstDataRow).getAllByRole('cell')[4]
+      // Changes column is at index 6
+      const changesCell = within(firstDataRow).getAllByRole('cell')[6]
 
       expect(changesCell.textContent).toBe('--')
     })
