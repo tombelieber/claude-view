@@ -835,9 +835,12 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
     // Verbose mode: apply category filter
     if (verboseFilter === 'all') return messages
     return messages.filter((m) => {
-      // Always show conversation backbone + structural types
+      // Always show conversation backbone
       if (m.type === 'user' || m.type === 'assistant' || m.type === 'thinking') return true
-      if (m.type === 'system' || m.type === 'progress' || m.type === 'summary') return true
+      // Structural types: show if their category matches the filter
+      if (m.type === 'system' || m.type === 'progress' || m.type === 'summary') {
+        return !m.category || m.category === verboseFilter
+      }
       // Filter by category
       return m.category === verboseFilter
     })
