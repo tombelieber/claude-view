@@ -12,7 +12,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use claude_view_core::{claude_projects_dir, DashboardStats};
-use claude_view_core::pricing::{self as pricing_engine, tiered_cost};
+use claude_view_core::pricing::{self as pricing_engine};
 use claude_view_db::trends::{TrendMetric, WeekTrends};
 use claude_view_db::{AggregateCostBreakdown, AIGenerationStats};
 
@@ -535,14 +535,19 @@ pub async fn ai_generation_stats(
         let pricing = state.pricing.read().unwrap_or_else(|e| e.into_inner());
         let mut cost = AggregateCostBreakdown::default();
 
+        // Use flat base rates — NOT tiered_cost(). The 200k tiering threshold is
+        // per-API-request, but these totals are aggregated across all sessions for
+        // each model. Applying tiering to aggregates inflates costs ~1.4-2x because
+        // the bulk of tokens sits above the 200k threshold at the aggregate level,
+        // even though individual requests rarely exceed it.
         for (model_id, input, output, cache_read, cache_create) in &model_tokens {
             if let Some(mp) = pricing_engine::lookup_pricing(model_id, &pricing) {
-                cost.input_cost_usd += tiered_cost(*input, mp.input_cost_per_token, mp.input_cost_per_token_above_200k);
-                cost.output_cost_usd += tiered_cost(*output, mp.output_cost_per_token, mp.output_cost_per_token_above_200k);
-                let cr_cost = tiered_cost(*cache_read, mp.cache_read_cost_per_token, mp.cache_read_cost_per_token_above_200k);
+                cost.input_cost_usd += *input as f64 * mp.input_cost_per_token;
+                cost.output_cost_usd += *output as f64 * mp.output_cost_per_token;
+                let cr_cost = *cache_read as f64 * mp.cache_read_cost_per_token;
                 cost.cache_read_cost_usd += cr_cost;
-                cost.cache_creation_cost_usd += tiered_cost(*cache_create, mp.cache_creation_cost_per_token, mp.cache_creation_cost_per_token_above_200k);
-                cost.cache_savings_usd += tiered_cost(*cache_read, mp.input_cost_per_token, mp.input_cost_per_token_above_200k) - cr_cost;
+                cost.cache_creation_cost_usd += *cache_create as f64 * mp.cache_creation_cost_per_token;
+                cost.cache_savings_usd += *cache_read as f64 * mp.input_cost_per_token - cr_cost;
             } else {
                 cost.input_cost_usd += *input as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN;
                 cost.output_cost_usd += *output as f64 * pricing_engine::FALLBACK_OUTPUT_COST_PER_TOKEN;
@@ -551,7 +556,13 @@ pub async fn ai_generation_stats(
             }
         }
 
-        cost.total_cost_usd = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
+        // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc.
+        // Filter out 0.0 — sessions re-indexed without costUSD in JSONL produce SUM = 0.0,
+        // which would hide the cost card. Fall back to token-based in that case.
+        let token_based_total = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
+        cost.total_cost_usd = stats.total_cost_usd_from_jsonl
+            .filter(|&v| v > 0.0)
+            .unwrap_or(token_based_total);
         stats.cost = cost;
     }
 
@@ -1079,6 +1090,7 @@ mod tests {
             None,    // primary_model
             None,    // last_message_at
             None,    // first_user_prompt
+            0.0,     // total_cost_usd
         ).await.unwrap();
 
         // Update the primary_model column using the db pool directly
@@ -1211,6 +1223,7 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0.0,  // total_cost_usd
         ).await.unwrap();
 
         let app = build_app(db);
