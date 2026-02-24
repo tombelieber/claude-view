@@ -734,7 +734,12 @@ impl LiveSessionManager {
                             &claude_dir, &manager.db, &hints, |_| {},
                         ).await.unwrap_or((0, 0));
                         if indexed > 0 {
-                            tracing::info!(indexed, "Reconciliation scan complete");
+                            tracing::info!(indexed, "Reconciliation scan complete — resyncing live state");
+                            // Resync in-memory state for all recently-modified files
+                            let recent_paths = initial_scan(&claude_dir);
+                            for path in &recent_paths {
+                                manager.process_jsonl_update(path).await;
+                            }
                         }
                     }
                 }
@@ -1375,7 +1380,7 @@ impl LiveSessionManager {
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
         let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
-        let _ = self.db.update_session_from_tail(
+        if let Err(e) = self.db.update_session_from_tail(
             &session_id,
             acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
             acc.user_turn_count as i32,
@@ -1392,7 +1397,9 @@ impl LiveSessionManager {
             acc.tool_counts_read as i32,
             acc.tool_counts_bash as i32,
             acc.tool_counts_write as i32,
-        ).await;
+        ).await {
+            tracing::warn!(session_id = %session_id, error = %e, "Failed to update session from tail");
+        }
 
         // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
