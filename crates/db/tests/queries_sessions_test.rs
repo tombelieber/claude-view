@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Integration tests for Database session query methods.
 
 use chrono::Utc;

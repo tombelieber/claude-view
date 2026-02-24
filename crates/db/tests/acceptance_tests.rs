@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 // Acceptance tests for Startup UX + Parallel Indexing (AC-1 through AC-12).
 //
 // These integration tests verify the two-pass indexing pipeline, server startup,
@@ -7,7 +8,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
+use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
 // ---------------------------------------------------------------------------
@@ -254,7 +255,7 @@ async fn ac8_parallel_processing_completes() {
 }
 
 // ---------------------------------------------------------------------------
-// AC-9: run_background_index callbacks fire
+// AC-9: scan_and_index_all callbacks fire
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -262,44 +263,23 @@ async fn ac9_callbacks_fire_correctly() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    let pass1_called = Arc::new(std::sync::Mutex::new(false));
-    let pass1_projects = Arc::new(AtomicUsize::new(0));
-    let pass1_sessions = Arc::new(AtomicUsize::new(0));
     let file_done_count = Arc::new(AtomicUsize::new(0));
-    let complete_count = Arc::new(AtomicUsize::new(0));
-
-    let p1c = pass1_called.clone();
-    let p1p = pass1_projects.clone();
-    let p1s = pass1_sessions.clone();
     let fdc = file_done_count.clone();
-    let cc = complete_count.clone();
 
-    run_background_index(
+    let hints = build_index_hints(&claude_dir);
+    let (indexed, _skipped) = scan_and_index_all(
         &claude_dir,
         &db,
-        None, // no registry holder in tests
-        None, // no search index in tests
-        move |projects, sessions| {
-            *p1c.lock().unwrap() = true;
-            p1p.store(projects, Ordering::Relaxed);
-            p1s.store(sessions, Ordering::Relaxed);
-        },
-        |_total_bytes| {},
-        move |done, _total, _bytes| {
-            fdc.store(done, Ordering::Relaxed);
-        },
-        move |total| {
-            cc.store(total, Ordering::Relaxed);
+        &hints,
+        move |_session_id| {
+            fdc.fetch_add(1, Ordering::Relaxed);
         },
     )
     .await
     .unwrap();
 
-    assert!(*pass1_called.lock().unwrap(), "on_pass1_done should have been called");
-    assert_eq!(pass1_projects.load(Ordering::Relaxed), 1);
-    assert_eq!(pass1_sessions.load(Ordering::Relaxed), 1);
+    assert_eq!(indexed, 1, "Should index 1 session");
     assert!(file_done_count.load(Ordering::Relaxed) > 0, "on_file_done should have been called");
-    assert_eq!(complete_count.load(Ordering::Relaxed), 1, "on_complete should report 1 indexed");
 }
 
 // ---------------------------------------------------------------------------
@@ -331,9 +311,8 @@ async fn ac12_new_schema_fields_end_to_end() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
-        .await
-        .unwrap();
+    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
 
     let projects = db.list_projects().await.unwrap();
     assert!(!projects.is_empty(), "Should have at least 1 project");
@@ -374,9 +353,8 @@ async fn ac12_json_serialization_includes_new_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
-        .await
-        .unwrap();
+    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
 
     let projects = db.list_projects().await.unwrap();
     let json = serde_json::to_string(&projects).unwrap();
@@ -424,9 +402,8 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Run full pipeline
-    run_background_index(&claude_dir, &db, None, None, |_, _| {}, |_| {}, |_, _, _| {}, |_| {})
-        .await
-        .unwrap();
+    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
 
     // Verify models table has data
     let models = db.get_all_models().await.unwrap();
