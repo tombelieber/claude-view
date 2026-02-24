@@ -378,7 +378,7 @@ pub async fn storage_stats(
     let jsonl_path = shorten(claude_projects_dir().ok());
     let sqlite_path = shorten(claude_view_core::paths::db_path());
     let index_path = shorten(claude_view_core::paths::search_index_dir());
-    let app_data_path = shorten(claude_view_core::paths::app_cache_dir());
+    let app_data_path = shorten(Some(claude_view_core::paths::data_dir()));
 
     record_request("storage_stats", "200", start.elapsed());
 
