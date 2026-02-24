@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_project_path_with_cwd, resolve_worktree_parent,
+    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
     ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 
@@ -1852,9 +1852,16 @@ pub async fn pass_1_read_indexes(
         entries: &[claude_view_core::SessionIndexEntry],
         total_sessions: &mut usize,
     ) -> Result<(), String> {
-        // Use cwd from entry if available (from classification in discover_orphan_sessions)
-        // For indexed sessions (from sessions-index.json), session_cwd may be None — that's ok.
-        let entry_cwd = entries.first().and_then(|e| e.session_cwd.as_deref());
+        // Use cwd from entry if available (orphan sessions and catch-up entries have it
+        // from classification). For sessions-index.json entries, resolve from disk.
+        let entry_cwd_owned: Option<String> = entries
+            .first()
+            .and_then(|e| e.session_cwd.clone())
+            .or_else(|| {
+                let project_dir = claude_dir.join("projects").join(project_encoded);
+                resolve_cwd_for_project(&project_dir)
+            });
+        let entry_cwd = entry_cwd_owned.as_deref();
 
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
