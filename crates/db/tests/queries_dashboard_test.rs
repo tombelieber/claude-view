@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Integration tests for Database dashboard/analytics query methods.
 
 use chrono::Utc;

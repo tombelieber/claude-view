@@ -495,6 +495,7 @@ pub fn router() -> Router<Arc<AppState>> {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use axum::{
