@@ -32,7 +32,7 @@ pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::SessionFilterParams;
 pub use queries::StatsOverview;
-pub use queries::StorageStats;
+pub use queries::SystemStorageStats;
 pub use queries::TokenStats;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
