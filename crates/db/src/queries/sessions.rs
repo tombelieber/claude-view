@@ -377,6 +377,29 @@ impl Database {
         Ok(())
     }
 
+    /// Update session topology fields discovered via content classification.
+    /// Called after insert_session_from_index for sessions discovered by
+    /// discover_orphan_sessions() which have cwd and parent_id from JSONL.
+    pub async fn update_session_topology(
+        &self,
+        id: &str,
+        session_cwd: Option<&str>,
+        parent_session_id: Option<&str>,
+    ) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE sessions SET \
+             session_cwd = COALESCE(?1, session_cwd), \
+             parent_session_id = COALESCE(?2, parent_session_id) \
+             WHERE id = ?3",
+        )
+        .bind(session_cwd)
+        .bind(parent_session_id)
+        .bind(id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     /// Update extended metadata fields from Pass 2 deep indexing.
     ///
     /// Sets `deep_indexed_at` to the current timestamp to mark the session
