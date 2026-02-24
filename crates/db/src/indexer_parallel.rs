@@ -700,9 +700,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // Turn detection: tool_result user messages are continuations, not real turns
     let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
 
-    // cwd extraction (first user message only)
-    let cwd_finder = memmem::Finder::new(b"\"cwd\":\"");
-
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
 
@@ -1820,19 +1817,7 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
     }
 }
 
-/// Returns true if the extracted user message content looks like a system/hook message
-/// rather than a real user prompt. These include local-command caveats, slash-command
-/// wrappers, tool_result blocks, and empty/whitespace-only content.
-fn is_system_user_content(content: &str) -> bool {
-    let trimmed = content.trim();
-    trimmed.is_empty()
-        || trimmed.starts_with("<local-command-caveat>")
-        || trimmed.starts_with("<command-name>")
-        || trimmed.starts_with("<command-message>")
-        || trimmed.starts_with("<local-command-stdout>")
-        || trimmed.starts_with("<system-reminder>")
-        || trimmed.starts_with("{\"type\":\"tool_result\"")
-}
+use claude_view_core::is_system_user_content;
 
 /// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
 /// Used when the typed AssistantLine parse fails but we still want to capture skills.

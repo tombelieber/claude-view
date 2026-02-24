@@ -440,7 +440,8 @@ impl Database {
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
-                s.prompt_word_count, s.correction_count, s.same_file_edit_count
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count,
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -729,6 +730,9 @@ impl Database {
         primary_model: Option<&str>,
         last_message_at: Option<i64>,
         first_user_prompt: Option<&str>,
+        total_task_time_seconds: i32,
+        longest_task_seconds: Option<i32>,
+        longest_task_preview: Option<&str>,
         total_cost_usd: f64,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
@@ -786,7 +790,10 @@ impl Database {
                 primary_model = ?49,
                 last_message_at = COALESCE(?50, last_message_at),
                 preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
-                total_cost_usd = ?52
+                total_task_time_seconds = ?52,
+                longest_task_seconds = ?53,
+                longest_task_preview = ?54,
+                total_cost_usd = ?55
             WHERE id = ?1
             "#,
         )
@@ -841,6 +848,9 @@ impl Database {
         .bind(primary_model)
         .bind(last_message_at)
         .bind(first_user_prompt)
+        .bind(total_task_time_seconds)
+        .bind(longest_task_seconds)
+        .bind(longest_task_preview)
         .bind(total_cost_usd)
         .execute(self.pool())
         .await?;
