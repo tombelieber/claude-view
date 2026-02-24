@@ -16,6 +16,9 @@ claude-view.db-*
 .env.local
 .env.*.local
 
+# Local data directory (sandbox/dev)
+.data/
+
 # IDE
 .idea/
 .vscode/*
