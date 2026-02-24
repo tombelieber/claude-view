@@ -4,15 +4,14 @@
 //! Each Claude Code project stores a `sessions-index.json` that lists all
 //! sessions with metadata (summary, message count, timestamps, etc.).
 
+use memchr::memmem;
 use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use tracing::warn;
 
 use crate::error::SessionIndexError;
-
-use memchr::memmem;
-use std::io::{BufRead, BufReader};
-use std::fs::File;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionKind {
@@ -162,6 +161,10 @@ pub struct SessionIndexEntry {
     pub project_path: Option<String>,
     #[serde(default)]
     pub is_sidechain: Option<bool>,
+    #[serde(default)]
+    pub session_cwd: Option<String>,
+    #[serde(default)]
+    pub parent_session_id: Option<String>,
 }
 
 /// Parse a single `sessions-index.json` file into a list of entries.
@@ -263,6 +266,8 @@ pub fn read_all_session_indexes(
                             git_branch: None,
                             project_path: None,
                             is_sidechain: None,
+                            session_cwd: None,
+                            parent_session_id: None,
                         });
                     }
                 }
@@ -373,6 +378,20 @@ pub fn discover_orphan_sessions(
                 None => continue,
             };
 
+            // Classify the file content before including it
+            let classification = match classify_jsonl_file(&file_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("Failed to classify {}: {}", file_path.display(), e);
+                    continue;
+                }
+            };
+
+            // Only include actual conversation sessions
+            if classification.kind != SessionKind::Conversation {
+                continue;
+            }
+
             let full_path = file_path.to_string_lossy().to_string();
 
             session_entries.push(SessionIndexEntry {
@@ -387,6 +406,8 @@ pub fn discover_orphan_sessions(
                 git_branch: None,
                 project_path: None,
                 is_sidechain: None,
+                session_cwd: classification.cwd,
+                parent_session_id: classification.parent_id,
             });
         }
 
@@ -604,8 +625,14 @@ mod tests {
 
         let orphan_proj = projects_dir.join("orphan-project");
         std::fs::create_dir(&orphan_proj).unwrap();
-        std::fs::write(orphan_proj.join("abc-123.jsonl"), "{}").unwrap();
-        std::fs::write(orphan_proj.join("def-456.jsonl"), "{}").unwrap();
+        std::fs::write(orphan_proj.join("abc-123.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+        std::fs::write(orphan_proj.join("def-456.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u2","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a2","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
 
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert_eq!(results.len(), 1);
@@ -632,7 +659,10 @@ mod tests {
         let indexed_proj = projects_dir.join("indexed-project");
         std::fs::create_dir(&indexed_proj).unwrap();
         std::fs::write(indexed_proj.join("sessions-index.json"), "[]").unwrap();
-        std::fs::write(indexed_proj.join("abc-123.jsonl"), "{}").unwrap();
+        std::fs::write(indexed_proj.join("abc-123.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
 
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert!(results.is_empty());
@@ -668,6 +698,53 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_skips_metadata_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&proj_dir).unwrap();
+
+        // Real session file (has user + assistant)
+        let session = proj_dir.join("abc-123.jsonl");
+        std::fs::write(&session, concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hello"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"hi"}}"#, "\n",
+        )).unwrap();
+
+        // Metadata-only file (should NOT count as session)
+        let snapshot = proj_dir.join("fhs-456.jsonl");
+        std::fs::write(&snapshot, concat!(
+            r#"{"type":"file-history-snapshot","messageId":"m1","snapshot":{}}"#, "\n",
+        )).unwrap();
+
+        let results = discover_orphan_sessions(tmp.path()).unwrap();
+        let entries: Vec<_> = results.into_iter().flat_map(|(_, v)| v).collect();
+
+        // Only the real session should be discovered
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].session_id, "abc-123");
+        assert_eq!(entries[0].session_cwd.as_deref(), Some("/proj"));
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_captures_parent_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&proj_dir).unwrap();
+
+        let session = proj_dir.join("fork-789.jsonl");
+        std::fs::write(&session, concat!(
+            r#"{"type":"user","uuid":"u1","parentUuid":"parent-abc","message":{"content":"continue"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+
+        let results = discover_orphan_sessions(tmp.path()).unwrap();
+        let entries: Vec<_> = results.into_iter().flat_map(|(_, v)| v).collect();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].parent_session_id.as_deref(), Some("parent-abc"));
     }
 
     // ========================================================================
