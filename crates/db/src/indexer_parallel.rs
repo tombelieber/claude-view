@@ -120,7 +120,13 @@ pub fn build_index_hints(claude_dir: &Path) -> HashMap<String, IndexHints> {
     match claude_view_core::session_index::read_all_session_indexes(claude_dir) {
         Ok(indexes) => {
             for (project_encoded, entries) in &indexes {
-                let resolved = claude_view_core::discovery::resolve_project_path(project_encoded);
+                // Use cwd from JSONL files — never naive path decoding
+                let project_dir = claude_dir.join("projects").join(project_encoded);
+                let cwd = resolve_cwd_for_project(&project_dir);
+                let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
+                    project_encoded,
+                    cwd.as_deref(),
+                );
                 for entry in entries {
                     let h = IndexHints {
                         is_sidechain: entry.is_sidechain,
@@ -456,6 +462,8 @@ pub struct ParseResult {
     pub lines_added: u32,
     pub lines_removed: u32,
     pub git_branch: Option<String>,
+    /// Working directory from the first user message's `cwd` field (authoritative source).
+    pub cwd: Option<String>,
     /// Collected message content for full-text search indexing.
     /// Only user, assistant text, and tool_use inputs are included.
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
@@ -692,8 +700,14 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // Turn detection: tool_result user messages are continuations, not real turns
     let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
 
+    // cwd extraction (first user message only)
+    let cwd_finder = memmem::Finder::new(b"\"cwd\":\"");
+
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
+
+    // cwd extraction from user messages
+    let cwd_finder = memmem::Finder::new(b"\"cwd\":\"");
 
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
@@ -806,6 +820,17 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     content: text,
                     timestamp: user_ts,
                 });
+            }
+            // Extract cwd from first user message
+            if result.cwd.is_none() {
+                if let Some(pos) = cwd_finder.find(line) {
+                    let start = pos + b"\"cwd\":\"".len();
+                    if let Some(end) = line[start..].iter().position(|&b| b == b'"') {
+                        if let Ok(s) = std::str::from_utf8(&line[start..start + end]) {
+                            result.cwd = Some(s.to_string());
+                        }
+                    }
+                }
             }
             continue;
         }
@@ -2813,18 +2838,19 @@ where
 
             let meta = &parse_result.deep;
 
-            // 4. Resolve project info from hints or encoded name
+            // 4. Resolve project info from cwd (authoritative) or hints
             let hint = hints.get(&session_id);
+            let cwd = parse_result.cwd.as_deref();
 
             // Worktree consolidation
             let (effective_encoded, resolved) =
                 if let Some(parent_encoded) =
                     resolve_worktree_parent(&project_encoded)
                 {
-                    let r = claude_view_core::discovery::resolve_project_path(&parent_encoded);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&parent_encoded, cwd);
                     (parent_encoded, r)
                 } else {
-                    let r = claude_view_core::discovery::resolve_project_path(&project_encoded);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&project_encoded, cwd);
                     (project_encoded.clone(), r)
                 };
 
