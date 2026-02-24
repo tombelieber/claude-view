@@ -314,6 +314,7 @@ where
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
 
         // Store in DB
