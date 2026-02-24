@@ -1864,6 +1864,8 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// (common for worktree dirs) are scanned for `.jsonl` files and included.
 ///
 /// Returns `(num_projects, num_sessions)`.
+#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[allow(deprecated)]
 pub async fn pass_1_read_indexes(
     claude_dir: &Path,
     db: &Database,
@@ -2030,6 +2032,8 @@ pub async fn pass_1_read_indexes(
 ///
 /// Returns `(indexed_count, total_bytes)` on success, where `total_bytes` is the
 /// sum of all JSONL file sizes that were eligible for deep indexing.
+#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[allow(deprecated)]
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
@@ -2478,6 +2482,7 @@ where
 
 /// Write deep index results using sqlx async transactions.
 /// Used by pass_2_deep_index (retained for test compatibility).
+#[allow(deprecated)]
 async fn write_results_sqlx(
     db: &Database,
     results: &[DeepIndexResult],
@@ -3008,6 +3013,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::Database;
@@ -4779,6 +4785,7 @@ mod index_hints_tests {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod scan_and_index_tests {
     use super::*;
     use crate::Database;
