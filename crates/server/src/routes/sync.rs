@@ -292,13 +292,6 @@ pub async fn trigger_deep_index(
         Ok(guard) => {
             let db = state.db.clone();
             let indexing = state.indexing.clone();
-            // Read-lock the holder, clone Option<Arc<SearchIndex>>, drop lock.
-            // After clear_cache recreates the index, this grabs the fresh one.
-            let search_index: Option<Arc<claude_view_search::SearchIndex>> = state
-                .search_index
-                .read()
-                .ok()
-                .and_then(|g| g.clone());
 
             // Reset indexing state BEFORE spawning so SSE clients that
             // connect after receiving the 202 never see stale `Done` from
@@ -335,26 +328,29 @@ pub async fn trigger_deep_index(
                 // Transition to deep indexing phase
                 indexing.set_status(crate::indexing_state::IndexingStatus::DeepIndexing);
 
-                // Step 2: Run deep indexing pass with progress wired to IndexingState
-                let indexing_start = indexing.clone();
+                // Step 2: Resolve claude dir + build hints, then run unified scan
+                let claude_dir = match dirs::home_dir() {
+                    Some(home) => home.join(".claude"),
+                    None => {
+                        indexing.set_error("Could not determine home directory".to_string());
+                        return;
+                    }
+                };
+                let hints = claude_view_db::indexer_parallel::build_index_hints(&claude_dir);
+
                 let indexing_cb = indexing.clone();
-                let result = claude_view_db::indexer_parallel::pass_2_deep_index(
+                let result = claude_view_db::indexer_parallel::scan_and_index_all(
+                    &claude_dir,
                     &db,
-                    None, // No registry needed for rebuild
-                    search_index.as_deref(), // Pass search index for Tantivy indexing
-                    move |total_bytes| {
-                        indexing_start.set_bytes_total(total_bytes);
-                    },
-                    move |indexed, total, file_bytes| {
-                        indexing_cb.set_total(total);
-                        indexing_cb.set_indexed(indexed);
-                        indexing_cb.add_bytes_processed(file_bytes);
+                    &hints,
+                    move |_session_id| {
+                        indexing_cb.increment_indexed();
                     },
                 )
                 .await;
 
                 match result {
-                    Ok((indexed_count, _)) => {
+                    Ok((indexed_count, _skipped)) => {
                         let duration = start.elapsed();
                         tracing::info!(
                             sessions_indexed = indexed_count,
@@ -370,6 +366,10 @@ pub async fn trigger_deep_index(
                         }
                         // Record sync metrics
                         record_sync("deep", duration, Some(indexed_count as u64));
+                        // Prune sessions whose JSONL files no longer exist on disk
+                        if let Err(e) = claude_view_db::indexer_parallel::prune_stale_sessions(&db).await {
+                            tracing::warn!(error = %e, "Failed to prune stale sessions after rebuild");
+                        }
                     }
                     Err(e) => {
                         let duration = start.elapsed();
