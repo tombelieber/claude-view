@@ -22,11 +22,11 @@ Mobile remote monitoring exists (~95% built) but:
 User's Phone                    Cloud                         User's Mac
 ─────────────                   ─────                         ──────────
 
-Safari/Chrome        ┌─── m.claudeview.ai ───┐
-    │                │   Cloudflare Pages     │
-    │  loads SPA ──► │   React mobile app     │
-    │                │   + Supabase Auth SDK  │
-    │                └────────────────────────┘
+Expo Native App      ┌─── App Store / Play Store ──┐
+    │                │   Expo/React Native         │
+    │  installed ──► │   Native mobile app         │
+    │                │   + Supabase Auth SDK       │
+    │                └─────────────────────────────┘
     │
     │                ┌── relay.claudeview.ai ──┐
     │   WSS ────────►│   Fly.io               │◄──── WSS ────  claude-view
@@ -40,7 +40,7 @@ Safari/Chrome        ┌─── m.claudeview.ai ───┐
     │                └────────────────────────┘
 ```
 
-**Phone** = mobile-optimized React SPA on Cloudflare Pages. Own UI, sends commands through relay.
+**Phone** = Expo/React Native native app (iOS + Android). Distributed via App Store and Play Store. Own UI, sends commands through relay.
 **Relay** = dumb WebSocket message broker on Fly.io. Forwards encrypted blobs. Validates JWTs.
 **Mac** = execution engine. Runs claude-view + Claude CLI. Receives commands, sends results.
 
@@ -50,7 +50,8 @@ The phone does NOT tunnel into the Mac's web UI. It has its own mobile client th
 
 | Service | Subdomain | Host | Purpose | Cost |
 |---------|-----------|------|---------|------|
-| Mobile SPA | `m.claudeview.ai` | Cloudflare Pages | React mobile app + Supabase Auth | Free |
+| Mobile App | App Store / Play Store | Expo/React Native | Native app + Supabase Auth | Free |
+| App Landing | `m.claudeview.ai` | Cloudflare Pages | Universal link / App Store redirect | Free |
 | Relay | `relay.claudeview.ai` | Fly.io | WebSocket relay + JWT validation | Free tier |
 | Auth + DB | — | Supabase | Magic link / Google OAuth + usage tracking | Free (50k MAU) |
 | DNS | `claudeview.ai` | Cloudflare | Domain management | Owned |
@@ -65,9 +66,10 @@ The phone does NOT tunnel into the Mac's web UI. It has its own mobile client th
    → Rust server starts, relay_client auto-connects to relay (even with 0 paired devices)
 
 2. Click phone icon in header → QR code appears
-   → QR encodes: https://m.claudeview.ai?k=<mac_x25519_pubkey>&t=<token>
+   → QR encodes: claude-view://pair?k=<mac_x25519_pubkey>&t=<token>
 
-3. Phone scans QR → opens m.claudeview.ai
+3. Phone scans QR from claude-view app → deep link opens pairing flow
+   → If app not installed, m.claudeview.ai redirects to App Store
    → First time: "Sign in to connect"
      ├─ "Continue with Google" (one tap)
      └─ "Sign in with email" (magic link)
@@ -82,7 +84,7 @@ The phone does NOT tunnel into the Mac's web UI. It has its own mobile client th
 5. Sessions flow
    → Mac encrypts session data per paired device, sends via relay
    → Phone decrypts, renders session list
-   → Bookmark m.claudeview.ai → next time, already signed in, sessions appear
+   → Open claude-view app → already signed in, sessions appear
 ```
 
 ## Security Model
@@ -101,7 +103,7 @@ Layer 2: QR one-time token (pairing authorization)
 Layer 3: E2E encryption (data privacy)
 ├─ NaCl box: X25519 + XSalsa20-Poly1305
 ├─ Relay sees only opaque encrypted blobs
-└─ Keys stored: Mac=Keychain, Phone=IndexedDB
+└─ Keys stored: Mac=Keychain, Phone=Expo SecureStore
 
 Layer 4: Ed25519 auth (WebSocket sessions)
 ├─ Each WS connect: sign timestamp with Ed25519
@@ -209,13 +211,13 @@ create table paired_devices (
 |---|---|---|
 | What it is | CLI wrapper (replaces `claude`) | Dashboard (works alongside `claude`) |
 | Breakage risk | High — wraps CLI internals | Low — reads session files |
-| Mobile | Native iOS + Android (Expo) | PWA (no app store) |
+| Mobile | Native iOS + Android (Expo) | Native iOS + Android (Expo) — App Store + Play Store |
 | Control | Full remote control + voice | M1: monitoring, M2: full control |
 | Analytics | None — live view only | Deep — history, cost, patterns, search |
 | Auth | None (open source, free) | Supabase (tracks users) |
 | Price | Free forever (MIT) | Part of claude-view product |
 
-Edge: zero CLI change, analytics moat, no app store dependency.
+Edge: zero CLI change, analytics moat, native app experience, App Store presence.
 
 ## Changes to Existing Code
 
@@ -233,16 +235,18 @@ Edge: zero CLI change, analytics moat, no app store dependency.
 - Implement `pair_complete` handler (extract x25519_pubkey, store in Keychain)
 - Hardcode default RELAY_URL (`wss://relay.claudeview.ai/ws`)
 
-### Mobile pages (`src/pages/Mobile*.tsx`)
+### Mobile app (separate Expo project)
+
+Separate Expo project (`packages/mobile/` or standalone repo). Supabase auth, relay WS client, E2E encryption — all native.
 
 - Add Supabase auth screen before pairing
 - Send JWT with claim request
 - Send `x25519_pubkey` in claim POST
-- Deploy to Cloudflare Pages as separate build
+- Key storage via Expo SecureStore (replaces IndexedDB)
 
 ### Desktop (`src/components/PairingPanel.tsx`)
 
-- QR encodes `https://m.claudeview.ai?k=...&t=...`
+- QR encodes `claude-view://pair?k=...&t=...` (deep link). Fallback: `https://m.claudeview.ai?k=...&t=...` (redirects to App Store if app not installed)
 - Remove `.env` RELAY_URL requirement (bake in default, allow override)
 
 ## Phased Roadmap
@@ -254,7 +258,7 @@ Edge: zero CLI change, analytics moat, no app store dependency.
 - Implement `pair_complete` handler (store pairing)
 - Add Supabase auth to mobile pages
 - Add JWT validation to relay
-- Deploy mobile SPA to Cloudflare Pages (`m.claudeview.ai`)
+- Submit Expo app to App Store / Play Store (TestFlight for beta)
 - Point relay to `relay.claudeview.ai`
 - Bake default RELAY_URL into binary
 - **Result:** Scan QR → sign in → see sessions live
@@ -264,7 +268,7 @@ Edge: zero CLI change, analytics moat, no app store dependency.
 - Phone → Mac command protocol (send_message, approve_tool, spawn_session)
 - Mac command handler (execute commands from phone)
 - Mobile UI for session interaction (chat input, approve/deny buttons)
-- Push notifications via Web Push API
+- Push notifications via expo-notifications (native)
 - **Result:** Full remote control from phone
 
 ### M3: "Full parity"
@@ -280,7 +284,8 @@ Edge: zero CLI change, analytics moat, no app store dependency.
 | Task | Time |
 |------|------|
 | Create Supabase project, enable magic link + Google OAuth | 15 min |
-| Create Cloudflare Pages project for `m.claudeview.ai` | 10 min |
-| DNS: CNAME `m.claudeview.ai` → Cloudflare Pages | 2 min |
+| Set up Expo project + EAS Build | 30 min |
+| Create App Store Connect + Google Play Console accounts | 30 min |
+| DNS: CNAME `m.claudeview.ai` → Cloudflare Pages (App Store redirect page) | 2 min |
 | DNS: CNAME `relay.claudeview.ai` → `claude-view-relay.fly.dev` | 2 min |
 | Fly.io: `fly certs add relay.claudeview.ai` | 2 min |

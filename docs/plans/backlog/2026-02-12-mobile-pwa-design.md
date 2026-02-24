@@ -4,6 +4,8 @@ date: 2026-02-12
 purpose: GTM pivot — Remote Session Monitoring via PWA as primary product wedge
 ---
 
+> **SUPERSEDED (2026-02-25):** This PWA design has been replaced by the Expo/React Native pivot. See `docs/plans/mobile-remote/design.md` for the current mobile architecture. Key reason: no successful PWA-only mobile products exist; iOS PWA has broken background sync and unreliable push notifications; all competing dev tools (Happy Coder, Replit, Vercel v0) use Expo/React Native.
+
 # Mobile PWA: Remote Session Monitoring
 
 > **Goal:** Let users monitor and control their Claude Code sessions from their phone. This replaces the AI Fluency Score as the primary product wedge. "Monitor your Claude Code sessions from your phone" is more visceral than "measure your AI fluency."
