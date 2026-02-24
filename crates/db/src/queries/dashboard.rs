@@ -44,17 +44,25 @@ impl Database {
         let now = Utc::now().timestamp();
         let active_threshold = now - 300; // 5 minutes
 
+        // Group by git_root when available so worktree sessions merge under
+        // their parent repo. NULLIF strips empty-string sentinels from backfill.
         let rows: Vec<(String, String, String, i64, i64, Option<i64>)> = sqlx::query_as(
             r#"
             SELECT
-                project_id,
-                COALESCE(project_display_name, project_id),
-                COALESCE(project_path, ''),
+                COALESCE(NULLIF(git_root, ''), project_id) as effective_id,
+                COALESCE(
+                    CASE WHEN git_root IS NOT NULL AND git_root != ''
+                         THEN REPLACE(REPLACE(git_root, RTRIM(git_root, REPLACE(git_root, '/', '')), ''), '/', '')
+                         ELSE NULL END,
+                    project_display_name,
+                    project_id
+                ) as display_name,
+                COALESCE(NULLIF(git_root, ''), project_path, '') as effective_path,
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
-                MAX(CASE WHEN last_message_at > 0 THEN last_message_at ELSE NULL END) as last_activity_at
+                MAX(last_message_at) as last_activity_at
             FROM valid_sessions
-            GROUP BY project_id
+            GROUP BY effective_id
             ORDER BY last_activity_at DESC
             "#,
         )
@@ -97,8 +105,8 @@ impl Database {
         // Build WHERE clause dynamically.
         // Bind indices: ?1 = project_id, ?2 = limit, ?3 = offset.
         // ?4 is used only for BranchFilter::Named (a concrete branch name).
-        let mut conditions = vec!["s.project_id = ?1".to_string()];
-        conditions.push("s.last_message_at > 0".to_string());
+        // Match by project_id or git_root so sidebar clicks include worktree sessions
+        let mut conditions = vec!["(s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ?1))".to_string()];
         if !include_sidechains {
             conditions.push("s.is_sidechain = 0".to_string());
         }
@@ -135,7 +143,7 @@ impl Database {
             SELECT
                 s.id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.project_display_name,
+                s.project_path, s.git_root, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -201,7 +209,7 @@ impl Database {
             SELECT
                 s.id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.project_display_name,
+                s.project_path, s.git_root, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -257,7 +265,7 @@ impl Database {
         let select_cols = r#"
             s.id, s.project_id, s.preview, s.turn_count,
             s.last_message_at, s.file_path,
-            s.project_path, s.project_display_name,
+            s.project_path, s.git_root, s.project_display_name,
             s.size_bytes, s.last_message, s.files_touched, s.skills_used,
             s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
             s.message_count,
@@ -887,10 +895,10 @@ impl Database {
     /// Auto-buckets by day/week/month based on data span.
     /// Returns (Vec<ActivityPoint>, bucket_name).
     pub async fn session_activity_histogram(&self) -> DbResult<(Vec<ActivityPoint>, String)> {
-        // 1. Determine span
+        // 1. Determine span (guard ts <= 0 — timestamp 0 is a data bug)
         let row: (i64, i64) = sqlx::query_as(
             "SELECT COALESCE(MIN(last_message_at), 0), COALESCE(MAX(last_message_at), 0) \
-             FROM valid_sessions",
+             FROM valid_sessions WHERE last_message_at > 0",
         )
         .fetch_one(self.pool())
         .await?;
@@ -904,10 +912,10 @@ impl Database {
             ("DATE(last_message_at, 'unixepoch')", "day")
         };
 
-        // 2. Run grouped count
+        // 2. Run grouped count (exclude ts <= 0)
         let sql = format!(
             "SELECT {group_expr} AS date, COUNT(*) AS count \
-             FROM valid_sessions \
+             FROM valid_sessions WHERE last_message_at > 0 \
              GROUP BY date ORDER BY date"
         );
 
@@ -971,6 +979,7 @@ mod filtered_query_tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
             size_bytes: 2048,
