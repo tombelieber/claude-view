@@ -215,6 +215,18 @@ Opens at `http://localhost:47892`.
 
 - **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we monitor
 
+### Setup for Corporate/Sandbox Environments
+
+If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP), set all claude-view writes to stay inside the project directory:
+
+```bash
+# One-time setup: copy the env template
+cp .env.example .env
+# Uncomment the CLAUDE_VIEW_DATA_DIR line in .env
+```
+
+This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
+
 ---
 
 ## How It Compares
