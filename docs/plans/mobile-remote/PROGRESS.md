@@ -11,7 +11,7 @@
 | Phase | Plan | Status | Summary |
 |-------|------|--------|---------|
 | **A** | [m1-phase-a-bug-fixes.md](./m1-phase-a-bug-fixes.md) | TODO | Fix 3 pairing bugs, redeploy relay, local E2E test |
-| **B** | [m1-phase-b-auth-deploy.md](./m1-phase-b-auth-deploy.md) | TODO | Supabase auth, JWT validation, Cloudflare Pages deploy, custom domains |
+| **B** | [m1-phase-b-auth-deploy.md](./m1-phase-b-auth-deploy.md) | TODO | Supabase auth, JWT validation, Expo app build + TestFlight, custom domains |
 
 **Phase A tasks:**
 - [ ] Task 1: Add `x25519_pubkey` to relay ClaimRequest
@@ -26,7 +26,7 @@
 - [ ] Task 8: Add Supabase auth gate to mobile pages
 - [ ] Task 9: Add JWT validation to relay
 - [ ] Task 10: Configure custom domains (manual DNS)
-- [ ] Task 11: Deploy mobile SPA to Cloudflare Pages
+- [ ] Task 11: Build Expo app + submit to TestFlight
 - [ ] Task 12: Update QR URL + bake default RELAY_URL
 - [ ] Task 13: Final redeploy + E2E test
 
@@ -36,7 +36,7 @@
 |-------|------|--------|---------|
 | **A** | — | NOT STARTED | Command protocol design + Mac command handler |
 | **B** | — | NOT STARTED | Mobile UI for chat, approve/deny, spawn session |
-| **C** | — | NOT STARTED | Push notifications via Web Push API |
+| **C** | — | NOT STARTED | Push notifications via expo-notifications |
 
 ### M3: "Full parity" — Phone can do everything desktop can
 
@@ -50,7 +50,8 @@
 | Service | Domain | Host | Status |
 |---------|--------|------|--------|
 | Relay | `relay.claudeview.ai` | Fly.io | Deployed (as `claude-view-relay.fly.dev`, custom domain TODO) |
-| Mobile SPA | `m.claudeview.ai` | Cloudflare Pages | TODO |
+| Mobile App | App Store / Play Store | Expo | TODO |
+| App Landing | `m.claudeview.ai` | Cloudflare | Redirect page |
 | Auth | — | Supabase | TODO |
 | DNS | `claudeview.ai` | Cloudflare | Owned |
 
@@ -62,9 +63,7 @@
 | `crates/server/src/live/relay_client.rs` | Mac WSS client |
 | `crates/server/src/crypto.rs` | NaCl + Keychain |
 | `crates/server/src/routes/pairing.rs` | Desktop pairing API |
-| `src/pages/MobilePairingPage.tsx` | Phone QR scanner |
-| `src/pages/MobileMonitorPage.tsx` | Phone session monitor |
-| `src/hooks/use-mobile-relay.ts` | Phone WS + decryption |
+| `packages/mobile/` (or standalone repo) | Expo/React Native app (TBD) |
 | `src/components/PairingPanel.tsx` | Desktop QR popover |
 
 ## Reference Docs

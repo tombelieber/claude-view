@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add Supabase auth, deploy mobile SPA to Cloudflare Pages, configure custom domains, bake default relay URL. After this phase, users get the zero-setup experience.
+**Goal:** Add Supabase auth, build Expo native app, configure custom domains, bake default relay URL. After this phase, users get the zero-setup experience.
 
-**Architecture:** Phone (React SPA on Cloudflare Pages) ↔ Relay (Fly.io + JWT validation) ↔ Mac (Rust server). Supabase provides magic link + Google OAuth.
+**Architecture:** Phone (Expo/React Native native app) ↔ Relay (Fly.io + JWT validation) ↔ Mac (Rust server). Supabase provides magic link + Google OAuth.
 
-**Tech Stack:** Supabase Auth, Cloudflare Pages, Fly.io, jsonwebtoken (Rust), @supabase/supabase-js
+**Tech Stack:** Supabase Auth, Expo/React Native, Fly.io, jsonwebtoken (Rust), @supabase/supabase-js, expo-secure-store
 
 **Prerequisite:** [Phase A](./m1-phase-a-bug-fixes.md) complete (pairing works locally)
 
@@ -43,10 +43,11 @@
 **Step 3: Configure auth settings**
 
 1. Authentication → URL Configuration
-2. Set Site URL: `https://m.claudeview.ai`
+2. Set Site URL: `claude-view://` (deep link scheme for Expo app)
 3. Add redirect URLs:
-   - `https://m.claudeview.ai/*`
-   - `http://localhost:5173/*` (for local dev)
+   - `claude-view://auth/callback` (Expo deep link)
+   - `https://m.claudeview.ai/*` (universal link fallback)
+   - `http://localhost:19006/*` (for Expo local dev)
 
 **Step 4: Create usage tables**
 
@@ -99,12 +100,11 @@ SUPABASE_JWT_SECRET=your-jwt-secret
 
 **Why:** Phone must sign in before pairing. This gives us user identity for rate limiting and usage tracking.
 
-**Files:**
-- Create: `src/lib/supabase.ts` (Supabase client singleton)
-- Create: `src/components/mobile/MobileAuthGate.tsx` (auth screen)
-- Modify: `src/pages/MobilePairingPage.tsx` (wrap with auth gate)
-- Modify: `src/pages/MobileMonitorPage.tsx` (wrap with auth gate)
-- Modify: `package.json` (add @supabase/supabase-js dependency)
+**Files:** (in Expo project `packages/mobile/`)
+- Create: `lib/supabase.ts` (Supabase client with expo-secure-store token persistence)
+- Create: `components/AuthGate.tsx` (auth screen)
+- Integrate into: `app/_layout.tsx` (root layout wraps with auth gate)
+- Dependencies: `@supabase/supabase-js`, `expo-secure-store`
 
 **Step 1: Install Supabase SDK**
 
@@ -285,7 +285,7 @@ git commit -m "feat(relay): add Supabase JWT validation on claim and WS connect"
 
 ### Task 10: Configure custom domains (manual)
 
-**Why:** Production needs `relay.claudeview.ai` and `m.claudeview.ai` instead of `*.fly.dev`.
+**Why:** Production needs `relay.claudeview.ai` instead of `*.fly.dev`. `m.claudeview.ai` serves as universal link redirect to App Store.
 
 **This is a manual task — do it in DNS dashboards.**
 
@@ -313,81 +313,107 @@ Expected: `ok`
 
 ---
 
-### Task 11: Deploy mobile SPA to Cloudflare Pages
+### Task 11: Set up Expo project and build native app
 
-**Why:** The React mobile pages need a home at `m.claudeview.ai`.
+**Why:** The mobile client is an Expo/React Native app distributed via App Store and Play Store.
 
-**Files:**
-- Create: `vite.config.mobile.ts`
-- Create: `mobile-index.html`
-- Create: `src/mobile-main.tsx`
-- Modify: `package.json` (add `build:mobile` script)
+**Location:** `packages/mobile/` (monorepo) or standalone repo (TBD)
 
-**Step 1: Create mobile entry HTML**
-
-Create `mobile-index.html` with viewport meta, theme-color, apple-mobile-web-app-capable, and script src to `/src/mobile-main.tsx`.
-
-**Step 2: Create mobile React entry**
-
-Create `src/mobile-main.tsx` with BrowserRouter, QueryClientProvider, routes:
-- `/` → MobilePairingPage
-- `/monitor` → MobileMonitorPage
-- `*` → redirect to `/`
-
-**Step 3: Create mobile Vite config**
-
-Create `vite.config.mobile.ts` — same plugins as main config, but `outDir: 'dist-mobile'` and `input: mobile-index.html`.
-
-**Step 4: Add build script**
-
-```json
-"build:mobile": "vite build --config vite.config.mobile.ts"
-```
-
-**Step 5: Handle dual routing**
-
-Mobile pages currently navigate to `/mobile/monitor` and `/mobile`. For Cloudflare deploy they need `/monitor` and `/`. Use relative navigation or hostname detection to keep both desktop-embedded and standalone routes working.
-
-**Step 6: Build and test locally**
+**Step 1: Create Expo project**
 
 ```bash
-bun run build:mobile
-bunx serve dist-mobile
+npx create-expo-app packages/mobile --template blank-typescript
+cd packages/mobile
+npx expo install expo-secure-store expo-notifications expo-camera expo-linking @supabase/supabase-js
 ```
 
-**Step 7: Deploy to Cloudflare Pages**
+**Step 2: Project structure**
 
-1. Cloudflare Dashboard → Pages → Create project
-2. Connect GitHub repo
-3. Build command: `bun run build:mobile`
-4. Build output: `dist-mobile`
-5. Environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-6. Custom domain: `m.claudeview.ai`
+```
+packages/mobile/
+├── app/                    # Expo Router screens
+│   ├── _layout.tsx         # Root layout + auth check
+│   ├── index.tsx           # Pairing screen (QR scan)
+│   └── monitor.tsx         # Session monitor
+├── lib/
+│   ├── supabase.ts         # Supabase client (uses expo-secure-store for token persistence)
+│   ├── relay.ts            # WebSocket relay client + E2E encryption
+│   └── crypto.ts           # NaCl box encryption (tweetnacl-js)
+├── components/
+│   ├── AuthGate.tsx        # Supabase auth screen
+│   ├── SessionCard.tsx     # Session status card
+│   └── QRScanner.tsx       # Camera-based QR scanner
+├── app.json                # Expo config (scheme: "claude-view")
+└── eas.json                # EAS Build config
+```
+
+**Step 3: Configure deep linking**
+
+In `app.json`:
+```json
+{
+  "expo": {
+    "scheme": "claude-view",
+    "ios": { "bundleIdentifier": "com.claudeview.mobile" },
+    "android": { "package": "com.claudeview.mobile" }
+  }
+}
+```
+
+**Step 4: Set up EAS Build**
+
+```bash
+npx eas-cli build:configure
+```
+
+Create `eas.json` with development, preview (TestFlight), and production profiles.
+
+**Step 5: Build and test on simulator**
+
+```bash
+npx expo start
+# Press 'i' for iOS simulator, 'a' for Android emulator
+```
+
+**Step 6: Submit to TestFlight (beta)**
+
+```bash
+npx eas-cli build --platform ios --profile preview
+npx eas-cli submit --platform ios
+```
+
+**Step 7: Set up m.claudeview.ai as universal link redirect**
+
+Deploy a simple static HTML page to Cloudflare Pages that:
+- Detects platform (iOS/Android)
+- Redirects to App Store / Play Store
+- Falls back to Expo Web build if on desktop
 
 **Step 8: Commit**
 
 ```bash
-git add vite.config.mobile.ts mobile-index.html src/mobile-main.tsx package.json
-git commit -m "feat: add mobile SPA build for Cloudflare Pages deployment"
+git add packages/mobile/
+git commit -m "feat: add Expo mobile app project with auth, pairing, and session monitoring"
 ```
 
 ---
 
 ### Task 12: Update QR URL and bake default RELAY_URL
 
-**Why:** QR code should point to `m.claudeview.ai`. Binary should default to managed relay.
+**Why:** QR code should use deep link for native app, with web fallback. Binary should default to managed relay.
 
 **Files:**
 - Modify: `crates/server/src/routes/pairing.rs:85-90`
 - Modify: `crates/server/src/live/relay_client.rs:38-50`
 - Modify: `.env.example`
 
-**Step 1: QR URL points to Cloudflare Pages**
+**Step 1: QR URL uses deep link with web fallback**
 
 ```rust
+// Deep link for native app; m.claudeview.ai redirects to App Store if not installed
 let mobile_base = std::env::var("MOBILE_URL")
     .unwrap_or_else(|_| "https://m.claudeview.ai".to_string());
-let url = format!("{mobile_base}?k={x25519_pubkey_b64}&t={token}");
+let url = format!("{mobile_base}/pair?k={x25519_pubkey_b64}&t={token}");
 ```
 
 **Step 2: Default RELAY_URL**
@@ -408,7 +434,7 @@ Document that both values have sensible defaults. Local dev can override.
 
 ```bash
 git add crates/server/src/routes/pairing.rs crates/server/src/live/relay_client.rs .env.example
-git commit -m "feat: QR points to m.claudeview.ai, default RELAY_URL to managed relay"
+git commit -m "feat: QR uses deep link, default RELAY_URL to managed relay"
 ```
 
 ---
@@ -427,13 +453,13 @@ fly deploy --config crates/relay/fly.toml
 
 1. `bun run dev` on Mac (no `.env` needed — defaults to managed relay)
 2. Mac logs: `connected to relay`, `auth_ok received`
-3. Click phone icon → QR encodes `https://m.claudeview.ai?k=...&t=...`
-4. Scan QR with phone → opens `m.claudeview.ai`
+3. Click phone icon → QR appears
+4. Open claude-view app on phone → scan QR
 5. Auth screen → sign in with Google or email
 6. Pairing auto-completes
-7. Mac logs: `paired device stored in Keychain`
+7. Mac logs: `paired device stored`
 8. Start Claude session → phone shows it live
-9. Close browser → reopen `m.claudeview.ai` → already signed in, sessions appear
+9. Kill app → reopen → already signed in, sessions appear
 
 ---
 
@@ -452,13 +478,11 @@ fly deploy --config crates/relay/fly.toml
 | `src/pages/MobilePairingPage.tsx` | Modify | 8, 9 |
 | `src/pages/MobileMonitorPage.tsx` | Modify | 8 |
 | `src/hooks/use-mobile-relay.ts` | Modify | 9 |
-| `vite.config.mobile.ts` | Create | 11 |
-| `mobile-index.html` | Create | 11 |
-| `src/mobile-main.tsx` | Create | 11 |
+| `packages/mobile/` | Create | 11 |
 | `crates/server/src/routes/pairing.rs` | Modify | 12 |
 | `crates/server/src/live/relay_client.rs` | Modify | 12 |
 | `.env.example` | Modify | 12 |
-| `package.json` | Modify | 8, 11 |
+| `packages/mobile/package.json` | Create | 8, 11 |
 
 ## Task Dependencies
 
@@ -467,7 +491,7 @@ Task 7 (Supabase setup) ─── Task 8 (auth gate) ──┐
                                                     ├── Task 9 (JWT) ──┐
 Task 10 (DNS domains) ────────────────────────────┘                    │
                                                                         ├── Task 13 (E2E)
-Task 11 (Cloudflare Pages) ───────────────────────────────────────────┘
+Task 11 (Expo app build) ────────────────────────────────────────────┘
                                                                         │
 Task 12 (QR URL + default relay) ─────────────────────────────────────┘
 ```
