@@ -166,7 +166,8 @@ impl Database {
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
-                s.prompt_word_count, s.correction_count, s.same_file_edit_count
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count,
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
             FROM sessions s
             WHERE {}
             ORDER BY {}
@@ -232,7 +233,8 @@ impl Database {
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
-                s.prompt_word_count, s.correction_count, s.same_file_edit_count
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count,
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,

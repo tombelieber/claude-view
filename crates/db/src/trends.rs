@@ -713,6 +713,9 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0, // total_task_time_seconds
+            None, // longest_task_seconds
+            None, // longest_task_preview
             0.0,  // total_cost_usd
         )
         .await
@@ -900,6 +903,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            git_root: None,
             file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
             modified_at,
             size_bytes: 2048,
