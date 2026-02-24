@@ -310,12 +310,29 @@ export function ConversationView() {
     return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessagesWithHookEvents)
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
-  // NOTE: In compact mode, heavy filtering may cause rapid sequential page fetches
-  // since filtered content may not fill the viewport. This is bounded by hasPreviousPage
-  // and acceptable for the initial implementation. Task 5 (server-side caching)
-  // mitigates the server cost.
+  // When the user scrolls to the top, we want to load ALL remaining history without
+  // requiring repeated manual scrolls. The problem: Virtuoso fires startReached once
+  // per "scroll to top" event, then adjusts scrollTop (to maintain the viewport after
+  // prepending items), which takes the list out of "at top" state. With compact mode's
+  // heavy filtering (~5% of messages visible), the user would need 10+ manual scrolls.
+  //
+  // Fix: a ref that marks "load-all mode". Once startReached fires, we set the ref and
+  // keep calling fetchPreviousPage after each completed fetch until offset=0 is reached.
+  const isLoadingAllRef = useRef(false)
+
+  useEffect(() => {
+    if (!isFetchingPreviousPage) {
+      if (hasPreviousPage && isLoadingAllRef.current) {
+        fetchPreviousPage()
+      } else {
+        isLoadingAllRef.current = false
+      }
+    }
+  }, [isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage])
+
   const handleStartReached = useCallback(() => {
     if (hasPreviousPage && !isFetchingPreviousPage) {
+      isLoadingAllRef.current = true
       fetchPreviousPage()
     }
   }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage])
