@@ -3,7 +3,7 @@
 
 use crate::{Database, DbResult};
 use chrono::Utc;
-use super::{StorageStats, HealthStats, HealthStatus, ClassificationStatus};
+use super::{SystemStorageStats, HealthStats, HealthStatus, ClassificationStatus};
 
 impl Database {
     /// Get the oldest session date (Unix timestamp).
@@ -87,7 +87,7 @@ impl Database {
     /// Returns sizes for JSONL files (from indexer_state), database file,
     /// and computed totals. Index and cache sizes are set to 0 here and
     /// can be augmented by the server layer with filesystem checks.
-    pub async fn get_storage_stats(&self) -> DbResult<StorageStats> {
+    pub async fn get_storage_stats(&self) -> DbResult<SystemStorageStats> {
         // Sum of JSONL file sizes from indexer_state
         let (jsonl_bytes,): (i64,) = sqlx::query_as(
             "SELECT COALESCE(SUM(file_size), 0) FROM indexer_state",
@@ -111,7 +111,7 @@ impl Database {
 
         let total_bytes = jsonl_bytes as u64 + index_bytes + db_bytes + cache_bytes;
 
-        Ok(StorageStats {
+        Ok(SystemStorageStats {
             jsonl_bytes: jsonl_bytes as u64,
             index_bytes,
             db_bytes,
