@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_project_path, resolve_project_path_with_cwd, resolve_worktree_parent,
+    resolve_project_path_with_cwd, resolve_worktree_parent,
     ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 
@@ -1852,15 +1852,19 @@ pub async fn pass_1_read_indexes(
         entries: &[claude_view_core::SessionIndexEntry],
         total_sessions: &mut usize,
     ) -> Result<(), String> {
+        // Use cwd from entry if available (from classification in discover_orphan_sessions)
+        // For indexed sessions (from sessions-index.json), session_cwd may be None — that's ok.
+        let entry_cwd = entries.first().and_then(|e| e.session_cwd.as_deref());
+
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
             if let Some(parent_encoded) = resolve_worktree_parent(project_encoded) {
-                let resolved = resolve_project_path(&parent_encoded);
+                let resolved = resolve_project_path_with_cwd(&parent_encoded, entry_cwd);
                 (parent_encoded, resolved)
             } else {
                 (
                     project_encoded.to_string(),
-                    resolve_project_path(project_encoded),
+                    resolve_project_path_with_cwd(project_encoded, entry_cwd),
                 )
             };
 
@@ -1916,6 +1920,17 @@ pub async fn pass_1_read_indexes(
             )
             .await
             .map_err(|e| format!("Failed to insert session {}: {}", entry.session_id, e))?;
+
+            // Update topology fields if this entry has cwd or parent_id from classification
+            if entry.session_cwd.is_some() || entry.parent_session_id.is_some() {
+                db.update_session_topology(
+                    &entry.session_id,
+                    entry.session_cwd.as_deref(),
+                    entry.parent_session_id.as_deref(),
+                )
+                .await
+                .map_err(|e| format!("Failed to update topology {}: {}", entry.session_id, e))?;
+            }
 
             *total_sessions += 1;
         }
