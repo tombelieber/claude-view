@@ -72,6 +72,8 @@ struct SessionAccumulator {
     file_path: Option<PathBuf>,
     /// Decoded project path (set on first process_jsonl_update).
     project_path: Option<String>,
+    /// Cached cwd resolved from JSONL (avoids re-reading file on every update).
+    resolved_cwd: Option<String>,
 }
 
 impl SessionAccumulator {
@@ -96,6 +98,7 @@ impl SessionAccumulator {
             skills: std::collections::HashSet::new(),
             file_path: None,
             project_path: None,
+            resolved_cwd: None,
         }
     }
 }
@@ -130,7 +133,7 @@ fn build_recovered_session(
     file_path: &str,
 ) -> LiveSession {
     let path = Path::new(file_path);
-    let (project, project_display_name, project_path) = extract_project_info(path);
+    let (project, project_display_name, project_path, _) = extract_project_info(path, None);
 
     let status = match entry.status.as_str() {
         "working" => SessionStatus::Working,
@@ -487,9 +490,12 @@ impl LiveSessionManager {
                                 build_recovered_session(session_id, entry, &file_path_str);
 
                             // Enrich with accumulator metrics if available
-                            let (project, project_display_name, project_path) =
-                                extract_project_info(path);
                             let accumulators = manager.accumulators.read().await;
+                            let cached_cwd = accumulators
+                                .get(session_id)
+                                .and_then(|a| a.resolved_cwd.as_deref());
+                            let (project, project_display_name, project_path, _) =
+                                extract_project_info(path, cached_cwd);
                             if let Some(acc) = accumulators.get(session_id) {
                                 let cost = manager
                                     .pricing
@@ -865,7 +871,13 @@ impl LiveSessionManager {
     /// 5. Updates the shared session map.
     async fn process_jsonl_update(&self, path: &Path) {
         let session_id = extract_session_id(path);
-        let (project, project_display_name, project_path) = extract_project_info(path);
+        // Use cached cwd from accumulator if available (avoids re-reading file every poll)
+        let cached_cwd = {
+            let accumulators = self.accumulators.read().await;
+            accumulators.get(&session_id).and_then(|a| a.resolved_cwd.clone())
+        };
+        let (project, project_display_name, project_path, resolved_cwd) =
+            extract_project_info(path, cached_cwd.as_deref());
 
         // Get the current offset for this session
         let current_offset = {
@@ -920,6 +932,10 @@ impl LiveSessionManager {
         acc.offset = new_offset;
         acc.file_path = Some(path.to_path_buf());
         acc.project_path = Some(project_path.clone());
+        // Cache the resolved cwd so we don't re-read the file on every poll.
+        if acc.resolved_cwd.is_none() {
+            acc.resolved_cwd = resolved_cwd;
+        }
 
         // Detect file replacement: offset rollback means file was replaced.
         // Clear task progress to prevent duplicates on replay from offset 0.
@@ -1359,12 +1375,10 @@ fn extract_session_id(path: &Path) -> String {
 
 /// Extract project info from a JSONL file path.
 ///
-/// Returns `(encoded_project_name, display_name, decoded_project_path)`.
-///
-/// The encoded project directory name uses URL-encoding where path separators
-/// are percent-encoded. The display name is the last component of the decoded
-/// path.
-fn extract_project_info(path: &Path) -> (String, String, String) {
+/// Returns `(encoded_project_name, display_name, decoded_project_path, resolved_cwd)`.
+/// The 4th value is the raw cwd used for resolution — callers should cache it
+/// in `SessionAccumulator.resolved_cwd` to avoid re-reading JSONL on every poll.
+fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, String, String, Option<String>) {
     let project_encoded = path
         .parent()
         .and_then(|p| p.file_name())
@@ -1372,12 +1386,20 @@ fn extract_project_info(path: &Path) -> (String, String, String) {
         .unwrap_or("unknown")
         .to_string();
 
-    // Resolve the encoded directory name to a real filesystem path.
-    // Claude Code encodes paths like `/Users/foo/@org/project` as
-    // `-Users-foo--org-project` (special chars → `-`), NOT URL-encoding.
-    let resolved = claude_view_core::discovery::resolve_project_path(&project_encoded);
+    // Use cached cwd if available, else resolve from JSONL on disk.
+    let cwd = cached_cwd
+        .map(|s| s.to_string())
+        .or_else(|| {
+            path.parent()
+                .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
+        });
 
-    (project_encoded, resolved.display_name, resolved.full_path)
+    let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
+        &project_encoded,
+        cwd.as_deref(),
+    );
+
+    (project_encoded, resolved.display_name, resolved.full_path, cwd)
 }
 
 /// Calculate seconds since a Unix timestamp.
@@ -1488,7 +1510,7 @@ mod tests {
     #[test]
     fn test_extract_project_info_simple() {
         let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
-        let (encoded, display, decoded) = extract_project_info(&path);
+        let (encoded, display, decoded, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-tmp");
         assert_eq!(display, "tmp");
         assert_eq!(decoded, "/tmp");
@@ -1500,7 +1522,7 @@ mod tests {
         // (special chars → `-`), NOT URL-encoding.
         let path =
             PathBuf::from("/home/user/.claude/projects/-Users-test-my-project/session.jsonl");
-        let (encoded, display, _decoded) = extract_project_info(&path);
+        let (encoded, display, _decoded, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-Users-test-my-project");
         // Display name is the last path component
         assert!(!display.is_empty());
