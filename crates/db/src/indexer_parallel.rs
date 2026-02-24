@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_project_path, resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry,
-    ToolCounts,
+    resolve_project_path, resolve_project_path_with_cwd, resolve_worktree_parent,
+    ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 
 use crate::Database;

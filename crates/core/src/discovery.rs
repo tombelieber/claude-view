@@ -8,7 +8,6 @@
 use crate::error::DiscoveryError;
 use crate::types::{ProjectInfo, SessionInfo, ToolCounts};
 use regex_lite::Regex;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -45,19 +44,23 @@ pub struct ExtractedMetadata {
 }
 
 /// Resolve an encoded project directory name to a filesystem path.
-///
-/// Claude encodes paths like `/Users/foo/my-project` as `-Users-foo-my-project`.
-/// The challenge is that hyphens in real directory names look like path separators,
-/// and `--` is ambiguous (both `@` and `.` prefixed dirs encode to `--`).
-///
-/// Strategy: DFS with directory listing (like ls/zsh resolution).
-/// 1. Tokenize the encoded name (handling `--` as prefix marker)
-/// 2. At each directory level, `read_dir` to get actual entries
-/// 3. Match consecutive segments (joined with `-`) against real entries
-/// 4. For `--`-marked segments, try `@`, `.`, and bare prefixes
-/// 5. Backtrack if a path leads to a dead end
-/// 6. Derive display name from nearest git root
+/// Uses naive segment join (no DFS filesystem walking -- sandbox-safe).
+/// Prefer `resolve_project_path_with_cwd()` when cwd from JSONL is available.
 pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
+    resolve_project_path_with_cwd(encoded_name, None)
+}
+
+/// Resolve project path. Primary source: cwd from JSONL.
+/// Fallback: naive segment join of encoded name (never DFS, never guess).
+pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> ResolvedProject {
+    if let Some(path) = cwd {
+        return ResolvedProject {
+            full_path: path.to_string(),
+            display_name: derive_display_name(path),
+        };
+    }
+
+    // No cwd available -- naive decode from encoded name
     if encoded_name.is_empty() {
         return ResolvedProject {
             full_path: String::new(),
@@ -65,23 +68,17 @@ pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
         };
     }
 
-    let segments = tokenize_encoded_name(encoded_name);
-
-    if segments.is_empty() {
+    // Simple decode: strip leading -, split on -, join with /
+    let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
+    if name.is_empty() {
         return ResolvedProject {
             full_path: "/".to_string(),
             display_name: "/".to_string(),
         };
     }
 
-    // DFS resolve
-    let resolved_path = if let Some(path) = dfs_resolve(&PathBuf::from("/"), &segments, 0) {
-        path.to_string_lossy().to_string()
-    } else {
-        // Fallback: join all segments with / (all-separators interpretation)
-        format!("/{}", segments.join("/"))
-    };
-
+    let segments: Vec<&str> = name.split('-').collect();
+    let resolved_path = format!("/{}", segments.join("/"));
     let display_name = derive_display_name(&resolved_path);
 
     ResolvedProject {
@@ -104,144 +101,6 @@ pub fn resolve_worktree_parent(encoded_name: &str) -> Option<String> {
         return None; // edge case: name starts with marker
     }
     Some(encoded_name[..pos].to_string())
-}
-
-/// Tokenize an encoded project name into path segments.
-///
-/// Handles `--` → `/@` conversion for scoped packages.
-/// The `--` represents a path separator `/` followed by `@`.
-///
-/// Example: `-Users-user-dev--example-org-claude-view`
-///   → `["Users", "user", "dev", "@example", "org", "claude", "view"]`
-fn tokenize_encoded_name(encoded_name: &str) -> Vec<String> {
-    let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
-    if name.is_empty() {
-        return vec![];
-    }
-
-    // Replace -- with a path-separator + @ marker
-    // `--` means `/@` which is path_sep + @_prefix
-    // Use \x00/ as separator so it splits correctly
-    let normalized = name.replace("--", "\x00/\x00@");
-
-    // Split on - and \x00/
-    let mut segments = Vec::new();
-    for part in normalized.split('-') {
-        for sub in part.split("\x00/") {
-            let restored = sub.replace('\x00', "");
-            if !restored.is_empty() {
-                segments.push(restored);
-            }
-        }
-    }
-
-    segments
-}
-
-/// DFS filesystem walk to resolve path segments against actual directory entries.
-///
-/// Uses real directory listing (`read_dir`) at each level, the same approach
-/// shells like zsh/bash use for path resolution. Instead of speculatively
-/// constructing paths and checking `exists()`, we list actual entries and
-/// match against them.
-///
-/// At each directory level:
-/// 1. Read all entries via `read_dir` into a `HashSet` for O(1) lookup
-/// 2. Try matching 1..N consecutive segments joined with `-` against entries
-/// 3. For segments from `--` encoding (marked with `@` by tokenizer), also
-///    try `@`-prefixed and `.`-prefixed variants to handle both:
-///    - Scoped packages: `/@myorg` (encoded as `--myorg`)
-///    - Hidden directories: `/.worktrees` (also encoded as `--worktrees`)
-/// 4. For 2-segment groups, try `.` join for domain names (e.g., `acme.io`)
-/// 5. Recurse into matching directories; backtrack on dead ends
-///
-/// No artificial cap on join count — the real directory listing naturally
-/// constrains what matches, so even long hyphenated names resolve correctly.
-///
-/// Returns the first complete path that exists on the filesystem.
-fn dfs_resolve(base: &Path, segments: &[String], start: usize) -> Option<PathBuf> {
-    if start >= segments.len() {
-        return if base.exists() { Some(base.to_path_buf()) } else { None };
-    }
-
-    // List actual directory entries — the core of proper directory resolution.
-    // std::fs::read_dir already excludes "." and ".." per Rust docs.
-    let entries: HashSet<String> = match std::fs::read_dir(base) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok())
-            .filter_map(|e| e.file_name().to_str().map(String::from))
-            .collect(),
-        Err(_) => return None,
-    };
-
-    let remaining = segments.len() - start;
-
-    for join_count in 1..=remaining {
-        let candidates = build_candidates(segments, start, join_count);
-        let next_start = start + join_count;
-
-        for candidate in &candidates {
-            if candidate.is_empty() || !entries.contains(candidate.as_str()) {
-                continue;
-            }
-
-            let next_path = base.join(candidate);
-
-            if next_start >= segments.len() {
-                // Last segment(s): path just needs to exist
-                return Some(next_path);
-            }
-
-            // Intermediate: must be a directory to recurse into
-            if next_path.is_dir() {
-                if let Some(result) = dfs_resolve(&next_path, segments, next_start) {
-                    return Some(result);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Build candidate directory names for a given slice of segments.
-///
-/// When the first segment has the `@` marker (from `--` tokenization), generates
-/// three variants since `--` is ambiguous between prefix characters that Claude's
-/// encoder replaces with `-`:
-/// - `@name`: scoped packages (`/@myorg`)
-/// - `.name`: hidden directories (`/.worktrees`, `/.git`)
-/// - `name`: bare fallback
-///
-/// Also generates dot-joined variant for 2-segment domain names.
-fn build_candidates(segments: &[String], start: usize, join_count: usize) -> Vec<String> {
-    let first = &segments[start];
-    let has_prefix_marker = first.starts_with('@');
-
-    // Strip '@' marker from all segments in range (it's a tokenizer artifact, not literal)
-    let mut parts: Vec<&str> = Vec::with_capacity(join_count);
-    for i in 0..join_count {
-        let seg = &segments[start + i];
-        parts.push(seg.strip_prefix('@').unwrap_or(seg.as_str()));
-    }
-
-    let joined = parts.join("-");
-
-    let mut candidates = Vec::with_capacity(4);
-
-    if has_prefix_marker {
-        // `--` sequence: try @, ., then bare (ordered by likelihood)
-        candidates.push(format!("@{}", joined));
-        candidates.push(format!(".{}", joined));
-    }
-    candidates.push(joined.clone());
-
-    // Dot-join for domain-like names (e.g., acme + io → acme.io)
-    if join_count == 2 {
-        candidates.push(format!("{}.{}", parts[0], parts[1]));
-    }
-
-    candidates
 }
 
 /// Derive a human-friendly display name from a resolved filesystem path.
@@ -296,60 +155,6 @@ fn derive_display_name(resolved_path: &str) -> String {
     path.file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved_path.to_string())
-}
-
-/// Generate all possible path interpretations of an encoded name.
-///
-/// This is the legacy API preserved for backward compatibility.
-/// Internally delegates to `tokenize_encoded_name` and generates fixed variants.
-///
-/// Prefer using `resolve_project_path` which uses DFS for correct resolution.
-pub fn get_join_variants(encoded_name: &str) -> Vec<String> {
-    let segments = tokenize_encoded_name(encoded_name);
-    if segments.is_empty() {
-        return vec!["/".to_string()];
-    }
-
-    let mut variants = Vec::new();
-
-    // Variant 1: All segments as path separators
-    variants.push(format!("/{}", segments.join("/")));
-
-    // Variant 2: Last two segments joined with -
-    if segments.len() >= 3 {
-        let last_two = segments[segments.len() - 2..].join("-");
-        let rest = &segments[..segments.len() - 2];
-        let v = format!("/{}/{}", rest.join("/"), last_two);
-        if !variants.contains(&v) {
-            variants.push(v);
-        }
-    }
-
-    // Variant 3: Last three segments joined with -
-    if segments.len() >= 4 {
-        let last_three = segments[segments.len() - 3..].join("-");
-        let rest = &segments[..segments.len() - 3];
-        let v = format!("/{}/{}", rest.join("/"), last_three);
-        if !variants.contains(&v) {
-            variants.push(v);
-        }
-    }
-
-    // Variant 4: Dot join for domain-like names
-    if segments.len() >= 2 {
-        let dot_joined = format!("{}.{}", segments[segments.len() - 2], segments[segments.len() - 1]);
-        let rest = &segments[..segments.len() - 2];
-        let v = if rest.is_empty() {
-            format!("/{}", dot_joined)
-        } else {
-            format!("/{}/{}", rest.join("/"), dot_joined)
-        };
-        if !variants.contains(&v) {
-            variants.push(v);
-        }
-    }
-
-    variants
 }
 
 /// Count sessions that are "active" (modified within the last 5 minutes).
@@ -903,7 +708,7 @@ mod tests {
 
     #[test]
     fn test_resolve_complex_path() {
-        // A typical Claude project path
+        // A typical Claude project path — naive decode (no DFS)
         let resolved = resolve_project_path("-Users-test-dev-my-cool-project");
         // Should produce a reasonable path
         assert!(resolved.full_path.starts_with('/'));
@@ -912,96 +717,30 @@ mod tests {
     }
 
     // ============================================================================
-    // get_join_variants Tests
+    // cwd-based Resolution Tests
     // ============================================================================
 
     #[test]
-    fn test_get_join_variants_simple() {
-        let variants = get_join_variants("-tmp");
-        assert!(!variants.is_empty());
-        assert!(variants.contains(&"/tmp".to_string()));
+    fn test_resolve_project_path_with_cwd_some() {
+        let result = resolve_project_path_with_cwd("-Users-dev-claude-view", Some("/Users/dev/claude-view"));
+        assert_eq!(result.full_path, "/Users/dev/claude-view");
+        assert_eq!(result.display_name, "claude-view");
     }
 
     #[test]
-    fn test_get_join_variants_hyphenated_name() {
-        let variants = get_join_variants("-Users-test-my-project");
-        assert!(!variants.is_empty());
-
-        // Should include various interpretations
-        assert!(variants.contains(&"/Users/test/my/project".to_string()));
-        assert!(variants.contains(&"/Users/test/my-project".to_string()));
+    fn test_resolve_project_path_with_cwd_none_uses_naive_decode() {
+        let result = resolve_project_path_with_cwd("-Users-dev-my-project", None);
+        // Without cwd, falls back to naive segment join (no DFS)
+        assert!(result.full_path.starts_with('/'));
+        assert!(!result.display_name.is_empty());
     }
 
     #[test]
-    fn test_get_join_variants_without_leading_hyphen() {
-        let variants = get_join_variants("Users-test-project");
-        assert!(!variants.is_empty());
-        // Should still work, treating it as relative
-        assert!(variants.iter().any(|v| v.contains("Users")));
-    }
-
-    #[test]
-    fn test_get_join_variants_single_part() {
-        let variants = get_join_variants("-tmp");
-        assert!(variants.contains(&"/tmp".to_string()));
-    }
-
-    #[test]
-    fn test_get_join_variants_empty() {
-        let variants = get_join_variants("");
-        assert!(variants.contains(&"/".to_string()) || !variants.is_empty());
-    }
-
-    // ============================================================================
-    // Issue 3: Path Resolution - Double Dash and Dot Support
-    // ============================================================================
-
-    #[test]
-    fn test_double_dash_converts_to_at_symbol() {
-        // --example-org should become /@example-org (scoped packages)
-        let variants = get_join_variants("-Users-user-dev--example-org-project");
-
-        assert!(
-            variants.iter().any(|v| v.contains("/@example-org")),
-            "Should convert -- to /@ for scoped packages. Got: {:?}",
-            variants
-        );
-    }
-
-    #[test]
-    fn test_double_dash_at_start() {
-        // Double dash at start of component
-        let variants = get_join_variants("-Users-dev--scope-package");
-
-        assert!(
-            variants.iter().any(|v| v.contains("/@scope")),
-            "Should handle -- at component boundary. Got: {:?}",
-            variants
-        );
-    }
-
-    #[test]
-    fn test_dot_separator_for_domains() {
-        // acme-io should try acme.io
-        let variants = get_join_variants("-Users-test-acme-io");
-
-        assert!(
-            variants.iter().any(|v| v.ends_with("acme.io")),
-            "Should try dot separator for domain-like names. Got: {:?}",
-            variants
-        );
-    }
-
-    #[test]
-    fn test_dot_separator_three_parts() {
-        // my-app-io should try my-app.io and my.app.io
-        let variants = get_join_variants("-home-user-my-app-io");
-
-        assert!(
-            variants.iter().any(|v| v.contains(".io")),
-            "Should try .io domain pattern. Got: {:?}",
-            variants
-        );
+    fn test_resolve_project_path_backward_compat() {
+        // Old function signature still works — returns String full_path
+        let result = resolve_project_path("-tmp");
+        assert_eq!(result.full_path, "/tmp");
+        assert_eq!(result.display_name, "tmp");
     }
 
     // ============================================================================
@@ -1521,267 +1260,6 @@ mod tests {
         assert!(
             metadata.skills_used.contains(&"/push".to_string()),
             "Should contain /push"
-        );
-    }
-
-    // ============================================================================
-    // DFS Path Resolution Tests
-    // ============================================================================
-
-    #[test]
-    fn test_tokenize_simple() {
-        let segments = tokenize_encoded_name("-Users-foo-bar");
-        assert_eq!(segments, vec!["Users", "foo", "bar"]);
-    }
-
-    #[test]
-    fn test_tokenize_double_dash_at_prefix() {
-        // -- means /@ for scoped packages
-        let segments = tokenize_encoded_name("-Users-dev--example-org-project");
-        assert_eq!(
-            segments,
-            vec!["Users", "dev", "@example", "org", "project"]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_empty() {
-        assert!(tokenize_encoded_name("").is_empty());
-        assert!(tokenize_encoded_name("-").is_empty());
-    }
-
-    #[test]
-    fn test_dfs_resolve_with_tempdir() {
-        // Create a directory structure that mimics the real scenario
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/dev/@example-org/claude-view/
-        std::fs::create_dir_all(base.join("dev/@example-org/claude-view")).unwrap();
-
-        let segments: Vec<String> = vec![
-            "dev", "@example", "org", "claude", "view",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some(), "DFS should find the path");
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("dev/@example-org/claude-view"),
-            "Should resolve to @example-org/claude-view, got: {:?}",
-            resolved
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_hyphenated_project_name() {
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/dev/my-cool-project/
-        std::fs::create_dir_all(base.join("dev/my-cool-project")).unwrap();
-
-        let segments: Vec<String> = vec!["dev", "my", "cool", "project"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some());
-        assert!(
-            result.unwrap().ends_with("dev/my-cool-project"),
-            "Should join hyphens for project name"
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_dot_domain() {
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/dev/acme.io/
-        std::fs::create_dir_all(base.join("dev/acme.io")).unwrap();
-
-        let segments: Vec<String> = vec!["dev", "acme", "io"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some());
-        assert!(
-            result.unwrap().ends_with("dev/acme.io"),
-            "Should try dot join for domain-like names"
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_backtracking() {
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create BOTH: base/a/ and base/a-b/c/
-        // DFS should try base/a/ first, fail to find b/c, then backtrack to base/a-b/c
-        std::fs::create_dir_all(base.join("a")).unwrap();
-        std::fs::create_dir_all(base.join("a-b/c")).unwrap();
-
-        let segments: Vec<String> = vec!["a", "b", "c"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some());
-        assert!(
-            result.unwrap().ends_with("a-b/c"),
-            "Should backtrack from a/ to a-b/c"
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_nonexistent() {
-        let temp = TempDir::new().unwrap();
-        let segments: Vec<String> = vec!["no", "such", "path"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(temp.path(), &segments, 0);
-        assert!(result.is_none(), "Should return None for nonexistent paths");
-    }
-
-    #[test]
-    fn test_dfs_resolve_dot_prefixed_directory() {
-        // Bug: `--` is ambiguous — encodes both `@` and `.` prefixed dirs.
-        // .worktrees, .config, .git etc. must resolve, not just @-prefixed.
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/project/.worktrees/main-audit/
-        std::fs::create_dir_all(base.join("project/.worktrees/main-audit")).unwrap();
-
-        // Tokenizer produces @worktrees from `--worktrees` encoding
-        let segments: Vec<String> = vec!["project", "@worktrees", "main", "audit"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some(), "DFS should resolve .worktrees via dot-prefix fallback");
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("project/.worktrees/main-audit"),
-            "Should resolve to .worktrees/main-audit, got: {:?}",
-            resolved
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_mixed_at_and_dot_prefixes() {
-        // Path with both @scope and .hidden in the same tree
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/dev/@my-org/project/.config/
-        std::fs::create_dir_all(base.join("dev/@my-org/project/.config")).unwrap();
-
-        // Both -- sequences: @my → scoped, @config → hidden
-        let segments: Vec<String> = vec!["dev", "@my", "org", "project", "@config"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some(), "DFS should resolve mixed @ and . prefixes");
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("dev/@my-org/project/.config"),
-            "Should resolve both @my-org and .config, got: {:?}",
-            resolved
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_long_hyphenated_name() {
-        // Directory names with 5+ hyphen-separated words must resolve.
-        // Old 4-segment cap would fail on this.
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Create: base/dev/my-very-cool-react-native-app/
-        std::fs::create_dir_all(base.join("dev/my-very-cool-react-native-app")).unwrap();
-
-        let segments: Vec<String> = vec!["dev", "my", "very", "cool", "react", "native", "app"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some(), "DFS should resolve 6-segment hyphenated name (no 4-cap)");
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("dev/my-very-cool-react-native-app"),
-            "Should join all 6 segments, got: {:?}",
-            resolved
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_bare_fallback_from_double_dash() {
-        // Edge case: `--` encoding but the real dir has no prefix at all.
-        // e.g., directory just named "config" but came from `--config` encoding.
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        // Only bare "config" exists (no @ or . prefix)
-        std::fs::create_dir_all(base.join("project/config")).unwrap();
-
-        let segments: Vec<String> = vec!["project", "@config"]
-            .into_iter()
-            .map(String::from)
-            .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(result.is_some(), "DFS should fall back to bare name when @/. don't exist");
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("project/config"),
-            "Should resolve to bare config, got: {:?}",
-            resolved
-        );
-    }
-
-    #[test]
-    fn test_dfs_resolve_real_worktree_path() {
-        // End-to-end: full tokenize → DFS for the actual worktree path pattern
-        // Encoded: -X-Y-dev--org-project--worktrees-main-audit
-        // Real:    /X/Y/dev/@org/project/.worktrees/main-audit
-        let temp = TempDir::new().unwrap();
-        let base = temp.path();
-
-        std::fs::create_dir_all(base.join("X/Y/dev/@org-name/my-project/.worktrees/main-audit"))
-            .unwrap();
-
-        // Simulate what tokenize_encoded_name produces for the encoded name
-        let segments: Vec<String> =
-            vec!["X", "Y", "dev", "@org", "name", "my", "project", "@worktrees", "main", "audit"]
-                .into_iter()
-                .map(String::from)
-                .collect();
-
-        let result = dfs_resolve(base, &segments, 0);
-        assert!(
-            result.is_some(),
-            "DFS should resolve full worktree path with mixed @ and . prefixes"
-        );
-        let resolved = result.unwrap();
-        assert!(
-            resolved.ends_with("dev/@org-name/my-project/.worktrees/main-audit"),
-            "Full path should resolve correctly, got: {:?}",
-            resolved
         );
     }
 
