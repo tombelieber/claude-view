@@ -700,6 +700,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -797,6 +798,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -915,6 +917,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -1038,6 +1041,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
 
@@ -1199,6 +1203,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-range", "Project Range").await.unwrap();
 
@@ -1316,6 +1321,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 
@@ -1424,6 +1430,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 

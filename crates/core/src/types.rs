@@ -267,6 +267,9 @@ pub struct SessionInfo {
     pub reedited_files_count: u32,
     #[serde(default)]
     pub duration_seconds: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub first_message_at: Option<i64>,
     #[serde(default)]
     pub commit_count: u32,
     // Phase 3.5: Full parser metrics
@@ -1094,6 +1097,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1220,6 +1224,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 

@@ -464,7 +464,6 @@ pub(crate) struct SessionRow {
     pub(crate) files_edited_count: i32,
     pub(crate) reedited_files_count: i32,
     pub(crate) duration_seconds: i32,
-    #[allow(dead_code)] // Used internally by git sync queries, not by into_session_info()
     pub(crate) first_message_at: Option<i64>,
     pub(crate) commit_count: i32,
     // Phase 3.5: Full parser metrics
@@ -626,6 +625,7 @@ impl SessionRow {
             files_edited_count: self.files_edited_count as u32,
             reedited_files_count: self.reedited_files_count as u32,
             duration_seconds: self.duration_seconds as u32,
+            first_message_at: self.first_message_at,
             commit_count: self.commit_count as u32,
             // Phase 3.5
             thinking_block_count: self.thinking_block_count as u32,
