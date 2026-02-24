@@ -183,6 +183,30 @@ async fn main() -> Result<()> {
     // Print banner
     eprintln!("\n\u{1f50d} claude-view v{}\n", env!("CARGO_PKG_VERSION"));
 
+    // Step 0: Validate data directory is writable before proceeding
+    let data_dir = claude_view_core::paths::data_dir();
+    if let Err(e) = std::fs::create_dir_all(&data_dir) {
+        eprintln!(
+            "ERROR: Cannot create data directory: {}\n\
+             Path: {}\n\
+             Set CLAUDE_VIEW_DATA_DIR to a writable directory.",
+            e,
+            data_dir.display()
+        );
+        std::process::exit(1);
+    }
+    let probe = data_dir.join(".write-test");
+    if std::fs::write(&probe, b"ok").is_err() {
+        eprintln!(
+            "ERROR: Data directory is not writable: {}\n\
+             Set CLAUDE_VIEW_DATA_DIR to a writable directory.",
+            data_dir.display()
+        );
+        std::process::exit(1);
+    }
+    let _ = std::fs::remove_file(&probe);
+    tracing::info!("Data directory: {}", data_dir.display());
+
     // Step 1: Open database
     let db = Database::open_default().await?;
 
@@ -205,7 +229,7 @@ async fn main() -> Result<()> {
     // Wrapped in SearchIndexHolder so clear_cache can swap it at runtime.
     let search_index_holder: SearchIndexHolder = {
         let index_dir = claude_view_core::paths::search_index_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
+            .expect("search_index_dir() always returns Some after data_dir() refactor");
 
         match claude_view_search::SearchIndex::open(&index_dir) {
             Ok(idx) => {
@@ -398,7 +422,10 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_path = std::env::temp_dir().join(format!("claude-view-{}.lock", port));
+        let lock_dir = claude_view_core::paths::lock_dir()
+            .unwrap_or_else(|| std::env::temp_dir());
+        let _ = std::fs::create_dir_all(&lock_dir);
+        let lock_path = lock_dir.join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {
             // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
             lock_path.metadata()
