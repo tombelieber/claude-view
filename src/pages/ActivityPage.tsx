@@ -1,29 +1,33 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays, X } from 'lucide-react'
 import { useTimeRange } from '../hooks/use-time-range'
+import type { TimeRangePreset } from '../hooks/use-time-range'
 import { useActivityData } from '../hooks/use-activity-data'
 import { SummaryStats } from '../components/activity/SummaryStats'
 import { CalendarHeatmap } from '../components/activity/CalendarHeatmap'
 import { ProjectBreakdown } from '../components/activity/ProjectBreakdown'
 import { DailyTimeline } from '../components/activity/DailyTimeline'
-import { cn } from '../lib/utils'
-import type { TimeRangePreset } from '../hooks/use-time-range'
+import { TimeRangeSelector, DateRangePicker } from '../components/ui'
+import { useIsMobile } from '../hooks/use-media-query'
 
-const PRESETS: { id: TimeRangePreset; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: '7d', label: 'This Week' },
-  { id: '30d', label: 'This Month' },
-  { id: '90d', label: '3 Months' },
-  { id: 'all', label: 'All Time' },
-]
+/** Human-readable labels for the summary header */
+const PRESET_LABELS: Record<TimeRangePreset, string> = {
+  today: 'Today',
+  '7d': 'This Week',
+  '30d': 'This Month',
+  '90d': '3 Months',
+  all: 'All Time',
+  custom: 'Custom',
+}
 
 export function ActivityPage() {
   const [searchParams] = useSearchParams()
   const sidebarProject = searchParams.get('project')
   const sidebarBranch = searchParams.get('branch')
+  const isMobile = useIsMobile()
 
-  const { state: timeRange, setPreset } = useTimeRange()
+  const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
   const { data, isLoading, error } = useActivityData(
     timeRange.fromTimestamp,
     timeRange.toTimestamp,
@@ -34,9 +38,9 @@ export function ActivityPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
 
-  const activeLabel = PRESETS.find(p => p.id === timeRange.preset)?.label ?? 'Custom'
+  const activeLabel = PRESET_LABELS[timeRange.preset] ?? 'Custom'
 
-  // Clear filters when time range changes
+  // Clear sub-filters when time range changes
   const handlePresetChange = (preset: TimeRangePreset) => {
     setPreset(preset)
     setSelectedDate(null)
@@ -51,24 +55,26 @@ export function ActivityPage() {
           <CalendarDays className="w-5 h-5 text-blue-500" />
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Activity</h1>
         </div>
-        {/* Time range picker */}
-        <div className="flex items-center gap-1">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => handlePresetChange(preset.id)}
-              className={cn(
-                'px-3 py-1 text-xs font-medium rounded-md transition-colors duration-150 cursor-pointer',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                timeRange.preset === preset.id
-                  ? 'bg-blue-500 text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-              )}
-            >
-              {preset.label}
-            </button>
-          ))}
+        {/* Time range picker — shared component with HistoryView */}
+        <div className="flex items-center gap-2">
+          <TimeRangeSelector
+            value={timeRange.preset}
+            onChange={handlePresetChange}
+            options={[
+              { value: 'today', label: isMobile ? 'Today' : 'Today' },
+              { value: '7d', label: isMobile ? '7 days' : '7d' },
+              { value: '30d', label: isMobile ? '30 days' : '30d' },
+              { value: '90d', label: isMobile ? '90 days' : '90d' },
+              { value: 'all', label: isMobile ? 'All time' : 'All' },
+              { value: 'custom', label: 'Custom' },
+            ]}
+          />
+          {timeRange.preset === 'custom' && (
+            <DateRangePicker
+              value={timeRange.customRange}
+              onChange={setCustomRange}
+            />
+          )}
         </div>
       </div>
 
@@ -82,7 +88,7 @@ export function ActivityPage() {
               onClick={() => setSelectedDate(null)}
               className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
             >
-              {selectedDate} x
+              {selectedDate} <X className="w-3 h-3 inline ml-1" />
             </button>
           )}
           {selectedProject && (
@@ -91,7 +97,7 @@ export function ActivityPage() {
               onClick={() => setSelectedProject(null)}
               className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/60"
             >
-              {selectedProject.split('/').pop()} x
+              {selectedProject.split('/').pop()} <X className="w-3 h-3 inline ml-1" />
             </button>
           )}
         </div>
@@ -100,7 +106,26 @@ export function ActivityPage() {
       {/* Content */}
       <div className="px-6 pb-6 space-y-6">
         {isLoading && (
-          <div className="flex items-center justify-center py-12 text-sm text-gray-400">Loading activity...</div>
+          <div className="space-y-6 animate-pulse">
+            {/* Stats skeleton */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-gray-800" />
+              ))}
+            </div>
+            {/* Heatmap skeleton */}
+            <div className="space-y-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-9 rounded bg-gray-100 dark:bg-gray-800" />
+              ))}
+            </div>
+            {/* Timeline skeleton */}
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-10 rounded-lg bg-gray-100 dark:bg-gray-800" />
+              ))}
+            </div>
+          </div>
         )}
         {error && (
           <div className="text-sm text-red-500">Failed to load activity: {error.message}</div>
@@ -110,16 +135,18 @@ export function ActivityPage() {
             <SummaryStats summary={data.summary} label={activeLabel} />
             {data.summary.sessionCount > 0 && (
               <>
-                <CalendarHeatmap
-                  days={data.days}
-                  onDayClick={setSelectedDate}
-                  selectedDate={selectedDate}
-                />
-                <ProjectBreakdown
-                  projects={data.projects}
-                  onProjectClick={setSelectedProject}
-                  selectedProject={selectedProject}
-                />
+                <div className="md:grid md:grid-cols-[auto_1fr] md:gap-6 md:items-start">
+                  <CalendarHeatmap
+                    days={data.days}
+                    onDayClick={setSelectedDate}
+                    selectedDate={selectedDate}
+                  />
+                  <ProjectBreakdown
+                    projects={data.projects}
+                    onProjectClick={setSelectedProject}
+                    selectedProject={selectedProject}
+                  />
+                </div>
                 <DailyTimeline
                   days={data.days}
                   selectedDate={selectedDate}

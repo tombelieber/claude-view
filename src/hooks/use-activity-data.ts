@@ -91,7 +91,7 @@ export function useActivityData(
 
     // Client-side project filter (API has no `project` param)
     if (sidebarProject) {
-      sessions = sessions.filter(s => (s.projectPath || s.project) === sidebarProject)
+      sessions = sessions.filter(s => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === sidebarProject)
     }
 
     const days = aggregateByDay(sessions)

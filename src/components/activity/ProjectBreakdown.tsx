@@ -40,7 +40,7 @@ export function ProjectBreakdown({ projects, onProjectClick, selectedProject }: 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">By Project</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">By Project</h2>
         {selectedProject && (
           <button
             type="button"
@@ -56,7 +56,7 @@ export function ProjectBreakdown({ projects, onProjectClick, selectedProject }: 
           <BarChart
             data={chartData}
             layout="vertical"
-            margin={{ left: 10, right: 80, top: 0, bottom: 0 }}
+            margin={{ left: 10, right: 8, top: 0, bottom: 0 }}
           >
             <XAxis type="number" hide />
             <YAxis
