@@ -246,6 +246,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
             size_bytes: 2048,
