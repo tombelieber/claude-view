@@ -271,6 +271,8 @@ async fn ac9_callbacks_fire_correctly() {
         &claude_dir,
         &db,
         &hints,
+        None,
+        None,
         move |_session_id| {
             fdc.fetch_add(1, Ordering::Relaxed);
         },
