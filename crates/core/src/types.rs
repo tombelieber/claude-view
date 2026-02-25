@@ -211,6 +211,10 @@ pub struct SessionInfo {
     pub id: String,
     pub project: String,
     pub project_path: String,
+    /// Canonical git repository root resolved from session_cwd at index time.
+    /// None for non-git directories or sessions indexed before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_root: Option<String>,
     pub file_path: String,
     #[ts(type = "number")]
     pub modified_at: i64,
@@ -267,6 +271,9 @@ pub struct SessionInfo {
     pub reedited_files_count: u32,
     #[serde(default)]
     pub duration_seconds: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub first_message_at: Option<i64>,
     #[serde(default)]
     pub commit_count: u32,
     // Phase 3.5: Full parser metrics
@@ -1035,6 +1042,7 @@ mod tests {
             id: "test-123".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1769482232, // Unix timestamp
             size_bytes: 1024,
@@ -1094,6 +1102,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1162,6 +1171,7 @@ mod tests {
             id: "test-session".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1700000000,
             size_bytes: 1024,
@@ -1220,6 +1230,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 
@@ -1308,4 +1319,17 @@ mod tests {
         session.files_edited_count = 0;
         assert_eq!(session.read_to_edit_ratio(), None);
     }
+}
+
+/// Returns true if a user-role message contains only system-injected content
+/// (not real user input). Used to filter out tool results, command outputs, etc.
+pub fn is_system_user_content(content: &str) -> bool {
+    let trimmed = content.trim();
+    trimmed.is_empty()
+        || trimmed.starts_with("<local-command-caveat>")
+        || trimmed.starts_with("<command-name>")
+        || trimmed.starts_with("<command-message>")
+        || trimmed.starts_with("<local-command-stdout>")
+        || trimmed.starts_with("<system-reminder>")
+        || trimmed.starts_with("{\"type\":\"tool_result\"")
 }

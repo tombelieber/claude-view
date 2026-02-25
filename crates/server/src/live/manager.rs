@@ -19,6 +19,9 @@ use claude_view_core::pricing::{
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
+use claude_view_db::Database;
+use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
     status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
@@ -72,6 +75,13 @@ struct SessionAccumulator {
     file_path: Option<PathBuf>,
     /// Decoded project path (set on first process_jsonl_update).
     project_path: Option<String>,
+    /// Cached cwd resolved from JSONL (avoids re-reading file on every update).
+    resolved_cwd: Option<String>,
+    /// Accumulated tool counts (cumulative across tail polls).
+    tool_counts_edit: u32,
+    tool_counts_read: u32,
+    tool_counts_bash: u32,
+    tool_counts_write: u32,
 }
 
 impl SessionAccumulator {
@@ -96,6 +106,11 @@ impl SessionAccumulator {
             skills: std::collections::HashSet::new(),
             file_path: None,
             project_path: None,
+            resolved_cwd: None,
+            tool_counts_edit: 0,
+            tool_counts_read: 0,
+            tool_counts_bash: 0,
+            tool_counts_write: 0,
         }
     }
 }
@@ -130,7 +145,7 @@ fn build_recovered_session(
     file_path: &str,
 ) -> LiveSession {
     let path = Path::new(file_path);
-    let (project, project_display_name, project_path) = extract_project_info(path);
+    let (project, project_display_name, project_path, _) = extract_project_info(path, None);
 
     let status = match entry.status.as_str() {
         "working" => SessionStatus::Working,
@@ -308,6 +323,12 @@ pub struct LiveSessionManager {
     process_count: Arc<AtomicU32>,
     /// Per-model pricing table for cost calculation.
     pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+    /// Database handle for batched writes.
+    db: Database,
+    /// Search index holder for passing to scan_and_index_all on overflow reconciliation.
+    search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
+    /// Registry holder for passing to scan_and_index_all on overflow reconciliation.
+    registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
 }
 
 impl LiveSessionManager {
@@ -317,6 +338,9 @@ impl LiveSessionManager {
     /// broadcast sender for SSE event streaming.
     pub fn start(
         pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+        db: Database,
+        search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
+        registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -328,6 +352,9 @@ impl LiveSessionManager {
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             process_count: Arc::new(AtomicU32::new(0)),
             pricing,
+            db,
+            search_index,
+            registry,
         });
 
         // Spawn background tasks
@@ -335,7 +362,14 @@ impl LiveSessionManager {
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
 
-        info!("LiveSessionManager started with 3 background tasks (file watcher, reconciliation loop, cleanup)");
+        // Spawn relay client for mobile remote access
+        super::relay_client::spawn_relay_client(
+            tx.clone(),
+            sessions.clone(),
+            super::relay_client::RelayClientConfig::default(),
+        );
+
+        info!("LiveSessionManager started with 5 background tasks (file watcher, reconciliation loop, cleanup, relay client, db writer)");
 
         (manager, sessions, tx)
     }
@@ -480,9 +514,12 @@ impl LiveSessionManager {
                                 build_recovered_session(session_id, entry, &file_path_str);
 
                             // Enrich with accumulator metrics if available
-                            let (project, project_display_name, project_path) =
-                                extract_project_info(path);
                             let accumulators = manager.accumulators.read().await;
+                            let cached_cwd = accumulators
+                                .get(session_id)
+                                .and_then(|a| a.resolved_cwd.as_deref());
+                            let (project, project_display_name, project_path, _) =
+                                extract_project_info(path, cached_cwd);
                             if let Some(acc) = accumulators.get(session_id) {
                                 let cost = manager
                                     .pricing
@@ -697,6 +734,24 @@ impl LiveSessionManager {
                                 .send(SessionEvent::SessionCompleted { session_id });
                         }
                     }
+                    FileEvent::Rescan => {
+                        tracing::info!("Overflow detected — triggering full reconciliation scan");
+                        let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
+                        let hints = build_index_hints(&claude_dir);
+                        let search_for_rescan = manager.search_index.read().unwrap().clone();
+                        let registry_for_rescan = manager.registry.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
+                        let (indexed, _) = scan_and_index_all(
+                            &claude_dir, &manager.db, &hints, search_for_rescan, registry_for_rescan, |_| {},
+                        ).await.unwrap_or((0, 0));
+                        if indexed > 0 {
+                            tracing::info!(indexed, "Reconciliation scan complete — resyncing live state");
+                            // Resync in-memory state for all recently-modified files
+                            let recent_paths = initial_scan(&claude_dir);
+                            for path in &recent_paths {
+                                manager.process_jsonl_update(path).await;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -858,7 +913,13 @@ impl LiveSessionManager {
     /// 5. Updates the shared session map.
     async fn process_jsonl_update(&self, path: &Path) {
         let session_id = extract_session_id(path);
-        let (project, project_display_name, project_path) = extract_project_info(path);
+        // Use cached cwd from accumulator if available (avoids re-reading file every poll)
+        let cached_cwd = {
+            let accumulators = self.accumulators.read().await;
+            accumulators.get(&session_id).and_then(|a| a.resolved_cwd.clone())
+        };
+        let (project, project_display_name, project_path, resolved_cwd) =
+            extract_project_info(path, cached_cwd.as_deref());
 
         // Get the current offset for this session
         let current_offset = {
@@ -913,6 +974,10 @@ impl LiveSessionManager {
         acc.offset = new_offset;
         acc.file_path = Some(path.to_path_buf());
         acc.project_path = Some(project_path.clone());
+        // Cache the resolved cwd so we don't re-read the file on every poll.
+        if acc.resolved_cwd.is_none() {
+            acc.resolved_cwd = resolved_cwd;
+        }
 
         // Detect file replacement: offset rollback means file was replaced.
         // Clear task progress to prevent duplicates on replay from offset 0.
@@ -928,6 +993,10 @@ impl LiveSessionManager {
             acc.mcp_servers.clear();
             acc.skills.clear();
             acc.tokens = TokenUsage::default();
+            acc.tool_counts_edit = 0;
+            acc.tool_counts_read = 0;
+            acc.tool_counts_bash = 0;
+            acc.tool_counts_write = 0;
         }
 
         for line in &new_lines {
@@ -963,6 +1032,17 @@ impl LiveSessionManager {
             {
                 if let Some(ref ts) = line.timestamp {
                     acc.last_cache_hit_at = parse_timestamp_to_unix(ts);
+                }
+            }
+
+            // Accumulate tool counts (cumulative, like tokens)
+            for name in &line.tool_names {
+                match name.as_str() {
+                    "Edit" => acc.tool_counts_edit += 1,
+                    "Read" => acc.tool_counts_read += 1,
+                    "Bash" => acc.tool_counts_bash += 1,
+                    "Write" => acc.tool_counts_write += 1,
+                    _ => {}
                 }
             }
 
@@ -1308,6 +1388,29 @@ impl LiveSessionManager {
             last_cache_hit_at: acc.last_cache_hit_at,
         };
 
+        // After accumulator update, persist partial state to DB (fire-and-forget).
+        let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
+        if let Err(e) = self.db.update_session_from_tail(
+            &session_id,
+            acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
+            acc.user_turn_count as i32,
+            last_activity_at,
+            &acc.last_user_message,
+            file_size,
+            file_size,
+            last_activity_at, // mtime approximation
+            acc.tokens.input_tokens as i64,
+            acc.tokens.output_tokens as i64,
+            acc.tokens.cache_read_tokens as i64,
+            acc.tokens.cache_creation_tokens as i64,
+            acc.tool_counts_edit as i32,
+            acc.tool_counts_read as i32,
+            acc.tool_counts_bash as i32,
+            acc.tool_counts_write as i32,
+        ).await {
+            tracing::warn!(session_id = %session_id, error = %e, "Failed to update session from tail");
+        }
+
         // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
 
@@ -1352,12 +1455,10 @@ fn extract_session_id(path: &Path) -> String {
 
 /// Extract project info from a JSONL file path.
 ///
-/// Returns `(encoded_project_name, display_name, decoded_project_path)`.
-///
-/// The encoded project directory name uses URL-encoding where path separators
-/// are percent-encoded. The display name is the last component of the decoded
-/// path.
-fn extract_project_info(path: &Path) -> (String, String, String) {
+/// Returns `(encoded_project_name, display_name, decoded_project_path, resolved_cwd)`.
+/// The 4th value is the raw cwd used for resolution — callers should cache it
+/// in `SessionAccumulator.resolved_cwd` to avoid re-reading JSONL on every poll.
+fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, String, String, Option<String>) {
     let project_encoded = path
         .parent()
         .and_then(|p| p.file_name())
@@ -1365,12 +1466,20 @@ fn extract_project_info(path: &Path) -> (String, String, String) {
         .unwrap_or("unknown")
         .to_string();
 
-    // Resolve the encoded directory name to a real filesystem path.
-    // Claude Code encodes paths like `/Users/foo/@org/project` as
-    // `-Users-foo--org-project` (special chars → `-`), NOT URL-encoding.
-    let resolved = claude_view_core::discovery::resolve_project_path(&project_encoded);
+    // Use cached cwd if available, else resolve from JSONL on disk.
+    let cwd = cached_cwd
+        .map(|s| s.to_string())
+        .or_else(|| {
+            path.parent()
+                .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
+        });
 
-    (project_encoded, resolved.display_name, resolved.full_path)
+    let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
+        &project_encoded,
+        cwd.as_deref(),
+    );
+
+    (project_encoded, resolved.display_name, resolved.full_path, cwd)
 }
 
 /// Calculate seconds since a Unix timestamp.
@@ -1479,26 +1588,37 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_project_info_simple() {
+    fn test_extract_project_info_simple_no_cwd() {
+        // Without cwd, resolve_project_path_with_cwd returns encoded name as-is
+        // (per design: "show errors, not guesses" — naive `-` split is wrong for
+        // paths containing `@` or `-`).
         let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
-        let (encoded, display, decoded) = extract_project_info(&path);
+        let (encoded, display, full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-tmp");
         assert_eq!(display, "tmp");
-        assert_eq!(decoded, "/tmp");
+        assert_eq!(full_path, "-tmp"); // encoded name, not decoded — no cwd available
+    }
+
+    #[test]
+    fn test_extract_project_info_with_cwd() {
+        // With cwd, the resolved path uses the authoritative cwd from JSONL.
+        let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
+        let (encoded, _display, full_path, cwd) = extract_project_info(&path, Some("/tmp"));
+        assert_eq!(encoded, "-tmp");
+        assert_eq!(full_path, "/tmp");
+        assert_eq!(cwd, Some("/tmp".to_string()));
     }
 
     #[test]
     fn test_extract_project_info_encoded_path() {
-        // Claude Code encodes `/Users/test/my-project` as `-Users-test-my-project`
-        // (special chars → `-`), NOT URL-encoding.
+        // Without cwd, encoded name returned as-is (no naive guessing).
         let path =
             PathBuf::from("/home/user/.claude/projects/-Users-test-my-project/session.jsonl");
-        let (encoded, display, _decoded) = extract_project_info(&path);
+        let (encoded, display, _full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-Users-test-my-project");
-        // Display name is the last path component
         assert!(!display.is_empty());
-        // Decoded path should start with /
-        assert!(_decoded.starts_with('/'));
+        // full_path is the encoded name when no cwd — NOT a decoded path
+        assert_eq!(_full_path, "-Users-test-my-project");
     }
 
     #[test]
@@ -1719,7 +1839,8 @@ mod tests {
         assert_eq!(session.agent_state.state, "awaiting_input");
         assert_eq!(session.last_activity_at, 1708500000);
         assert_eq!(session.project_display_name, "tmp");
-        assert_eq!(session.project_path, "/tmp");
+        // Without cwd from JSONL, project_path is the encoded name (not naive decode)
+        assert_eq!(session.project_path, "-tmp");
     }
 
     #[test]

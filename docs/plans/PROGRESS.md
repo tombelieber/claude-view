@@ -4,12 +4,13 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-02-21
+> **Last updated:** 2026-02-24
 
 ---
 
 ## Current Focus
 
+- **Reliability Release** (BLOCKING — fix before new features)
 - Mission Control Phase E+ (custom layout, interactive features)
 - Full-Text Search (Phase 6 — Tantivy)
 - Action Log Tab
@@ -56,6 +57,11 @@
 | **Phase 6: Search (Tantivy)** | **Approved** | Both |
 | **Mission Control** | **In Progress** | Personal |
 | **Action Log Tab** | **Pending** | Personal |
+| **Reliability Release** | **Pending** | Both |
+| **Star / Label Sessions** | **Pending** | Both |
+| **Session Backup** | **Pending** | Both |
+| **Monorepo Restructure** | **Deferred (next cycle)** | Both |
+| **Mobile Remote M1** | **Deferred (next cycle)** | Both |
 | Phase 5: Enterprise Team Layer | Not started | **Enterprise** |
 
 ---
@@ -78,10 +84,19 @@ Plans in `docs/plans/` (active work only):
 | `2026-02-21-custom-skill-registry-*.md` | done | User-level custom skill discovery and registry auto-reindex |
 | `2026-02-21-jsonl-ground-truth-recovery*.md` | done | Startup state from JSONL ground truth, removed staleness hack |
 | `2026-02-20-*` (8 files) | various | Recent active designs (pricing, liveness, history, renderers, etc.) |
+| `2026-02-24-reliability-release-issues.md` | pending | 4 foundation bugs: path config, hooks, session count, path resolve |
+| `2026-02-24-star-label-sessions-design.md` | approved (concept) | Named bookmarks on sessions — CLI + every UI surface |
+| `2026-02-24-session-backup-design.md` | draft | Preserve sessions beyond Claude Code's 30-day retention |
 | `mission-control/` | in-progress | Phases A-D done, E-J pending (see `mission-control/PROGRESS.md`) |
+| `2026-02-25-monorepo-restructure-design.md` | deferred (next cycle) | Turborepo monorepo: `apps/web`, `apps/mobile`, `packages/shared` |
+| `2026-02-25-monorepo-restructure-impl.md` | deferred (next cycle) | 12 tasks: git mv web SPA, workspaces, Expo scaffold, landing page |
+| `mobile-remote/2026-02-25-clawmini-mobile-m1-design.md` | deferred (next cycle) | Expo native app: live dashboard, keypair auth, dumb relay |
+| `mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md` | deferred (next cycle) | 12 tasks: relay fixes, pair screen, dashboard, deploy pipeline |
+
+**Execution order:** Monorepo restructure first → then M1 starting at Phase 2 (Phase 1 overlaps). See `mobile-remote/PROGRESS.md` for details.
 
 **Other locations:**
-- `docs/plans/backlog/` — 25 deferred/draft plans (epics, marketplace, mobile PWA, etc.)
+- `docs/plans/backlog/` — 25 deferred/draft plans (epics, marketplace, mobile app (Expo), etc.)
 - `docs/plans/archived/` — All completed phase plans and theme work
 
 ---

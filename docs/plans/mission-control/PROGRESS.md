@@ -51,8 +51,8 @@ Phase A ──► Phase G ──► Phase H ──┐
 - **J** depends on H + I (hardening and rollout after historical + live paths are both implemented)
 
 **External dependents:**
-- **Mobile PWA** (M1: Status Monitor) depends on **Phase A** — needs JSONL file watching + session state machine for remote status
-- **Mobile PWA** (M3: Interactive Control) depends on **Phase F** — needs Agent SDK sidecar for remote session resume/control
+- **Mobile App** (M1: Status Monitor) depends on **Phase A** — needs JSONL file watching + session state machine for remote status
+- **Mobile App** (M3: Interactive Control) depends on **Phase F** — needs Agent SDK sidecar for remote session resume/control
 
 ## Plan File Index
 

@@ -627,6 +627,25 @@ COMMIT;"#,
     // REAL with no NOT NULL DEFAULT: NULL = "not yet parsed with costUSD support",
     // distinguishable from 0.0 (parsed but zero cost).
     r#"ALTER TABLE sessions ADD COLUMN total_cost_usd REAL;"#,
+    // Migrations 33-36: Session topology fields for reliability release.
+    // Separate entries so each ALTER is independently idempotent (branch collision safety).
+    // Migration 33: session_cwd — raw cwd from JSONL (source of truth for project path)
+    r#"ALTER TABLE sessions ADD COLUMN session_cwd TEXT;"#,
+    // Migration 34: parent_session_id — parentUuid from first user line (fork/continuation)
+    r#"ALTER TABLE sessions ADD COLUMN parent_session_id TEXT;"#,
+    // Migration 35: session_kind — 'conversation' or 'metadata_only' (content classification)
+    r#"ALTER TABLE sessions ADD COLUMN session_kind TEXT;"#,
+    // Migration 36: start_type — first line type (user, file-history-snapshot, etc.)
+    r#"ALTER TABLE sessions ADD COLUMN start_type TEXT;"#,
+    // Migration 37: git_root — canonical git repository root resolved from session_cwd.
+    // NULL = non-git directory or path deleted before indexing.
+    r#"ALTER TABLE sessions ADD COLUMN git_root TEXT;"#,
+    // Migration 38: index for fast project grouping by git root
+    r#"CREATE INDEX IF NOT EXISTS idx_sessions_git_root ON sessions (git_root);"#,
+    // Migration 39: Remove last_message_at > 0 guard from valid_sessions.
+    // No longer needed — the unified pipeline guarantees all rows have real timestamps.
+    r#"DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0;"#,
 ];
 
 // ============================================================================

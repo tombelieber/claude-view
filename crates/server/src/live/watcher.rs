@@ -42,6 +42,8 @@ pub enum FileEvent {
     Modified(PathBuf),
     /// A parent session JSONL file was removed from disk.
     Removed(PathBuf),
+    /// OS event queue overflowed — trigger full reconciliation scan.
+    Rescan,
 }
 
 /// Start a file system watcher on `~/.claude/projects/`.
@@ -81,6 +83,16 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(Recommended
     let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         match res {
             Ok(event) => {
+                // Check for OS event queue overflow BEFORE path filtering,
+                // because overflow events have no JSONL paths and would be
+                // filtered out by the jsonl_paths.is_empty() guard.
+                if event.kind == EventKind::Other {
+                    if tx.try_send(FileEvent::Rescan).is_err() {
+                        warn!("File watcher channel full — rescan event dropped");
+                    }
+                    return; // Don't process individual paths for overflow events
+                }
+
                 // Filter to only parent session JSONL files (not sub-agents or tool-results)
                 // Parent sessions have path structure: {projects_dir}/{project}/{sessionId}.jsonl
                 // Sub-agents have deeper paths: {projects_dir}/{project}/{sessionId}/subagents/agent-*.jsonl
@@ -127,7 +139,10 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(Recommended
                 }
             }
             Err(e) => {
-                error!("File watcher error: {}", e);
+                error!("File watcher error: {} — triggering rescan", e);
+                if tx.try_send(FileEvent::Rescan).is_err() {
+                    warn!("File watcher channel full — error-triggered rescan dropped");
+                }
             }
         }
     })?;

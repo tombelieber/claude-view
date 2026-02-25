@@ -46,6 +46,7 @@ export type { SyncStatus } from './SyncStatus'
 
 // Storage types (Phase 3)
 export type { StorageStats } from './StorageStats'
+export type { SystemStorageStats } from './SystemStorageStats'
 
 // AI Generation types (Phase 3)
 export type { AggregateCostBreakdown } from './AggregateCostBreakdown'
@@ -124,7 +125,6 @@ export type { IndexRunStatus } from './IndexRunStatus'
 export type { ActionResponse } from './ActionResponse'
 export type { ClearCacheResponse } from './ClearCacheResponse'
 export type { ClaudeCliStatus } from './ClaudeCliStatus'
-export type { StorageStats } from './StorageStats'
 export type { PatternScore } from './PatternScore'
 
 // API response types

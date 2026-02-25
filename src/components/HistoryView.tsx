@@ -1,9 +1,9 @@
 // src/components/HistoryView.tsx
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen } from 'lucide-react'
+import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen, Loader2 } from 'lucide-react'
 import { buildSessionUrl } from '../lib/url-utils'
 import { NO_BRANCH } from '../lib/constants'
 import { useProjectSummaries } from '../hooks/use-projects'
@@ -23,6 +23,7 @@ import { cn } from '../lib/utils'
 import { useTimeRange } from '../hooks/use-time-range'
 import { TimeRangeSelector, DateRangePicker } from './ui'
 import { useIsMobile } from '../hooks/use-media-query'
+import type { IndexingProgress } from '../hooks/use-indexing-progress'
 
 /** Human-readable labels for sort options */
 const SORT_LABELS: Record<SessionSort, string> = {
@@ -80,6 +81,7 @@ function formatSortMetric(session: { durationSeconds?: number; userPromptCount?:
 export function HistoryView() {
   const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
+  const { indexingProgress } = useOutletContext<{ indexingProgress?: IndexingProgress }>()
 
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
@@ -110,7 +112,7 @@ export function HistoryView() {
     filters,
     search: debouncedSearch,
     timeAfter: timeRange.fromTimestamp ?? undefined,
-    timeBefore: undefined,
+    timeBefore: timeRange.toTimestamp ?? undefined,
     sidebarProject,
     sidebarBranch,
   })
@@ -387,6 +389,30 @@ export function HistoryView() {
         )}
 
         {/* Classify-all banner — disabled (feature flag off) */}
+
+        {/* Inline indexing progress — shows during active startup indexing */}
+        {indexingProgress && (indexingProgress.phase === 'reading-indexes' || indexingProgress.phase === 'ready' || indexingProgress.phase === 'deep-indexing') && (
+          <div className="mt-3 flex items-center gap-2.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <Loader2 className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 animate-spin flex-shrink-0" aria-hidden="true" />
+            <span className="text-xs text-blue-700 dark:text-blue-300">
+              {indexingProgress.phase === 'reading-indexes' && 'Scanning sessions...'}
+              {indexingProgress.phase === 'ready' && `Found ${indexingProgress.sessions.toLocaleString()} sessions. Starting index...`}
+              {indexingProgress.phase === 'deep-indexing' && (
+                indexingProgress.total > 0
+                  ? `Indexing: ${indexingProgress.indexed.toLocaleString()} / ${indexingProgress.total.toLocaleString()} sessions...`
+                  : `Indexing: ${indexingProgress.indexed.toLocaleString()} sessions...`
+              )}
+            </span>
+            {indexingProgress.phase === 'deep-indexing' && indexingProgress.total > 0 && (
+              <div className="flex-1 max-w-32 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Session List or Table */}
         <div className="mt-5">
