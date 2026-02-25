@@ -26,10 +26,10 @@ impl Database {
             sqlx::query_as(
                 r#"
                 SELECT
-                  (SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0),
-                  (SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0),
+                  (SELECT COUNT(*) FROM valid_sessions),
+                  (SELECT COUNT(DISTINCT project_id) FROM valid_sessions),
                   (SELECT COUNT(DISTINCT commit_hash) FROM session_commits),
-                  (SELECT MIN(last_message_at) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0)
+                  (SELECT MIN(last_message_at) FROM valid_sessions)
                 "#,
             )
             .fetch_one(self.pool())
@@ -58,24 +58,6 @@ impl Database {
             .execute(self.pool())
             .await?;
         Ok(())
-    }
-
-    /// Backfill primary_model from turns table for sessions that were deep-indexed
-    /// before primary_model was populated during indexing.
-    pub async fn backfill_primary_models(&self) -> DbResult<u64> {
-        let result = sqlx::query(
-            r#"
-            UPDATE sessions SET primary_model = (
-                SELECT model_id FROM turns
-                WHERE turns.session_id = sessions.id
-                GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1
-            )
-            WHERE primary_model IS NULL AND deep_indexed_at IS NOT NULL
-            "#,
-        )
-        .execute(self.pool())
-        .await?;
-        Ok(result.rows_affected())
     }
 
     // ========================================================================
@@ -124,7 +106,7 @@ impl Database {
     pub async fn get_health_stats(&self) -> DbResult<HealthStats> {
         // Count sessions (excluding sidechains)
         let (sessions_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0",
+            "SELECT COUNT(*) FROM valid_sessions",
         )
         .fetch_one(self.pool())
         .await?;
@@ -137,7 +119,7 @@ impl Database {
 
         // Count unique projects
         let (projects_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0",
+            "SELECT COUNT(DISTINCT project_id) FROM valid_sessions",
         )
         .fetch_one(self.pool())
         .await?;

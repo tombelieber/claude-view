@@ -31,7 +31,8 @@ use crate::Database;
 /// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
 /// Version 11: Unified session pipeline — single-pass parse-before-write.
 /// Version 12: valid_sessions view no longer requires last_message_at > 0.
-pub const CURRENT_PARSE_VERSION: i32 = 12;
+/// Version 13: Unified pipeline writes turns, models, invocations, and search index.
+pub const CURRENT_PARSE_VERSION: i32 = 13;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -726,6 +727,20 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
         }
 
+        // Extract cwd (appears on user, progress, system lines — grab first match)
+        if result.cwd.is_none() {
+            if let Some(pos) = cwd_finder.find(line) {
+                let start = pos + b"\"cwd\":\"".len();
+                if let Some(end) = line[start..].iter().position(|&b| b == b'"') {
+                    if let Ok(s) = std::str::from_utf8(&line[start..start + end]) {
+                        if !s.is_empty() {
+                            result.cwd = Some(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         // SIMD fast path: lightweight types that don't need full JSON parse
         if type_progress.find(line).is_some() {
             diag.lines_progress += 1;
@@ -817,17 +832,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     content: text,
                     timestamp: user_ts,
                 });
-            }
-            // Extract cwd from first user message
-            if result.cwd.is_none() {
-                if let Some(pos) = cwd_finder.find(line) {
-                    let start = pos + b"\"cwd\":\"".len();
-                    if let Some(end) = line[start..].iter().position(|&b| b == b'"') {
-                        if let Ok(s) = std::str::from_utf8(&line[start..start + end]) {
-                            result.cwd = Some(s.to_string());
-                        }
-                    }
-                }
             }
             continue;
         }
@@ -1894,6 +1898,10 @@ pub async fn pass_1_read_indexes(
             });
         let entry_cwd = entry_cwd_owned.as_deref();
 
+        // Infer git_root from cwd path (detects /.claude/worktrees/ and /.worktrees/ patterns)
+        let inferred_git_root = entry_cwd
+            .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
+
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
             if let Some(parent_encoded) = resolve_worktree_parent(project_encoded) {
@@ -1959,13 +1967,15 @@ pub async fn pass_1_read_indexes(
             .await
             .map_err(|e| format!("Failed to insert session {}: {}", entry.session_id, e))?;
 
-            // Update topology fields if this entry has cwd or parent_id from classification
-            if entry.session_cwd.is_some() || entry.parent_session_id.is_some() {
+            // Always store session_cwd and git_root so the backfill and UI grouping work.
+            // Use entry-level cwd if available, else the project-level resolved cwd.
+            let session_cwd = entry.session_cwd.as_deref().or(entry_cwd);
+            if session_cwd.is_some() || entry.parent_session_id.is_some() || inferred_git_root.is_some() {
                 db.update_session_topology(
                     &entry.session_id,
-                    entry.session_cwd.as_deref(),
+                    session_cwd,
                     entry.parent_session_id.as_deref(),
-                    None, // git_root filled by indexer or backfill
+                    inferred_git_root.as_deref(),
                 )
                 .await
                 .map_err(|e| format!("Failed to update topology {}: {}", entry.session_id, e))?;
@@ -2700,13 +2710,32 @@ pub async fn prune_stale_sessions(db: &Database) -> Result<u64, String> {
     Ok(pruned)
 }
 
-/// Single-pass startup scan. Discovers all .jsonl files, parses those that
-/// changed (mtime+size mismatch), and upserts complete rows.
+/// Collected results from one session's parse phase, ready for batched DB + search write.
+struct IndexedSession {
+    parsed: ParsedSession,
+    turns: Vec<claude_view_core::RawTurn>,
+    models_seen: Vec<String>,
+    classified_invocations: Vec<(String, i64, String, String, String, i64)>,
+    search_messages: Vec<claude_view_core::SearchableMessage>,
+    cwd: Option<String>,
+    git_root: Option<String>,
+    /// Project name for search indexing
+    project_for_search: String,
+}
+
+/// 3-phase startup scan: parse (parallel) → SQLite write (chunked) → search index.
+///
+/// Phase 1: Parse all changed JSONL files in parallel (CPU-bound, zero DB writes).
+/// Phase 2: Write sessions, turns, models, invocations in chunked transactions.
+/// Phase 3: Write search index to Tantivy (after SQLite success).
+///
 /// Returns (indexed_count, skipped_count).
 pub async fn scan_and_index_all<F>(
     claude_dir: &Path,
     db: &Database,
     hints: &HashMap<String, IndexHints>,
+    search_index: Option<Arc<claude_view_search::SearchIndex>>,
+    registry: Option<Arc<Registry>>,
     on_file_done: F,
 ) -> Result<(usize, usize), String>
 where
@@ -2717,8 +2746,19 @@ where
         return Ok((0, 0));
     }
 
+    // When the search index was rebuilt (schema version mismatch), force re-parse
+    // of ALL sessions so search_messages get regenerated and fed to Tantivy.
+    let force_search_reindex = search_index
+        .as_ref()
+        .map(|idx| idx.needs_full_reindex)
+        .unwrap_or(false);
+
+    if force_search_reindex {
+        tracing::info!("Search index was rebuilt — forcing full re-parse to repopulate search data");
+    }
+
     // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
-    let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new(); // (path, project_encoded, session_id)
+    let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new();
     let project_entries = std::fs::read_dir(&projects_dir)
         .map_err(|e| format!("Failed to read projects dir: {}", e))?;
 
@@ -2743,7 +2783,6 @@ where
             if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
-            // Derive session_id from filename: "abc-123.jsonl" -> "abc-123"
             let session_id = file_path
                 .file_stem()
                 .unwrap_or_default()
@@ -2754,7 +2793,6 @@ where
     }
 
     // Pre-load all existing session staleness info from DB in one query.
-    // Returns: Vec<(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project)>
     let existing_sessions = db
         .get_sessions_needing_deep_index()
         .await
@@ -2772,19 +2810,19 @@ where
             .unwrap_or(4),
     ));
 
-    let indexed = Arc::new(AtomicUsize::new(0));
     let skipped = Arc::new(AtomicUsize::new(0));
-    let on_file_done = Arc::new(on_file_done);
 
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 1: PARSE (parallel, CPU-bound, zero I/O writes)
+    // ══════════════════════════════════════════════════════════════════════
     let mut handles = Vec::with_capacity(files.len());
     for (path, project_encoded, session_id) in files {
-        let db = db.clone();
         let sem = semaphore.clone();
         let hints = hints.clone();
         let existing_map = existing_map.clone();
-        let indexed = indexed.clone();
         let skipped = skipped.clone();
-        let on_done = on_file_done.clone();
+        let registry = registry.clone();
+        let force_reindex = force_search_reindex;
 
         let handle = tokio::spawn(async move {
             let _permit = sem
@@ -2795,7 +2833,7 @@ where
             // 1. stat() the file for current size + mtime
             let metadata = match std::fs::metadata(&path) {
                 Ok(m) => m,
-                Err(_) => return Ok::<(), String>(()), // file gone, skip
+                Err(_) => return Ok::<Option<IndexedSession>, String>(None),
             };
             let current_size = metadata.len() as i64;
             let current_mtime = metadata
@@ -2805,16 +2843,18 @@ where
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
 
-            // 2. Check staleness against DB
-            if let Some((Some(stored_size), Some(stored_mtime), pv)) =
-                existing_map.get(&session_id)
-            {
-                if *stored_size == current_size
-                    && *stored_mtime == current_mtime
-                    && *pv >= CURRENT_PARSE_VERSION
+            // 2. Check staleness against DB (force_search_reindex bypasses)
+            if !force_reindex {
+                if let Some((Some(stored_size), Some(stored_mtime), pv)) =
+                    existing_map.get(&session_id)
                 {
-                    skipped.fetch_add(1, Ordering::Relaxed);
-                    return Ok(());
+                    if *stored_size == current_size
+                        && *stored_mtime == current_mtime
+                        && *pv >= CURRENT_PARSE_VERSION
+                    {
+                        skipped.fetch_add(1, Ordering::Relaxed);
+                        return Ok(None);
+                    }
                 }
             }
 
@@ -2828,15 +2868,19 @@ where
 
             let meta = &parse_result.deep;
 
+            // Skip files with no parseable timestamps
+            if meta.last_timestamp.is_none() {
+                tracing::debug!(path = %path.display(), "Skipping file with no timestamps");
+                skipped.fetch_add(1, Ordering::Relaxed);
+                return Ok(None);
+            }
+
             // 4. Resolve project info from cwd (authoritative) or hints
             let hint = hints.get(&session_id);
             let cwd = parse_result.cwd.as_deref();
 
-            // Worktree consolidation
             let (effective_encoded, resolved) =
-                if let Some(parent_encoded) =
-                    resolve_worktree_parent(&project_encoded)
-                {
+                if let Some(parent_encoded) = resolve_worktree_parent(&project_encoded) {
                     let r = claude_view_core::discovery::resolve_project_path_with_cwd(&parent_encoded, cwd);
                     (parent_encoded, r)
                 } else {
@@ -2854,7 +2898,7 @@ where
             let git_branch_hint = hint.and_then(|h| h.git_branch.clone());
             let summary_hint = hint.and_then(|h| h.summary.clone());
 
-            // Compute derived fields (same pattern as pass_2_deep_index)
+            // Compute derived fields
             let commit_invocations =
                 extract_commit_skill_invocations(&parse_result.raw_invocations);
             let commit_count = commit_invocations.len() as i32;
@@ -2878,7 +2922,6 @@ where
             let work_type = classify_work_type(&work_type_input);
             let primary_model = compute_primary_model(&parse_result.turns);
 
-            // Serialize vec fields to JSON strings
             let files_touched_json = serde_json::to_string(&meta.files_touched)
                 .unwrap_or_else(|_| "[]".to_string());
             let skills_used_json = serde_json::to_string(&meta.skills_used)
@@ -2888,36 +2931,44 @@ where
             let files_edited_json = serde_json::to_string(&meta.files_edited)
                 .unwrap_or_else(|_| "[]".to_string());
 
-            // Use parser-derived git_branch, fall back to hints
-            let git_branch = parse_result
-                .git_branch
-                .clone()
-                .or(git_branch_hint);
-
-            // Use parser summary_text, fall back to hints
+            let git_branch = parse_result.git_branch.clone().or(git_branch_hint);
             let summary = meta.summary_text.clone().or(summary_hint);
-
-            // Preview: first_user_prompt from parse, or empty
-            let preview = meta
-                .first_user_prompt
-                .clone()
-                .unwrap_or_default();
-
-            // message_count: user_prompt_count + api_call_count (lines parsed)
+            let preview = meta.first_user_prompt.clone().unwrap_or_default();
             let message_count = (meta.user_prompt_count + meta.api_call_count) as i32;
 
-            // Skip files with no parseable timestamps — these are empty or
-            // contain only file-history-snapshot entries, not real sessions.
-            if meta.last_timestamp.is_none() {
-                tracing::debug!(path = %path.display(), "Skipping file with no timestamps");
-                skipped.fetch_add(1, Ordering::Relaxed);
-                return Ok(());
-            }
+            // Classify invocations (CPU work, no DB)
+            let classified = if let Some(ref registry) = registry {
+                parse_result
+                    .raw_invocations
+                    .iter()
+                    .filter_map(|raw| {
+                        match claude_view_core::classify_tool_use(&raw.name, &raw.input, registry) {
+                            ClassifyResult::Valid { invocable_id, .. } => Some((
+                                path.to_string_lossy().to_string(),
+                                raw.byte_offset as i64,
+                                invocable_id,
+                                session_id.clone(),
+                                String::new(),
+                                raw.timestamp,
+                            )),
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
-            // 5. Build ParsedSession
+            // Resolve cwd/git_root for topology
+            let cwd_owned = parse_result.cwd.clone();
+            let git_root = cwd
+                .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path)
+                .map(|s| s.to_string());
+
+            // Build ParsedSession
             let parsed = ParsedSession {
-                id: session_id.clone(),
-                project_id: effective_encoded,
+                id: session_id,
+                project_id: effective_encoded.clone(),
                 project_display_name,
                 project_path,
                 file_path: path.to_string_lossy().to_string(),
@@ -2969,7 +3020,7 @@ where
                 file_mtime_at_index: current_mtime,
                 lines_added: parse_result.lines_added as i64,
                 lines_removed: parse_result.lines_removed as i64,
-                loc_source: 1, // 1 = tool-call estimate
+                loc_source: 1,
                 ai_lines_added: meta.ai_lines_added as i64,
                 ai_lines_removed: meta.ai_lines_removed as i64,
                 work_type: Some(work_type.as_str().to_string()),
@@ -2980,36 +3031,232 @@ where
                 total_cost_usd: meta.total_cost_usd,
             };
 
-            // 6. Upsert to DB
-            db.upsert_parsed_session(&parsed)
-                .await
-                .map_err(|e| format!("Failed to upsert session {}: {}", session_id, e))?;
-
-            indexed.fetch_add(1, Ordering::Relaxed);
-            on_done(&session_id);
-
-            Ok(())
+            Ok(Some(IndexedSession {
+                parsed,
+                turns: parse_result.turns,
+                models_seen: parse_result.models_seen,
+                classified_invocations: classified,
+                search_messages: parse_result.search_messages,
+                cwd: cwd_owned,
+                git_root,
+                project_for_search: effective_encoded,
+            }))
         });
 
         handles.push(handle);
     }
 
+    // Collect all parse results
+    let mut indexed_sessions: Vec<IndexedSession> = Vec::with_capacity(handles.len());
     for h in handles {
         match h.await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                tracing::warn!("scan_and_index_all task error: {}", e);
+            Ok(Ok(Some(session))) => indexed_sessions.push(session),
+            Ok(Ok(None)) => {} // skipped or empty
+            Ok(Err(e)) => tracing::warn!("scan_and_index_all parse error: {}", e),
+            Err(e) => tracing::warn!("scan_and_index_all join error: {}", e),
+        }
+    }
+
+    if indexed_sessions.is_empty() {
+        return Ok((0, skipped.load(Ordering::Relaxed)));
+    }
+
+    let total_search_bytes: usize = indexed_sessions
+        .iter()
+        .map(|s| s.search_messages.iter().map(|m| m.content.len()).sum::<usize>())
+        .sum();
+    tracing::info!(
+        sessions = indexed_sessions.len(),
+        search_bytes = total_search_bytes,
+        "Phase 1 parse complete, starting Phase 2 SQLite write"
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 2: SQLITE WRITE (sequential, chunked, single writer)
+    // ══════════════════════════════════════════════════════════════════════
+    let on_file_done = Arc::new(on_file_done);
+    let seen_at = chrono::Utc::now().timestamp();
+    let mut indexed_count: usize = 0;
+
+    for chunk in indexed_sessions.chunks(200) {
+        let mut tx = db
+            .pool()
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
+
+        // BEGIN IMMEDIATE: acquire write lock upfront (WAL mode allows concurrent readers)
+        sqlx::query("PRAGMA busy_timeout = 30000")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("Failed to set busy_timeout: {}", e))?;
+
+        // Dedup and UPSERT models FIRST — turns.model_id has FK to models.id
+        let mut chunk_models: HashMap<String, ()> = HashMap::new();
+        for session in chunk {
+            for model in &session.models_seen {
+                chunk_models.entry(model.clone()).or_insert(());
             }
-            Err(e) => {
-                tracing::warn!("scan_and_index_all join error: {}", e);
+        }
+        if !chunk_models.is_empty() {
+            let model_ids: Vec<String> = chunk_models.into_keys().collect();
+            crate::queries::batch_upsert_models_tx(&mut tx, &model_ids, seen_at)
+                .await
+                .map_err(|e| format!("Failed to upsert models: {}", e))?;
+        }
+
+        // Per-session writes: session upsert, topology, turns, invocations
+        for session in chunk {
+            // DELETE stale turns/invocations before re-inserting
+            sqlx::query("DELETE FROM turns WHERE session_id = ?1")
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("DELETE turns for {}: {}", session.parsed.id, e))?;
+
+            sqlx::query("DELETE FROM invocations WHERE session_id = ?1")
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("DELETE invocations for {}: {}", session.parsed.id, e))?;
+
+            // UPSERT session (63 params, generic over Executor)
+            crate::queries::sessions::execute_upsert_parsed_session(&mut *tx, &session.parsed)
+                .await
+                .map_err(|e| format!("Failed to upsert session {}: {}", session.parsed.id, e))?;
+
+            // UPDATE topology (session_cwd, git_root)
+            if session.cwd.is_some() {
+                sqlx::query(
+                    "UPDATE sessions SET \
+                     session_cwd = COALESCE(?1, session_cwd), \
+                     git_root = COALESCE(?2, git_root) \
+                     WHERE id = ?3",
+                )
+                .bind(session.cwd.as_deref())
+                .bind(session.git_root.as_deref())
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to update topology {}: {}", session.parsed.id, e))?;
+            }
+
+            // INSERT turns
+            if !session.turns.is_empty() {
+                crate::queries::batch_insert_turns_tx(&mut tx, &session.parsed.id, &session.turns)
+                    .await
+                    .map_err(|e| format!("Failed to insert turns for {}: {}", session.parsed.id, e))?;
+            }
+
+            // INSERT invocations
+            if !session.classified_invocations.is_empty() {
+                crate::queries::batch_insert_invocations_tx(&mut tx, &session.classified_invocations)
+                    .await
+                    .map_err(|e| format!("Failed to insert invocations for {}: {}", session.parsed.id, e))?;
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
+
+        // Fire progress callbacks AFTER commit (data is durable)
+        for session in chunk {
+            on_file_done(&session.parsed.id);
+        }
+        indexed_count += chunk.len();
+
+        // Yield between chunks so live manager writes can slip through
+        tokio::task::yield_now().await;
+    }
+
+    tracing::info!(
+        indexed = indexed_count,
+        "Phase 2 SQLite write complete, starting Phase 3 search index"
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 3: SEARCH INDEX (sequential, after SQLite success)
+    // ══════════════════════════════════════════════════════════════════════
+    if let Some(ref search) = search_index {
+        let mut search_errors = 0u32;
+        let mut sessions_indexed = 0u32;
+
+        for session in &indexed_sessions {
+            if session.search_messages.is_empty() {
+                continue;
+            }
+
+            let mut docs: Vec<claude_view_search::SearchDocument> = session
+                .search_messages
+                .iter()
+                .enumerate()
+                .map(|(i, msg)| claude_view_search::SearchDocument {
+                    session_id: session.parsed.id.clone(),
+                    project: session.project_for_search.clone(),
+                    branch: session.parsed.git_branch.clone().unwrap_or_default(),
+                    model: session.parsed.primary_model.clone().unwrap_or_default(),
+                    role: msg.role.clone(),
+                    content: msg.content.clone(),
+                    turn_number: (i + 1) as u64,
+                    timestamp: msg.timestamp.unwrap_or(0),
+                    skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
+                })
+                .collect();
+
+            // Add session summary document for metadata search
+            if !session.parsed.preview.is_empty() || !session.project_for_search.is_empty() {
+                let mut summary_parts = Vec::new();
+                if !session.parsed.preview.is_empty() {
+                    summary_parts.push(session.parsed.preview.as_str());
+                }
+                if !session.project_for_search.is_empty() {
+                    summary_parts.push(session.project_for_search.as_str());
+                }
+                if !session.parsed.last_message.is_empty() {
+                    summary_parts.push(session.parsed.last_message.as_str());
+                }
+                if !summary_parts.is_empty() {
+                    docs.push(claude_view_search::SearchDocument {
+                        session_id: session.parsed.id.clone(),
+                        project: session.project_for_search.clone(),
+                        branch: session.parsed.git_branch.clone().unwrap_or_default(),
+                        model: session.parsed.primary_model.clone().unwrap_or_default(),
+                        role: "summary".to_string(),
+                        content: summary_parts.join(" | "),
+                        turn_number: 0,
+                        timestamp: session.parsed.last_message_at,
+                        skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
+                    });
+                }
+            }
+
+            if let Err(e) = search.index_session(&session.parsed.id, &docs) {
+                tracing::warn!(session_id = %session.parsed.id, error = %e, "Failed to index session for search");
+                search_errors += 1;
+            }
+            sessions_indexed += 1;
+        }
+
+        if sessions_indexed > 0 {
+            if let Err(e) = search.commit() {
+                tracing::warn!(error = %e, "Failed to commit search index");
+            } else {
+                if let Err(e) = search.reader.reload() {
+                    tracing::warn!(error = %e, "Failed to reload search reader after commit");
+                }
+                if search_errors > 0 {
+                    tracing::info!(indexed = sessions_indexed, errors = search_errors, "Search index write complete (with errors)");
+                }
+                // Mark schema synced if this was a full reindex
+                if force_search_reindex {
+                    search.mark_schema_synced();
+                }
             }
         }
     }
 
-    Ok((
-        indexed.load(Ordering::Relaxed),
-        skipped.load(Ordering::Relaxed),
-    ))
+    Ok((indexed_count, skipped.load(Ordering::Relaxed)))
 }
 
 #[cfg(test)]
@@ -4810,7 +5057,7 @@ mod scan_and_index_tests {
 
         // First scan: should parse and insert
         let (indexed, skipped) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed, 1, "first scan should index 1 file");
@@ -4818,7 +5065,7 @@ mod scan_and_index_tests {
 
         // Second scan without file changes: should skip
         let (indexed2, skipped2) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed2, 0, "second scan should index 0 files");
