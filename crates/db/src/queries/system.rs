@@ -178,14 +178,14 @@ impl Database {
     pub async fn get_classification_status(&self) -> DbResult<ClassificationStatus> {
         // Count classified sessions
         let (classified_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE classified_at IS NOT NULL AND is_sidechain = 0",
+            "SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NOT NULL",
         )
         .fetch_one(self.pool())
         .await?;
 
         // Count unclassified sessions
         let (unclassified_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE classified_at IS NULL AND is_sidechain = 0",
+            "SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NULL",
         )
         .fetch_one(self.pool())
         .await?;
