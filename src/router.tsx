@@ -6,6 +6,7 @@ import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ActivityPage } from './pages/ActivityPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'analytics', element: <AnalyticsPage /> },
+      { path: 'activity', element: <ActivityPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft, Cpu, FileText } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft, Cpu, FileText, CalendarDays } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
 import { cn } from '../lib/utils'
@@ -425,6 +425,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           <BarChart3 className="w-5 h-5" />
         </Link>
         <Link
+          to="/activity"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/activity'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+          )}
+          title="Activity"
+        >
+          <CalendarDays className="w-5 h-5" />
+        </Link>
+        <Link
           to="/reports"
           className={cn(
             'p-2 rounded-md transition-colors',
@@ -517,6 +530,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               >
                 <BarChart3 className="w-4 h-4" />
                 <span className="font-medium">Analytics</span>
+              </Link>
+              <Link
+                to={`/activity${paramString ? `?${paramString}` : ""}`}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  location.pathname === '/activity'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                )}
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span className="font-medium">Activity</span>
               </Link>
               <Link
                 to={`/reports${paramString ? `?${paramString}` : ""}`}

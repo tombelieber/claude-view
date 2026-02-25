@@ -7,7 +7,6 @@
 )]
 
 pub mod git_correlation;
-pub mod indexer;
 pub mod indexer_parallel;
 pub mod insights_trends;
 mod migrations;
@@ -32,10 +31,13 @@ pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
 pub use queries::SessionFilterParams;
 pub use queries::StatsOverview;
-pub use queries::StorageStats;
+pub use queries::SystemStorageStats;
 pub use queries::TokenStats;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
+
+// Re-export session upsert helpers for the live manager's flush_batch
+pub use queries::sessions::{execute_upsert_parsed_session, UPSERT_SESSION_SQL};
 
 // Re-export trends types
 pub use trends::current_week_bounds;

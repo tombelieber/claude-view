@@ -110,6 +110,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            git_root: None,
             file_path: format!(
                 "/home/user/.claude/projects/{}/{}.jsonl",
                 project, id
@@ -175,6 +176,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 

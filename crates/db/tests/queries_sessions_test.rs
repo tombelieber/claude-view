@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Integration tests for Database session query methods.
 
 use chrono::Utc;
@@ -361,6 +362,9 @@ async fn test_update_session_deep_fields_phase3() {
         None,  // primary_model
         None,  // last_message_at
         None,  // first_user_prompt
+        0, // total_task_time_seconds
+        None, // longest_task_seconds
+        None, // longest_task_preview
         0.0,   // total_cost_usd
     )
     .await
@@ -465,6 +469,9 @@ async fn test_list_sessions_for_project_includes_phase3_fields() {
         None,        // primary_model
         None,        // last_message_at
         None,        // first_user_prompt
+        0, // total_task_time_seconds
+        None, // longest_task_seconds
+        None, // longest_task_preview
         0.0,         // total_cost_usd
     )
     .await

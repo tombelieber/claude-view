@@ -167,6 +167,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/home/user/.claude/projects/project-a/sess-1.jsonl".to_string(),
             modified_at: 1000,
             size_bytes: 2048,
@@ -229,6 +230,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await

@@ -4,11 +4,162 @@
 //! Each Claude Code project stores a `sessions-index.json` that lists all
 //! sessions with metadata (summary, message count, timestamps, etc.).
 
+use memchr::memmem;
 use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use tracing::warn;
 
 use crate::error::SessionIndexError;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionKind {
+    Conversation,  // has user + assistant lines
+    MetadataOnly,  // file-history-snapshot, summary, etc.
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartType {
+    User,
+    FileHistorySnapshot,
+    QueueOperation,
+    Progress,
+    Summary,
+    Assistant,
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionClassification {
+    pub kind: SessionKind,
+    pub start_type: StartType,
+    pub cwd: Option<String>,
+    pub parent_id: Option<String>,
+}
+
+/// Classify a JSONL file by scanning its content.
+/// Uses memmem SIMD pre-filter — only JSON-parses lines that match.
+pub fn classify_jsonl_file(path: &Path) -> Result<SessionClassification, SessionIndexError> {
+    let file = File::open(path).map_err(|e| SessionIndexError::io(path, e))?;
+    let reader = BufReader::new(file);
+
+    let user_finder = memmem::Finder::new(br#""type":"user""#);
+    let user_finder_spaced = memmem::Finder::new(br#""type": "user""#);
+    let assistant_finder = memmem::Finder::new(br#""type":"assistant""#);
+    let assistant_finder_spaced = memmem::Finder::new(br#""type": "assistant""#);
+
+    let mut start_type = StartType::Unknown;
+    let mut has_user = false;
+    let mut has_assistant = false;
+    let mut cwd: Option<String> = None;
+    let mut parent_id: Option<String> = None;
+    let mut first_line = true;
+
+    for line_result in reader.lines() {
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let bytes = line.as_bytes();
+
+        // Determine start_type from first non-empty line
+        if first_line && !line.trim().is_empty() {
+            first_line = false;
+            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&line) {
+                start_type = match obj.get("type").and_then(|v| v.as_str()) {
+                    Some("user") => StartType::User,
+                    Some("file-history-snapshot") => StartType::FileHistorySnapshot,
+                    Some("queue-operation") => StartType::QueueOperation,
+                    Some("progress") => StartType::Progress,
+                    Some("summary") => StartType::Summary,
+                    Some("assistant") => StartType::Assistant,
+                    _ => StartType::Unknown,
+                };
+            }
+        }
+
+        // SIMD pre-filter: check for user/assistant type markers
+        let is_user = user_finder.find(bytes).is_some()
+            || user_finder_spaced.find(bytes).is_some();
+        let is_assistant = assistant_finder.find(bytes).is_some()
+            || assistant_finder_spaced.find(bytes).is_some();
+
+        // Parse user lines to extract cwd and parentUuid
+        if is_user && !has_user {
+            has_user = true;
+            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&line) {
+                if cwd.is_none() {
+                    cwd = obj.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+                parent_id = obj.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
+        }
+
+        if is_assistant {
+            has_assistant = true;
+        }
+
+        // Extract cwd from any line if we haven't found it yet
+        if cwd.is_none() && line.contains("\"cwd\"") {
+            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&line) {
+                cwd = obj.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
+        }
+
+        // Early exit: both conditions resolved
+        if has_user && has_assistant && cwd.is_some() {
+            break;
+        }
+    }
+
+    let kind = if has_user && has_assistant {
+        SessionKind::Conversation
+    } else {
+        SessionKind::MetadataOnly
+    };
+
+    Ok(SessionClassification {
+        kind,
+        start_type,
+        cwd,
+        parent_id,
+    })
+}
+
+/// Resolve the cwd for a project directory by scanning one JSONL file.
+/// Returns the first `cwd` field found in any JSONL file in the directory.
+/// Used when sessions-index.json entries don't carry cwd (they never do).
+///
+/// Scans at most 3 files — cwd is present in 98.9% of conversation files,
+/// typically on the very first line. Returns None only for metadata-only dirs.
+pub fn resolve_cwd_for_project(project_dir: &Path) -> Option<String> {
+    let entries = match std::fs::read_dir(project_dir) {
+        Ok(e) => e,
+        Err(_) => return None,
+    };
+
+    let mut tried = 0u8;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+
+        if let Ok(classification) = classify_jsonl_file(&path) {
+            if classification.cwd.is_some() {
+                return classification.cwd;
+            }
+        }
+
+        tried += 1;
+        if tried >= 3 {
+            break;
+        }
+    }
+
+    None
+}
 
 /// Wrapper for the `sessions-index.json` file format.
 /// The file is `{"version": N, "entries": [...]}`.
@@ -44,6 +195,10 @@ pub struct SessionIndexEntry {
     pub project_path: Option<String>,
     #[serde(default)]
     pub is_sidechain: Option<bool>,
+    #[serde(default)]
+    pub session_cwd: Option<String>,
+    #[serde(default)]
+    pub parent_session_id: Option<String>,
 }
 
 /// Parse a single `sessions-index.json` file into a list of entries.
@@ -133,6 +288,18 @@ pub fn read_all_session_indexes(
                         if indexed_ids.contains(session_id) {
                             continue;
                         }
+                        // Classify first, skip non-conversation files.
+                        // Same filter discover_orphan_sessions() uses (lines 381-393).
+                        let classification = match classify_jsonl_file(&file_path) {
+                            Ok(c) => c,
+                            Err(e) => {
+                                warn!("Failed to classify {}: {}", file_path.display(), e);
+                                continue;
+                            }
+                        };
+                        if classification.kind != SessionKind::Conversation {
+                            continue;
+                        }
                         session_entries.push(SessionIndexEntry {
                             session_id: session_id.to_string(),
                             full_path: Some(file_path.to_string_lossy().to_string()),
@@ -145,6 +312,8 @@ pub fn read_all_session_indexes(
                             git_branch: None,
                             project_path: None,
                             is_sidechain: None,
+                            session_cwd: classification.cwd,
+                            parent_session_id: classification.parent_id,
                         });
                     }
                 }
@@ -255,6 +424,20 @@ pub fn discover_orphan_sessions(
                 None => continue,
             };
 
+            // Classify the file content before including it
+            let classification = match classify_jsonl_file(&file_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("Failed to classify {}: {}", file_path.display(), e);
+                    continue;
+                }
+            };
+
+            // Only include actual conversation sessions
+            if classification.kind != SessionKind::Conversation {
+                continue;
+            }
+
             let full_path = file_path.to_string_lossy().to_string();
 
             session_entries.push(SessionIndexEntry {
@@ -269,6 +452,8 @@ pub fn discover_orphan_sessions(
                 git_branch: None,
                 project_path: None,
                 is_sidechain: None,
+                session_cwd: classification.cwd,
+                parent_session_id: classification.parent_id,
             });
         }
 
@@ -440,9 +625,19 @@ mod tests {
         std::fs::write(proj.join("sessions-index.json"), json).unwrap();
 
         // But there are also sess-2.jsonl and sess-3.jsonl on disk
-        std::fs::write(proj.join("sess-1.jsonl"), "{}").unwrap();
-        std::fs::write(proj.join("sess-2.jsonl"), "{}").unwrap();
-        std::fs::write(proj.join("sess-3.jsonl"), "{}").unwrap();
+        // Real conversation content so classify_jsonl_file returns Conversation
+        std::fs::write(proj.join("sess-1.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+        std::fs::write(proj.join("sess-2.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u2","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a2","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+        std::fs::write(proj.join("sess-3.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u3","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a3","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
 
         let results = read_all_session_indexes(dir.path()).unwrap();
         assert_eq!(results.len(), 1);
@@ -475,6 +670,82 @@ mod tests {
     }
 
     // ========================================================================
+    // Catch-Up Classification Tests
+    // ========================================================================
+
+    #[test]
+    fn test_read_all_catchup_skips_metadata_files() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let proj = projects_dir.join("my-project");
+        std::fs::create_dir(&proj).unwrap();
+
+        // Index lists only sess-1
+        let json = r#"{"version":1,"entries":[{"sessionId": "sess-1"}]}"#;
+        std::fs::write(proj.join("sessions-index.json"), json).unwrap();
+
+        // Real conversation file (not in index — should be caught up)
+        std::fs::write(proj.join("conv-2.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/Users/dev/@org/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+
+        // Metadata-only file (file-history-snapshot — should be SKIPPED)
+        std::fs::write(proj.join("fhs-3.jsonl"), concat!(
+            r#"{"type":"file-history-snapshot","messageId":"m1","snapshot":{}}"#, "\n",
+        )).unwrap();
+
+        // Another metadata file (summary with timestamp — the dangerous case)
+        std::fs::write(proj.join("sum-4.jsonl"), concat!(
+            r#"{"type":"summary","summary":"did stuff","timestamp":"2026-02-25T10:00:00Z"}"#, "\n",
+        )).unwrap();
+
+        let results = read_all_session_indexes(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "my-project");
+
+        // Should have 2 entries: sess-1 from index + conv-2 from catch-up
+        // fhs-3 and sum-4 should be filtered out by classification
+        assert_eq!(results[0].1.len(), 2);
+
+        let ids: Vec<&str> = results[0].1.iter().map(|e| e.session_id.as_str()).collect();
+        assert!(ids.contains(&"sess-1"));
+        assert!(ids.contains(&"conv-2"));
+        assert!(!ids.contains(&"fhs-3"));
+        assert!(!ids.contains(&"sum-4"));
+    }
+
+    #[test]
+    fn test_read_all_catchup_captures_cwd_and_parent() {
+        let dir = TempDir::new().unwrap();
+        let projects_dir = dir.path().join("projects");
+        std::fs::create_dir(&projects_dir).unwrap();
+
+        let proj = projects_dir.join("test-proj");
+        std::fs::create_dir(&proj).unwrap();
+
+        // Empty index
+        std::fs::write(proj.join("sessions-index.json"), r#"{"version":1,"entries":[]}"#).unwrap();
+
+        // Forked conversation with cwd and parentUuid
+        std::fs::write(proj.join("fork-1.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","parentUuid":"parent-abc","message":{"content":"continue"},"cwd":"/Users/dev/@org/my-project"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+
+        let results = read_all_session_indexes(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].1.len(), 1);
+
+        let entry = &results[0].1[0];
+        assert_eq!(entry.session_id, "fork-1");
+        assert_eq!(entry.session_cwd.as_deref(), Some("/Users/dev/@org/my-project"));
+        assert_eq!(entry.parent_session_id.as_deref(), Some("parent-abc"));
+    }
+
+    // ========================================================================
     // discover_orphan_sessions Tests
     // ========================================================================
 
@@ -486,8 +757,14 @@ mod tests {
 
         let orphan_proj = projects_dir.join("orphan-project");
         std::fs::create_dir(&orphan_proj).unwrap();
-        std::fs::write(orphan_proj.join("abc-123.jsonl"), "{}").unwrap();
-        std::fs::write(orphan_proj.join("def-456.jsonl"), "{}").unwrap();
+        std::fs::write(orphan_proj.join("abc-123.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+        std::fs::write(orphan_proj.join("def-456.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u2","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a2","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
 
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert_eq!(results.len(), 1);
@@ -514,7 +791,10 @@ mod tests {
         let indexed_proj = projects_dir.join("indexed-project");
         std::fs::create_dir(&indexed_proj).unwrap();
         std::fs::write(indexed_proj.join("sessions-index.json"), "[]").unwrap();
-        std::fs::write(indexed_proj.join("abc-123.jsonl"), "{}").unwrap();
+        std::fs::write(indexed_proj.join("abc-123.jsonl"), concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
 
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert!(results.is_empty());
@@ -550,5 +830,167 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let results = discover_orphan_sessions(dir.path()).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_skips_metadata_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&proj_dir).unwrap();
+
+        // Real session file (has user + assistant)
+        let session = proj_dir.join("abc-123.jsonl");
+        std::fs::write(&session, concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hello"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"hi"}}"#, "\n",
+        )).unwrap();
+
+        // Metadata-only file (should NOT count as session)
+        let snapshot = proj_dir.join("fhs-456.jsonl");
+        std::fs::write(&snapshot, concat!(
+            r#"{"type":"file-history-snapshot","messageId":"m1","snapshot":{}}"#, "\n",
+        )).unwrap();
+
+        let results = discover_orphan_sessions(tmp.path()).unwrap();
+        let entries: Vec<_> = results.into_iter().flat_map(|(_, v)| v).collect();
+
+        // Only the real session should be discovered
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].session_id, "abc-123");
+        assert_eq!(entries[0].session_cwd.as_deref(), Some("/proj"));
+    }
+
+    #[test]
+    fn test_discover_orphan_sessions_captures_parent_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&proj_dir).unwrap();
+
+        let session = proj_dir.join("fork-789.jsonl");
+        std::fs::write(&session, concat!(
+            r#"{"type":"user","uuid":"u1","parentUuid":"parent-abc","message":{"content":"continue"},"cwd":"/proj"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+
+        let results = discover_orphan_sessions(tmp.path()).unwrap();
+        let entries: Vec<_> = results.into_iter().flat_map(|(_, v)| v).collect();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].parent_session_id.as_deref(), Some("parent-abc"));
+    }
+
+    // ========================================================================
+    // Classification Tests
+    // ========================================================================
+
+    #[test]
+    fn test_classify_normal_session() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, r#"{{"type":"user","uuid":"u1","message":{{"content":"hello"}},"cwd":"/proj"}}"#).unwrap();
+        writeln!(f, r#"{{"type":"assistant","uuid":"a1","message":{{"content":"hi"}}}}"#).unwrap();
+        let c = classify_jsonl_file(f.path()).unwrap();
+        assert_eq!(c.kind, SessionKind::Conversation);
+        assert_eq!(c.start_type, StartType::User);
+        assert_eq!(c.cwd.as_deref(), Some("/proj"));
+        assert!(c.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_classify_forked_session() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, r#"{{"type":"user","uuid":"u1","parentUuid":"p1","message":{{"content":"hello"}},"cwd":"/proj"}}"#).unwrap();
+        writeln!(f, r#"{{"type":"assistant","uuid":"a1","message":{{"content":"hi"}}}}"#).unwrap();
+        let c = classify_jsonl_file(f.path()).unwrap();
+        assert_eq!(c.kind, SessionKind::Conversation);
+        assert!(c.parent_id.is_some());
+    }
+
+    #[test]
+    fn test_classify_file_history_snapshot() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, r#"{{"type":"file-history-snapshot","messageId":"m1","snapshot":{{}}}}"#).unwrap();
+        let c = classify_jsonl_file(f.path()).unwrap();
+        assert_eq!(c.kind, SessionKind::MetadataOnly);
+        assert_eq!(c.start_type, StartType::FileHistorySnapshot);
+    }
+
+    #[test]
+    fn test_classify_resumed_session_with_preamble() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, r#"{{"type":"file-history-snapshot","messageId":"m1","snapshot":{{}}}}"#).unwrap();
+        writeln!(f, r#"{{"type":"file-history-snapshot","messageId":"m2","snapshot":{{}}}}"#).unwrap();
+        writeln!(f, r#"{{"type":"user","uuid":"u1","message":{{"content":"continue"}},"cwd":"/proj"}}"#).unwrap();
+        writeln!(f, r#"{{"type":"assistant","uuid":"a1","message":{{"content":"sure"}}}}"#).unwrap();
+        let c = classify_jsonl_file(f.path()).unwrap();
+        assert_eq!(c.kind, SessionKind::Conversation);
+        assert_eq!(c.start_type, StartType::FileHistorySnapshot);
+        assert_eq!(c.cwd.as_deref(), Some("/proj"));
+    }
+
+    #[test]
+    fn test_classify_metadata_only_no_conversation() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, r#"{{"type":"progress","data":{{"type":"bash_progress"}}}}"#).unwrap();
+        writeln!(f, r#"{{"type":"progress","data":{{"type":"bash_progress"}}}}"#).unwrap();
+        let c = classify_jsonl_file(f.path()).unwrap();
+        assert_eq!(c.kind, SessionKind::MetadataOnly);
+        assert!(c.cwd.is_none());
+    }
+
+    // ========================================================================
+    // resolve_cwd_for_project Tests
+    // ========================================================================
+
+    #[test]
+    fn test_resolve_cwd_for_project_finds_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path();
+
+        // Write a JSONL with cwd
+        let session = proj_dir.join("abc-123.jsonl");
+        std::fs::write(&session, concat!(
+            r#"{"type":"user","uuid":"u1","message":{"content":"hi"},"cwd":"/Users/dev/@org/my-project"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"content":"ok"}}"#, "\n",
+        )).unwrap();
+
+        let cwd = resolve_cwd_for_project(proj_dir);
+        assert_eq!(cwd.as_deref(), Some("/Users/dev/@org/my-project"));
+    }
+
+    #[test]
+    fn test_resolve_cwd_for_project_returns_none_for_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = resolve_cwd_for_project(tmp.path());
+        assert!(cwd.is_none());
+    }
+
+    #[test]
+    fn test_resolve_cwd_for_project_skips_metadata_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj_dir = tmp.path();
+
+        // Only metadata file — no cwd
+        let snapshot = proj_dir.join("fhs-456.jsonl");
+        std::fs::write(&snapshot, concat!(
+            r#"{"type":"file-history-snapshot","messageId":"m1","snapshot":{}}"#, "\n",
+        )).unwrap();
+
+        let cwd = resolve_cwd_for_project(proj_dir);
+        assert!(cwd.is_none());
     }
 }

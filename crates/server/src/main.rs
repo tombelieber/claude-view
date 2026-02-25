@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing_subscriber::FmtSubscriber;
-use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, run_background_index};
+use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus, SearchIndexHolder};
 
@@ -127,6 +127,9 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if present (no-op if missing)
+    dotenvy::dotenv().ok();
+
     // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
     // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
     let subscriber = FmtSubscriber::builder()
@@ -180,6 +183,30 @@ async fn main() -> Result<()> {
     // Print banner
     eprintln!("\n\u{1f50d} claude-view v{}\n", env!("CARGO_PKG_VERSION"));
 
+    // Step 0: Validate data directory is writable before proceeding
+    let data_dir = claude_view_core::paths::data_dir();
+    if let Err(e) = std::fs::create_dir_all(&data_dir) {
+        eprintln!(
+            "ERROR: Cannot create data directory: {}\n\
+             Path: {}\n\
+             Set CLAUDE_VIEW_DATA_DIR to a writable directory.",
+            e,
+            data_dir.display()
+        );
+        std::process::exit(1);
+    }
+    let probe = data_dir.join(".write-test");
+    if std::fs::write(&probe, b"ok").is_err() {
+        eprintln!(
+            "ERROR: Data directory is not writable: {}\n\
+             Set CLAUDE_VIEW_DATA_DIR to a writable directory.",
+            data_dir.display()
+        );
+        std::process::exit(1);
+    }
+    let _ = std::fs::remove_file(&probe);
+    tracing::info!("Data directory: {}", data_dir.display());
+
     // Step 1: Open database
     let db = Database::open_default().await?;
 
@@ -202,7 +229,7 @@ async fn main() -> Result<()> {
     // Wrapped in SearchIndexHolder so clear_cache can swap it at runtime.
     let search_index_holder: SearchIndexHolder = {
         let index_dir = claude_view_core::paths::search_index_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from(".").join("search-index"));
+            .expect("search_index_dir() always returns Some after data_dir() refactor");
 
         match claude_view_search::SearchIndex::open(&index_dir) {
             Ok(idx) => {
@@ -244,112 +271,126 @@ async fn main() -> Result<()> {
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
-    let periodic_registry = registry_holder.clone();
-    let idx_search_holder = search_index_holder.clone();
-    let periodic_search_holder = search_index_holder.clone();
+    let idx_search = search_index_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
 
-        let state_for_pass1 = idx_state.clone();
-        let state_for_pass2_start = idx_state.clone();
+        // 1. Build hints from sessions-index.json (no DB writes, sync function)
+        let hints = build_index_hints(&claude_dir);
+        let hint_count = hints.len();
+        idx_state.set_sessions_found(hint_count);
+        // Count unique projects from hints for the "ready" SSE event
+        let unique_projects: std::collections::HashSet<&str> = hints.values()
+            .filter_map(|h| h.project_display_name.as_deref())
+            .collect();
+        idx_state.set_projects_found(unique_projects.len());
+
+        // 2. Build registry
+        let registry = claude_view_core::build_registry(&claude_dir).await;
+
+        // 2b. Seed invocables into DB so invocations can reference them (FK constraint)
+        let invocable_tuples: Vec<(String, Option<String>, String, String, String)> = registry
+            .all_invocables()
+            .map(|info| {
+                (
+                    info.id.clone(),
+                    info.plugin_name.clone(),
+                    info.name.clone(),
+                    info.kind.to_string(),
+                    info.description.clone(),
+                )
+            })
+            .collect();
+        if !invocable_tuples.is_empty() {
+            if let Err(e) = idx_db.batch_upsert_invocables(&invocable_tuples).await {
+                tracing::warn!(error = %e, "Failed to seed invocables");
+            }
+        }
+
+        // 2c. Auto-reindex: compare registry fingerprint with stored hash
+        let new_hash = registry.fingerprint();
+        match idx_db.get_registry_hash().await {
+            Ok(Some(stored)) if stored == new_hash => {
+                tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
+            }
+            Ok(stored) => {
+                let reason = if stored.is_none() { "first run" } else { "registry changed" };
+                tracing::info!("Registry hash mismatch ({reason}), marking all sessions for re-index");
+                match idx_db.mark_all_sessions_for_reindex().await {
+                    Ok(n) => tracing::info!("Marked {n} sessions for re-index"),
+                    Err(e) => tracing::warn!("Failed to mark sessions for re-index: {e}"),
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to read registry hash: {e}, skipping auto-reindex check");
+            }
+        }
+
+        // Store registry in shared holder for API routes and keep an Arc for indexing
+        let registry_arc = Arc::new(registry);
+        *idx_registry.write().unwrap() = Some((*registry_arc).clone());
+
+        // Extract search index Arc from holder (clone Arc, don't hold lock during scan)
+        let search_for_scan = idx_search.read().unwrap().clone();
+
+        // 3. Single-pass scan: parse + upsert for each changed file
+        idx_state.set_total(hint_count);
+        idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
-        let state_for_done = idx_state.clone();
+        match scan_and_index_all(&claude_dir, &idx_db, &hints, search_for_scan, Some(registry_arc.clone()), move |_session_id| {
+            state_for_progress.increment_indexed();
+        }).await {
+            Ok((indexed, skipped)) => {
+                tracing::info!(indexed, skipped, elapsed_ms = index_start.elapsed().as_millis() as u64, "Startup scan complete");
 
-        // Snapshot the current search index for the initial indexing run.
-        // If clear_cache swaps the holder mid-run, this Arc keeps the old index alive
-        // (safe — it's ref-counted). Next run will grab the new one.
-        let idx_search_snapshot: Option<Arc<claude_view_search::SearchIndex>> = idx_search_holder
-            .read()
-            .ok()
-            .and_then(|g| g.clone());
-        let result = run_background_index(
-            &claude_dir,
-            &idx_db,
-            Some(idx_registry),
-            idx_search_snapshot.as_deref(),
-            // on_pass1_done: Pass 1 finished — store project/session counts, transition to DeepIndexing
-            move |projects, sessions| {
-                state_for_pass1.set_projects_found(projects);
-                state_for_pass1.set_sessions_found(sessions);
-                state_for_pass1.set_status(IndexingStatus::DeepIndexing);
-            },
-            // on_pass2_start: set total bytes before deep indexing begins
-            move |total_bytes| {
-                state_for_pass2_start.set_bytes_total(total_bytes);
-            },
-            // on_file_done: each deep-indexed file reports progress
-            move |indexed, total, file_bytes| {
-                state_for_progress.set_total(total);
-                state_for_progress.set_indexed(indexed);
-                state_for_progress.add_bytes_processed(file_bytes);
-            },
-            // on_complete: all done
-            move |_total_indexed| {
-                state_for_done.set_status(IndexingStatus::Done);
-            },
-        )
-        .await;
-
-        match result {
-            Ok(_) => {
                 // Persist index metadata so Settings > Data Status shows real values.
-                // Query actual DB counts (not atomic counters which only track
-                // newly-indexed sessions in this run — on restart most are skipped).
                 let duration_ms = index_start.elapsed().as_millis() as i64;
                 let sessions = idx_db.get_session_count().await.unwrap_or(0);
                 let projects = idx_db.get_project_count().await.unwrap_or(0);
                 if let Err(e) = idx_db.update_index_metadata_on_success(duration_ms, sessions, projects).await {
                     tracing::warn!(error = %e, "Failed to persist index metadata");
                 }
-                // Auto git-sync: correlate commits with sessions after indexing completes.
-                run_git_sync_logged(&idx_db, "initial").await;
 
-                // Build contribution snapshots for all historical days.
+                // 4. Post-scan cleanup
+                // Prune DB rows for JSONL files that no longer exist on disk.
+                match claude_view_db::indexer_parallel::prune_stale_sessions(&idx_db).await {
+                    Ok(n) if n > 0 => tracing::info!("Pruned {} stale sessions from DB", n),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("Failed to prune stale sessions: {}", e),
+                }
+                // Persist registry fingerprint so next startup can detect changes.
+                if let Err(e) = idx_db.set_registry_hash(&new_hash).await {
+                    tracing::warn!("Failed to persist registry hash: {e}");
+                }
+
+                idx_state.set_status(IndexingStatus::Done);
+
+                // 5. Post-index tasks
+                run_git_sync_logged(&idx_db, "initial").await;
                 run_snapshot_generation(&idx_db, "initial").await;
 
-                // Periodic sync loop: re-index new/changed sessions, git-sync, snapshots.
-                // Interval is user-configurable via Settings UI (stored in DB).
-                // Re-read interval from DB each cycle so changes take effect without restart.
-                let mut prev_session_count = idx_db.get_session_count().await.unwrap_or(0);
+                // 5. Periodic sync loop: re-scan changed sessions, git-sync, snapshots.
+                // No more two-pass polling — the watcher handles incremental updates.
+                // This loop handles periodic git-sync and snapshot generation only,
+                // plus a lightweight re-scan for any files the watcher might have missed.
                 loop {
                     let interval_secs = idx_db.get_git_sync_interval().await.unwrap_or(120);
                     let sync_interval = Duration::from_secs(interval_secs);
                     tokio::time::sleep(sync_interval).await;
 
-                    // Incremental re-index: pick up new/changed sessions (<10ms for Pass 1)
-                    match pass_1_read_indexes(&claude_dir, &idx_db).await {
-                        Ok((_projects, sessions)) => {
-                            let new_sessions = sessions as i64 - prev_session_count as i64;
-                            if new_sessions > 0 {
-                                tracing::info!(new_sessions, "Incremental index: discovered new sessions");
+                    // Lightweight re-scan: picks up any files the watcher missed (skips unchanged)
+                    let hints = build_index_hints(&claude_dir);
+                    let rescan_start = Instant::now();
+                    let search_rescan = idx_search.read().unwrap().clone();
+                    match scan_and_index_all(&claude_dir, &idx_db, &hints, search_rescan, Some(registry_arc.clone()), |_| {}).await {
+                        Ok((indexed, _)) => {
+                            if indexed > 0 {
+                                tracing::info!(indexed, "Periodic re-scan indexed new sessions");
+                                record_sync("periodic-rescan", rescan_start.elapsed(), Some(indexed as u64));
                             }
-                            // Run Pass 2 for any changed files (skips unchanged via size+mtime)
-                            // Clone registry out of the lock (guard dropped at end of let-statement)
-                            let registry_clone = match periodic_registry.read() {
-                                Ok(guard) => guard.clone(),
-                                Err(poisoned) => {
-                                    tracing::warn!("Registry lock poisoned, using recovered value");
-                                    poisoned.into_inner().clone()
-                                }
-                            };
-                            // Read fresh search index from holder each cycle (picks up post-clear-cache index)
-                            let periodic_search_snapshot: Option<Arc<claude_view_search::SearchIndex>> = periodic_search_holder
-                                .read()
-                                .ok()
-                                .and_then(|g| g.clone());
-                            match pass_2_deep_index(&idx_db, registry_clone.as_ref(), periodic_search_snapshot.as_deref(), |_| {}, |_, _, _| {}).await {
-                                Ok((indexed, _)) => {
-                                    if indexed > 0 {
-                                        tracing::info!(indexed, "Incremental deep index complete");
-                                        record_sync("incremental-index", Instant::now().elapsed(), Some(indexed as u64));
-                                    }
-                                }
-                                Err(e) => tracing::warn!(error = %e, "Incremental deep index failed (non-fatal)"),
-                            }
-                            prev_session_count = sessions as i64;
                         }
-                        Err(e) => tracing::warn!(error = %e, "Incremental Pass 1 failed (non-fatal)"),
+                        Err(e) => tracing::warn!(error = %e, "Periodic re-scan failed (non-fatal)"),
                     }
 
                     run_git_sync_logged(&idx_db, "periodic").await;
@@ -395,7 +436,10 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_path = std::env::temp_dir().join(format!("claude-view-{}.lock", port));
+        let lock_dir = claude_view_core::paths::lock_dir()
+            .unwrap_or_else(|| std::env::temp_dir());
+        let _ = std::fs::create_dir_all(&lock_dir);
+        let lock_path = lock_dir.join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {
             // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
             lock_path.metadata()
@@ -541,7 +585,15 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Step 10: Serve forever (with graceful shutdown for hook cleanup)
+    // Step 10: Backfill git_root for sessions indexed before this field existed.
+    {
+        let db = Arc::new(db.clone());
+        tokio::spawn(async move {
+            claude_view_server::backfill::backfill_git_roots(db).await;
+        });
+    }
+
+    // Step 11: Serve forever (with graceful shutdown for hook cleanup)
     let shutdown_port = port;
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {

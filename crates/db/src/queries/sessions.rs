@@ -8,8 +8,270 @@ use claude_view_core::{ProjectInfo, SessionInfo};
 
 use super::row_types::SessionRow;
 use super::IndexerEntry;
+use crate::indexer_parallel::ParsedSession;
+
+/// The SQL for upserting a fully-parsed session. Shared between
+/// `upsert_parsed_session()` (pool executor) and `flush_batch()` (tx executor).
+/// 63 bind parameters.
+pub const UPSERT_SESSION_SQL: &str = r#"
+    INSERT INTO sessions (
+        id, project_id, project_display_name, project_path,
+        file_path, preview, summary, message_count,
+        last_message_at, first_message_at, git_branch, is_sidechain,
+        size_bytes, indexed_at,
+        last_message, files_touched, skills_used,
+        tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
+        turn_count, deep_indexed_at, parse_version,
+        file_size_at_index, file_mtime_at_index,
+        user_prompt_count, api_call_count, tool_call_count,
+        files_read, files_edited, files_read_count, files_edited_count,
+        reedited_files_count, duration_seconds, commit_count,
+        total_input_tokens, total_output_tokens,
+        cache_read_tokens, cache_creation_tokens,
+        thinking_block_count,
+        turn_duration_avg_ms, turn_duration_max_ms, turn_duration_total_ms,
+        api_error_count, api_retry_count, compaction_count,
+        hook_blocked_count, agent_spawn_count,
+        bash_progress_count, hook_progress_count, mcp_progress_count,
+        summary_text, lines_added, lines_removed, loc_source,
+        ai_lines_added, ai_lines_removed, work_type,
+        primary_model, total_task_time_seconds,
+        longest_task_seconds, longest_task_preview, total_cost_usd
+    ) VALUES (
+        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+        NULLIF(TRIM(?11), ''), ?12, ?13, ?14,
+        ?15, ?16, ?17, ?18, ?19, ?20, ?21,
+        ?22, ?14, ?23, ?24, ?25,
+        ?26, ?27, ?28, ?29, ?30, ?31, ?32,
+        ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40,
+        ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48,
+        ?49, ?50, ?51, ?52, ?53, ?54, ?55,
+        ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63
+    )
+    ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        project_display_name = excluded.project_display_name,
+        project_path = excluded.project_path,
+        file_path = excluded.file_path,
+        preview = excluded.preview,
+        summary = excluded.summary,
+        message_count = excluded.message_count,
+        last_message_at = excluded.last_message_at,
+        first_message_at = excluded.first_message_at,
+        git_branch = excluded.git_branch,
+        is_sidechain = excluded.is_sidechain,
+        size_bytes = excluded.size_bytes,
+        indexed_at = excluded.indexed_at,
+        last_message = excluded.last_message,
+        files_touched = excluded.files_touched,
+        skills_used = excluded.skills_used,
+        tool_counts_edit = excluded.tool_counts_edit,
+        tool_counts_read = excluded.tool_counts_read,
+        tool_counts_bash = excluded.tool_counts_bash,
+        tool_counts_write = excluded.tool_counts_write,
+        turn_count = excluded.turn_count,
+        deep_indexed_at = excluded.deep_indexed_at,
+        parse_version = excluded.parse_version,
+        file_size_at_index = excluded.file_size_at_index,
+        file_mtime_at_index = excluded.file_mtime_at_index,
+        user_prompt_count = excluded.user_prompt_count,
+        api_call_count = excluded.api_call_count,
+        tool_call_count = excluded.tool_call_count,
+        files_read = excluded.files_read,
+        files_edited = excluded.files_edited,
+        files_read_count = excluded.files_read_count,
+        files_edited_count = excluded.files_edited_count,
+        reedited_files_count = excluded.reedited_files_count,
+        duration_seconds = excluded.duration_seconds,
+        commit_count = excluded.commit_count,
+        total_input_tokens = excluded.total_input_tokens,
+        total_output_tokens = excluded.total_output_tokens,
+        cache_read_tokens = excluded.cache_read_tokens,
+        cache_creation_tokens = excluded.cache_creation_tokens,
+        thinking_block_count = excluded.thinking_block_count,
+        turn_duration_avg_ms = excluded.turn_duration_avg_ms,
+        turn_duration_max_ms = excluded.turn_duration_max_ms,
+        turn_duration_total_ms = excluded.turn_duration_total_ms,
+        api_error_count = excluded.api_error_count,
+        api_retry_count = excluded.api_retry_count,
+        compaction_count = excluded.compaction_count,
+        hook_blocked_count = excluded.hook_blocked_count,
+        agent_spawn_count = excluded.agent_spawn_count,
+        bash_progress_count = excluded.bash_progress_count,
+        hook_progress_count = excluded.hook_progress_count,
+        mcp_progress_count = excluded.mcp_progress_count,
+        summary_text = excluded.summary_text,
+        lines_added = excluded.lines_added,
+        lines_removed = excluded.lines_removed,
+        loc_source = excluded.loc_source,
+        ai_lines_added = excluded.ai_lines_added,
+        ai_lines_removed = excluded.ai_lines_removed,
+        work_type = excluded.work_type,
+        primary_model = excluded.primary_model,
+        total_task_time_seconds = excluded.total_task_time_seconds,
+        longest_task_seconds = excluded.longest_task_seconds,
+        longest_task_preview = excluded.longest_task_preview,
+        total_cost_usd = excluded.total_cost_usd
+"#;
+
+/// Execute the upsert SQL for a single ParsedSession against any sqlx executor.
+/// Works with both `&SqlitePool` and `&mut SqliteConnection` (transaction).
+///
+/// This is the single place where bind ordering is defined — both
+/// `upsert_parsed_session()` and `flush_batch()` call this.
+pub async fn execute_upsert_parsed_session<'e, E>(
+    executor: E,
+    s: &ParsedSession,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let indexed_at = chrono::Utc::now().timestamp();
+
+    sqlx::query(UPSERT_SESSION_SQL)
+        .bind(&s.id)              // ?1
+        .bind(&s.project_id)      // ?2
+        .bind(&s.project_display_name) // ?3
+        .bind(&s.project_path)    // ?4
+        .bind(&s.file_path)       // ?5
+        .bind(&s.preview)         // ?6
+        .bind(&s.summary)         // ?7
+        .bind(s.message_count)    // ?8
+        .bind(s.last_message_at)  // ?9
+        .bind(s.first_message_at) // ?10
+        .bind(&s.git_branch)      // ?11
+        .bind(s.is_sidechain)     // ?12
+        .bind(s.size_bytes)       // ?13
+        .bind(indexed_at)         // ?14
+        .bind(&s.last_message)    // ?15
+        .bind(&s.files_touched)   // ?16
+        .bind(&s.skills_used)     // ?17
+        .bind(s.tool_counts_edit) // ?18
+        .bind(s.tool_counts_read) // ?19
+        .bind(s.tool_counts_bash) // ?20
+        .bind(s.tool_counts_write) // ?21
+        .bind(s.turn_count)       // ?22
+        .bind(s.parse_version)    // ?23
+        .bind(s.file_size_at_index) // ?24
+        .bind(s.file_mtime_at_index) // ?25
+        .bind(s.user_prompt_count) // ?26
+        .bind(s.api_call_count)   // ?27
+        .bind(s.tool_call_count)  // ?28
+        .bind(&s.files_read)      // ?29
+        .bind(&s.files_edited)    // ?30
+        .bind(s.files_read_count) // ?31
+        .bind(s.files_edited_count) // ?32
+        .bind(s.reedited_files_count) // ?33
+        .bind(s.duration_seconds) // ?34
+        .bind(s.commit_count)     // ?35
+        .bind(s.total_input_tokens) // ?36
+        .bind(s.total_output_tokens) // ?37
+        .bind(s.cache_read_tokens) // ?38
+        .bind(s.cache_creation_tokens) // ?39
+        .bind(s.thinking_block_count) // ?40
+        .bind(s.turn_duration_avg_ms) // ?41
+        .bind(s.turn_duration_max_ms) // ?42
+        .bind(s.turn_duration_total_ms) // ?43
+        .bind(s.api_error_count)  // ?44
+        .bind(s.api_retry_count)  // ?45
+        .bind(s.compaction_count) // ?46
+        .bind(s.hook_blocked_count) // ?47
+        .bind(s.agent_spawn_count) // ?48
+        .bind(s.bash_progress_count) // ?49
+        .bind(s.hook_progress_count) // ?50
+        .bind(s.mcp_progress_count) // ?51
+        .bind(&s.summary_text)    // ?52
+        .bind(s.lines_added)      // ?53
+        .bind(s.lines_removed)    // ?54
+        .bind(s.loc_source)       // ?55
+        .bind(s.ai_lines_added)   // ?56
+        .bind(s.ai_lines_removed) // ?57
+        .bind(&s.work_type)       // ?58
+        .bind(&s.primary_model)   // ?59
+        .bind(s.total_task_time_seconds) // ?60
+        .bind(s.longest_task_seconds)    // ?61
+        .bind(&s.longest_task_preview)   // ?62
+        .bind(s.total_cost_usd)          // ?63
+        .execute(executor)
+        .await?;
+
+    Ok(())
+}
 
 impl Database {
+    /// Upsert a fully-parsed session into the DB.
+    ///
+    /// This is the ONLY function that writes session data. Every field comes
+    /// from the parser — no stubs, no zeros, no partial rows. On conflict,
+    /// ALL fields are overwritten unconditionally because the parser is the
+    /// single source of truth.
+    ///
+    /// Delegates to `execute_upsert_parsed_session()` which holds the SQL
+    /// and bind chain — shared with `flush_batch()` in the live manager.
+    pub async fn upsert_parsed_session(&self, s: &ParsedSession) -> DbResult<()> {
+        execute_upsert_parsed_session(self.pool(), s).await?;
+        Ok(())
+    }
+
+    /// Partial update from live tail — only updates fields that can be
+    /// observed from appended JSONL lines. Does NOT overwrite fields
+    /// that require a full parse (e.g., duration_seconds, commit_count,
+    /// files_touched, skills_used, lines_added/removed).
+    ///
+    /// Called from the live session manager after each `parse_tail()` poll.
+    /// Parameters match the accumulated state from `SessionAccumulator`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_session_from_tail(
+        &self,
+        session_id: &str,
+        message_count: i32,
+        turn_count: i32,
+        last_message_at: i64,
+        last_message: &str,
+        size_bytes: i64,
+        file_size_at_index: i64,
+        file_mtime_at_index: i64,
+        total_input_tokens: i64,
+        total_output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        tool_counts_edit: i32,
+        tool_counts_read: i32,
+        tool_counts_bash: i32,
+        tool_counts_write: i32,
+    ) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE sessions SET
+                message_count = ?2, turn_count = ?3, last_message_at = ?4,
+                last_message = ?5, size_bytes = ?6, file_size_at_index = ?7,
+                file_mtime_at_index = ?8,
+                total_input_tokens = ?9, total_output_tokens = ?10,
+                cache_read_tokens = ?11, cache_creation_tokens = ?12,
+                tool_counts_edit = ?13, tool_counts_read = ?14,
+                tool_counts_bash = ?15, tool_counts_write = ?16
+            WHERE id = ?1",
+        )
+        .bind(session_id)           // ?1
+        .bind(message_count)        // ?2
+        .bind(turn_count)           // ?3
+        .bind(last_message_at)      // ?4
+        .bind(last_message)         // ?5
+        .bind(size_bytes)           // ?6
+        .bind(file_size_at_index)   // ?7
+        .bind(file_mtime_at_index)  // ?8
+        .bind(total_input_tokens)   // ?9
+        .bind(total_output_tokens)  // ?10
+        .bind(cache_read_tokens)    // ?11
+        .bind(cache_creation_tokens) // ?12
+        .bind(tool_counts_edit)     // ?13
+        .bind(tool_counts_read)     // ?14
+        .bind(tool_counts_bash)     // ?15
+        .bind(tool_counts_write)    // ?16
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     /// Upsert a session into the database.
     ///
     /// Uses `INSERT ... ON CONFLICT DO UPDATE` to preserve columns not listed in the upsert.
@@ -51,7 +313,8 @@ impl Database {
                 user_prompt_count, api_call_count, tool_call_count,
                 files_read, files_edited,
                 files_read_count, files_edited_count, reedited_files_count,
-                duration_seconds, commit_count
+                duration_seconds, commit_count,
+                git_root
             ) VALUES (
                 ?1, ?2, ?3, ?4,
                 ?5, ?6,
@@ -63,7 +326,8 @@ impl Database {
                 ?22, ?23, ?24,
                 ?25, ?26,
                 ?27, ?28, ?29,
-                ?30, ?31
+                ?30, ?31,
+                ?32
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
@@ -95,7 +359,8 @@ impl Database {
                 files_edited_count = excluded.files_edited_count,
                 reedited_files_count = excluded.reedited_files_count,
                 duration_seconds = excluded.duration_seconds,
-                commit_count = excluded.commit_count
+                commit_count = excluded.commit_count,
+                git_root = COALESCE(excluded.git_root, sessions.git_root)
             "#,
         )
         .bind(&session.id)
@@ -129,6 +394,7 @@ impl Database {
         .bind(session.reedited_files_count as i32)
         .bind(session.duration_seconds as i32)
         .bind(session.commit_count as i32)
+        .bind(session.git_root.as_deref())
         .execute(self.pool())
         .await?;
 
@@ -151,7 +417,7 @@ impl Database {
             SELECT
                 s.id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.project_display_name,
+                s.project_path, s.git_root, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -174,8 +440,9 @@ impl Database {
                 s.summary_text, s.parse_version,
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
-                s.prompt_word_count, s.correction_count, s.same_file_edit_count
-            FROM sessions s
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count,
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+            FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
         )
@@ -307,6 +574,7 @@ impl Database {
     /// and does NOT overwrite Pass 2 fields (tool_counts, files_touched, etc.)
     /// if they already have data.
     #[allow(clippy::too_many_arguments)]
+    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
     pub async fn insert_session_from_index(
         &self,
         id: &str,
@@ -377,11 +645,38 @@ impl Database {
         Ok(())
     }
 
+    /// Update session topology fields discovered via content classification.
+    /// Called after insert_session_from_index for sessions discovered by
+    /// discover_orphan_sessions() which have cwd and parent_id from JSONL.
+    pub async fn update_session_topology(
+        &self,
+        id: &str,
+        session_cwd: Option<&str>,
+        parent_session_id: Option<&str>,
+        git_root: Option<&str>,
+    ) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE sessions SET \
+             session_cwd = COALESCE(?1, session_cwd), \
+             parent_session_id = COALESCE(?2, parent_session_id), \
+             git_root = COALESCE(?3, git_root) \
+             WHERE id = ?4",
+        )
+        .bind(session_cwd)
+        .bind(parent_session_id)
+        .bind(git_root)
+        .bind(id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     /// Update extended metadata fields from Pass 2 deep indexing.
     ///
     /// Sets `deep_indexed_at` to the current timestamp to mark the session
     /// as having been fully indexed. Includes all Phase 3 atomic unit metrics.
     #[allow(clippy::too_many_arguments)]
+    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
     pub async fn update_session_deep_fields(
         &self,
         id: &str,
@@ -437,6 +732,9 @@ impl Database {
         primary_model: Option<&str>,
         last_message_at: Option<i64>,
         first_user_prompt: Option<&str>,
+        total_task_time_seconds: i32,
+        longest_task_seconds: Option<i32>,
+        longest_task_preview: Option<&str>,
         total_cost_usd: f64,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
@@ -494,7 +792,10 @@ impl Database {
                 primary_model = ?49,
                 last_message_at = COALESCE(?50, last_message_at),
                 preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
-                total_cost_usd = ?52
+                total_task_time_seconds = ?52,
+                longest_task_seconds = ?53,
+                longest_task_preview = ?54,
+                total_cost_usd = ?55
             WHERE id = ?1
             "#,
         )
@@ -549,6 +850,9 @@ impl Database {
         .bind(primary_model)
         .bind(last_message_at)
         .bind(first_user_prompt)
+        .bind(total_task_time_seconds)
+        .bind(longest_task_seconds)
+        .bind(longest_task_preview)
         .bind(total_cost_usd)
         .execute(self.pool())
         .await?;
@@ -667,6 +971,33 @@ impl Database {
         Ok(result.rows_affected())
     }
 
+    /// Fetch all sessions that have session_cwd but no git_root yet.
+    /// Returns (id, session_cwd) pairs.
+    pub async fn fetch_sessions_needing_git_root(
+        &self,
+        limit: i64,
+    ) -> DbResult<Vec<(String, String)>> {
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT id, session_cwd FROM sessions \
+             WHERE git_root IS NULL AND session_cwd IS NOT NULL \
+             LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
+    /// Set git_root for a single session by id.
+    pub async fn set_git_root(&self, id: &str, git_root: &str) -> DbResult<()> {
+        sqlx::query("UPDATE sessions SET git_root = ?1 WHERE id = ?2")
+            .bind(git_root)
+            .bind(id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     /// Update session classification fields.
     pub async fn update_session_classification(
         &self,
@@ -700,5 +1031,154 @@ impl Database {
         .execute(self.pool())
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod upsert_tests {
+    use crate::Database;
+    use crate::indexer_parallel::{ParsedSession, CURRENT_PARSE_VERSION};
+
+    fn make_parsed_session(id: &str, message_count: i32) -> ParsedSession {
+        ParsedSession {
+            id: id.to_string(),
+            project_id: "test-project".to_string(),
+            project_display_name: "Test Project".to_string(),
+            project_path: "/test/project".to_string(),
+            file_path: "/test/session.jsonl".to_string(),
+            preview: "Hello world".to_string(),
+            summary: None,
+            message_count,
+            last_message_at: 1700000000,
+            first_message_at: 1699999000,
+            git_branch: None,
+            is_sidechain: false,
+            size_bytes: 1024,
+            last_message: "test message".to_string(),
+            turn_count: 5,
+            tool_counts_edit: 1,
+            tool_counts_read: 2,
+            tool_counts_bash: 3,
+            tool_counts_write: 0,
+            files_touched: "[]".to_string(),
+            skills_used: "[]".to_string(),
+            user_prompt_count: 5,
+            api_call_count: 5,
+            tool_call_count: 6,
+            files_read: "[]".to_string(),
+            files_edited: "[]".to_string(),
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 300,
+            commit_count: 1,
+            total_input_tokens: 10000,
+            total_output_tokens: 5000,
+            cache_read_tokens: 2000,
+            cache_creation_tokens: 1000,
+            thinking_block_count: 3,
+            turn_duration_avg_ms: 5000,
+            turn_duration_max_ms: 12000,
+            turn_duration_total_ms: 25000,
+            api_error_count: 0,
+            api_retry_count: 0,
+            compaction_count: 0,
+            hook_blocked_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            summary_text: None,
+            parse_version: CURRENT_PARSE_VERSION,
+            file_size_at_index: 1024,
+            file_mtime_at_index: 1700000000,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            ai_lines_added: 0,
+            ai_lines_removed: 0,
+            work_type: None,
+            primary_model: Some("claude-sonnet-4-5-20250929".to_string()),
+            total_task_time_seconds: Some(0),
+            longest_task_seconds: Some(0),
+            longest_task_preview: None,
+            total_cost_usd: 0.05,
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_inserts_new_session_with_all_fields() {
+        let db = Database::new_in_memory().await.unwrap();
+        let session = make_parsed_session("sess-001", 42);
+        db.upsert_parsed_session(&session).await.unwrap();
+
+        let row = sqlx::query_as::<_, (i32, i32, i64, i64)>(
+            "SELECT message_count, turn_count, total_input_tokens, total_output_tokens FROM sessions WHERE id = ?1"
+        )
+        .bind("sess-001")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 42);    // message_count
+        assert_eq!(row.1, 5);     // turn_count
+        assert_eq!(row.2, 10000); // total_input_tokens
+        assert_eq!(row.3, 5000);  // total_output_tokens
+    }
+
+    #[tokio::test]
+    async fn upsert_overwrites_all_fields_on_conflict() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert initial
+        let session1 = make_parsed_session("sess-002", 10);
+        db.upsert_parsed_session(&session1).await.unwrap();
+
+        // Upsert with updated data — simulates re-parse
+        let mut session2 = make_parsed_session("sess-002", 50);
+        session2.turn_count = 25;
+        session2.total_input_tokens = 99999;
+        db.upsert_parsed_session(&session2).await.unwrap();
+
+        let row = sqlx::query_as::<_, (i32, i32, i64)>(
+            "SELECT message_count, turn_count, total_input_tokens FROM sessions WHERE id = ?1"
+        )
+        .bind("sess-002")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 50);    // message_count updated, not stuck at 10
+        assert_eq!(row.1, 25);    // turn_count updated
+        assert_eq!(row.2, 99999); // tokens updated
+    }
+
+    #[tokio::test]
+    async fn no_ghost_sessions_after_upsert() {
+        // Proves the ghost bug is impossible: every row has real data
+        let db = Database::new_in_memory().await.unwrap();
+        let session = make_parsed_session("sess-003", 42);
+        db.upsert_parsed_session(&session).await.unwrap();
+
+        // Query via valid_sessions — must be visible
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM valid_sessions WHERE id = ?1"
+        )
+        .bind("sess-003")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(count.0, 1);
+
+        // Verify no zero-count rows exist
+        let ghosts: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0"
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(ghosts.0, 0);
     }
 }

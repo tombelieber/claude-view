@@ -58,13 +58,13 @@ impl Database {
         let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
             r#"
             SELECT
-                COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0),
+                COALESCE(SUM(total_input_tokens), 0),
+                COALESCE(SUM(total_output_tokens), 0),
                 COALESCE(SUM(cache_read_tokens), 0),
                 COALESCE(SUM(cache_creation_tokens), 0),
-                COUNT(*),
-                COUNT(DISTINCT session_id)
-            FROM turns
+                COALESCE(SUM(turn_count), 0),
+                COUNT(*)
+            FROM valid_sessions
             "#,
         )
         .fetch_one(self.pool())

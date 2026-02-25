@@ -378,7 +378,7 @@ pub async fn storage_stats(
     let jsonl_path = shorten(claude_projects_dir().ok());
     let sqlite_path = shorten(claude_view_core::paths::db_path());
     let index_path = shorten(claude_view_core::paths::search_index_dir());
-    let app_data_path = shorten(claude_view_core::paths::app_cache_dir());
+    let app_data_path = shorten(Some(claude_view_core::paths::data_dir()));
 
     record_request("storage_stats", "200", start.elapsed());
 
@@ -579,6 +579,7 @@ pub fn router() -> Router<Arc<AppState>> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use axum::{
         body::Body,
@@ -644,6 +645,7 @@ mod tests {
             id: "sess-range-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-range-1.jsonl".to_string(),
             modified_at: now - 86400, // 1 day ago
             size_bytes: 2048,
@@ -700,6 +702,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -741,6 +744,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -797,6 +801,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A").await.unwrap();
 
@@ -859,6 +864,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -915,6 +921,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -982,6 +989,7 @@ mod tests {
             id: "sess-ai-1".to_string(),
             project: "project-ai".to_string(),
             project_path: "/home/user/project-ai".to_string(),
+            git_root: None,
             file_path: "/path/sess-ai-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1038,6 +1046,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
 
@@ -1090,6 +1099,9 @@ mod tests {
             None,    // primary_model
             None,    // last_message_at
             None,    // first_user_prompt
+            0, // total_task_time_seconds
+            None, // longest_task_seconds
+            None, // longest_task_preview
             0.0,     // total_cost_usd
         ).await.unwrap();
 
@@ -1143,6 +1155,7 @@ mod tests {
             id: "sess-range".to_string(),
             project: "project-range".to_string(),
             project_path: "/home/user/project-range".to_string(),
+            git_root: None,
             file_path: "/path/sess-range.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1199,6 +1212,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session, "project-range", "Project Range").await.unwrap();
 
@@ -1223,6 +1237,9 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0, // total_task_time_seconds
+            None, // longest_task_seconds
+            None, // longest_task_preview
             0.0,  // total_cost_usd
         ).await.unwrap();
 
@@ -1260,6 +1277,7 @@ mod tests {
             id: "sess-proj-a".to_string(),
             project: "project-alpha".to_string(),
             project_path: "/home/user/project-alpha".to_string(),
+            git_root: None,
             file_path: "/path/sess-proj-a.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1316,6 +1334,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 
@@ -1368,6 +1387,7 @@ mod tests {
             id: "sess-aigen-a".to_string(),
             project: "project-alpha".to_string(),
             project_path: "/home/user/project-alpha".to_string(),
+            git_root: None,
             file_path: "/path/sess-aigen-a.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1424,6 +1444,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
 

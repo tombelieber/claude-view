@@ -234,7 +234,7 @@ impl Database {
         let rows: Vec<(String, String, String)> = sqlx::query_as(
             r#"
             SELECT id, preview, skills_used
-            FROM sessions
+            FROM valid_sessions
             WHERE category_l1 IS NULL
             ORDER BY last_message_at DESC
             LIMIT ?1
@@ -255,7 +255,7 @@ impl Database {
         let rows: Vec<(String, String, String)> = sqlx::query_as(
             r#"
             SELECT id, preview, skills_used
-            FROM sessions
+            FROM valid_sessions
             ORDER BY last_message_at DESC
             LIMIT ?1
             "#,
@@ -298,7 +298,7 @@ impl Database {
     /// Count unclassified sessions.
     pub async fn count_unclassified_sessions(&self) -> DbResult<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE category_l1 IS NULL",
+            "SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NULL",
         )
         .fetch_one(self.pool())
         .await?;
