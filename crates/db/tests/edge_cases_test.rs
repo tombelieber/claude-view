@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 // Edge case tests for Phase 3 Metrics Engine (A10.1-A10.5).
 //
 // These tests verify robustness of the parsing and correlation pipeline

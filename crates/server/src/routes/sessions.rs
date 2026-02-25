@@ -82,6 +82,9 @@ pub struct SessionsListResponse {
 pub struct SessionActivityResponse {
     pub activity: Vec<claude_view_db::ActivityPoint>,
     pub bucket: String,
+    /// True total from valid_sessions (includes sessions with last_message_at=0
+    /// that can't be placed on the chart axis).
+    pub total: usize,
 }
 
 // ============================================================================
@@ -563,7 +566,8 @@ pub async fn session_activity(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<SessionActivityResponse>> {
     let (activity, bucket) = state.db.session_activity_histogram().await?;
-    Ok(Json(SessionActivityResponse { activity, bucket }))
+    let total = state.db.get_session_count().await? as usize;
+    Ok(Json(SessionActivityResponse { activity, bucket, total }))
 }
 
 /// Create the sessions routes router.
@@ -619,6 +623,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
             size_bytes: 2048,
@@ -675,6 +680,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 
@@ -1460,6 +1466,7 @@ mod tests {
         let resp: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(resp["activity"].is_array());
         assert!(resp["bucket"].is_string());
+        assert_eq!(resp["total"].as_u64().unwrap(), 1);
         let activity = resp["activity"].as_array().unwrap();
         assert!(!activity.is_empty());
         assert!(activity[0]["date"].is_string());

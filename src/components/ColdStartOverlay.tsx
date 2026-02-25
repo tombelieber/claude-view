@@ -80,10 +80,14 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
   // Nothing to show yet, or already fully gone
   if (progress.phase === 'idle' || gone) return null
 
+  // Prefer byte-based progress; fall back to session-count-based progress
+  // when the backend doesn't report byte totals (e.g. unified single-pass pipeline).
   const percentage =
     progress.bytesTotal > 0
       ? Math.min(100, Math.round((progress.bytesProcessed / progress.bytesTotal) * 100))
-      : 0
+      : progress.total > 0
+        ? Math.min(100, Math.round((progress.indexed / progress.total) * 100))
+        : 0
 
   const canDismiss =
     progress.phase === 'ready' ||
@@ -174,18 +178,22 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
 
                 {/* Stats line */}
                 <div className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-                  <span className="tabular-nums">
-                    {formatBytes(progress.bytesProcessed)} / {formatBytes(progress.bytesTotal)}
-                  </span>
-                  {progress.throughputBytesPerSec > 0 && (
+                  {progress.bytesTotal > 0 && (
                     <>
-                      <span aria-hidden="true">&middot;</span>
                       <span className="tabular-nums">
-                        {formatBytes(progress.throughputBytesPerSec)}/s
+                        {formatBytes(progress.bytesProcessed)} / {formatBytes(progress.bytesTotal)}
                       </span>
+                      {progress.throughputBytesPerSec > 0 && (
+                        <>
+                          <span aria-hidden="true">&middot;</span>
+                          <span className="tabular-nums">
+                            {formatBytes(progress.throughputBytesPerSec)}/s
+                          </span>
+                        </>
+                      )}
+                      <span aria-hidden="true">&middot;</span>
                     </>
                   )}
-                  <span aria-hidden="true">&middot;</span>
                   <span className="tabular-nums">
                     {progress.indexed.toLocaleString()} / {progress.total.toLocaleString()} sessions
                   </span>

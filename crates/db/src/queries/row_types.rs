@@ -131,6 +131,7 @@ impl IndexRunRow {
 /// Same SQL as `Database::update_session_deep_fields` but executes on the
 /// provided transaction instead of acquiring a new connection from the pool.
 #[allow(clippy::too_many_arguments)]
+#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
 pub async fn update_session_deep_fields_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
@@ -434,6 +435,7 @@ pub(crate) struct SessionRow {
     pub(crate) last_message_at: Option<i64>,
     pub(crate) file_path: String,
     pub(crate) project_path: String,
+    pub(crate) git_root: Option<String>,
     pub(crate) project_display_name: String,
     pub(crate) size_bytes: i64,
     pub(crate) last_message: String,
@@ -464,7 +466,6 @@ pub(crate) struct SessionRow {
     pub(crate) files_edited_count: i32,
     pub(crate) reedited_files_count: i32,
     pub(crate) duration_seconds: i32,
-    #[allow(dead_code)] // Used internally by git sync queries, not by into_session_info()
     pub(crate) first_message_at: Option<i64>,
     pub(crate) commit_count: i32,
     // Phase 3.5: Full parser metrics
@@ -489,7 +490,7 @@ pub(crate) struct SessionRow {
     pub(crate) category_confidence: Option<f64>,
     pub(crate) category_source: Option<String>,
     pub(crate) classified_at: Option<String>,
-    // Theme 4: Behavioral metrics
+    // Theme 4: Behavioral metrics (only populated by classifier job, not standard indexing)
     pub(crate) prompt_word_count: Option<i32>,
     pub(crate) correction_count: i32,
     pub(crate) same_file_edit_count: i32,
@@ -509,6 +510,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             last_message_at: row.try_get("last_message_at")?,
             file_path: row.try_get("file_path")?,
             project_path: row.try_get("project_path")?,
+            git_root: row.try_get("git_root").ok().flatten(),
             project_display_name: row.try_get("project_display_name")?,
             size_bytes: row.try_get("size_bytes")?,
             last_message: row.try_get("last_message")?,
@@ -591,6 +593,7 @@ impl SessionRow {
             id: self.id,
             project: project_encoded.to_string(),
             project_path: self.project_path,
+            git_root: self.git_root,
             file_path: self.file_path,
             modified_at: self.last_message_at.unwrap_or(0),
             size_bytes: self.size_bytes as u64,
@@ -626,6 +629,7 @@ impl SessionRow {
             files_edited_count: self.files_edited_count as u32,
             reedited_files_count: self.reedited_files_count as u32,
             duration_seconds: self.duration_seconds as u32,
+            first_message_at: self.first_message_at,
             commit_count: self.commit_count as u32,
             // Phase 3.5
             thinking_block_count: self.thinking_block_count as u32,

@@ -174,11 +174,13 @@ pub struct AIGenerationStats {
     pub total_cost_usd_from_jsonl: Option<f64>,
 }
 
-/// Storage statistics for the system page.
+/// Storage statistics for the system page (raw DB layer).
+/// Named SystemStorageStats to avoid ts-rs export collision with the richer
+/// StorageStats in routes/stats.rs (which is the user-facing settings version).
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[ts(export, export_to = "../../../src/types/generated/")]
 #[serde(rename_all = "camelCase")]
-pub struct StorageStats {
+pub struct SystemStorageStats {
     #[ts(type = "number")]
     pub jsonl_bytes: u64,
     #[ts(type = "number")]

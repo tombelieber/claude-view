@@ -305,6 +305,7 @@ impl LightSession {
             id: self.id,
             project: self.project_id.clone(),
             project_path: self.project_path,
+            git_root: None,
             file_path: self.file_path,
             modified_at: self.last_message_at.filter(|&ts| ts > 0).unwrap_or(0),
             size_bytes: self.size_bytes as u64,
@@ -365,6 +366,7 @@ impl LightSession {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 }
@@ -401,13 +403,8 @@ pub async fn get_insights(
             s.git_branch, s.files_edited, s.files_read,
             s.category_l1, s.prompt_word_count,
             s.correction_count, s.same_file_edit_count, s.size_bytes,
-            COALESCE(
-                (SELECT model_id FROM turns t
-                 WHERE t.session_id = s.id
-                 GROUP BY model_id ORDER BY COUNT(*) DESC LIMIT 1),
-                NULL
-            ) as primary_model
-        FROM sessions s
+            s.primary_model
+        FROM valid_sessions s
         WHERE s.last_message_at >= ?1 AND s.last_message_at <= ?2
         "#,
     )
@@ -673,7 +670,7 @@ async fn get_classification_status(
         SELECT
             COUNT(*) as total,
             COUNT(CASE WHEN category_l1 IS NOT NULL THEN 1 END) as classified
-        FROM sessions
+        FROM valid_sessions
         "#,
     )
     .fetch_one(pool)
@@ -777,7 +774,7 @@ async fn fetch_category_counts(
                 AVG(duration_seconds) as avg_duration,
                 AVG(user_prompt_count) as avg_prompts,
                 SUM(CASE WHEN commit_count > 0 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(*) as commit_rate
-            FROM sessions
+            FROM valid_sessions
             WHERE category_l1 IS NOT NULL
               AND (?1 IS NULL OR last_message_at >= ?1)
               AND (?2 IS NULL OR last_message_at <= ?2)
@@ -814,7 +811,7 @@ async fn fetch_uncategorized_count(
 ) -> ApiResult<u32> {
     let row: (i64,) = sqlx::query_as(
         r#"
-        SELECT COUNT(*) FROM sessions
+        SELECT COUNT(*) FROM valid_sessions
         WHERE category_l1 IS NULL
           AND (?1 IS NULL OR last_message_at >= ?1)
           AND (?2 IS NULL OR last_message_at <= ?2)
@@ -842,7 +839,7 @@ async fn fetch_overall_averages(
             AVG(duration_seconds) as avg_duration,
             AVG(user_prompt_count) as avg_prompts,
             SUM(CASE WHEN commit_count > 0 THEN 1.0 ELSE 0.0 END) * 100.0 / NULLIF(COUNT(*), 0) as commit_rate
-        FROM sessions
+        FROM valid_sessions
         WHERE (?1 IS NULL OR last_message_at >= ?1)
           AND (?2 IS NULL OR last_message_at <= ?2)
         "#,
@@ -1244,7 +1241,7 @@ pub async fn get_benchmarks(
                     COALESCE(AVG(CAST(tool_counts_edit AS REAL) / NULLIF(files_edited_count, 0)), 0.0),
                     COALESCE(AVG(CAST(user_prompt_count AS REAL)), 0.0),
                     COALESCE(AVG(CASE WHEN commit_count > 0 THEN 1.0 ELSE 0.0 END), 0.0)
-                FROM sessions
+                FROM valid_sessions
                 WHERE last_message_at >= ?1 AND last_message_at < ?2
                 "#,
             )
@@ -1269,7 +1266,7 @@ pub async fn get_benchmarks(
 
     // Find the earliest session in the data window
     let earliest_row: (Option<i64>,) = sqlx::query_as(
-        "SELECT MIN(last_message_at) FROM sessions WHERE last_message_at > 0 AND last_message_at >= ?1",
+        "SELECT MIN(last_message_at) FROM valid_sessions WHERE last_message_at >= ?1",
     )
     .bind(data_start)
     .fetch_one(pool)
@@ -1327,7 +1324,7 @@ pub async fn get_benchmarks(
     let overall_reedit: (f64,) = sqlx::query_as(
         r#"
         SELECT COALESCE(AVG(CAST(reedited_files_count AS REAL) / NULLIF(files_edited_count, 0)), 0.0)
-        FROM sessions
+        FROM valid_sessions
         WHERE last_message_at >= ?1 AND last_message_at <= ?2
         "#,
     )
@@ -1344,7 +1341,7 @@ pub async fn get_benchmarks(
         SELECT
             category_l1,
             COALESCE(AVG(CAST(reedited_files_count AS REAL) / NULLIF(files_edited_count, 0)), 0.0)
-        FROM sessions
+        FROM valid_sessions
         WHERE last_message_at >= ?1 AND last_message_at <= ?2
           AND category_l1 IS NOT NULL
         GROUP BY category_l1
@@ -1384,8 +1381,8 @@ pub async fn get_benchmarks(
     let skill_rows: Vec<(String,)> = sqlx::query_as(
         r#"
         SELECT DISTINCT j.value as skill
-        FROM sessions, json_each(sessions.skills_used) AS j
-        WHERE sessions.last_message_at >= ?1
+        FROM valid_sessions, json_each(valid_sessions.skills_used) AS j
+        WHERE valid_sessions.last_message_at >= ?1
           AND j.value != ''
         "#,
     )
@@ -1402,7 +1399,7 @@ pub async fn get_benchmarks(
             SELECT
                 MIN(s.last_message_at),
                 COUNT(*)
-            FROM sessions s, json_each(s.skills_used) AS j
+            FROM valid_sessions s, json_each(s.skills_used) AS j
             WHERE j.value = ?1
               AND s.last_message_at >= ?2
             "#,
@@ -1426,7 +1423,7 @@ pub async fn get_benchmarks(
         let before_rate: (f64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(AVG(CAST(reedited_files_count AS REAL) / NULLIF(files_edited_count, 0)), 0.0)
-            FROM sessions
+            FROM valid_sessions
             WHERE last_message_at < ?1 AND last_message_at >= ?2
             "#,
         )
@@ -1439,7 +1436,7 @@ pub async fn get_benchmarks(
         let after_rate: (f64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(AVG(CAST(s.reedited_files_count AS REAL) / NULLIF(s.files_edited_count, 0)), 0.0)
-            FROM sessions s, json_each(s.skills_used) AS j
+            FROM valid_sessions s, json_each(s.skills_used) AS j
             WHERE j.value = ?1 AND s.last_message_at >= ?2
             "#,
         )
@@ -1458,7 +1455,7 @@ pub async fn get_benchmarks(
         let curve_rows: Vec<(f64,)> = sqlx::query_as(
             r#"
             SELECT COALESCE(CAST(s.reedited_files_count AS REAL) / NULLIF(s.files_edited_count, 0), 0.0)
-            FROM sessions s, json_each(s.skills_used) AS j
+            FROM valid_sessions s, json_each(s.skills_used) AS j
             WHERE j.value = ?1 AND s.last_message_at >= ?2
             ORDER BY s.last_message_at ASC
             LIMIT 10
@@ -1516,10 +1513,10 @@ pub async fn get_benchmarks(
         r#"
         SELECT COUNT(*),
                (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
-                INNER JOIN sessions s2 ON sc.session_id = s2.id
-                WHERE s2.last_message_at >= ?1 AND s2.is_sidechain = 0),
+                INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
+                WHERE s2.last_message_at >= ?1),
                COALESCE(SUM(total_input_tokens + total_output_tokens), 0)
-        FROM sessions WHERE last_message_at >= ?1 AND is_sidechain = 0
+        FROM valid_sessions WHERE last_message_at >= ?1
         "#,
     )
     .bind(current_month_start)
