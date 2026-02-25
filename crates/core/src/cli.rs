@@ -4,15 +4,37 @@
 //! Uses the same pattern as VS Code / Cursor / Electron apps: resolve the CLI
 //! path via the user's login shell so that nvm, mise, asdf, ~/.local/bin, and
 //! other non-standard PATH entries are picked up correctly.
+//!
+//! Auth is checked by reading `~/.claude/.credentials.json` directly — the
+//! same file the CLI reads internally. This avoids spawning `claude auth
+//! status`, which gets SIGKILL'd when run inside a Claude Code session.
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Duration;
+use tracing;
 use ts_rs::TS;
 
 /// Timeout for each CLI subprocess call (prevents hangs when claude is already running).
 const CLI_TIMEOUT: Duration = Duration::from_secs(3);
+
+// --- Credentials file structures ---
+
+/// Top-level `~/.claude/.credentials.json`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CredentialsFile {
+    claude_ai_oauth: Option<OAuthCredentials>,
+}
+
+/// The `claudeAiOauth` section of the credentials file.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthCredentials {
+    subscription_type: Option<String>,
+    expires_at: Option<u64>,
+}
 
 /// Cached resolved path to the `claude` binary (process-lifetime singleton).
 static RESOLVED_CLI_PATH: OnceLock<Option<String>> = OnceLock::new();
@@ -47,16 +69,11 @@ impl ClaudeCliStatus {
     /// Detect Claude CLI installation and status.
     ///
     /// Path resolution is cached via `OnceLock` (first call only).
-    /// Auth status is always re-checked (cheap with a known path).
+    /// Auth is read from `~/.claude/.credentials.json` — no subprocess needed.
     pub fn detect() -> Self {
         let path = resolved_cli_path().map(|s| s.to_string());
-
-        let Some(ref path_str) = path else {
-            return Self::default();
-        };
-
-        let version = Self::get_version(path_str);
-        let (authenticated, subscription_type) = Self::check_auth(path_str);
+        let version = path.as_ref().and_then(|p| Self::get_version(p));
+        let (authenticated, subscription_type) = Self::check_auth_from_credentials();
 
         Self {
             path,
@@ -68,11 +85,22 @@ impl ClaudeCliStatus {
 
     /// Run a command with a timeout, returning None if it times out or fails to start.
     ///
-    /// Removes the `CLAUDECODE` env var so the CLI doesn't refuse to run
-    /// when our server was launched from within a Claude Code session.
+    /// Strips all `CLAUDE*` env vars so the CLI doesn't refuse to run or
+    /// try to connect to an SSE port when our server was launched from
+    /// within a Claude Code session.
     fn run_with_timeout(cmd: &mut Command) -> Option<std::process::Output> {
+        // Collect all CLAUDE* env vars to remove (dynamic prefix scan)
+        let claude_vars: Vec<String> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("CLAUDE"))
+            .map(|(k, _)| k)
+            .collect();
+
+        for var in &claude_vars {
+            cmd.env_remove(var);
+        }
+
         let mut child = cmd
-            .env_remove("CLAUDECODE")
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -186,45 +214,63 @@ impl ClaudeCliStatus {
         None
     }
 
-    /// Check authentication status.
-    fn check_auth(path: &str) -> (bool, Option<String>) {
-        // Try to get auth status (with timeout to prevent hangs when claude is running)
-        let output = Self::run_with_timeout(Command::new(path).args(["auth", "status"]));
-
-        match output {
-            Some(o) if o.status.success() => {
-                let stdout = String::from_utf8_lossy(&o.stdout);
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                // Check both stdout and stderr for auth info
-                let combined = format!("{} {}", stdout, stderr);
-                let subscription = Self::parse_subscription_type(&combined);
-                (true, subscription)
+    /// Check authentication by reading `~/.claude/.credentials.json` directly.
+    ///
+    /// This is the ground truth — the CLI reads this same file. Reading it
+    /// directly avoids spawning `claude auth status`, which gets SIGKILL'd
+    /// when the server runs inside a Claude Code session (the subprocess is
+    /// killed before it can produce any output).
+    fn check_auth_from_credentials() -> (bool, Option<String>) {
+        let home = match std::env::var("HOME") {
+            Ok(h) => h,
+            Err(_) => {
+                tracing::warn!("CLI auth: HOME not set, cannot read credentials");
+                return (false, None);
             }
-            _ => (false, None),
-        }
-    }
+        };
 
-    /// Parse subscription type from auth status output.
-    pub fn parse_subscription_type(output: &str) -> Option<String> {
-        // Look for patterns like "(Pro)", "(Free)", "(Team)", "(Enterprise)"
-        let types = ["pro", "free", "team", "enterprise", "max"];
-        let lower = output.to_lowercase();
+        let creds_path = std::path::Path::new(&home).join(".claude/.credentials.json");
+        let data = match std::fs::read(&creds_path) {
+            Ok(d) => d,
+            Err(_) => {
+                tracing::debug!("CLI auth: no credentials file at {}", creds_path.display());
+                return (false, None);
+            }
+        };
 
-        for t in types {
-            if lower.contains(&format!("({})", t)) || lower.contains(&format!("{} plan", t)) {
-                return Some(t.to_string());
+        let creds: CredentialsFile = match serde_json::from_slice(&data) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("CLI auth: failed to parse credentials: {e}");
+                return (false, None);
+            }
+        };
+
+        let Some(oauth) = creds.claude_ai_oauth else {
+            tracing::debug!("CLI auth: no claudeAiOauth in credentials");
+            return (false, None);
+        };
+
+        // Check token expiry (expiresAt is milliseconds since epoch)
+        if let Some(expires_at) = oauth.expires_at {
+            if expires_at > 0 {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                if expires_at < now_ms {
+                    tracing::debug!("CLI auth: token expired");
+                    return (false, None);
+                }
             }
         }
 
-        // Fallback: check if authenticated at all
-        // But make sure it's not "not authenticated" or "unauthenticated"
-        if (lower.contains("authenticated") && !lower.contains("not authenticated") && !lower.contains("unauthenticated"))
-            || lower.contains("logged in")
-        {
-            return Some("unknown".to_string());
-        }
-
-        None
+        let subscription = oauth
+            .subscription_type
+            .map(|s| s.to_lowercase())
+            .filter(|s| !s.is_empty());
+        tracing::debug!("CLI auth: authenticated (subscription={subscription:?})");
+        (true, subscription)
     }
 }
 
@@ -239,95 +285,6 @@ mod tests {
         assert!(status.version.is_none());
         assert!(!status.authenticated);
         assert!(status.subscription_type.is_none());
-    }
-
-    #[test]
-    fn test_parse_subscription_type_pro() {
-        let output = "Authenticated as user@example.com (Pro)";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("pro".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_free() {
-        let output = "Authenticated as user@example.com (Free)";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("free".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_team() {
-        let output = "Authenticated as user@example.com (Team)";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("team".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_enterprise() {
-        let output = "Authenticated as user@example.com (Enterprise)";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("enterprise".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_max() {
-        let output = "Authenticated as user@example.com (Max)";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("max".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_plan_format() {
-        let output = "You are on the Pro plan";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("pro".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_authenticated_fallback() {
-        let output = "Authenticated as user@example.com";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("unknown".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_logged_in_fallback() {
-        let output = "Logged in as user@example.com";
-        assert_eq!(
-            ClaudeCliStatus::parse_subscription_type(output),
-            Some("unknown".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_subscription_type_none() {
-        let output = "Please run: claude auth login";
-        assert_eq!(ClaudeCliStatus::parse_subscription_type(output), None);
-    }
-
-    #[test]
-    fn test_parse_subscription_type_not_authenticated() {
-        let output = "Not authenticated. Run: claude auth login";
-        assert_eq!(ClaudeCliStatus::parse_subscription_type(output), None);
-    }
-
-    #[test]
-    fn test_parse_subscription_type_empty() {
-        assert_eq!(ClaudeCliStatus::parse_subscription_type(""), None);
     }
 
     #[test]
@@ -354,5 +311,112 @@ mod tests {
         assert!(json.contains("\"version\":null"));
         assert!(json.contains("\"authenticated\":false"));
         assert!(json.contains("\"subscriptionType\":null"));
+    }
+
+    // --- Credentials file parsing ---
+
+    fn parse_creds(json: &str) -> (bool, Option<String>) {
+        let creds: Result<CredentialsFile, _> = serde_json::from_str(json);
+        let Ok(creds) = creds else {
+            return (false, None);
+        };
+        let Some(oauth) = creds.claude_ai_oauth else {
+            return (false, None);
+        };
+        if let Some(expires_at) = oauth.expires_at {
+            if expires_at > 0 {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                if expires_at < now_ms {
+                    return (false, None);
+                }
+            }
+        }
+        let sub = oauth.subscription_type.map(|s| s.to_lowercase()).filter(|s| !s.is_empty());
+        (true, sub)
+    }
+
+    #[test]
+    fn test_creds_max_subscription() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":9999999999999}}"#);
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn test_creds_pro_subscription() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Pro","expiresAt":9999999999999}}"#);
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("pro"));
+    }
+
+    #[test]
+    fn test_creds_free_subscription() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Free","expiresAt":9999999999999}}"#);
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("free"));
+    }
+
+    #[test]
+    fn test_creds_no_subscription_type() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"expiresAt":9999999999999}}"#);
+        assert!(auth);
+        assert_eq!(sub, None);
+    }
+
+    #[test]
+    fn test_creds_expired_token() {
+        let (auth, _) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":1000}}"#);
+        assert!(!auth);
+    }
+
+    #[test]
+    fn test_creds_no_oauth_section() {
+        let (auth, _) = parse_creds(r#"{"mcpOAuth":{}}"#);
+        assert!(!auth);
+    }
+
+    #[test]
+    fn test_creds_empty_file() {
+        let (auth, _) = parse_creds(r#"{}"#);
+        assert!(!auth);
+    }
+
+    #[test]
+    fn test_creds_malformed_json() {
+        let (auth, _) = parse_creds(r#"not json"#);
+        assert!(!auth);
+    }
+
+    #[test]
+    fn test_creds_zero_expiry_treated_as_no_expiry() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":0}}"#);
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn test_creds_missing_expiry_treated_as_valid() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"pro"}}"#);
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("pro"));
+    }
+
+    #[test]
+    fn test_creds_empty_subscription_type_filtered() {
+        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"","expiresAt":9999999999999}}"#);
+        assert!(auth);
+        assert_eq!(sub, None);
+    }
+
+    #[test]
+    fn test_creds_with_extra_fields_ignored() {
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-xxx","refreshToken":"sk-yyy","subscriptionType":"max","expiresAt":9999999999999,"scopes":["user:inference"]},"mcpOAuth":{}}"#,
+        );
+        assert!(auth);
+        assert_eq!(sub.as_deref(), Some("max"));
     }
 }
