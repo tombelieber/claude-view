@@ -644,6 +644,7 @@ mod tests {
             id: "sess-range-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-range-1.jsonl".to_string(),
             modified_at: now - 86400, // 1 day ago
             size_bytes: 2048,
@@ -742,6 +743,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -861,6 +863,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            git_root: None,
             file_path: "/path/sess-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -985,6 +988,7 @@ mod tests {
             id: "sess-ai-1".to_string(),
             project: "project-ai".to_string(),
             project_path: "/home/user/project-ai".to_string(),
+            git_root: None,
             file_path: "/path/sess-ai-1.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1094,6 +1098,9 @@ mod tests {
             None,    // primary_model
             None,    // last_message_at
             None,    // first_user_prompt
+            0, // total_task_time_seconds
+            None, // longest_task_seconds
+            None, // longest_task_preview
             0.0,     // total_cost_usd
         ).await.unwrap();
 
@@ -1147,6 +1154,7 @@ mod tests {
             id: "sess-range".to_string(),
             project: "project-range".to_string(),
             project_path: "/home/user/project-range".to_string(),
+            git_root: None,
             file_path: "/path/sess-range.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1228,6 +1236,9 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
+            0, // total_task_time_seconds
+            None, // longest_task_seconds
+            None, // longest_task_preview
             0.0,  // total_cost_usd
         ).await.unwrap();
 
@@ -1265,6 +1276,7 @@ mod tests {
             id: "sess-proj-a".to_string(),
             project: "project-alpha".to_string(),
             project_path: "/home/user/project-alpha".to_string(),
+            git_root: None,
             file_path: "/path/sess-proj-a.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
@@ -1374,6 +1386,7 @@ mod tests {
             id: "sess-aigen-a".to_string(),
             project: "project-alpha".to_string(),
             project_path: "/home/user/project-alpha".to_string(),
+            git_root: None,
             file_path: "/path/sess-aigen-a.jsonl".to_string(),
             modified_at: now - 86400,
             size_bytes: 2048,
