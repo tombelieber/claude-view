@@ -19,6 +19,9 @@ use claude_view_core::pricing::{
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
+use claude_view_db::Database;
+use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
     status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
@@ -74,6 +77,11 @@ struct SessionAccumulator {
     project_path: Option<String>,
     /// Cached cwd resolved from JSONL (avoids re-reading file on every update).
     resolved_cwd: Option<String>,
+    /// Accumulated tool counts (cumulative across tail polls).
+    tool_counts_edit: u32,
+    tool_counts_read: u32,
+    tool_counts_bash: u32,
+    tool_counts_write: u32,
 }
 
 impl SessionAccumulator {
@@ -99,6 +107,10 @@ impl SessionAccumulator {
             file_path: None,
             project_path: None,
             resolved_cwd: None,
+            tool_counts_edit: 0,
+            tool_counts_read: 0,
+            tool_counts_bash: 0,
+            tool_counts_write: 0,
         }
     }
 }
@@ -311,6 +323,8 @@ pub struct LiveSessionManager {
     process_count: Arc<AtomicU32>,
     /// Per-model pricing table for cost calculation.
     pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+    /// Database handle for batched writes.
+    db: Database,
 }
 
 impl LiveSessionManager {
@@ -320,6 +334,7 @@ impl LiveSessionManager {
     /// broadcast sender for SSE event streaming.
     pub fn start(
         pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+        db: Database,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -331,6 +346,7 @@ impl LiveSessionManager {
             accumulators: Arc::new(RwLock::new(HashMap::new())),
             process_count: Arc::new(AtomicU32::new(0)),
             pricing,
+            db,
         });
 
         // Spawn background tasks
@@ -345,7 +361,7 @@ impl LiveSessionManager {
             super::relay_client::RelayClientConfig::default(),
         );
 
-        info!("LiveSessionManager started with 4 background tasks (file watcher, reconciliation loop, cleanup, relay client)");
+        info!("LiveSessionManager started with 5 background tasks (file watcher, reconciliation loop, cleanup, relay client, db writer)");
 
         (manager, sessions, tx)
     }
@@ -710,6 +726,17 @@ impl LiveSessionManager {
                                 .send(SessionEvent::SessionCompleted { session_id });
                         }
                     }
+                    FileEvent::Rescan => {
+                        tracing::info!("Overflow detected — triggering full reconciliation scan");
+                        let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
+                        let hints = build_index_hints(&claude_dir);
+                        let (indexed, _) = scan_and_index_all(
+                            &claude_dir, &manager.db, &hints, |_| {},
+                        ).await.unwrap_or((0, 0));
+                        if indexed > 0 {
+                            tracing::info!(indexed, "Reconciliation scan complete");
+                        }
+                    }
                 }
             }
         });
@@ -951,6 +978,10 @@ impl LiveSessionManager {
             acc.mcp_servers.clear();
             acc.skills.clear();
             acc.tokens = TokenUsage::default();
+            acc.tool_counts_edit = 0;
+            acc.tool_counts_read = 0;
+            acc.tool_counts_bash = 0;
+            acc.tool_counts_write = 0;
         }
 
         for line in &new_lines {
@@ -986,6 +1017,17 @@ impl LiveSessionManager {
             {
                 if let Some(ref ts) = line.timestamp {
                     acc.last_cache_hit_at = parse_timestamp_to_unix(ts);
+                }
+            }
+
+            // Accumulate tool counts (cumulative, like tokens)
+            for name in &line.tool_names {
+                match name.as_str() {
+                    "Edit" => acc.tool_counts_edit += 1,
+                    "Read" => acc.tool_counts_read += 1,
+                    "Bash" => acc.tool_counts_bash += 1,
+                    "Write" => acc.tool_counts_write += 1,
+                    _ => {}
                 }
             }
 
@@ -1330,6 +1372,27 @@ impl LiveSessionManager {
             },
             last_cache_hit_at: acc.last_cache_hit_at,
         };
+
+        // After accumulator update, persist partial state to DB (fire-and-forget).
+        let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
+        let _ = self.db.update_session_from_tail(
+            &session_id,
+            acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
+            acc.user_turn_count as i32,
+            last_activity_at,
+            &acc.last_user_message,
+            file_size,
+            file_size,
+            last_activity_at, // mtime approximation
+            acc.tokens.input_tokens as i64,
+            acc.tokens.output_tokens as i64,
+            acc.tokens.cache_read_tokens as i64,
+            acc.tokens.cache_creation_tokens as i64,
+            acc.tool_counts_edit as i32,
+            acc.tool_counts_read as i32,
+            acc.tool_counts_bash as i32,
+            acc.tool_counts_write as i32,
+        ).await;
 
         // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
