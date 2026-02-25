@@ -23,7 +23,7 @@ async fn test_db() -> Database {
 }
 
 /// Simulate deep indexing progress by updating the shared `IndexingState`
-/// from a background task. This mimics what `run_background_index` does in
+/// from a background task. This mimics what `scan_and_index_all` does in
 /// production: it transitions through ReadingIndexes -> DeepIndexing -> Done
 /// while incrementing `bytes_processed` in batches.
 ///

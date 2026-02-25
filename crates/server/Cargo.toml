@@ -70,7 +70,6 @@ futures-util = { workspace = true }
 libc = "0.2"
 crypto_box = "0.9"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
-security-framework = "3"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
 base64 = { workspace = true }
