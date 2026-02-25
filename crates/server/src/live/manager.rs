@@ -325,6 +325,10 @@ pub struct LiveSessionManager {
     pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
     /// Database handle for batched writes.
     db: Database,
+    /// Search index holder for passing to scan_and_index_all on overflow reconciliation.
+    search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
+    /// Registry holder for passing to scan_and_index_all on overflow reconciliation.
+    registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
 }
 
 impl LiveSessionManager {
@@ -335,6 +339,8 @@ impl LiveSessionManager {
     pub fn start(
         pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
         db: Database,
+        search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
+        registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -347,6 +353,8 @@ impl LiveSessionManager {
             process_count: Arc::new(AtomicU32::new(0)),
             pricing,
             db,
+            search_index,
+            registry,
         });
 
         // Spawn background tasks
@@ -730,8 +738,10 @@ impl LiveSessionManager {
                         tracing::info!("Overflow detected — triggering full reconciliation scan");
                         let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
                         let hints = build_index_hints(&claude_dir);
+                        let search_for_rescan = manager.search_index.read().unwrap().clone();
+                        let registry_for_rescan = manager.registry.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
                         let (indexed, _) = scan_and_index_all(
-                            &claude_dir, &manager.db, &hints, |_| {},
+                            &claude_dir, &manager.db, &hints, search_for_rescan, registry_for_rescan, |_| {},
                         ).await.unwrap_or((0, 0));
                         if indexed > 0 {
                             tracing::info!(indexed, "Reconciliation scan complete — resyncing live state");
@@ -1578,26 +1588,37 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_project_info_simple() {
+    fn test_extract_project_info_simple_no_cwd() {
+        // Without cwd, resolve_project_path_with_cwd returns encoded name as-is
+        // (per design: "show errors, not guesses" — naive `-` split is wrong for
+        // paths containing `@` or `-`).
         let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
-        let (encoded, display, decoded, _cwd) = extract_project_info(&path, None);
+        let (encoded, display, full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-tmp");
         assert_eq!(display, "tmp");
-        assert_eq!(decoded, "/tmp");
+        assert_eq!(full_path, "-tmp"); // encoded name, not decoded — no cwd available
+    }
+
+    #[test]
+    fn test_extract_project_info_with_cwd() {
+        // With cwd, the resolved path uses the authoritative cwd from JSONL.
+        let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
+        let (encoded, _display, full_path, cwd) = extract_project_info(&path, Some("/tmp"));
+        assert_eq!(encoded, "-tmp");
+        assert_eq!(full_path, "/tmp");
+        assert_eq!(cwd, Some("/tmp".to_string()));
     }
 
     #[test]
     fn test_extract_project_info_encoded_path() {
-        // Claude Code encodes `/Users/test/my-project` as `-Users-test-my-project`
-        // (special chars → `-`), NOT URL-encoding.
+        // Without cwd, encoded name returned as-is (no naive guessing).
         let path =
             PathBuf::from("/home/user/.claude/projects/-Users-test-my-project/session.jsonl");
-        let (encoded, display, _decoded, _cwd) = extract_project_info(&path, None);
+        let (encoded, display, _full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-Users-test-my-project");
-        // Display name is the last path component
         assert!(!display.is_empty());
-        // Decoded path should start with /
-        assert!(_decoded.starts_with('/'));
+        // full_path is the encoded name when no cwd — NOT a decoded path
+        assert_eq!(_full_path, "-Users-test-my-project");
     }
 
     #[test]
@@ -1818,7 +1839,8 @@ mod tests {
         assert_eq!(session.agent_state.state, "awaiting_input");
         assert_eq!(session.last_activity_at, 1708500000);
         assert_eq!(session.project_display_name, "tmp");
-        assert_eq!(session.project_path, "/tmp");
+        // Without cwd from JSONL, project_path is the encoded name (not naive decode)
+        assert_eq!(session.project_path, "-tmp");
     }
 
     #[test]

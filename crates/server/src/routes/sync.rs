@@ -292,6 +292,8 @@ pub async fn trigger_deep_index(
         Ok(guard) => {
             let db = state.db.clone();
             let indexing = state.indexing.clone();
+            let search_holder = state.search_index.clone();
+            let registry_holder = state.registry.clone();
 
             // Reset indexing state BEFORE spawning so SSE clients that
             // connect after receiving the 202 never see stale `Done` from
@@ -339,10 +341,14 @@ pub async fn trigger_deep_index(
                 let hints = claude_view_db::indexer_parallel::build_index_hints(&claude_dir);
 
                 let indexing_cb = indexing.clone();
+                let search_for_scan = search_holder.read().unwrap().clone();
+                let registry_for_scan = registry_holder.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
                 let result = claude_view_db::indexer_parallel::scan_and_index_all(
                     &claude_dir,
                     &db,
                     &hints,
+                    search_for_scan,
+                    registry_for_scan,
                     move |_session_id| {
                         indexing_cb.increment_indexed();
                     },
