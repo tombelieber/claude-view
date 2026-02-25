@@ -5,7 +5,6 @@ import { useTheme } from '../hooks/use-theme'
 import { HealthIndicator } from './HealthIndicator'
 import { AuthPill } from './AuthPill'
 import { NotificationSoundPopover } from './live/NotificationSoundPopover'
-import { PairingPanel } from './PairingPanel'
 import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
@@ -127,8 +126,6 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
             </kbd>
           </div>
         </div>
-
-        <PairingPanel />
 
         <NotificationSoundPopover
           settings={soundSettings}
