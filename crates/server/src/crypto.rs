@@ -1,4 +1,4 @@
-//! NaCl box encryption, Ed25519 signing, and macOS Keychain key storage.
+//! NaCl box encryption, Ed25519 signing, and file-based key storage.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use crypto_box::{
@@ -6,14 +6,20 @@ use crypto_box::{
     PublicKey as BoxPublicKey, SalsaBox, SecretKey as BoxSecretKey,
 };
 use ed25519_dalek::{Signer, SigningKey};
-use security_framework::passwords::{delete_generic_password, set_generic_password};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-const KEYCHAIN_SERVICE: &str = "com.claude-view";
-const KEYCHAIN_ACCOUNT_IDENTITY: &str = "identity-keys";
-const KEYCHAIN_ACCOUNT_DEVICES: &str = "paired-devices";
+/// Directory for storing keys: ~/.claude-view/
+fn storage_dir() -> Result<PathBuf, String> {
+    let dir = dirs::home_dir()
+        .ok_or("no home directory")?
+        .join(".claude-view");
+    fs::create_dir_all(&dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
+    Ok(dir)
+}
 
 /// All keys for this device.
 #[derive(Serialize, Deserialize)]
@@ -35,15 +41,15 @@ pub struct PairedDevice {
     pub paired_at: u64, // unix timestamp
 }
 
-/// Load or create device identity from macOS Keychain.
+/// Load or create device identity from ~/.claude-view/identity.json.
 pub fn load_or_create_identity() -> Result<DeviceIdentity, String> {
+    let path = storage_dir()?.join("identity.json");
+
     // Try to load existing
-    if let Ok(data) = security_framework::passwords::get_generic_password(
-        KEYCHAIN_SERVICE,
-        KEYCHAIN_ACCOUNT_IDENTITY,
-    ) {
+    if path.exists() {
+        let data = fs::read(&path).map_err(|e| format!("read identity: {e}"))?;
         if let Ok(identity) = serde_json::from_slice::<DeviceIdentity>(&data) {
-            info!("loaded device identity from Keychain");
+            info!("loaded device identity from {}", path.display());
             return Ok(identity);
         }
     }
@@ -59,32 +65,30 @@ pub fn load_or_create_identity() -> Result<DeviceIdentity, String> {
         device_id,
     };
 
-    let json = serde_json::to_vec(&identity).map_err(|e| e.to_string())?;
-    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT_IDENTITY, &json)
-        .map_err(|e| format!("Keychain write failed: {e}"))?;
+    let json = serde_json::to_vec_pretty(&identity).map_err(|e| e.to_string())?;
+    fs::write(&path, &json).map_err(|e| format!("write identity: {e}"))?;
 
-    info!(device_id = %identity.device_id, "created new device identity in Keychain");
+    info!(device_id = %identity.device_id, "created new device identity at {}", path.display());
     Ok(identity)
 }
 
-/// Load paired devices from Keychain.
+/// Load paired devices from ~/.claude-view/paired-devices.json.
 pub fn load_paired_devices() -> Vec<PairedDevice> {
-    match security_framework::passwords::get_generic_password(
-        KEYCHAIN_SERVICE,
-        KEYCHAIN_ACCOUNT_DEVICES,
-    ) {
+    let path = match storage_dir() {
+        Ok(d) => d.join("paired-devices.json"),
+        Err(_) => return Vec::new(),
+    };
+    match fs::read(&path) {
         Ok(data) => serde_json::from_slice(&data).unwrap_or_default(),
         Err(_) => Vec::new(),
     }
 }
 
-/// Save paired devices to Keychain.
+/// Save paired devices to ~/.claude-view/paired-devices.json.
 pub fn save_paired_devices(devices: &[PairedDevice]) -> Result<(), String> {
-    let json = serde_json::to_vec(devices).map_err(|e| e.to_string())?;
-    // Delete then set (Keychain doesn't have upsert)
-    let _ = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT_DEVICES);
-    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT_DEVICES, &json)
-        .map_err(|e| format!("Keychain write failed: {e}"))?;
+    let path = storage_dir()?.join("paired-devices.json");
+    let json = serde_json::to_vec_pretty(devices).map_err(|e| e.to_string())?;
+    fs::write(&path, &json).map_err(|e| format!("write paired devices: {e}"))?;
     Ok(())
 }
 

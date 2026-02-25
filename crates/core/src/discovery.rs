@@ -43,15 +43,8 @@ pub struct ExtractedMetadata {
     pub turn_count: usize,
 }
 
-/// Resolve an encoded project directory name to a filesystem path.
-/// Uses naive segment join (no DFS filesystem walking -- sandbox-safe).
-/// Prefer `resolve_project_path_with_cwd()` when cwd from JSONL is available.
-pub fn resolve_project_path(encoded_name: &str) -> ResolvedProject {
-    resolve_project_path_with_cwd(encoded_name, None)
-}
-
 /// Resolve project path. Primary source: cwd from JSONL.
-/// Fallback: naive segment join of encoded name (never DFS, never guess).
+/// When cwd is None, returns the encoded name as-is (no guessing).
 pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> ResolvedProject {
     if let Some(path) = cwd {
         return ResolvedProject {
@@ -60,30 +53,19 @@ pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> R
         };
     }
 
-    // No cwd available -- naive decode from encoded name
-    if encoded_name.is_empty() {
-        return ResolvedProject {
-            full_path: String::new(),
-            display_name: String::new(),
-        };
-    }
-
-    // Simple decode: strip leading -, split on -, join with /
-    let name = encoded_name.strip_prefix('-').unwrap_or(encoded_name);
-    if name.is_empty() {
-        return ResolvedProject {
-            full_path: "/".to_string(),
-            display_name: "/".to_string(),
-        };
-    }
-
-    let segments: Vec<&str> = name.split('-').collect();
-    let resolved_path = format!("/{}", segments.join("/"));
-    let display_name = derive_display_name(&resolved_path);
+    // No cwd available — show encoded name as-is. Per design: "show errors,
+    // not guesses." The naive `-` split produces wrong paths for directories
+    // with `@` or `-` in names (e.g. @acme-corp → /@acme/corp).
+    let display = encoded_name
+        .strip_prefix('-')
+        .unwrap_or(encoded_name)
+        .rsplit('-')
+        .next()
+        .unwrap_or(encoded_name);
 
     ResolvedProject {
-        full_path: resolved_path,
-        display_name,
+        full_path: encoded_name.to_string(),
+        display_name: display.to_string(),
     }
 }
 
@@ -101,6 +83,59 @@ pub fn resolve_worktree_parent(encoded_name: &str) -> Option<String> {
         return None; // edge case: name starts with marker
     }
     Some(encoded_name[..pos].to_string())
+}
+
+/// Resolve the canonical git repository root for a given working directory.
+///
+/// Uses `git rev-parse --path-format=absolute --git-common-dir` which returns
+/// the shared `.git` directory across all worktrees of the same repo.
+/// Taking its parent gives the repo root that is consistent whether you're in
+/// the main worktree or any linked worktree.
+///
+/// Returns `None` if `cwd` is not inside a git repo, the directory doesn't
+/// exist, or git is not installed.
+///
+/// Requires git >= 2.31 (March 2021) for `--path-format=absolute`.
+pub async fn resolve_git_root(cwd: &str) -> Option<String> {
+    use tokio::process::Command;
+    let out = Command::new("git")
+        .args([
+            "-C", cwd,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !out.status.success() {
+        return None;
+    }
+
+    let common_dir = std::str::from_utf8(&out.stdout).ok()?.trim();
+    std::path::Path::new(common_dir)
+        .parent()?
+        .to_str()
+        .map(|s| s.to_string())
+}
+
+/// Extract the parent repository root from a worktree `cwd` path.
+///
+/// Detects both legacy `/.worktrees/<name>` and current `/.claude/worktrees/<name>`
+/// patterns. Returns the repo root (portion before the marker), or None.
+///
+/// This is a pure string operation — no disk access, no git commands.
+pub fn infer_git_root_from_worktree_path(cwd: &str) -> Option<String> {
+    for marker in &["/.worktrees/", "/.claude/worktrees/"] {
+        if let Some(idx) = cwd.find(marker) {
+            let root = &cwd[..idx];
+            if !root.is_empty() {
+                return Some(root.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Derive a human-friendly display name from a resolved filesystem path.
@@ -256,7 +291,9 @@ pub async fn get_projects() -> Result<Vec<ProjectInfo>, DiscoveryError> {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let resolved = resolve_project_path(&encoded_name);
+        // Use cwd from JSONL as authoritative source (no naive decode)
+        let cwd = crate::session_index::resolve_cwd_for_project(&path);
+        let resolved = resolve_project_path_with_cwd(&encoded_name, cwd.as_deref());
 
         // Get sessions for this project
         let sessions = match get_project_sessions(&path, &encoded_name, &resolved).await {
@@ -335,6 +372,7 @@ async fn get_project_sessions(
             id: session_id,
             project: encoded_name.to_string(),
             project_path: resolved.full_path.clone(),
+            git_root: None,
             file_path: path.to_string_lossy().to_string(),
             modified_at,
             size_bytes: metadata.len(),
@@ -680,44 +718,6 @@ mod tests {
     }
 
     // ============================================================================
-    // resolve_project_path Tests
-    // ============================================================================
-
-    #[test]
-    fn test_resolve_simple_path() {
-        // This is a fallback test since /tmp probably doesn't exist as encoded
-        let resolved = resolve_project_path("-tmp");
-        assert_eq!(resolved.full_path, "/tmp");
-        assert_eq!(resolved.display_name, "tmp");
-    }
-
-    #[test]
-    fn test_resolve_nonexistent_path() {
-        // A path that definitely doesn't exist
-        let resolved = resolve_project_path("-nonexistent-path-abc123");
-        // Should fall back to basic decode
-        assert!(resolved.full_path.starts_with('/'));
-        assert!(!resolved.display_name.is_empty());
-    }
-
-    #[test]
-    fn test_resolve_empty_path() {
-        let resolved = resolve_project_path("");
-        assert_eq!(resolved.full_path, "");
-        assert_eq!(resolved.display_name, "");
-    }
-
-    #[test]
-    fn test_resolve_complex_path() {
-        // A typical Claude project path — naive decode (no DFS)
-        let resolved = resolve_project_path("-Users-test-dev-my-cool-project");
-        // Should produce a reasonable path
-        assert!(resolved.full_path.starts_with('/'));
-        // The display name should be the last component
-        assert!(!resolved.display_name.is_empty());
-    }
-
-    // ============================================================================
     // cwd-based Resolution Tests
     // ============================================================================
 
@@ -729,19 +729,29 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_project_path_with_cwd_none_uses_naive_decode() {
+    fn test_resolve_project_path_with_cwd_none_returns_encoded_name() {
+        // Without cwd, returns encoded name as-is (no guessing)
         let result = resolve_project_path_with_cwd("-Users-dev-my-project", None);
-        // Without cwd, falls back to naive segment join (no DFS)
-        assert!(result.full_path.starts_with('/'));
-        assert!(!result.display_name.is_empty());
+        assert_eq!(result.full_path, "-Users-dev-my-project");
+        assert_eq!(result.display_name, "project");
     }
 
     #[test]
-    fn test_resolve_project_path_backward_compat() {
-        // Old function signature still works — returns String full_path
-        let result = resolve_project_path("-tmp");
-        assert_eq!(result.full_path, "/tmp");
-        assert_eq!(result.display_name, "tmp");
+    fn test_resolve_project_path_with_cwd_empty_encoded() {
+        let result = resolve_project_path_with_cwd("", None);
+        assert_eq!(result.full_path, "");
+        assert_eq!(result.display_name, "");
+    }
+
+    #[test]
+    fn test_resolve_project_path_with_cwd_scoped_package() {
+        // cwd correctly handles @-scoped paths that naive decode mangles
+        let result = resolve_project_path_with_cwd(
+            "-Users-dev--acme-corp-my-project",
+            Some("/Users/dev/@acme-corp/my-project"),
+        );
+        assert_eq!(result.full_path, "/Users/dev/@acme-corp/my-project");
+        assert_eq!(result.display_name, "my-project");
     }
 
     // ============================================================================
@@ -1088,6 +1098,7 @@ mod tests {
             id: "test".to_string(),
             project: "test".to_string(),
             project_path: "/test".to_string(),
+            git_root: None,
             file_path: "/test/session.jsonl".to_string(),
             modified_at,
             size_bytes: 100,
@@ -1351,5 +1362,62 @@ mod tests {
             resolve_worktree_parent("-Users-dev--myorg-claude-view--worktrees-theme3-contributions"),
             Some("-Users-dev--myorg-claude-view".to_string())
         );
+    }
+
+    // ========================================================================
+    // resolve_git_root Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn resolves_git_root_for_current_repo() {
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let root = resolve_git_root(manifest).await;
+        assert!(root.is_some(), "expected a git root for {manifest}");
+        let root = root.unwrap();
+        assert!(
+            manifest.starts_with(&root),
+            "git root {root} should be ancestor of {manifest}"
+        );
+    }
+
+    #[tokio::test]
+    async fn returns_none_for_non_git_dir() {
+        let root = resolve_git_root("/tmp").await;
+        assert!(root.is_none());
+    }
+
+    // ========================================================================
+    // infer_git_root_from_worktree_path Tests
+    // ========================================================================
+
+    #[test]
+    fn test_infer_worktree_legacy_pattern() {
+        assert_eq!(
+            infer_git_root_from_worktree_path("/Users/u/dev/repo/.worktrees/feature-x"),
+            Some("/Users/u/dev/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_infer_worktree_claude_pattern() {
+        assert_eq!(
+            infer_git_root_from_worktree_path("/Users/u/dev/@org/repo/.claude/worktrees/mobile-remote"),
+            Some("/Users/u/dev/@org/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_infer_worktree_subdir() {
+        assert_eq!(
+            infer_git_root_from_worktree_path("/Users/u/dev/repo/.worktrees/feat/crates/server"),
+            Some("/Users/u/dev/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_infer_worktree_non_worktree_returns_none() {
+        assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo"), None);
+        assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo-cold-start"), None);
+        assert_eq!(infer_git_root_from_worktree_path(""), None);
     }
 }
