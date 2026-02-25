@@ -60,6 +60,8 @@
 | **Reliability Release** | **Pending** | Both |
 | **Star / Label Sessions** | **Pending** | Both |
 | **Session Backup** | **Pending** | Both |
+| **Monorepo Restructure** | **Deferred (next cycle)** | Both |
+| **Mobile Remote M1** | **Deferred (next cycle)** | Both |
 | Phase 5: Enterprise Team Layer | Not started | **Enterprise** |
 
 ---
@@ -86,6 +88,12 @@ Plans in `docs/plans/` (active work only):
 | `2026-02-24-star-label-sessions-design.md` | approved (concept) | Named bookmarks on sessions — CLI + every UI surface |
 | `2026-02-24-session-backup-design.md` | draft | Preserve sessions beyond Claude Code's 30-day retention |
 | `mission-control/` | in-progress | Phases A-D done, E-J pending (see `mission-control/PROGRESS.md`) |
+| `2026-02-25-monorepo-restructure-design.md` | deferred (next cycle) | Turborepo monorepo: `apps/web`, `apps/mobile`, `packages/shared` |
+| `2026-02-25-monorepo-restructure-impl.md` | deferred (next cycle) | 12 tasks: git mv web SPA, workspaces, Expo scaffold, landing page |
+| `mobile-remote/2026-02-25-clawmini-mobile-m1-design.md` | deferred (next cycle) | Expo native app: live dashboard, keypair auth, dumb relay |
+| `mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md` | deferred (next cycle) | 12 tasks: relay fixes, pair screen, dashboard, deploy pipeline |
+
+**Execution order:** Monorepo restructure first → then M1 starting at Phase 2 (Phase 1 overlaps). See `mobile-remote/PROGRESS.md` for details.
 
 **Other locations:**
 - `docs/plans/backlog/` — 25 deferred/draft plans (epics, marketplace, mobile app (Expo), etc.)
