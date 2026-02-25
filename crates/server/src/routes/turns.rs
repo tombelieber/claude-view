@@ -74,19 +74,7 @@ impl TurnFinders {
     }
 }
 
-/// Returns true if the user message content looks like a system/hook message
-/// rather than a real user prompt. Mirrors `is_system_user_content` in
-/// `indexer_parallel.rs`.
-fn is_system_user_content(content: &str) -> bool {
-    let trimmed = content.trim();
-    trimmed.is_empty()
-        || trimmed.starts_with("<local-command-caveat>")
-        || trimmed.starts_with("<command-name>")
-        || trimmed.starts_with("<command-message>")
-        || trimmed.starts_with("<local-command-stdout>")
-        || trimmed.starts_with("<system-reminder>")
-        || trimmed.starts_with("{\"type\":\"tool_result\"")
-}
+use claude_view_core::is_system_user_content;
 
 /// Extract the first text content from a user line's raw bytes.
 ///
@@ -373,6 +361,7 @@ mod tests {
             id: id.to_string(),
             project: "test-project".to_string(),
             project_path: "/home/user/test-project".to_string(),
+            git_root: None,
             file_path: file_path.to_string(),
             modified_at: 1700000000,
             size_bytes: 2048,
@@ -428,6 +417,7 @@ mod tests {
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
+            first_message_at: None,
         }
     }
 

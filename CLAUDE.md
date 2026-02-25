@@ -29,12 +29,14 @@ Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm 
 | Node.js sidecar | Mission Control Phase F |
 
 ### Rust Crate Structure
-| Crate | Purpose |
-|-------|---------|
-| `crates/core/` | Shared types, JSONL parser, skill extraction |
-| `crates/db/` | SQLite via sqlx |
-| `crates/search/` | Tantivy full-text indexer + query |
-| `crates/server/` | Axum HTTP routes |
+| Crate | Package name | Purpose |
+|-------|-------------|---------|
+| `crates/core/` | `claude-view-core` | Shared types, JSONL parser, skill extraction |
+| `crates/db/` | `claude-view-db` | SQLite via sqlx |
+| `crates/search/` | `claude-view-search` | Tantivy full-text indexer + query |
+| `crates/server/` | `claude-view-server` | Axum HTTP routes, **produces the `claude-view` binary** |
+
+**Naming:** The crate is `claude-view-server`, the binary is `claude-view`. Use `cargo test -p claude-view-server` for dev, users run `claude-view`.
 
 ### Other Decisions
 | Decision | Choice |

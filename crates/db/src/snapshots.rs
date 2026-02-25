@@ -1576,9 +1576,10 @@ impl Database {
 
     /// Get model breakdown statistics for a time range.
     ///
-    /// Aggregates by model from the `turns` table (not the empty `turn_metrics`
-    /// table). Uses CTEs to avoid double-counting session-level metrics when a
-    /// session has multiple turns for the same model.
+    /// Aggregates by `primary_model` from the `sessions` table. Each session's
+    /// lines, tokens, and re-edit metrics are attributed to its primary model.
+    /// The unified pipeline populates `primary_model` during indexing, so this
+    /// query works without the `turns` table.
     pub async fn get_model_breakdown(
         &self,
         range: TimeRange,
@@ -1589,93 +1590,28 @@ impl Database {
     ) -> DbResult<Vec<ModelStats>> {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
-        // CTE approach:
-        //   model_tokens   — aggregate token counts per model (no double-counting)
-        //   model_weights   — per (session, model) token weight for proportional allocation
-        //   session_totals  — total tokens per session (denominator for weight)
-        //   model_sessions  — session-level metrics weighted by token share
-        //
-        // If a session used 70% Sonnet / 30% Haiku tokens, its 100 lines are
-        // allocated as 70 to Sonnet and 30 to Haiku, avoiding double-counting.
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
-                WITH model_tokens AS (
-                    SELECT
-                        COALESCE(t.model_id, 'unknown') as model,
-                        SUM(COALESCE(t.input_tokens, 0)) as input_tokens,
-                        SUM(COALESCE(t.output_tokens, 0)) as output_tokens,
-                        SUM(COALESCE(t.cache_read_tokens, 0)) as cache_read_tokens,
-                        SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
-                        COUNT(DISTINCT t.session_id) as session_count
-                    FROM turns t
-                    JOIN valid_sessions s ON t.session_id = s.id
-                    WHERE t.model_id IS NOT NULL
-                      AND s.project_id = ?1
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
-                      AND (?4 IS NULL OR s.git_branch = ?4)
-                    GROUP BY t.model_id
-                ),
-                model_weights AS (
-                    SELECT
-                        t.session_id,
-                        COALESCE(t.model_id, 'unknown') as model_id,
-                        CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
-                    FROM turns t
-                    JOIN valid_sessions s ON t.session_id = s.id
-                    WHERE t.model_id IS NOT NULL
-                      AND s.project_id = ?1
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
-                      AND (?4 IS NULL OR s.git_branch = ?4)
-                    GROUP BY t.session_id, t.model_id
-                ),
-                session_totals AS (
-                    SELECT session_id, SUM(model_tokens) as total_tokens
-                    FROM model_weights
-                    GROUP BY session_id
-                ),
-                model_sessions AS (
-                    SELECT
-                        w.model_id as model,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN (s.ai_lines_added + s.ai_lines_removed) * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as lines,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN s.reedited_files_count * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as reedited,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN s.files_edited_count * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as files_edited
-                    FROM model_weights w
-                    JOIN session_totals st ON w.session_id = st.session_id
-                    JOIN valid_sessions s ON w.session_id = s.id
-                    GROUP BY w.model_id
-                )
                 SELECT
-                    mt.model,
-                    mt.session_count as sessions,
-                    COALESCE(ms.lines, 0) as lines,
-                    mt.input_tokens,
-                    mt.output_tokens,
-                    mt.cache_read_tokens,
-                    mt.cache_creation_tokens,
-                    COALESCE(ms.reedited, 0) as reedited,
-                    COALESCE(ms.files_edited, 0) as files_edited
-                FROM model_tokens mt
-                LEFT JOIN model_sessions ms ON mt.model = ms.model
-                ORDER BY (mt.input_tokens + mt.output_tokens) DESC
+                    s.primary_model as model,
+                    COUNT(*) as sessions,
+                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
+                    COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
+                    COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
+                    COALESCE(SUM(s.cache_read_tokens), 0) as cache_read_tokens,
+                    COALESCE(SUM(s.cache_creation_tokens), 0) as cache_creation_tokens,
+                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
+                    COALESCE(SUM(s.files_edited_count), 0) as files_edited
+                FROM valid_sessions s
+                WHERE s.primary_model IS NOT NULL
+                  AND s.project_id = ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
+                  AND (?4 IS NULL OR s.git_branch = ?4)
+                GROUP BY s.primary_model
+                ORDER BY input_tokens + output_tokens DESC
                 "#,
             )
             .bind(pid)
@@ -1687,79 +1623,23 @@ impl Database {
         } else {
             sqlx::query_as(
                 r#"
-                WITH model_tokens AS (
-                    SELECT
-                        COALESCE(t.model_id, 'unknown') as model,
-                        SUM(COALESCE(t.input_tokens, 0)) as input_tokens,
-                        SUM(COALESCE(t.output_tokens, 0)) as output_tokens,
-                        SUM(COALESCE(t.cache_read_tokens, 0)) as cache_read_tokens,
-                        SUM(COALESCE(t.cache_creation_tokens, 0)) as cache_creation_tokens,
-                        COUNT(DISTINCT t.session_id) as session_count
-                    FROM turns t
-                    JOIN valid_sessions s ON t.session_id = s.id
-                    WHERE t.model_id IS NOT NULL
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                      AND (?3 IS NULL OR s.git_branch = ?3)
-                    GROUP BY t.model_id
-                ),
-                model_weights AS (
-                    SELECT
-                        t.session_id,
-                        COALESCE(t.model_id, 'unknown') as model_id,
-                        CAST(SUM(COALESCE(t.input_tokens, 0) + COALESCE(t.output_tokens, 0)) AS REAL) as model_tokens
-                    FROM turns t
-                    JOIN valid_sessions s ON t.session_id = s.id
-                    WHERE t.model_id IS NOT NULL
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
-                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                      AND (?3 IS NULL OR s.git_branch = ?3)
-                    GROUP BY t.session_id, t.model_id
-                ),
-                session_totals AS (
-                    SELECT session_id, SUM(model_tokens) as total_tokens
-                    FROM model_weights
-                    GROUP BY session_id
-                ),
-                model_sessions AS (
-                    SELECT
-                        w.model_id as model,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN (s.ai_lines_added + s.ai_lines_removed) * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as lines,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN s.reedited_files_count * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as reedited,
-                        CAST(ROUND(COALESCE(SUM(
-                            CASE WHEN st.total_tokens > 0
-                                THEN s.files_edited_count * w.model_tokens / st.total_tokens
-                                ELSE 0
-                            END
-                        ), 0)) AS INTEGER) as files_edited
-                    FROM model_weights w
-                    JOIN session_totals st ON w.session_id = st.session_id
-                    JOIN valid_sessions s ON w.session_id = s.id
-                    GROUP BY w.model_id
-                )
                 SELECT
-                    mt.model,
-                    mt.session_count as sessions,
-                    COALESCE(ms.lines, 0) as lines,
-                    mt.input_tokens,
-                    mt.output_tokens,
-                    mt.cache_read_tokens,
-                    mt.cache_creation_tokens,
-                    COALESCE(ms.reedited, 0) as reedited,
-                    COALESCE(ms.files_edited, 0) as files_edited
-                FROM model_tokens mt
-                LEFT JOIN model_sessions ms ON mt.model = ms.model
-                ORDER BY (mt.input_tokens + mt.output_tokens) DESC
+                    s.primary_model as model,
+                    COUNT(*) as sessions,
+                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
+                    COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
+                    COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
+                    COALESCE(SUM(s.cache_read_tokens), 0) as cache_read_tokens,
+                    COALESCE(SUM(s.cache_creation_tokens), 0) as cache_creation_tokens,
+                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
+                    COALESCE(SUM(s.files_edited_count), 0) as files_edited
+                FROM valid_sessions s
+                WHERE s.primary_model IS NOT NULL
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                  AND (?3 IS NULL OR s.git_branch = ?3)
+                GROUP BY s.primary_model
+                ORDER BY input_tokens + output_tokens DESC
                 "#,
             )
             .bind(&from)

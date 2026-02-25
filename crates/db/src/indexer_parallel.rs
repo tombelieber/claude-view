@@ -5,14 +5,15 @@
 use memchr::memmem;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_project_path, resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry,
-    ToolCounts,
+    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
+    ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 
 use crate::Database;
@@ -28,98 +29,123 @@ use crate::Database;
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
 /// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
-pub const CURRENT_PARSE_VERSION: i32 = 11;
+/// Version 11: Unified session pipeline — single-pass parse-before-write.
+/// Version 12: valid_sessions view no longer requires last_message_at > 0.
+/// Version 13: Unified pipeline writes turns, models, invocations, and search index.
+pub const CURRENT_PARSE_VERSION: i32 = 13;
 
-// ---------------------------------------------------------------------------
-// SQL constants for rusqlite write-phase prepared statements.
-// Must match the sqlx `_tx` function in queries.rs exactly (55 params).
-// ---------------------------------------------------------------------------
+/// Complete parsed session data — the sole input to any DB write.
+/// Every field is populated by the parser. No field is ever set from
+/// filesystem metadata alone.
+#[derive(Debug, Clone)]
+pub struct ParsedSession {
+    pub id: String,
+    pub project_id: String,
+    pub project_display_name: String,
+    pub project_path: String,
+    pub file_path: String,
+    pub preview: String,
+    pub summary: Option<String>,
+    pub message_count: i32,
+    pub last_message_at: i64,
+    pub first_message_at: i64,
+    pub git_branch: Option<String>,
+    pub is_sidechain: bool,
+    pub size_bytes: i64,
+    // Deep parse fields
+    pub last_message: String,
+    pub turn_count: i32,
+    pub tool_counts_edit: i32,
+    pub tool_counts_read: i32,
+    pub tool_counts_bash: i32,
+    pub tool_counts_write: i32,
+    pub files_touched: String,       // JSON array
+    pub skills_used: String,         // JSON array
+    pub user_prompt_count: i32,
+    pub api_call_count: i32,
+    pub tool_call_count: i32,
+    pub files_read: String,          // JSON array
+    pub files_edited: String,        // JSON array
+    pub files_read_count: i32,
+    pub files_edited_count: i32,
+    pub reedited_files_count: i32,
+    pub duration_seconds: i64,
+    pub commit_count: i32,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub thinking_block_count: i32,
+    pub turn_duration_avg_ms: i64,
+    pub turn_duration_max_ms: i64,
+    pub turn_duration_total_ms: i64,
+    pub api_error_count: i32,
+    pub api_retry_count: i32,
+    pub compaction_count: i32,
+    pub hook_blocked_count: i32,
+    pub agent_spawn_count: i32,
+    pub bash_progress_count: i32,
+    pub hook_progress_count: i32,
+    pub mcp_progress_count: i32,
+    pub summary_text: Option<String>,
+    pub parse_version: i32,
+    pub file_size_at_index: i64,
+    pub file_mtime_at_index: i64,
+    pub lines_added: i64,
+    pub lines_removed: i64,
+    pub loc_source: i32,
+    pub ai_lines_added: i64,
+    pub ai_lines_removed: i64,
+    pub work_type: Option<String>,
+    pub primary_model: Option<String>,
+    pub total_task_time_seconds: Option<i64>,
+    pub longest_task_seconds: Option<i64>,
+    pub longest_task_preview: Option<String>,
+    pub total_cost_usd: f64,
+}
 
-const UPDATE_SESSION_DEEP_SQL: &str = r#"
-    UPDATE sessions SET
-        last_message = ?2,
-        turn_count = ?3,
-        tool_counts_edit = ?4,
-        tool_counts_read = ?5,
-        tool_counts_bash = ?6,
-        tool_counts_write = ?7,
-        files_touched = ?8,
-        skills_used = ?9,
-        deep_indexed_at = ?10,
-        user_prompt_count = ?11,
-        api_call_count = ?12,
-        tool_call_count = ?13,
-        files_read = ?14,
-        files_edited = ?15,
-        files_read_count = ?16,
-        files_edited_count = ?17,
-        reedited_files_count = ?18,
-        duration_seconds = ?19,
-        commit_count = ?20,
-        first_message_at = ?21,
-        total_input_tokens = ?22,
-        total_output_tokens = ?23,
-        cache_read_tokens = ?24,
-        cache_creation_tokens = ?25,
-        thinking_block_count = ?26,
-        turn_duration_avg_ms = ?27,
-        turn_duration_max_ms = ?28,
-        turn_duration_total_ms = ?29,
-        api_error_count = ?30,
-        api_retry_count = ?31,
-        compaction_count = ?32,
-        hook_blocked_count = ?33,
-        agent_spawn_count = ?34,
-        bash_progress_count = ?35,
-        hook_progress_count = ?36,
-        mcp_progress_count = ?37,
-        summary_text = ?38,
-        parse_version = ?39,
-        file_size_at_index = ?40,
-        file_mtime_at_index = ?41,
-        lines_added = ?42,
-        lines_removed = ?43,
-        loc_source = ?44,
-        ai_lines_added = ?45,
-        ai_lines_removed = ?46,
-        work_type = ?47,
-        git_branch = COALESCE(NULLIF(TRIM(?48), ''), git_branch),
-        primary_model = ?49,
-        last_message_at = COALESCE(?50, last_message_at),
-        preview = CASE WHEN (preview IS NULL OR preview = '') AND ?51 IS NOT NULL THEN ?51 ELSE preview END,
-        total_task_time_seconds = ?52,
-        longest_task_seconds = ?53,
-        longest_task_preview = ?54,
-        total_cost_usd = ?55
-    WHERE id = ?1
-"#;
+/// Hints from sessions-index.json — merged during parse, never written to DB directly.
+#[derive(Debug, Clone, Default)]
+pub struct IndexHints {
+    pub is_sidechain: Option<bool>,
+    pub project_path: Option<String>,
+    pub project_display_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub summary: Option<String>,
+}
 
-const INSERT_TURN_SQL: &str = r#"
-    INSERT OR IGNORE INTO turns (
-        session_id, uuid, seq, model_id, parent_uuid,
-        content_type, input_tokens, output_tokens,
-        cache_read_tokens, cache_creation_tokens,
-        service_tier, timestamp
-    ) VALUES (
-        ?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?8,
-        ?9, ?10,
-        ?11, ?12
-    )
-"#;
-
-const INSERT_INVOCATION_SQL: &str = r#"
-    INSERT OR IGNORE INTO invocations
-        (source_file, byte_offset, invocable_id, session_id, project, timestamp)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-"#;
-
-const UPSERT_MODEL_SQL: &str = r#"
-    INSERT INTO models (id, provider, family, first_seen, last_seen)
-    VALUES (?1, ?2, ?3, ?4, ?5)
-    ON CONFLICT(id) DO UPDATE SET
-        last_seen = MAX(models.last_seen, excluded.last_seen)
-"#;
+/// Read all sessions-index.json files and build a session_id → hints map.
+/// No DB writes. Pure data extraction.
+pub fn build_index_hints(claude_dir: &Path) -> HashMap<String, IndexHints> {
+    let mut hints = HashMap::new();
+    match claude_view_core::session_index::read_all_session_indexes(claude_dir) {
+        Ok(indexes) => {
+            for (project_encoded, entries) in &indexes {
+                // Use cwd from JSONL files — never naive path decoding
+                let project_dir = claude_dir.join("projects").join(project_encoded);
+                let cwd = resolve_cwd_for_project(&project_dir);
+                let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
+                    project_encoded,
+                    cwd.as_deref(),
+                );
+                for entry in entries {
+                    let h = IndexHints {
+                        is_sidechain: entry.is_sidechain,
+                        project_path: Some(resolved.full_path.clone()),
+                        project_display_name: Some(resolved.display_name.clone()),
+                        git_branch: entry.git_branch.clone(),
+                        summary: entry.summary.clone(),
+                    };
+                    hints.insert(entry.session_id.clone(), h);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to read session indexes: {e}");
+        }
+    }
+    hints
+}
 
 /// Compute the primary model for a session: the model_id with the most turns.
 fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> {
@@ -437,6 +463,8 @@ pub struct ParseResult {
     pub lines_added: u32,
     pub lines_removed: u32,
     pub git_branch: Option<String>,
+    /// Working directory from the first user message's `cwd` field (authoritative source).
+    pub cwd: Option<String>,
     /// Collected message content for full-text search indexing.
     /// Only user, assistant text, and tool_use inputs are included.
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
@@ -676,6 +704,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
 
+    // cwd extraction from user messages
+    let cwd_finder = memmem::Finder::new(b"\"cwd\":\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -691,6 +722,20 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 if let Some(branch) = extract_quoted_string(&line[start..]) {
                     if !branch.is_empty() {
                         result.git_branch = Some(branch);
+                    }
+                }
+            }
+        }
+
+        // Extract cwd (appears on user, progress, system lines — grab first match)
+        if result.cwd.is_none() {
+            if let Some(pos) = cwd_finder.find(line) {
+                let start = pos + b"\"cwd\":\"".len();
+                if let Some(end) = line[start..].iter().position(|&b| b == b'"') {
+                    if let Ok(s) = std::str::from_utf8(&line[start..start + end]) {
+                        if !s.is_empty() {
+                            result.cwd = Some(s.to_string());
+                        }
                     }
                 }
             }
@@ -1776,19 +1821,7 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
     }
 }
 
-/// Returns true if the extracted user message content looks like a system/hook message
-/// rather than a real user prompt. These include local-command caveats, slash-command
-/// wrappers, tool_result blocks, and empty/whitespace-only content.
-fn is_system_user_content(content: &str) -> bool {
-    let trimmed = content.trim();
-    trimmed.is_empty()
-        || trimmed.starts_with("<local-command-caveat>")
-        || trimmed.starts_with("<command-name>")
-        || trimmed.starts_with("<command-message>")
-        || trimmed.starts_with("<local-command-stdout>")
-        || trimmed.starts_with("<system-reminder>")
-        || trimmed.starts_with("{\"type\":\"tool_result\"")
-}
+use claude_view_core::is_system_user_content;
 
 /// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
 /// Used when the typed AssistantLine parse fails but we still want to capture skills.
@@ -1835,6 +1868,8 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// (common for worktree dirs) are scanned for `.jsonl` files and included.
 ///
 /// Returns `(num_projects, num_sessions)`.
+#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[allow(deprecated)]
 pub async fn pass_1_read_indexes(
     claude_dir: &Path,
     db: &Database,
@@ -1852,15 +1887,30 @@ pub async fn pass_1_read_indexes(
         entries: &[claude_view_core::SessionIndexEntry],
         total_sessions: &mut usize,
     ) -> Result<(), String> {
+        // Use cwd from entry if available (orphan sessions and catch-up entries have it
+        // from classification). For sessions-index.json entries, resolve from disk.
+        let entry_cwd_owned: Option<String> = entries
+            .first()
+            .and_then(|e| e.session_cwd.clone())
+            .or_else(|| {
+                let project_dir = claude_dir.join("projects").join(project_encoded);
+                resolve_cwd_for_project(&project_dir)
+            });
+        let entry_cwd = entry_cwd_owned.as_deref();
+
+        // Infer git_root from cwd path (detects /.claude/worktrees/ and /.worktrees/ patterns)
+        let inferred_git_root = entry_cwd
+            .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
+
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
             if let Some(parent_encoded) = resolve_worktree_parent(project_encoded) {
-                let resolved = resolve_project_path(&parent_encoded);
+                let resolved = resolve_project_path_with_cwd(&parent_encoded, entry_cwd);
                 (parent_encoded, resolved)
             } else {
                 (
                     project_encoded.to_string(),
-                    resolve_project_path(project_encoded),
+                    resolve_project_path_with_cwd(project_encoded, entry_cwd),
                 )
             };
 
@@ -1916,6 +1966,20 @@ pub async fn pass_1_read_indexes(
             )
             .await
             .map_err(|e| format!("Failed to insert session {}: {}", entry.session_id, e))?;
+
+            // Always store session_cwd and git_root so the backfill and UI grouping work.
+            // Use entry-level cwd if available, else the project-level resolved cwd.
+            let session_cwd = entry.session_cwd.as_deref().or(entry_cwd);
+            if session_cwd.is_some() || entry.parent_session_id.is_some() || inferred_git_root.is_some() {
+                db.update_session_topology(
+                    &entry.session_id,
+                    session_cwd,
+                    entry.parent_session_id.as_deref(),
+                    inferred_git_root.as_deref(),
+                )
+                .await
+                .map_err(|e| format!("Failed to update topology {}: {}", entry.session_id, e))?;
+            }
 
             *total_sessions += 1;
         }
@@ -1978,6 +2042,8 @@ pub async fn pass_1_read_indexes(
 ///
 /// Returns `(indexed_count, total_bytes)` on success, where `total_bytes` is the
 /// sum of all JSONL file sizes that were eligible for deep indexing.
+#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[allow(deprecated)]
 pub async fn pass_2_deep_index<F>(
     db: &Database,
     registry: Option<&Registry>,
@@ -2254,15 +2320,8 @@ where
     }
 
     // ── Write phase ─────────────────────────────────────────────────────
-    // Two paths:
-    //   1. File-based DB (production): synchronous rusqlite with prepared
-    //      statements in spawn_blocking — avoids per-row async overhead.
-    //   2. In-memory DB (tests): sqlx _tx functions via async transaction,
-    //      because rusqlite can't open a separate connection to sqlx's
-    //      in-memory database.
-    // Extract search-relevant data before the write phase moves `results`.
-    // This is needed because the rusqlite write path moves `results` into
-    // spawn_blocking (requires 'static), so we can't access them afterwards.
+    // Uses sqlx async transaction via write_results_sqlx.
+    // Extract search-relevant data before the write phase.
     struct SearchBatch {
         session_id: String,
         project: String,
@@ -2294,188 +2353,8 @@ where
         Vec::new()
     };
 
-    let use_rusqlite = !db.db_path().as_os_str().is_empty();
     let indexed = if !results.is_empty() {
-        if use_rusqlite {
-            // ── Fast path: rusqlite with prepared statements ──────────
-            let db_path = db.db_path().to_owned();
-            let write_result: Result<usize, String> = tokio::task::spawn_blocking(move || {
-                let conn = rusqlite::Connection::open(&db_path)
-                    .map_err(|e| format!("rusqlite open error: {}", e))?;
-                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=30000;")
-                    .map_err(|e| format!("rusqlite pragma error: {}", e))?;
-
-                let mut update_stmt = conn.prepare(UPDATE_SESSION_DEEP_SQL)
-                    .map_err(|e| format!("prepare UPDATE error: {}", e))?;
-                let mut turn_stmt = conn.prepare(INSERT_TURN_SQL)
-                    .map_err(|e| format!("prepare INSERT_TURN error: {}", e))?;
-                let mut inv_stmt = conn.prepare(INSERT_INVOCATION_SQL)
-                    .map_err(|e| format!("prepare INSERT_INVOC error: {}", e))?;
-                let mut model_stmt = conn.prepare(UPSERT_MODEL_SQL)
-                    .map_err(|e| format!("prepare UPSERT_MODEL error: {}", e))?;
-                let mut del_turns_stmt = conn.prepare("DELETE FROM turns WHERE session_id = ?1")
-                    .map_err(|e| format!("prepare DELETE turns error: {}", e))?;
-                let mut del_inv_stmt = conn.prepare("DELETE FROM invocations WHERE session_id = ?1")
-                    .map_err(|e| format!("prepare DELETE invocations error: {}", e))?;
-
-                let tx = conn.unchecked_transaction()
-                    .map_err(|e| format!("rusqlite begin error: {}", e))?;
-
-                let seen_at = chrono::Utc::now().timestamp();
-                let deep_indexed_at = seen_at;
-                let count = results.len();
-
-                for result in &results {
-                    let meta = &result.parse_result.deep;
-
-                    // Serialize vec fields to JSON strings
-                    let files_touched = serde_json::to_string(&meta.files_touched)
-                        .unwrap_or_else(|_| "[]".to_string());
-                    let skills_used = serde_json::to_string(&meta.skills_used)
-                        .unwrap_or_else(|_| "[]".to_string());
-                    let files_read = serde_json::to_string(&meta.files_read)
-                        .unwrap_or_else(|_| "[]".to_string());
-                    let files_edited = serde_json::to_string(&meta.files_edited)
-                        .unwrap_or_else(|_| "[]".to_string());
-
-                    // Count commit skills for commit_count
-                    let commit_invocations =
-                        extract_commit_skill_invocations(&result.parse_result.raw_invocations);
-                    let commit_count = commit_invocations.len() as i32;
-
-                    // Compute turn duration aggregates
-                    let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
-                        (None, None, None)
-                    } else {
-                        let total: u64 = meta.turn_durations_ms.iter().sum();
-                        let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
-                        let avg = total / meta.turn_durations_ms.len() as u64;
-                        (Some(avg as i64), Some(max as i64), Some(total as i64))
-                    };
-
-                    // Classify work type
-                    let work_type_input = ClassificationInput::new(
-                        meta.duration_seconds,
-                        meta.turn_count as u32,
-                        meta.files_edited_count,
-                        meta.ai_lines_added,
-                        meta.skills_used.clone(),
-                    );
-                    let work_type = classify_work_type(&work_type_input);
-
-                    let primary_model = compute_primary_model(&result.parse_result.turns);
-
-                    // UPDATE session deep fields (55 params: ?1=id, ?2-?55=fields)
-                    update_stmt.execute(rusqlite::params![
-                        result.session_id,                // ?1
-                        meta.last_message,                // ?2
-                        meta.turn_count as i32,           // ?3
-                        meta.tool_counts.edit as i32,     // ?4
-                        meta.tool_counts.read as i32,     // ?5
-                        meta.tool_counts.bash as i32,     // ?6
-                        meta.tool_counts.write as i32,    // ?7
-                        files_touched,                    // ?8
-                        skills_used,                      // ?9
-                        deep_indexed_at,                  // ?10
-                        meta.user_prompt_count as i32,    // ?11
-                        meta.api_call_count as i32,       // ?12
-                        meta.tool_call_count as i32,      // ?13
-                        files_read,                       // ?14
-                        files_edited,                     // ?15
-                        meta.files_read_count as i32,     // ?16
-                        meta.files_edited_count as i32,   // ?17
-                        meta.reedited_files_count as i32, // ?18
-                        meta.duration_seconds as i32,     // ?19
-                        commit_count,                     // ?20
-                        meta.first_timestamp,             // ?21 (Option<i64>)
-                        meta.total_input_tokens as i64,   // ?22
-                        meta.total_output_tokens as i64,  // ?23
-                        meta.cache_read_tokens as i64,    // ?24
-                        meta.cache_creation_tokens as i64, // ?25
-                        meta.thinking_block_count as i32, // ?26
-                        dur_avg,                          // ?27 (Option<i64>)
-                        dur_max,                          // ?28 (Option<i64>)
-                        dur_total,                        // ?29 (Option<i64>)
-                        meta.api_error_count as i32,      // ?30
-                        meta.api_retry_count as i32,      // ?31
-                        meta.compaction_count as i32,     // ?32
-                        meta.hook_blocked_count as i32,   // ?33
-                        meta.agent_spawn_count as i32,    // ?34
-                        meta.bash_progress_count as i32,  // ?35
-                        meta.hook_progress_count as i32,  // ?36
-                        meta.mcp_progress_count as i32,   // ?37
-                        meta.summary_text,                // ?38 (Option<String>)
-                        CURRENT_PARSE_VERSION,            // ?39
-                        result.file_size,                 // ?40
-                        result.file_mtime,                // ?41
-                        result.parse_result.lines_added as i32,   // ?42
-                        result.parse_result.lines_removed as i32, // ?43
-                        1_i32,                            // ?44 loc_source = 1 (tool-call estimate)
-                        meta.ai_lines_added as i32,       // ?45
-                        meta.ai_lines_removed as i32,     // ?46
-                        work_type.as_str(),               // ?47
-                        result.parse_result.git_branch.as_deref(),  // ?48
-                        primary_model,                    // ?49 (Option<String>)
-                        meta.last_timestamp,              // ?50 (Option<i64>)
-                        meta.first_user_prompt,           // ?51 (Option<String>)
-                        meta.total_task_time_seconds as i32,       // ?52
-                        meta.longest_task_seconds.map(|v| v as i32), // ?53 (Option<i32>)
-                        meta.longest_task_preview,        // ?54 (Option<String>)
-                        meta.total_cost_usd,              // ?55 (f64)
-                    ]).map_err(|e| format!("UPDATE session {} error: {}", result.session_id, e))?;
-
-                    // DELETE stale turns/invocations before re-inserting
-                    del_turns_stmt.execute(rusqlite::params![result.session_id])
-                        .map_err(|e| format!("DELETE turns for {} error: {}", result.session_id, e))?;
-                    del_inv_stmt.execute(rusqlite::params![result.session_id])
-                        .map_err(|e| format!("DELETE invocations for {} error: {}", result.session_id, e))?;
-
-                    // INSERT invocations
-                    for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in &result.classified_invocations {
-                        inv_stmt.execute(rusqlite::params![
-                            source_file, byte_offset, invocable_id, session_id, project, timestamp
-                        ]).map_err(|e| format!("INSERT invocation error: {}", e))?;
-                    }
-
-                    // UPSERT models + INSERT turns
-                    if !result.parse_result.turns.is_empty() {
-                        for model_id in &result.parse_result.models_seen {
-                            let (provider, family) = claude_view_core::parse_model_id(model_id);
-                            model_stmt.execute(rusqlite::params![
-                                model_id, provider, family, seen_at, seen_at
-                            ]).map_err(|e| format!("UPSERT model error: {}", e))?;
-                        }
-
-                        for turn in &result.parse_result.turns {
-                            turn_stmt.execute(rusqlite::params![
-                                result.session_id,
-                                turn.uuid,
-                                turn.seq,
-                                turn.model_id,
-                                turn.parent_uuid,
-                                turn.content_type,
-                                turn.input_tokens.map(|v| v as i64),
-                                turn.output_tokens.map(|v| v as i64),
-                                turn.cache_read_tokens.map(|v| v as i64),
-                                turn.cache_creation_tokens.map(|v| v as i64),
-                                turn.service_tier,
-                                turn.timestamp,
-                            ]).map_err(|e| format!("INSERT turn error: {}", e))?;
-                        }
-                    }
-                }
-
-                tx.commit().map_err(|e| format!("rusqlite commit error: {}", e))?;
-                Ok(count)
-            })
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {}", e))?;
-
-            write_result?
-        } else {
-            // ── Fallback path: sqlx async transaction (in-memory DBs) ──
-            write_results_sqlx(db, &results).await?
-        }
+        write_results_sqlx(db, &results).await?
     } else {
         0
     };
@@ -2611,8 +2490,9 @@ where
     Ok((indexed, total_bytes))
 }
 
-/// Fallback write path using sqlx async transactions.
-/// Used for in-memory databases (tests) where rusqlite can't open a separate connection.
+/// Write deep index results using sqlx async transactions.
+/// Used by pass_2_deep_index (retained for test compatibility).
+#[allow(deprecated)]
 async fn write_results_sqlx(
     db: &Database,
     results: &[DeepIndexResult],
@@ -2790,18 +2670,6 @@ async fn write_results_sqlx(
     Ok(results.len())
 }
 
-/// Type alias for the shared registry holder used by the server.
-pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
-
-/// Full background indexing orchestrator: Pass 1 (index JSON) + Registry build
-/// in parallel, then Pass 2 (deep JSONL) with registry available.
-///
-/// This is the main entry point for background indexing. It runs Pass 1 and
-/// registry construction concurrently via `tokio::join!`, then Pass 2
-/// sequentially with the registry available for invocation classification.
-///
-/// If `registry_holder` is provided, the built registry is stored in it so
-/// API routes can access it after indexing completes.
 /// Prune sessions from the database whose JSONL files no longer exist on disk.
 ///
 /// Queries all session file_paths from the DB, checks each one for existence
@@ -2842,106 +2710,557 @@ pub async fn prune_stale_sessions(db: &Database) -> Result<u64, String> {
     Ok(pruned)
 }
 
-pub async fn run_background_index<F>(
+/// Collected results from one session's parse phase, ready for batched DB + search write.
+struct IndexedSession {
+    parsed: ParsedSession,
+    turns: Vec<claude_view_core::RawTurn>,
+    models_seen: Vec<String>,
+    classified_invocations: Vec<(String, i64, String, String, String, i64)>,
+    search_messages: Vec<claude_view_core::SearchableMessage>,
+    cwd: Option<String>,
+    git_root: Option<String>,
+    /// Project name for search indexing
+    project_for_search: String,
+}
+
+/// 3-phase startup scan: parse (parallel) → SQLite write (chunked) → search index.
+///
+/// Phase 1: Parse all changed JSONL files in parallel (CPU-bound, zero DB writes).
+/// Phase 2: Write sessions, turns, models, invocations in chunked transactions.
+/// Phase 3: Write search index to Tantivy (after SQLite success).
+///
+/// Returns (indexed_count, skipped_count).
+pub async fn scan_and_index_all<F>(
     claude_dir: &Path,
     db: &Database,
-    registry_holder: Option<RegistryHolder>,
-    search_index: Option<&claude_view_search::SearchIndex>,
-    on_pass1_done: impl FnOnce(usize, usize),
-    on_pass2_start: impl FnOnce(u64),
+    hints: &HashMap<String, IndexHints>,
+    search_index: Option<Arc<claude_view_search::SearchIndex>>,
+    registry: Option<Arc<Registry>>,
     on_file_done: F,
-    on_complete: impl FnOnce(usize),
-) -> Result<(), String>
+) -> Result<(usize, usize), String>
 where
-    F: Fn(usize, usize, u64) + Send + Sync + 'static,
+    F: Fn(&str) + Send + Sync + 'static,
 {
-    // Pass 1 and Registry build are independent — run in parallel.
-    let claude_dir_owned = claude_dir.to_path_buf();
-    let (pass1_result, registry) = tokio::join!(
-        pass_1_read_indexes(claude_dir, db),
-        claude_view_core::build_registry(&claude_dir_owned),
-    );
+    let projects_dir = claude_dir.join("projects");
+    if !projects_dir.exists() {
+        return Ok((0, 0));
+    }
 
-    let (projects, sessions) = pass1_result?;
-    on_pass1_done(projects, sessions);
+    // When the search index was rebuilt (schema version mismatch), force re-parse
+    // of ALL sessions so search_messages get regenerated and fed to Tantivy.
+    let force_search_reindex = search_index
+        .as_ref()
+        .map(|idx| idx.needs_full_reindex)
+        .unwrap_or(false);
 
-    // Seed invocables into the DB so invocations can reference them (FK constraint).
-    let invocable_tuples: Vec<(String, Option<String>, String, String, String)> = registry
-        .all_invocables()
-        .map(|info| {
-            (
-                info.id.clone(),
-                info.plugin_name.clone(),
-                info.name.clone(),
-                info.kind.to_string(),
-                info.description.clone(),
-            )
+    if force_search_reindex {
+        tracing::info!("Search index was rebuilt — forcing full re-parse to repopulate search data");
+    }
+
+    // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
+    let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new();
+    let project_entries = std::fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects dir: {}", e))?;
+
+    for project_entry in project_entries.flatten() {
+        let project_path = project_entry.path();
+        if !project_path.is_dir() {
+            continue;
+        }
+        let project_encoded = project_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let session_entries = match std::fs::read_dir(&project_path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for file_entry in session_entries.flatten() {
+            let file_path = file_entry.path();
+            if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let session_id = file_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            files.push((file_path, project_encoded.clone(), session_id));
+        }
+    }
+
+    // Pre-load all existing session staleness info from DB in one query.
+    let existing_sessions = db
+        .get_sessions_needing_deep_index()
+        .await
+        .map_err(|e| format!("Failed to load existing sessions: {}", e))?;
+    let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32)> = existing_sessions
+        .into_iter()
+        .map(|(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj)| {
+            (id, (stored_size, stored_mtime, pv))
         })
         .collect();
-    if !invocable_tuples.is_empty() {
-        db.batch_upsert_invocables(&invocable_tuples)
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+    ));
+
+    let skipped = Arc::new(AtomicUsize::new(0));
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 1: PARSE (parallel, CPU-bound, zero I/O writes)
+    // ══════════════════════════════════════════════════════════════════════
+    let mut handles = Vec::with_capacity(files.len());
+    for (path, project_encoded, session_id) in files {
+        let sem = semaphore.clone();
+        let hints = hints.clone();
+        let existing_map = existing_map.clone();
+        let skipped = skipped.clone();
+        let registry = registry.clone();
+        let force_reindex = force_search_reindex;
+
+        let handle = tokio::spawn(async move {
+            let _permit = sem
+                .acquire()
+                .await
+                .map_err(|e| format!("Semaphore error: {}", e))?;
+
+            // 1. stat() the file for current size + mtime
+            let metadata = match std::fs::metadata(&path) {
+                Ok(m) => m,
+                Err(_) => return Ok::<Option<IndexedSession>, String>(None),
+            };
+            let current_size = metadata.len() as i64;
+            let current_mtime = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+
+            // 2. Check staleness against DB (force_search_reindex bypasses)
+            if !force_reindex {
+                if let Some((Some(stored_size), Some(stored_mtime), pv)) =
+                    existing_map.get(&session_id)
+                {
+                    if *stored_size == current_size
+                        && *stored_mtime == current_mtime
+                        && *pv >= CURRENT_PARSE_VERSION
+                    {
+                        skipped.fetch_add(1, Ordering::Relaxed);
+                        return Ok(None);
+                    }
+                }
+            }
+
+            // 3. Parse the JSONL file (blocking I/O in spawn_blocking)
+            let path_for_parse = path.clone();
+            let parse_result = tokio::task::spawn_blocking(move || {
+                parse_file_bytes(&path_for_parse)
+            })
             .await
-            .map_err(|e| format!("Failed to seed invocables: {}", e))?;
+            .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+
+            let meta = &parse_result.deep;
+
+            // Skip files with no parseable timestamps
+            if meta.last_timestamp.is_none() {
+                tracing::debug!(path = %path.display(), "Skipping file with no timestamps");
+                skipped.fetch_add(1, Ordering::Relaxed);
+                return Ok(None);
+            }
+
+            // 4. Resolve project info from cwd (authoritative) or hints
+            let hint = hints.get(&session_id);
+            let cwd = parse_result.cwd.as_deref();
+
+            let (effective_encoded, resolved) =
+                if let Some(parent_encoded) = resolve_worktree_parent(&project_encoded) {
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&parent_encoded, cwd);
+                    (parent_encoded, r)
+                } else {
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&project_encoded, cwd);
+                    (project_encoded.clone(), r)
+                };
+
+            let project_display_name = hint
+                .and_then(|h| h.project_display_name.clone())
+                .unwrap_or_else(|| resolved.display_name.clone());
+            let project_path = hint
+                .and_then(|h| h.project_path.clone())
+                .unwrap_or_else(|| resolved.full_path.clone());
+            let is_sidechain = hint.and_then(|h| h.is_sidechain).unwrap_or(false);
+            let git_branch_hint = hint.and_then(|h| h.git_branch.clone());
+            let summary_hint = hint.and_then(|h| h.summary.clone());
+
+            // Compute derived fields
+            let commit_invocations =
+                extract_commit_skill_invocations(&parse_result.raw_invocations);
+            let commit_count = commit_invocations.len() as i32;
+
+            let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
+                (0i64, 0i64, 0i64)
+            } else {
+                let total: u64 = meta.turn_durations_ms.iter().sum();
+                let max = *meta.turn_durations_ms.iter().max().unwrap();
+                let avg = total / meta.turn_durations_ms.len() as u64;
+                (avg as i64, max as i64, total as i64)
+            };
+
+            let work_type_input = ClassificationInput::new(
+                meta.duration_seconds,
+                meta.turn_count as u32,
+                meta.files_edited_count,
+                meta.ai_lines_added,
+                meta.skills_used.clone(),
+            );
+            let work_type = classify_work_type(&work_type_input);
+            let primary_model = compute_primary_model(&parse_result.turns);
+
+            let files_touched_json = serde_json::to_string(&meta.files_touched)
+                .unwrap_or_else(|_| "[]".to_string());
+            let skills_used_json = serde_json::to_string(&meta.skills_used)
+                .unwrap_or_else(|_| "[]".to_string());
+            let files_read_json = serde_json::to_string(&meta.files_read)
+                .unwrap_or_else(|_| "[]".to_string());
+            let files_edited_json = serde_json::to_string(&meta.files_edited)
+                .unwrap_or_else(|_| "[]".to_string());
+
+            let git_branch = parse_result.git_branch.clone().or(git_branch_hint);
+            let summary = meta.summary_text.clone().or(summary_hint);
+            let preview = meta.first_user_prompt.clone().unwrap_or_default();
+            let message_count = (meta.user_prompt_count + meta.api_call_count) as i32;
+
+            // Classify invocations (CPU work, no DB)
+            let classified = if let Some(ref registry) = registry {
+                parse_result
+                    .raw_invocations
+                    .iter()
+                    .filter_map(|raw| {
+                        match claude_view_core::classify_tool_use(&raw.name, &raw.input, registry) {
+                            ClassifyResult::Valid { invocable_id, .. } => Some((
+                                path.to_string_lossy().to_string(),
+                                raw.byte_offset as i64,
+                                invocable_id,
+                                session_id.clone(),
+                                String::new(),
+                                raw.timestamp,
+                            )),
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            // Resolve cwd/git_root for topology
+            let cwd_owned = parse_result.cwd.clone();
+            let git_root = cwd
+                .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path)
+                .map(|s| s.to_string());
+
+            // Build ParsedSession
+            let parsed = ParsedSession {
+                id: session_id,
+                project_id: effective_encoded.clone(),
+                project_display_name,
+                project_path,
+                file_path: path.to_string_lossy().to_string(),
+                preview,
+                summary,
+                message_count,
+                last_message_at: meta.last_timestamp.unwrap_or(0),
+                first_message_at: meta.first_timestamp.unwrap_or(0),
+                git_branch,
+                is_sidechain,
+                size_bytes: current_size,
+                last_message: meta.last_message.clone(),
+                turn_count: meta.turn_count as i32,
+                tool_counts_edit: meta.tool_counts.edit as i32,
+                tool_counts_read: meta.tool_counts.read as i32,
+                tool_counts_bash: meta.tool_counts.bash as i32,
+                tool_counts_write: meta.tool_counts.write as i32,
+                files_touched: files_touched_json,
+                skills_used: skills_used_json,
+                user_prompt_count: meta.user_prompt_count as i32,
+                api_call_count: meta.api_call_count as i32,
+                tool_call_count: meta.tool_call_count as i32,
+                files_read: files_read_json,
+                files_edited: files_edited_json,
+                files_read_count: meta.files_read_count as i32,
+                files_edited_count: meta.files_edited_count as i32,
+                reedited_files_count: meta.reedited_files_count as i32,
+                duration_seconds: meta.duration_seconds as i64,
+                commit_count,
+                total_input_tokens: meta.total_input_tokens as i64,
+                total_output_tokens: meta.total_output_tokens as i64,
+                cache_read_tokens: meta.cache_read_tokens as i64,
+                cache_creation_tokens: meta.cache_creation_tokens as i64,
+                thinking_block_count: meta.thinking_block_count as i32,
+                turn_duration_avg_ms: dur_avg,
+                turn_duration_max_ms: dur_max,
+                turn_duration_total_ms: dur_total,
+                api_error_count: meta.api_error_count as i32,
+                api_retry_count: meta.api_retry_count as i32,
+                compaction_count: meta.compaction_count as i32,
+                hook_blocked_count: meta.hook_blocked_count as i32,
+                agent_spawn_count: meta.agent_spawn_count as i32,
+                bash_progress_count: meta.bash_progress_count as i32,
+                hook_progress_count: meta.hook_progress_count as i32,
+                mcp_progress_count: meta.mcp_progress_count as i32,
+                summary_text: meta.summary_text.clone(),
+                parse_version: CURRENT_PARSE_VERSION,
+                file_size_at_index: current_size,
+                file_mtime_at_index: current_mtime,
+                lines_added: parse_result.lines_added as i64,
+                lines_removed: parse_result.lines_removed as i64,
+                loc_source: 1,
+                ai_lines_added: meta.ai_lines_added as i64,
+                ai_lines_removed: meta.ai_lines_removed as i64,
+                work_type: Some(work_type.as_str().to_string()),
+                primary_model,
+                total_task_time_seconds: Some(meta.total_task_time_seconds as i64),
+                longest_task_seconds: meta.longest_task_seconds.map(|v| v as i64),
+                longest_task_preview: meta.longest_task_preview.clone(),
+                total_cost_usd: meta.total_cost_usd,
+            };
+
+            Ok(Some(IndexedSession {
+                parsed,
+                turns: parse_result.turns,
+                models_seen: parse_result.models_seen,
+                classified_invocations: classified,
+                search_messages: parse_result.search_messages,
+                cwd: cwd_owned,
+                git_root,
+                project_for_search: effective_encoded,
+            }))
+        });
+
+        handles.push(handle);
     }
 
-    // Auto-reindex: compare registry fingerprint with stored hash.
-    // If the registry changed (new plugin, new user skill, etc.) we must
-    // re-classify all invocations against the updated registry.
-    let new_hash = registry.fingerprint();
-    match db.get_registry_hash().await {
-        Ok(Some(stored)) if stored == new_hash => {
-            tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
+    // Collect all parse results
+    let mut indexed_sessions: Vec<IndexedSession> = Vec::with_capacity(handles.len());
+    for h in handles {
+        match h.await {
+            Ok(Ok(Some(session))) => indexed_sessions.push(session),
+            Ok(Ok(None)) => {} // skipped or empty
+            Ok(Err(e)) => tracing::warn!("scan_and_index_all parse error: {}", e),
+            Err(e) => tracing::warn!("scan_and_index_all join error: {}", e),
         }
-        Ok(stored) => {
-            let reason = if stored.is_none() { "first run" } else { "registry changed" };
-            tracing::info!("Registry hash mismatch ({reason}), marking all sessions for re-index");
-            match db.mark_all_sessions_for_reindex().await {
-                Ok(n) => tracing::info!("Marked {n} sessions for re-index"),
-                Err(e) => tracing::warn!("Failed to mark sessions for re-index: {e}"),
+    }
+
+    if indexed_sessions.is_empty() {
+        return Ok((0, skipped.load(Ordering::Relaxed)));
+    }
+
+    let total_search_bytes: usize = indexed_sessions
+        .iter()
+        .map(|s| s.search_messages.iter().map(|m| m.content.len()).sum::<usize>())
+        .sum();
+    tracing::info!(
+        sessions = indexed_sessions.len(),
+        search_bytes = total_search_bytes,
+        "Phase 1 parse complete, starting Phase 2 SQLite write"
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 2: SQLITE WRITE (sequential, chunked, single writer)
+    // ══════════════════════════════════════════════════════════════════════
+    let on_file_done = Arc::new(on_file_done);
+    let seen_at = chrono::Utc::now().timestamp();
+    let mut indexed_count: usize = 0;
+
+    for chunk in indexed_sessions.chunks(200) {
+        let mut tx = db
+            .pool()
+            .begin()
+            .await
+            .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
+
+        // BEGIN IMMEDIATE: acquire write lock upfront (WAL mode allows concurrent readers)
+        sqlx::query("PRAGMA busy_timeout = 30000")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| format!("Failed to set busy_timeout: {}", e))?;
+
+        // Dedup and UPSERT models FIRST — turns.model_id has FK to models.id
+        let mut chunk_models: HashMap<String, ()> = HashMap::new();
+        for session in chunk {
+            for model in &session.models_seen {
+                chunk_models.entry(model.clone()).or_insert(());
             }
         }
-        Err(e) => {
-            tracing::warn!("Failed to read registry hash: {e}, skipping auto-reindex check");
+        if !chunk_models.is_empty() {
+            let model_ids: Vec<String> = chunk_models.into_keys().collect();
+            crate::queries::batch_upsert_models_tx(&mut tx, &model_ids, seen_at)
+                .await
+                .map_err(|e| format!("Failed to upsert models: {}", e))?;
+        }
+
+        // Per-session writes: session upsert, topology, turns, invocations
+        for session in chunk {
+            // DELETE stale turns/invocations before re-inserting
+            sqlx::query("DELETE FROM turns WHERE session_id = ?1")
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("DELETE turns for {}: {}", session.parsed.id, e))?;
+
+            sqlx::query("DELETE FROM invocations WHERE session_id = ?1")
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("DELETE invocations for {}: {}", session.parsed.id, e))?;
+
+            // UPSERT session (63 params, generic over Executor)
+            crate::queries::sessions::execute_upsert_parsed_session(&mut *tx, &session.parsed)
+                .await
+                .map_err(|e| format!("Failed to upsert session {}: {}", session.parsed.id, e))?;
+
+            // UPDATE topology (session_cwd, git_root)
+            if session.cwd.is_some() {
+                sqlx::query(
+                    "UPDATE sessions SET \
+                     session_cwd = COALESCE(?1, session_cwd), \
+                     git_root = COALESCE(?2, git_root) \
+                     WHERE id = ?3",
+                )
+                .bind(session.cwd.as_deref())
+                .bind(session.git_root.as_deref())
+                .bind(&session.parsed.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to update topology {}: {}", session.parsed.id, e))?;
+            }
+
+            // INSERT turns
+            if !session.turns.is_empty() {
+                crate::queries::batch_insert_turns_tx(&mut tx, &session.parsed.id, &session.turns)
+                    .await
+                    .map_err(|e| format!("Failed to insert turns for {}: {}", session.parsed.id, e))?;
+            }
+
+            // INSERT invocations
+            if !session.classified_invocations.is_empty() {
+                crate::queries::batch_insert_invocations_tx(&mut tx, &session.classified_invocations)
+                    .await
+                    .map_err(|e| format!("Failed to insert invocations for {}: {}", session.parsed.id, e))?;
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
+
+        // Fire progress callbacks AFTER commit (data is durable)
+        for session in chunk {
+            on_file_done(&session.parsed.id);
+        }
+        indexed_count += chunk.len();
+
+        // Yield between chunks so live manager writes can slip through
+        tokio::task::yield_now().await;
+    }
+
+    tracing::info!(
+        indexed = indexed_count,
+        "Phase 2 SQLite write complete, starting Phase 3 search index"
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Phase 3: SEARCH INDEX (sequential, after SQLite success)
+    // ══════════════════════════════════════════════════════════════════════
+    if let Some(ref search) = search_index {
+        let mut search_errors = 0u32;
+        let mut sessions_indexed = 0u32;
+
+        for session in &indexed_sessions {
+            if session.search_messages.is_empty() {
+                continue;
+            }
+
+            let mut docs: Vec<claude_view_search::SearchDocument> = session
+                .search_messages
+                .iter()
+                .enumerate()
+                .map(|(i, msg)| claude_view_search::SearchDocument {
+                    session_id: session.parsed.id.clone(),
+                    project: session.project_for_search.clone(),
+                    branch: session.parsed.git_branch.clone().unwrap_or_default(),
+                    model: session.parsed.primary_model.clone().unwrap_or_default(),
+                    role: msg.role.clone(),
+                    content: msg.content.clone(),
+                    turn_number: (i + 1) as u64,
+                    timestamp: msg.timestamp.unwrap_or(0),
+                    skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
+                })
+                .collect();
+
+            // Add session summary document for metadata search
+            if !session.parsed.preview.is_empty() || !session.project_for_search.is_empty() {
+                let mut summary_parts = Vec::new();
+                if !session.parsed.preview.is_empty() {
+                    summary_parts.push(session.parsed.preview.as_str());
+                }
+                if !session.project_for_search.is_empty() {
+                    summary_parts.push(session.project_for_search.as_str());
+                }
+                if !session.parsed.last_message.is_empty() {
+                    summary_parts.push(session.parsed.last_message.as_str());
+                }
+                if !summary_parts.is_empty() {
+                    docs.push(claude_view_search::SearchDocument {
+                        session_id: session.parsed.id.clone(),
+                        project: session.project_for_search.clone(),
+                        branch: session.parsed.git_branch.clone().unwrap_or_default(),
+                        model: session.parsed.primary_model.clone().unwrap_or_default(),
+                        role: "summary".to_string(),
+                        content: summary_parts.join(" | "),
+                        turn_number: 0,
+                        timestamp: session.parsed.last_message_at,
+                        skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
+                    });
+                }
+            }
+
+            if let Err(e) = search.index_session(&session.parsed.id, &docs) {
+                tracing::warn!(session_id = %session.parsed.id, error = %e, "Failed to index session for search");
+                search_errors += 1;
+            }
+            sessions_indexed += 1;
+        }
+
+        if sessions_indexed > 0 {
+            if let Err(e) = search.commit() {
+                tracing::warn!(error = %e, "Failed to commit search index");
+            } else {
+                if let Err(e) = search.reader.reload() {
+                    tracing::warn!(error = %e, "Failed to reload search reader after commit");
+                }
+                if search_errors > 0 {
+                    tracing::info!(indexed = sessions_indexed, errors = search_errors, "Search index write complete (with errors)");
+                }
+                // Mark schema synced if this was a full reindex
+                if force_search_reindex {
+                    search.mark_schema_synced();
+                }
+            }
         }
     }
 
-    // Pass 2: use the registry for invocation classification + Tantivy search indexing
-    let (indexed, _total_bytes) = pass_2_deep_index(db, Some(&registry), search_index, on_pass2_start, on_file_done).await?;
-
-    // Backfill primary_model for sessions indexed before this field was populated
-    match db.backfill_primary_models().await {
-        Ok(n) if n > 0 => tracing::info!("Backfilled primary_model for {} sessions", n),
-        Ok(_) => {}
-        Err(e) => tracing::warn!("Failed to backfill primary_models: {}", e),
-    }
-
-    // Prune sessions whose JSONL files have been deleted from disk.
-    // This runs after indexing so we don't accidentally prune sessions that
-    // were just discovered by pass_1. Non-fatal: log and continue on error.
-    match prune_stale_sessions(db).await {
-        Ok(n) if n > 0 => tracing::info!("Pruned {} stale sessions from DB", n),
-        Ok(_) => {}
-        Err(e) => tracing::warn!("Failed to prune stale sessions: {}", e),
-    }
-
-    // Persist the new registry fingerprint so next startup can detect changes.
-    if let Err(e) = db.set_registry_hash(&new_hash).await {
-        tracing::warn!("Failed to persist registry hash: {e}");
-    }
-
-    // Store registry in shared holder for API routes to use
-    if let Some(holder) = registry_holder {
-        if let Ok(mut guard) = holder.write() {
-            *guard = Some(registry);
-        }
-    }
-
-    on_complete(indexed);
-
-    Ok(())
+    Ok((indexed_count, skipped.load(Ordering::Relaxed)))
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::Database;
@@ -3830,49 +4149,6 @@ mod tests {
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
-    #[tokio::test]
-    async fn test_run_background_index_full_pipeline() {
-        let (_tmp, claude_dir) = setup_test_claude_dir();
-        let db = Database::new_in_memory().await.unwrap();
-
-        let pass1_result = Arc::new(std::sync::Mutex::new((0usize, 0usize)));
-        let complete_result = Arc::new(AtomicUsize::new(0));
-
-        let p1 = pass1_result.clone();
-        let cr = complete_result.clone();
-
-        run_background_index(
-            &claude_dir,
-            &db,
-            None, // no registry holder
-            None::<&claude_view_search::SearchIndex>,
-            move |projects, sessions| {
-                *p1.lock().unwrap() = (projects, sessions);
-            },
-            |_total_bytes| {},
-            |_done, _total, _bytes| {},
-            move |total| {
-                cr.store(total, Ordering::Relaxed);
-            },
-        )
-        .await
-        .unwrap();
-
-        let (projects, sessions) = *pass1_result.lock().unwrap();
-        assert_eq!(projects, 1);
-        assert_eq!(sessions, 1);
-        assert_eq!(complete_result.load(Ordering::Relaxed), 1);
-
-        // Verify full pipeline result
-        let db_projects = db.list_projects().await.unwrap();
-        assert_eq!(db_projects.len(), 1);
-        let session = &db_projects[0].sessions[0];
-        assert!(session.deep_indexed);
-        assert_eq!(session.turn_count, 2);
-        assert_eq!(session.tool_counts.read, 1);
-        assert_eq!(session.tool_counts.edit, 1);
-    }
-
     // ============================================================================
     // Commit Skill Detection Tests (A3.1 acceptance tests)
     // ============================================================================
@@ -4741,5 +5017,58 @@ mod tests {
         let cost = result.deep.total_cost_usd;
         // 0.05 + 0.03 = 0.08 (third entry has no costUSD, contributes 0)
         assert!((cost - 0.08).abs() < 0.0001, "Expected 0.08, got {cost}");
+    }
+}
+
+#[cfg(test)]
+mod index_hints_tests {
+    use super::*;
+
+    #[test]
+    fn build_index_hints_returns_empty_for_missing_dir() {
+        let hints = build_index_hints(Path::new("/nonexistent"));
+        assert!(hints.is_empty());
+    }
+}
+
+#[cfg(test)]
+#[allow(deprecated)]
+mod scan_and_index_tests {
+    use super::*;
+    use crate::Database;
+    use std::collections::HashMap;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn scan_and_index_skips_unchanged_files() {
+        let db = Database::new_in_memory().await.unwrap();
+        let tmp = tempdir().unwrap();
+        let project_dir = tmp.path().join("projects").join("-test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        // Write a JSONL session file matching the format expected by parse_bytes().
+        // Must use: user line with content as array of {type:"text",text:...} blocks,
+        // assistant line with model + usage + content blocks.
+        let session_file = project_dir.join("sess-001.jsonl");
+        std::fs::write(&session_file, concat!(
+            r#"{"parentUuid":null,"isFinal":false,"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"text","text":"Hello world"}]}}"#, "\n",
+            r#"{"parentUuid":"u1","isFinal":false,"type":"assistant","uuid":"a1","timestamp":1706200000,"message":{"model":"claude-sonnet-4-5-20250929","role":"assistant","content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":100,"output_tokens":50}}}"#, "\n",
+        )).unwrap();
+
+        // First scan: should parse and insert
+        let (indexed, skipped) =
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+                .await
+                .unwrap();
+        assert_eq!(indexed, 1, "first scan should index 1 file");
+        assert_eq!(skipped, 0, "first scan should skip 0 files");
+
+        // Second scan without file changes: should skip
+        let (indexed2, skipped2) =
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+                .await
+                .unwrap();
+        assert_eq!(indexed2, 0, "second scan should index 0 files");
+        assert_eq!(skipped2, 1, "second scan should skip 1 file");
     }
 }

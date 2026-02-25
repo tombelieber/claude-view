@@ -7,7 +7,7 @@ mod dashboard;
 pub mod hook_events;
 mod invocables;
 mod models;
-mod sessions;
+pub mod sessions;
 mod system;
 mod ai_generation;
 pub mod facets;
@@ -21,6 +21,7 @@ pub use dashboard::SessionFilterParams;
 pub use types::*;
 
 // Re-export _tx functions for indexer_parallel.rs (crate::queries::*_tx paths)
+#[allow(deprecated)]
 pub use row_types::{
     batch_insert_invocations_tx, batch_insert_turns_tx, batch_upsert_models_tx,
     update_session_deep_fields_tx,

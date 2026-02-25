@@ -35,7 +35,7 @@ export function ActivitySparkline() {
     queryFn: async () => {
       const res = await fetch('/api/sessions/activity')
       if (!res.ok) throw new Error('Failed to fetch activity')
-      return res.json() as Promise<{ activity: ActivityPoint[]; bucket: string }>
+      return res.json() as Promise<{ activity: ActivityPoint[]; bucket: string; total: number }>
     },
     staleTime: 60_000,
   })
@@ -54,10 +54,9 @@ export function ActivitySparkline() {
     })
   }, [data])
 
-  const totalSessions = useMemo(
-    () => chartData.reduce((sum, d) => sum + d.count, 0),
-    [chartData]
-  )
+  // Use server-provided total (includes sessions with no timestamp that can't
+  // appear on the chart axis) so it matches the list's "N sessions" count.
+  const totalSessions = data?.total ?? chartData.reduce((sum, d) => sum + d.count, 0)
 
   const activeDays = useMemo(
     () => chartData.filter(d => d.count > 0).length,
@@ -66,18 +65,24 @@ export function ActivitySparkline() {
 
   if (chartData.length === 0) return null
 
-  // Compute nice Y-axis ticks
+  // Compute nice Y-axis ticks — aim for 4-6 ticks regardless of magnitude
   const maxCount = Math.max(...chartData.map(d => d.count), 1)
   const yTicks = (() => {
     if (maxCount <= 1) return [0, 1]
     if (maxCount <= 4) return Array.from({ length: maxCount + 1 }, (_, i) => i)
-    const step = maxCount <= 10 ? 2 : maxCount <= 25 ? 5 : 10
+    // "Nice numbers" step: pick a round step that yields ~5 ticks
+    const rawStep = maxCount / 5
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
+    const normalized = rawStep / magnitude
+    const step = (normalized <= 1.5 ? 1 : normalized <= 3 ? 2 : normalized <= 7 ? 5 : 10) * magnitude
     const ceil = Math.ceil(maxCount / step) * step
     const ticks = [0]
     for (let v = step; v <= ceil; v += step) ticks.push(v)
     return ticks
   })()
   const yDomain: [number, number] = [0, yTicks[yTicks.length - 1]]
+  // Size Y-axis width to fit the widest tick label (~7px per digit at fontSize 10)
+  const yAxisWidth = Math.max(28, String(yTicks[yTicks.length - 1]).length * 8 + 8)
 
   // Compute smart X-axis ticks
   const xTicks = (() => {
@@ -106,7 +111,7 @@ export function ActivitySparkline() {
         <ResponsiveContainer width="100%" height={140}>
           <AreaChart
             data={chartData}
-            margin={{ top: 8, right: 12, bottom: 0, left: -12 }}
+            margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
           >
             <defs>
               <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
@@ -141,7 +146,7 @@ export function ActivitySparkline() {
               tickLine={false}
               tickMargin={4}
               allowDecimals={false}
-              width={32}
+              width={yAxisWidth}
             />
 
             <Tooltip
