@@ -30,6 +30,14 @@ export interface ActivitySummary {
   avgSessionSeconds: number
   longestSession: { seconds: number; project: string; title: string } | null
   busiestDay: { date: string; totalSeconds: number } | null
+  /** Total tool calls across all sessions */
+  totalToolCalls: number
+  /** Total agent spawns across all sessions */
+  totalAgentSpawns: number
+  /** Total MCP interactions across all sessions */
+  totalMcpCalls: number
+  /** Unique skill names used across all sessions */
+  uniqueSkills: number
 }
 
 /** Get session start timestamp — prefer firstMessageAt, fall back to modifiedAt - duration */
@@ -90,9 +98,9 @@ export function aggregateByProject(sessions: SessionInfo[]): ProjectActivity[] {
 
   for (const session of sessions) {
     if (session.durationSeconds <= 0) continue
-    // After reliability release: projectPath is always set from cwd. The || session.project
-    // fallback is retained for safety but is effectively dead code after that release.
-    const path = session.projectPath || session.project
+    // Prefer git_root (canonical repo root) for grouping so that monorepo sub-crates
+    // roll up into a single project. Falls back to projectPath, then legacy project name.
+    const path = (session.gitRoot || null) ?? session.projectPath ?? session.project
     let proj = projectMap.get(path)
     if (!proj) {
       proj = { name: projectDisplayName(path), projectPath: path, totalSeconds: 0, sessionCount: 0 }
@@ -107,18 +115,20 @@ export function aggregateByProject(sessions: SessionInfo[]): ProjectActivity[] {
 
 /** Compute summary statistics */
 export function computeSummary(sessions: SessionInfo[], days: DayActivity[]): ActivitySummary {
-  const validSessions = sessions.filter(s => s.durationSeconds > 0)
-  const totalSeconds = validSessions.reduce((sum, s) => sum + s.durationSeconds, 0)
-  const sessionCount = validSessions.length
+  // Count ALL sessions for the headline number (matches footer/status bar).
+  // Only filter to duration>0 for time-based calculations (avg, longest, etc.).
+  const timedSessions = sessions.filter(s => s.durationSeconds > 0)
+  const totalSeconds = timedSessions.reduce((sum, s) => sum + s.durationSeconds, 0)
+  const sessionCount = sessions.length
 
   let longestSession: ActivitySummary['longestSession'] = null
   let maxDuration = 0
-  for (const s of validSessions) {
+  for (const s of timedSessions) {
     if (s.durationSeconds > maxDuration) {
       maxDuration = s.durationSeconds
       longestSession = {
         seconds: s.durationSeconds,
-        project: projectDisplayName(s.projectPath || s.project),
+        project: projectDisplayName((s.gitRoot || null) ?? s.projectPath ?? s.project),
         title: s.summary || s.preview || '(untitled)',
       }
     }
@@ -133,11 +143,31 @@ export function computeSummary(sessions: SessionInfo[], days: DayActivity[]): Ac
     }
   }
 
+  // Aggregate tool/agent/mcp/skills counts
+  let totalToolCalls = 0
+  let totalAgentSpawns = 0
+  let totalMcpCalls = 0
+  const skillSet = new Set<string>()
+  for (const s of sessions) {
+    totalToolCalls += s.toolCallCount ?? 0
+    totalAgentSpawns += s.agentSpawnCount ?? 0
+    totalMcpCalls += s.mcpProgressCount ?? 0
+    if (s.skillsUsed) {
+      for (const skill of s.skillsUsed) {
+        if (skill) skillSet.add(skill)
+      }
+    }
+  }
+
   return {
     totalSeconds,
     sessionCount,
-    avgSessionSeconds: sessionCount > 0 ? Math.round(totalSeconds / sessionCount) : 0,
+    avgSessionSeconds: timedSessions.length > 0 ? Math.round(totalSeconds / timedSessions.length) : 0,
     longestSession,
     busiestDay,
+    totalToolCalls,
+    totalAgentSpawns,
+    totalMcpCalls,
+    uniqueSkills: skillSet.size,
   }
 }
