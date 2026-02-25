@@ -271,6 +271,7 @@ async fn main() -> Result<()> {
     let idx_state = indexing.clone();
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
+    let idx_search = search_index_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -326,14 +327,18 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Store registry in shared holder for API routes
-        *idx_registry.write().unwrap() = Some(registry);
+        // Store registry in shared holder for API routes and keep an Arc for indexing
+        let registry_arc = Arc::new(registry);
+        *idx_registry.write().unwrap() = Some((*registry_arc).clone());
+
+        // Extract search index Arc from holder (clone Arc, don't hold lock during scan)
+        let search_for_scan = idx_search.read().unwrap().clone();
 
         // 3. Single-pass scan: parse + upsert for each changed file
         idx_state.set_total(hint_count);
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
-        match scan_and_index_all(&claude_dir, &idx_db, &hints, move |_session_id| {
+        match scan_and_index_all(&claude_dir, &idx_db, &hints, search_for_scan, Some(registry_arc.clone()), move |_session_id| {
             state_for_progress.increment_indexed();
         }).await {
             Ok((indexed, skipped)) => {
@@ -354,14 +359,6 @@ async fn main() -> Result<()> {
                     Ok(_) => {}
                     Err(e) => tracing::warn!("Failed to prune stale sessions: {}", e),
                 }
-
-                // Backfill primary_model for sessions indexed before this field existed.
-                match idx_db.backfill_primary_models().await {
-                    Ok(n) if n > 0 => tracing::info!("Backfilled primary_model for {} sessions", n),
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!("Failed to backfill primary_models: {}", e),
-                }
-
                 // Persist registry fingerprint so next startup can detect changes.
                 if let Err(e) = idx_db.set_registry_hash(&new_hash).await {
                     tracing::warn!("Failed to persist registry hash: {e}");
@@ -385,7 +382,8 @@ async fn main() -> Result<()> {
                     // Lightweight re-scan: picks up any files the watcher missed (skips unchanged)
                     let hints = build_index_hints(&claude_dir);
                     let rescan_start = Instant::now();
-                    match scan_and_index_all(&claude_dir, &idx_db, &hints, |_| {}).await {
+                    let search_rescan = idx_search.read().unwrap().clone();
+                    match scan_and_index_all(&claude_dir, &idx_db, &hints, search_rescan, Some(registry_arc.clone()), |_| {}).await {
                         Ok((indexed, _)) => {
                             if indexed > 0 {
                                 tracing::info!(indexed, "Periodic re-scan indexed new sessions");
