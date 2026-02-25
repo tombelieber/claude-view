@@ -17,7 +17,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use claude_view_core::ClaudeCliStatus;
-use claude_view_db::{ClassificationStatus, HealthStats, HealthStatus, StorageStats};
+use claude_view_db::{ClassificationStatus, HealthStats, HealthStatus, SystemStorageStats};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -56,8 +56,8 @@ pub struct StorageInfo {
     pub total_bytes: u64,
 }
 
-impl From<StorageStats> for StorageInfo {
-    fn from(s: StorageStats) -> Self {
+impl From<SystemStorageStats> for StorageInfo {
+    fn from(s: SystemStorageStats) -> Self {
         Self {
             jsonl_bytes: s.jsonl_bytes,
             index_bytes: s.index_bytes,
@@ -261,7 +261,7 @@ pub async fn get_system_status(
 /// Calculate performance metrics from index metadata and storage stats.
 fn calculate_performance(
     metadata: &claude_view_db::IndexMetadata,
-    storage: &StorageStats,
+    storage: &SystemStorageStats,
 ) -> PerformanceInfo {
     let last_index_duration_ms = metadata.last_index_duration_ms;
 
@@ -495,6 +495,7 @@ pub fn router() -> Router<Arc<AppState>> {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use axum::{
@@ -843,7 +844,7 @@ mod tests {
             updated_at: 1000,
             git_sync_interval_secs: 60,
         };
-        let storage = StorageStats {
+        let storage = SystemStorageStats {
             jsonl_bytes: 10_000_000,
             index_bytes: 0,
             db_bytes: 0,
@@ -872,7 +873,7 @@ mod tests {
             updated_at: 0,
             git_sync_interval_secs: 60,
         };
-        let storage = StorageStats {
+        let storage = SystemStorageStats {
             jsonl_bytes: 0,
             index_bytes: 0,
             db_bytes: 0,
@@ -899,7 +900,7 @@ mod tests {
             updated_at: 1000,
             git_sync_interval_secs: 60,
         };
-        let storage = StorageStats {
+        let storage = SystemStorageStats {
             jsonl_bytes: 1000,
             index_bytes: 0,
             db_bytes: 0,
