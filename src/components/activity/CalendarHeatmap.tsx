@@ -86,7 +86,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Activity Map</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Activity Map</h2>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -103,6 +103,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
             type="button"
             onClick={() => setMonthOffset(prev => Math.min(prev + 1, 0))}
             disabled={monthOffset >= 0}
+            aria-disabled={monthOffset >= 0}
             className={cn(
               'p-1 rounded transition-colors cursor-pointer',
               monthOffset >= 0
@@ -118,7 +119,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
 
       {/* Day labels + Calendar grid — scrollable on narrow screens */}
       <div className="overflow-x-auto">
-      <div className="min-w-[280px]">
+      <div>
       <div className="grid grid-cols-7 gap-1 mb-1">
         {DAY_LABELS.map((label) => (
           <div key={label} className="text-[10px] text-center text-gray-400 dark:text-gray-500">
@@ -133,7 +134,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
           <div key={wi} className="grid grid-cols-7 gap-1">
             {week.map((cell, ci) => {
               if (!cell.date) {
-                return <div key={ci} className="aspect-square rounded" />
+                return <div key={ci} className="w-9 h-9 rounded" aria-hidden="true" />
               }
               const level = intensityLevel(cell.activity?.totalSeconds ?? 0)
               const isSelected = selectedDate === cell.date
@@ -143,7 +144,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
                   type="button"
                   onClick={() => onDayClick?.(cell.date)}
                   className={cn(
-                    'aspect-square rounded-sm transition-all duration-150 cursor-pointer relative group',
+                    'w-9 h-9 rounded-sm transition-all duration-150 cursor-pointer relative group',
                     INTENSITY_CLASSES[level],
                     isSelected && 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-950',
                   )}
@@ -164,14 +165,14 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
           </div>
         ))}
       </div>
-      </div>{/* end min-w-[280px] */}
+      </div>
       </div>{/* end overflow-x-auto */}
 
       {/* Legend */}
       <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-400 dark:text-gray-500">
         <span>Less</span>
         {INTENSITY_CLASSES.map((cls, i) => (
-          <div key={i} className={cn('w-3 h-3 rounded-sm', cls)} />
+          <div key={i} className={cn('w-4 h-4 rounded', cls)} />
         ))}
         <span>More</span>
       </div>

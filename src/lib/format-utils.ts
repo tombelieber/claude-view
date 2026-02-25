@@ -91,11 +91,16 @@ export function formatRelativeTime(timestamp: bigint | number): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-/** Format seconds as human-readable duration: "2h 15m", "45m", "8s" */
+/** Format seconds as human-readable duration: "75d 21h", "2h 15m", "45m", "8s" */
 export function formatHumanDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
-  const hours = Math.floor(seconds / 3600)
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
+  if (days > 0) {
+    if (hours === 0) return `${days}d`
+    return `${days}d ${hours}h`
+  }
   if (hours === 0) return `${minutes}m`
   if (minutes === 0) return `${hours}h`
   return `${hours}h ${minutes}m`

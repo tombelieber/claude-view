@@ -1,12 +1,24 @@
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Clock, ArrowRight } from 'lucide-react'
+import { Clock, ArrowRight, GitBranch } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { formatHumanDuration } from '../../lib/format-utils'
 import type { DayActivity } from '../../lib/activity-utils'
 import { sessionStartTime, projectDisplayName } from '../../lib/activity-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import type { SessionInfo } from '../../types/generated/SessionInfo'
+
+/** Extract a short branch/worktree label for display. Returns null for main/master. */
+function branchLabel(session: SessionInfo): string | null {
+  const branch = session.gitBranch
+  if (!branch || branch === 'main' || branch === 'master' || branch === 'HEAD') return null
+  // Strip common prefixes for compact display
+  return branch
+    .replace(/^feature\//, '')
+    .replace(/^feat\//, '')
+    .replace(/^fix\//, 'fix/')
+    .replace(/^worktree-/, '')
+}
 
 function formatTime(unixSeconds: number): string {
   if (unixSeconds <= 0) return '--'
@@ -36,12 +48,11 @@ interface DailyTimelineProps {
   days: DayActivity[]
   selectedDate?: string | null
   selectedProject?: string | null
+  /** Display cap. When omitted, shows all days (data is already time-bounded by the API). */
   maxDays?: number
 }
 
-// V2 deferred: "Load more days" button / lazy-load (design doc Section 4).
-// Current: hard cap at maxDays=14. Add a "Show all" toggle in V2.
-export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 14 }: DailyTimelineProps) {
+export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: DailyTimelineProps) {
   const [searchParams] = useSearchParams()
 
   const filteredDays = useMemo(() => {
@@ -55,7 +66,7 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
     // Filter sessions within days by project
     if (selectedProject) {
       result = result.map(day => {
-        const filtered = day.sessions.filter(s => (s.projectPath || s.project) === selectedProject)
+        const filtered = day.sessions.filter(s => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === selectedProject)
         return {
           ...day,
           sessions: filtered,
@@ -65,7 +76,7 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
       }).filter(day => day.sessions.length > 0)
     }
 
-    return result.slice(0, maxDays)
+    return maxDays != null ? result.slice(0, maxDays) : result
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.map(d => `${d.date}:${d.sessionCount}`).join(','), selectedDate, selectedProject, maxDays])
 
@@ -79,7 +90,7 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
 
   return (
     <div>
-      <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Session Timeline</h2>
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Session Timeline</h2>
       <div className="space-y-4">
         {filteredDays.map((day) => (
           <div key={day.date}>
@@ -105,6 +116,7 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
                   <Link
                     key={session.id}
                     to={buildSessionUrl(session.id, searchParams)}
+                    aria-label={`${title}, ${formatHumanDuration(session.durationSeconds)}, ${projectDisplayName((session.gitRoot || null) ?? session.projectPath ?? session.project)}`}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150',
                       'hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer group'
@@ -115,9 +127,17 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
                       {formatTime(start)} — {formatTime(end)}
                     </span>
 
-                    {/* Project badge */}
-                    <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded whitespace-nowrap">
-                      {projectDisplayName(session.projectPath || session.project)}
+                    {/* Project badge + branch tag */}
+                    <span className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded whitespace-nowrap">
+                        {projectDisplayName((session.gitRoot || null) ?? session.projectPath ?? session.project)}
+                      </span>
+                      {branchLabel(session) && (
+                        <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-0.5 max-w-[140px]">
+                          <GitBranch className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{branchLabel(session)}</span>
+                        </span>
+                      )}
                     </span>
 
                     {/* Title */}
@@ -140,6 +160,11 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays = 1
           </div>
         ))}
       </div>
+      {!selectedDate && maxDays != null && days.length > maxDays && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-center pt-2">
+          Showing last {maxDays} days — click a date on the calendar to filter
+        </p>
+      )}
     </div>
   )
 }
