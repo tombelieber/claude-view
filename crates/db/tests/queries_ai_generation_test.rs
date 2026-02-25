@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Integration tests for Database AI generation stats query methods.
 
 use claude_view_db::Database;

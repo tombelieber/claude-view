@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Integration tests for Database invocable/invocation query methods.
 
 use claude_view_db::Database;

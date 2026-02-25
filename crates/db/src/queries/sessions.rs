@@ -574,6 +574,7 @@ impl Database {
     /// and does NOT overwrite Pass 2 fields (tool_counts, files_touched, etc.)
     /// if they already have data.
     #[allow(clippy::too_many_arguments)]
+    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
     pub async fn insert_session_from_index(
         &self,
         id: &str,
@@ -675,6 +676,7 @@ impl Database {
     /// Sets `deep_indexed_at` to the current timestamp to mark the session
     /// as having been fully indexed. Includes all Phase 3 atomic unit metrics.
     #[allow(clippy::too_many_arguments)]
+    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
     pub async fn update_session_deep_fields(
         &self,
         id: &str,
