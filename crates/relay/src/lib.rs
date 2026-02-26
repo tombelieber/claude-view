@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod pairing;
+pub mod push;
 pub mod state;
 pub mod ws;
 
@@ -36,6 +37,7 @@ pub fn app(state: RelayState) -> Router {
         .route("/ws", get(ws::ws_handler))
         .route("/pair", post(pairing::create_pair))
         .route("/pair/claim", post(pairing::claim_pair))
+        .route("/push-tokens", post(push::register_push_token))
         .layer(cors)
         .with_state(state)
 }
