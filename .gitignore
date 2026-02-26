@@ -54,9 +54,11 @@ e2e/screenshots/*
 tmp/
 temp/
 
-# Screenshots (temporary verification artifacts)
+# Screenshots and placeholder images
 *.png
-!apps/mobile/assets/images/*.png
+
+# Stale pre-monorepo root src/ (ts-rs now exports to apps/web/src/types/generated/)
+/src/
 
 # Expo
 .expo/

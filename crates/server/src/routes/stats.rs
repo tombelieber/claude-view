@@ -37,7 +37,7 @@ pub struct DashboardQuery {
 
 /// Current period metrics for dashboard (adapts to selected time range).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentPeriodMetrics {
     #[ts(type = "number")]
@@ -52,7 +52,7 @@ pub struct CurrentPeriodMetrics {
 
 /// Extended dashboard stats with current period and trends.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedDashboardStats {
     /// Base dashboard stats
@@ -83,7 +83,7 @@ pub struct ExtendedDashboardStats {
 
 /// Simplified trends for dashboard display.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardTrends {
     /// Session count trend
@@ -115,7 +115,7 @@ impl From<WeekTrends> for DashboardTrends {
 
 /// Storage statistics for the settings page.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageStats {
     /// Size of JSONL session files in bytes.

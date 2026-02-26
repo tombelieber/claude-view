@@ -49,7 +49,7 @@ pub struct ApplyRuleRequest {
 
 /// A coaching rule parsed from a `coaching-*.md` file.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct CoachingRule {
@@ -64,7 +64,7 @@ pub struct CoachingRule {
 
 /// Response for GET /api/coaching/rules.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct ListRulesResponse {
@@ -75,7 +75,7 @@ pub struct ListRulesResponse {
 
 /// Response for DELETE /api/coaching/rules/{id}.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct RemoveRuleResponse {
