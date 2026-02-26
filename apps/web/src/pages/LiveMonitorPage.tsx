@@ -255,10 +255,10 @@ export function LiveMonitorPage() {
 
       {/* Scrollable content — kanban columns scroll independently, other views page-scroll */}
       <div
-        className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+        className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' || viewMode === 'monitor' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
       >
         <div
-          className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
+          className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' || viewMode === 'monitor' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
         >
           {/* View content */}
           {viewMode === 'grid' && (
