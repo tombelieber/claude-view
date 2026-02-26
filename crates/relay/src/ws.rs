@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::auth::{verify_auth, AuthMessage};
+use crate::push;
 use crate::state::{DeviceConnection, RelayState};
 
 #[derive(Deserialize)]
@@ -20,9 +21,7 @@ struct RelayEnvelope {
     payload: String,
     /// Unencrypted push hint from Mac — relay uses this to trigger push
     /// notifications without needing to decrypt the payload.
-    #[allow(dead_code)]
     push_hint: Option<String>,
-    #[allow(dead_code)]
     push_title: Option<String>,
 }
 
@@ -113,6 +112,17 @@ async fn handle_socket(socket: WebSocket, state: RelayState) {
                             let _ = conn.tx.send(text.to_string());
                         }
                         // If recipient offline, message is dropped (M1: no queuing)
+
+                        // Trigger push notification if Mac included a push hint
+                        if let Some(ref hint) = envelope.push_hint {
+                            let title = envelope.push_title.as_deref().unwrap_or("Session update");
+                            let state = state.clone();
+                            let title = title.to_string();
+                            let hint = hint.clone();
+                            tokio::spawn(async move {
+                                push::send_push_notification(&state, &title, &hint).await;
+                            });
+                        }
                     } else {
                         warn!(from = %device_id, to = %envelope.to, "unpaired device, dropping");
                     }

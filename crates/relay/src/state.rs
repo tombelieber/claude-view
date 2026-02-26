@@ -36,6 +36,8 @@ pub struct RelayState {
     pub pairing_offers: Arc<DashMap<String, PairingOffer>>,
     /// Registered devices, keyed by device_id.
     pub devices: Arc<DashMap<String, RegisteredDevice>>,
+    /// Expo push tokens, keyed by device_id.
+    pub push_tokens: Arc<DashMap<String, String>>,
 }
 
 impl RelayState {
@@ -44,6 +46,7 @@ impl RelayState {
             connections: Arc::new(DashMap::new()),
             pairing_offers: Arc::new(DashMap::new()),
             devices: Arc::new(DashMap::new()),
+            push_tokens: Arc::new(DashMap::new()),
         }
     }
 }
