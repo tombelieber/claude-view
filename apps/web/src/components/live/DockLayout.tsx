@@ -238,7 +238,7 @@ export function DockLayout({
         className="dockview-theme-dark"
         components={components}
         tabComponents={{ session: SessionTabRenderer }}
-        defaultTabComponent="session"
+        defaultTabComponent={SessionTabRenderer}
         onReady={onReady}
         watermarkComponent={EmptyWatermark}
       />
