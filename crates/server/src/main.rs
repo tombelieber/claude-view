@@ -505,7 +505,7 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_dir = claude_view_core::paths::lock_dir().unwrap_or_else(|| std::env::temp_dir());
+        let lock_dir = claude_view_core::paths::lock_dir().unwrap_or_else(std::env::temp_dir);
         let _ = std::fs::create_dir_all(&lock_dir);
         let lock_path = lock_dir.join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {

@@ -46,7 +46,7 @@ async fn update_settings(
 
     // Validate timeout if provided
     if let Some(t) = body.llm_timeout_secs {
-        if t < 10 || t > 300 {
+        if !(10..=300).contains(&t) {
             return Err(ApiError::BadRequest(
                 "Timeout must be between 10 and 300 seconds".to_string(),
             ));

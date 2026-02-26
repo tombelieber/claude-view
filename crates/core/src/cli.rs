@@ -45,7 +45,7 @@ static RESOLVED_CLI_PATH: OnceLock<Option<String>> = OnceLock::new();
 /// server process was started (npx, cargo run, launchd, etc.).
 pub fn resolved_cli_path() -> Option<&'static str> {
     RESOLVED_CLI_PATH
-        .get_or_init(|| ClaudeCliStatus::find_claude_path())
+        .get_or_init(ClaudeCliStatus::find_claude_path)
         .as_deref()
 }
 
@@ -130,7 +130,7 @@ impl ClaudeCliStatus {
     /// 3. Filesystem scan of known install locations
     fn find_claude_path() -> Option<String> {
         // Step 1: Login shell resolution (the fix-path pattern from VS Code/Electron)
-        if let Some(shell) = std::env::var("SHELL").ok() {
+        if let Ok(shell) = std::env::var("SHELL") {
             if let Some(path) = Self::which_via_shell(&shell) {
                 return Some(path);
             }
