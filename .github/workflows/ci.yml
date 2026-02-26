@@ -30,7 +30,7 @@ jobs:
 
   rust:
     name: Rust (clippy + test + deny)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
@@ -49,8 +49,9 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
-      - name: Install cargo-deny
-        run: cargo install cargo-deny
+      - uses: taiki-e/install-action@d9c7e4de96b8ff27364cd0b5890e9280b99adbb3  # v2.68.11
+        with:
+          tool: cargo-deny
 
       - name: cargo deny
         run: cargo deny check
