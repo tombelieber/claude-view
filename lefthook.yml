@@ -1,0 +1,21 @@
+# Lefthook git hooks — fast gate strategy
+# Pre-commit: format + lint (~2s)
+# Pre-push: Rust quality + supply chain (~15s)
+
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,ts,jsx,tsx,json}"
+      run: bunx biome check --no-errors-on-unmatched {staged_files}
+    cargo-fmt:
+      glob: "*.rs"
+      run: cargo fmt --check
+
+pre-push:
+  parallel: true
+  commands:
+    clippy:
+      run: cargo clippy --workspace -- -D warnings
+    cargo-deny:
+      run: cargo deny check
