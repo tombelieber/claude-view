@@ -8,7 +8,7 @@
 | **Distribution (users)** | `npx claude-view` | 95% of devs have Node, maximum reach |
 | **Development (you)** | Bun | Fast, npm-compatible, use it locally |
 
-Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm install` for dev. Never delete `package-lock.json`.
+`bun.lock` tracked in git. `package-lock.json` removed — npm can't resolve `workspace:*` protocol. Never use `npm install` for dev.
 
 ### Distribution Strategy
 | Decision | Choice |
