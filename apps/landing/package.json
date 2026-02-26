@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "open src/index.html",
-    "build": "mkdir -p dist && cp -r src/* dist/ && cp -r public/* dist/",
+    "build": "mkdir -p dist && cp -r src/* dist/ && (test -d public && cp -r public/* dist/ || true)",
     "lint": "biome check .",
     "deploy": "wrangler pages deploy dist"
   }
