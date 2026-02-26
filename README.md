@@ -1,8 +1,16 @@
 # claude-view
 
-<p align="center">
-  <strong>Live monitor & co-pilot for Claude Code power users.</strong>
-</p>
+**You have 10 Claude sessions running right now. What are they doing?**
+
+Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it. You Cmd-Tab through 15 terminals trying to remember which session was doing what. A cache expired while you weren't looking. A session finished 10 minutes ago and you didn't notice. Another one hit its context limit and you're burning tokens on a dead conversation.
+
+**You're paying $200/mo for Claude Code. You deserve a dashboard.**
+
+```bash
+npx claude-view
+```
+
+One command. Every session visible. Real-time.
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -19,31 +27,12 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
-
----
-
-## The Problem
-
-You have 3 projects open. Each project has multiple git worktrees. Each worktree has multiple Claude Code sessions running. Some are thinking, some are waiting for you, some are about to hit context limits, and one finished 10 minutes ago but you forgot about it.
-
-You Cmd-Tab through 15 terminal windows trying to remember which session was doing what. You burn tokens because a cache expired while you weren't looking. You lose flow because there's no single place to see everything. And behind that "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it.
-
-**Claude Code is incredibly powerful. But flying 10+ concurrent sessions without a dashboard is like driving without a speedometer.**
-
-## The Solution
-
-**claude-view** is a real-time dashboard that sits alongside your Claude Code sessions. One browser tab, every session visible, full context at a glance.
-
-```bash
-npx claude-view
-```
-
-That's it. Opens in your browser. All your sessions — live and past — in one workspace.
 
 ---
 
@@ -132,17 +121,15 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 
 ---
 
-## Built for Flow
+## Built for the Power User
 
-claude-view is designed for the developer who:
+claude-view is for the developer who:
 
 - Runs **3+ projects simultaneously**, each with multiple worktrees
 - Has **10-20 Claude Code sessions** open at any time
 - Needs to context-switch fast without losing track of what's running
 - Wants to **optimize token spend** by timing messages around cache windows
 - Gets frustrated by Cmd-Tabbing through terminals to check on agents
-
-One browser tab. All sessions. Stay in flow.
 
 ---
 
@@ -187,48 +174,6 @@ Key techniques that make this possible:
 
 ---
 
-## Quick Start
-
-```bash
-npx claude-view
-```
-
-Opens at `http://localhost:47892`.
-
-### Configuration
-
-| Env Variable | Default | Description |
-|-------------|---------|-------------|
-| `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
-
----
-
-## Installation
-
-| Method | Command |
-|--------|---------|
-| **npx** (recommended) | `npx claude-view` |
-| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-
-### Requirements
-
-- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we monitor
-
-### Setup for Corporate/Sandbox Environments
-
-If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP), set all claude-view writes to stay inside the project directory:
-
-```bash
-# One-time setup: copy the env template
-cp .env.example .env
-# Uncomment the CLAUDE_VIEW_DATA_DIR line in .env
-```
-
-This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
-
----
-
 ## How It Compares
 
 The Claude Code ecosystem has great tools — chat UIs, history viewers, session managers. claude-view fills a different gap: **real-time monitoring + deep history + analytics in one lightweight workspace.**
@@ -259,6 +204,46 @@ The Claude Code ecosystem has great tools — chat UIs, history viewers, session
 | **Background cost** | Negligible | Chromium renderer process |
 
 When you're already running 10+ Claude Code sessions eating RAM and CPU, the last thing you want is a 300 MB dashboard competing for resources.
+
+---
+
+## Quick Start
+
+```bash
+npx claude-view
+```
+
+Opens at `http://localhost:47892`.
+
+### Configuration
+
+| Env Variable | Default | Description |
+|-------------|---------|-------------|
+| `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
+
+## Installation
+
+| Method | Command |
+|--------|---------|
+| **npx** (recommended) | `npx claude-view` |
+| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
+
+### Requirements
+
+- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we monitor
+
+### Setup for Corporate/Sandbox Environments
+
+If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP), set all claude-view writes to stay inside the project directory:
+
+```bash
+# One-time setup: copy the env template
+cp .env.example .env
+# Uncomment the CLAUDE_VIEW_DATA_DIR line in .env
+```
+
+This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
 
 ---
 
@@ -348,7 +333,7 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ## Related
 
-- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Back up your Claude Code environment to GitHub. `npx claude-backup`
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 
 ## License
 

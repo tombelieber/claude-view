@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "version": "0.9.0",
-  "description": "Mission Control for Claude Code — live monitor, full-text search, cost tracking, AI reports, sub-agent visibility, context gauge, cache countdown, activity heatmap, fluency score. One dashboard for all sessions.",
+  "description": "You have 10 Claude sessions running. What are they doing? Live dashboard for Claude Code — monitor every session, track costs, search history, see sub-agents. One command: npx claude-view",
   "type": "module",
   "files": [
     "dist"
