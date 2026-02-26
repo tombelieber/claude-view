@@ -26,7 +26,7 @@ export function PairingQrCode() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/pairing/qr')
+      const res = await fetch('/api/pairing/qr')
       if (!res.ok) {
         if (res.status === 503) {
           throw new Error('Relay server not configured. Set RELAY_URL to enable mobile pairing.')
