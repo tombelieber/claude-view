@@ -1,3 +1,4 @@
+import type { DockviewApi } from 'dockview-react'
 import { useEffect, useRef } from 'react'
 import { useMonitorStore } from '../../store/monitor-store'
 import type { LiveSession } from './use-live-sessions'
@@ -5,6 +6,9 @@ import type { LiveSession } from './use-live-sessions'
 interface UseMonitorKeyboardShortcutsOptions {
   enabled: boolean
   sessions: LiveSession[]
+  onLayoutModeChange?: (mode: 'auto-grid' | 'custom') => void
+  layoutMode?: 'auto-grid' | 'custom'
+  dockviewApi?: DockviewApi | null
 }
 
 /** Max grid columns the user can set via keyboard. */
@@ -61,18 +65,39 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
       // Skip all other shortcuts when an input is focused
       if (isInputFocused()) return
 
+      // Ctrl+Shift combos for layout mode switching (must come BEFORE the modifier guard)
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        if (e.key === 'G' || e.key === 'g') {
+          opts.onLayoutModeChange?.('auto-grid')
+          e.preventDefault()
+          return
+        }
+        if (e.key === 'L' || e.key === 'l') {
+          opts.onLayoutModeChange?.('custom')
+          e.preventDefault()
+          return
+        }
+      }
+
       // Ignore key events with modifier keys (Ctrl, Alt, Meta)
       if (e.ctrlKey || e.altKey || e.metaKey) return
 
       const key = e.key
 
-      // Number keys 1-9: select pane by position
+      // Number keys 1-9: select pane by position (mode-aware)
       if (key >= '1' && key <= '9') {
         const index = Number.parseInt(key, 10) - 1
-        // Filter to visible (non-hidden) sessions to match what the grid shows
         const visibleSessions = opts.sessions.filter((s) => !store.hiddenPaneIds.has(s.id))
         if (index < visibleSessions.length) {
-          store.selectPane(visibleSessions[index].id)
+          const session = visibleSessions[index]
+          if (opts.layoutMode === 'custom' && opts.dockviewApi) {
+            const panel = opts.dockviewApi.getPanel(session.id)
+            if (panel) {
+              panel.focus()
+            }
+          } else {
+            store.selectPane(session.id)
+          }
           e.preventDefault()
         }
         return
