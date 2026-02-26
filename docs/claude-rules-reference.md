@@ -149,7 +149,7 @@ if new_status == Paused && old_status == Some(Working) {
 | SQL SELECT | Column in query | `grep -rn "FROM sessions" crates/db/src/queries/` |
 | Rust struct | Field present | Check `SessionRow`, `SessionInfo` |
 | API response | Field in JSON | `curl localhost:47892/api/sessions?limit=1 \| jq .sessions[0].newField` |
-| TS type | Field typed | Check `src/types/generated/` |
+| TS type | Field typed | Check `apps/web/src/types/generated/` |
 | Hook | Field returned | Check `use-*.ts` return type |
 | Component | Field rendered | Check component JSX |
 | **Browser** | **Actually visible** | Open the UI and look |
@@ -337,8 +337,8 @@ Pattern for server-to-UI progress:
 |-------|------|------|
 | Backend | Atomic progress state | `crates/server/src/indexing_state.rs` |
 | Backend | SSE endpoint polling atomics | `crates/server/src/routes/indexing.rs` |
-| Frontend | `EventSource` hook | `src/hooks/use-indexing-progress.ts` |
-| Frontend | Progress bar component | `src/components/StorageOverview.tsx` |
+| Frontend | `EventSource` hook | `apps/web/src/hooks/use-indexing-progress.ts` |
+| Frontend | Progress bar component | `apps/web/src/components/StorageOverview.tsx` |
 
 ---
 
