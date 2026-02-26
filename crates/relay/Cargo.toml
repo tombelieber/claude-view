@@ -2,6 +2,7 @@
 name = "claude-view-relay"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [dependencies]
 axum = { workspace = true }
