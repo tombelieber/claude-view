@@ -71,8 +71,8 @@ mod tests {
     async fn test_list_jobs_empty() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = Arc::new(AppState {
@@ -93,7 +93,9 @@ mod tests {
             live_manager: None,
             search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let app = Router::new()

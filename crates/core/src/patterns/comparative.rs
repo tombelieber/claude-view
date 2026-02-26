@@ -9,7 +9,10 @@ use crate::types::SessionInfo;
 use super::mean;
 
 /// Calculate all comparative patterns from session data.
-pub fn calculate_comparative_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_comparative_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = cp01_you_vs_baseline(sessions, time_range_days) {
@@ -20,7 +23,10 @@ pub fn calculate_comparative_patterns(sessions: &[SessionInfo], time_range_days:
 }
 
 /// CP01: You vs Baseline - compare recent 7-day performance vs overall period.
-fn cp01_you_vs_baseline(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn cp01_you_vs_baseline(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     if sessions.len() < 30 {
         return None;
     }
@@ -77,7 +83,10 @@ fn cp01_you_vs_baseline(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 
     let sample_size = editing_sessions.len() as u32;
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), super::format_improvement(improvement.abs()));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement.abs()),
+    );
     vars.insert("direction".to_string(), direction.to_string());
 
     let mut comparison = HashMap::new();

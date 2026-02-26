@@ -8,7 +8,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use claude_view_db::indexer_parallel::{pass_1_read_indexes, pass_2_deep_index, build_index_hints, scan_and_index_all};
+use claude_view_db::indexer_parallel::{
+    build_index_hints, pass_1_read_indexes, pass_2_deep_index, scan_and_index_all,
+};
 use claude_view_db::Database;
 
 // ---------------------------------------------------------------------------
@@ -77,9 +79,9 @@ fn setup_single_session() -> (tempfile::TempDir, std::path::PathBuf) {
 async fn ac1_server_responds_while_idle() {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use claude_view_server::{create_app_with_indexing, IndexingState, IndexingStatus};
     use std::sync::Arc;
     use tower::ServiceExt;
-    use claude_view_server::{create_app_with_indexing, IndexingState, IndexingStatus};
 
     let db = Database::new_in_memory().await.unwrap();
     let indexing = Arc::new(IndexingState::new());
@@ -125,7 +127,10 @@ async fn ac2_pass1_reads_index_fields() {
     assert_eq!(session.git_branch.as_deref(), Some("main"));
     assert!(!session.is_sidechain);
     // Pass 2 hasn't run yet
-    assert!(!session.deep_indexed, "deep_indexed should be false after Pass 1 only");
+    assert!(
+        !session.deep_indexed,
+        "deep_indexed should be false after Pass 1 only"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +190,9 @@ async fn ac4_pass2_fills_deep_fields() {
     assert!(!before[0].sessions[0].deep_indexed);
 
     // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
     assert_eq!(indexed, 1);
 
     // After Pass 2
@@ -193,7 +200,10 @@ async fn ac4_pass2_fills_deep_fields() {
     let session = &after[0].sessions[0];
     assert!(session.deep_indexed, "Should be deep indexed");
     assert!(session.turn_count > 0, "turn_count should be > 0");
-    assert!(!session.last_message.is_empty(), "last_message should be populated");
+    assert!(
+        !session.last_message.is_empty(),
+        "last_message should be populated"
+    );
     // The JSONL has a Read tool use, verify tool_counts
     assert_eq!(session.tool_counts.read, 1, "Should detect 1 Read tool use");
 }
@@ -213,7 +223,9 @@ async fn ac7_batch_writes_all_sessions() {
     assert_eq!(sessions, 24, "Should find 24 sessions total");
 
     // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
     assert_eq!(indexed, 24, "All 24 sessions should be deep indexed");
 
     // Verify all in DB
@@ -224,7 +236,11 @@ async fn ac7_batch_writes_all_sessions() {
     // All should be deep indexed
     for project in &db_projects {
         for session in &project.sessions {
-            assert!(session.deep_indexed, "Session {} should be deep indexed", session.id);
+            assert!(
+                session.deep_indexed,
+                "Session {} should be deep indexed",
+                session.id
+            );
         }
     }
 }
@@ -242,7 +258,9 @@ async fn ac8_parallel_processing_completes() {
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
     let start = std::time::Instant::now();
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(indexed, 12, "Should deep-index all 12 sessions");
@@ -267,21 +285,18 @@ async fn ac9_callbacks_fire_correctly() {
     let fdc = file_done_count.clone();
 
     let hints = build_index_hints(&claude_dir);
-    let (indexed, _skipped) = scan_and_index_all(
-        &claude_dir,
-        &db,
-        &hints,
-        None,
-        None,
-        move |_session_id| {
+    let (indexed, _skipped) =
+        scan_and_index_all(&claude_dir, &db, &hints, None, None, move |_session_id| {
             fdc.fetch_add(1, Ordering::Relaxed);
-        },
-    )
-    .await
-    .unwrap();
+        })
+        .await
+        .unwrap();
 
     assert_eq!(indexed, 1, "Should index 1 session");
-    assert!(file_done_count.load(Ordering::Relaxed) > 0, "on_file_done should have been called");
+    assert!(
+        file_done_count.load(Ordering::Relaxed) > 0,
+        "on_file_done should have been called"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -295,12 +310,19 @@ async fn ac11_second_pass2_returns_zero() {
 
     // First full pipeline
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
     assert_eq!(first_run, 1, "First run should index 1 session");
 
     // Second run of Pass 2 — all sessions already deep-indexed
-    let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
-    assert_eq!(second_run, 0, "Second run should skip all (already indexed)");
+    let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
+    assert_eq!(
+        second_run, 0,
+        "Second run should skip all (already indexed)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +336,9 @@ async fn ac12_new_schema_fields_end_to_end() {
 
     // Run full pipeline
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
 
     let projects = db.list_projects().await.unwrap();
     assert!(!projects.is_empty(), "Should have at least 1 project");
@@ -342,8 +366,14 @@ async fn ac12_new_schema_fields_end_to_end() {
     assert!(session.deep_indexed);
 
     // Verify project-level fields
-    assert!(!projects[0].display_name.is_empty(), "display_name should not be empty");
-    assert!(!projects[0].path.is_empty(), "project path should not be empty");
+    assert!(
+        !projects[0].display_name.is_empty(),
+        "display_name should not be empty"
+    );
+    assert!(
+        !projects[0].path.is_empty(),
+        "project path should not be empty"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -356,17 +386,35 @@ async fn ac12_json_serialization_includes_new_fields() {
     let db = Database::new_in_memory().await.unwrap();
 
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
 
     let projects = db.list_projects().await.unwrap();
     let json = serde_json::to_string(&projects).unwrap();
 
     // New fields should serialize with camelCase
-    assert!(json.contains("\"gitBranch\""), "gitBranch should appear in JSON: {}", json);
-    assert!(json.contains("\"isSidechain\""), "isSidechain should appear in JSON: {}", json);
-    assert!(json.contains("\"deepIndexed\""), "deepIndexed should appear in JSON: {}", json);
+    assert!(
+        json.contains("\"gitBranch\""),
+        "gitBranch should appear in JSON: {}",
+        json
+    );
+    assert!(
+        json.contains("\"isSidechain\""),
+        "isSidechain should appear in JSON: {}",
+        json
+    );
+    assert!(
+        json.contains("\"deepIndexed\""),
+        "deepIndexed should appear in JSON: {}",
+        json
+    );
     // summary is present (not None), so it should be serialized
-    assert!(json.contains("\"summary\""), "summary should appear in JSON: {}", json);
+    assert!(
+        json.contains("\"summary\""),
+        "summary should appear in JSON: {}",
+        json
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +430,9 @@ async fn multiple_projects_indexed_correctly() {
     assert_eq!(projects, 3);
     assert_eq!(sessions, 6);
 
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
     assert_eq!(indexed, 6);
 
     let db_projects = db.list_projects().await.unwrap();
@@ -390,7 +440,12 @@ async fn multiple_projects_indexed_correctly() {
 
     // Each project should have 2 sessions
     for project in &db_projects {
-        assert_eq!(project.sessions.len(), 2, "Project {} should have 2 sessions", project.name);
+        assert_eq!(
+            project.sessions.len(),
+            2,
+            "Project {} should have 2 sessions",
+            project.name
+        );
     }
 }
 
@@ -405,7 +460,9 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
 
     // Run full pipeline
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
 
     // Verify models table has data
     let models = db.get_all_models().await.unwrap();
@@ -416,12 +473,24 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
     assert_eq!(models[0].id, "claude-opus-4-5-20251101");
     assert_eq!(models[0].provider.as_deref(), Some("anthropic"));
     assert_eq!(models[0].family.as_deref(), Some("opus"));
-    assert!(models[0].total_turns > 0, "Model should have turn count > 0");
+    assert!(
+        models[0].total_turns > 0,
+        "Model should have turn count > 0"
+    );
 
     // Verify token stats
     let token_stats = db.get_token_stats().await.unwrap();
     assert!(token_stats.turns_count > 0, "Should have at least 1 turn");
-    assert!(token_stats.total_input_tokens > 0, "Should have input tokens");
-    assert!(token_stats.total_output_tokens > 0, "Should have output tokens");
-    assert!(token_stats.total_cache_read_tokens > 0, "Should have cache read tokens");
+    assert!(
+        token_stats.total_input_tokens > 0,
+        "Should have input tokens"
+    );
+    assert!(
+        token_stats.total_output_tokens > 0,
+        "Should have output tokens"
+    );
+    assert!(
+        token_stats.total_cache_read_tokens > 0,
+        "Should have cache read tokens"
+    );
 }

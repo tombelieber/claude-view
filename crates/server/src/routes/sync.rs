@@ -61,9 +61,7 @@ pub struct SyncAcceptedResponse {
 /// - 409 Conflict: Sync already in progress
 ///
 /// The sync runs in the background. Poll /api/status for completion.
-pub async fn trigger_git_sync(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Response> {
+pub async fn trigger_git_sync(State(state): State<Arc<AppState>>) -> ApiResult<Response> {
     let mutex = get_sync_mutex();
 
     match mutex.try_lock() {
@@ -80,33 +78,31 @@ pub async fn trigger_git_sync(
 
             // Build progress closure that updates atomics.
             let git_sync_cb = git_sync.clone();
-            let on_progress = move |p: GitSyncProgress| {
-                match p {
-                    GitSyncProgress::ScanningStarted { total_repos } => {
-                        git_sync_cb.set_total_repos(total_repos);
-                    }
-                    GitSyncProgress::RepoScanned {
-                        repos_done,
-                        commits_in_repo,
-                        ..
-                    } => {
-                        git_sync_cb.set_repos_scanned(repos_done);
-                        git_sync_cb.add_commits_found(commits_in_repo as usize);
-                    }
-                    GitSyncProgress::CorrelatingStarted {
-                        total_correlatable_sessions,
-                    } => {
-                        git_sync_cb.set_phase(GitSyncPhase::Correlating);
-                        git_sync_cb.set_total_correlatable_sessions(total_correlatable_sessions);
-                    }
-                    GitSyncProgress::SessionCorrelated {
-                        sessions_done,
-                        links_in_session,
-                        ..
-                    } => {
-                        git_sync_cb.set_sessions_correlated(sessions_done);
-                        git_sync_cb.add_links_created(links_in_session as usize);
-                    }
+            let on_progress = move |p: GitSyncProgress| match p {
+                GitSyncProgress::ScanningStarted { total_repos } => {
+                    git_sync_cb.set_total_repos(total_repos);
+                }
+                GitSyncProgress::RepoScanned {
+                    repos_done,
+                    commits_in_repo,
+                    ..
+                } => {
+                    git_sync_cb.set_repos_scanned(repos_done);
+                    git_sync_cb.add_commits_found(commits_in_repo as usize);
+                }
+                GitSyncProgress::CorrelatingStarted {
+                    total_correlatable_sessions,
+                } => {
+                    git_sync_cb.set_phase(GitSyncPhase::Correlating);
+                    git_sync_cb.set_total_correlatable_sessions(total_correlatable_sessions);
+                }
+                GitSyncProgress::SessionCorrelated {
+                    sessions_done,
+                    links_in_session,
+                    ..
+                } => {
+                    git_sync_cb.set_sessions_correlated(sessions_done);
+                    git_sync_cb.add_links_created(links_in_session as usize);
                 }
             };
 
@@ -152,11 +148,9 @@ pub async fn trigger_git_sync(
 
             Ok((StatusCode::ACCEPTED, Json(response)).into_response())
         }
-        Err(_) => {
-            Err(ApiError::Conflict(
-                "Git sync already in progress. Please wait for it to complete.".to_string(),
-            ))
-        }
+        Err(_) => Err(ApiError::Conflict(
+            "Git sync already in progress. Please wait for it to complete.".to_string(),
+        )),
     }
 }
 
@@ -283,9 +277,7 @@ pub async fn git_sync_progress(
 /// - 409 Conflict: A rebuild is already in progress
 ///
 /// The rebuild runs in the background. Poll /api/status or /api/indexing/progress for completion.
-pub async fn trigger_deep_index(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Response> {
+pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult<Response> {
     let mutex = get_deep_index_mutex();
 
     match mutex.try_lock() {
@@ -312,10 +304,7 @@ pub async fn trigger_deep_index(
                 // Step 1: Mark all sessions for re-indexing
                 match db.mark_all_sessions_for_reindex().await {
                     Ok(count) => {
-                        tracing::info!(
-                            sessions_marked = count,
-                            "Marked sessions for re-indexing"
-                        );
+                        tracing::info!(sessions_marked = count, "Marked sessions for re-indexing");
                     }
                     Err(e) => {
                         tracing::error!(
@@ -342,7 +331,11 @@ pub async fn trigger_deep_index(
 
                 let indexing_cb = indexing.clone();
                 let search_for_scan = search_holder.read().unwrap().clone();
-                let registry_for_scan = registry_holder.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
+                let registry_for_scan = registry_holder
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|r| std::sync::Arc::new(r.clone()));
                 let result = claude_view_db::indexer_parallel::scan_and_index_all(
                     &claude_dir,
                     &db,
@@ -367,13 +360,22 @@ pub async fn trigger_deep_index(
                         // Persist index metadata so Settings > Data Status shows real values
                         let duration_ms = duration.as_millis() as i64;
                         let project_count = db.get_project_count().await.unwrap_or(0);
-                        if let Err(e) = db.update_index_metadata_on_success(duration_ms, indexed_count as i64, project_count).await {
+                        if let Err(e) = db
+                            .update_index_metadata_on_success(
+                                duration_ms,
+                                indexed_count as i64,
+                                project_count,
+                            )
+                            .await
+                        {
                             tracing::warn!(error = %e, "Failed to persist index metadata after rebuild");
                         }
                         // Record sync metrics
                         record_sync("deep", duration, Some(indexed_count as u64));
                         // Prune sessions whose JSONL files no longer exist on disk
-                        if let Err(e) = claude_view_db::indexer_parallel::prune_stale_sessions(&db).await {
+                        if let Err(e) =
+                            claude_view_db::indexer_parallel::prune_stale_sessions(&db).await
+                        {
                             tracing::warn!(error = %e, "Failed to prune stale sessions after rebuild");
                         }
                     }
@@ -398,11 +400,9 @@ pub async fn trigger_deep_index(
 
             Ok((StatusCode::ACCEPTED, Json(response)).into_response())
         }
-        Err(_) => {
-            Err(ApiError::Conflict(
-                "Deep index rebuild already in progress. Please wait for it to complete.".to_string(),
-            ))
-        }
+        Err(_) => Err(ApiError::Conflict(
+            "Deep index rebuild already in progress. Please wait for it to complete.".to_string(),
+        )),
     }
 }
 
@@ -420,8 +420,8 @@ mod tests {
         body::Body,
         http::{Method, Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -481,9 +481,9 @@ mod tests {
     // SSE Git Sync Progress Tests
     // ========================================================================
 
-    use std::sync::Arc;
-    use crate::git_sync_state::{GitSyncPhase, GitSyncState};
     use crate::create_app_with_git_sync;
+    use crate::git_sync_state::{GitSyncPhase, GitSyncState};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_sse_done_emits_done_event() {

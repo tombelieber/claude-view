@@ -4,11 +4,11 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use claude_view_core::{DiscoveryError, ParseError};
+use claude_view_db::DbError;
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
-use claude_view_core::{DiscoveryError, ParseError};
-use claude_view_db::DbError;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize, TS)]
@@ -105,7 +105,11 @@ impl IntoResponse for ApiError {
                         tracing::error!(path = %path.display(), line = %line, "Invalid UTF-8");
                         (StatusCode::INTERNAL_SERVER_ERROR, "Invalid file encoding")
                     }
-                    ParseError::MalformedJson { path, line, message } => {
+                    ParseError::MalformedJson {
+                        path,
+                        line,
+                        message,
+                    } => {
                         tracing::error!(path = %path.display(), line = %line, message = %message, "Malformed JSON");
                         (StatusCode::INTERNAL_SERVER_ERROR, "Malformed session data")
                     }
@@ -137,7 +141,10 @@ impl IntoResponse for ApiError {
                     }
                 };
                 // Return generic error message without file paths to avoid information leakage
-                (StatusCode::INTERNAL_SERVER_ERROR, ErrorResponse::new(error_msg))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse::new(error_msg),
+                )
             }
             ApiError::Database(db_err) => {
                 tracing::error!(error = %db_err, "Database error");

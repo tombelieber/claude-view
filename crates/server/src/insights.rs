@@ -148,7 +148,10 @@ pub fn effectiveness_insight(commit_rate: Option<f64>, reedit_rate: Option<f64>)
         (Some(_), Some(_)) => Insight::info("Good balance of quality and throughput"),
         (Some(cr), None) => {
             if cr > 0.7 {
-                Insight::success(format!("{:.0}% of sessions resulted in commits", cr * 100.0))
+                Insight::success(format!(
+                    "{:.0}% of sessions resulted in commits",
+                    cr * 100.0
+                ))
             } else {
                 Insight::info(format!("{:.0}% commit rate", cr * 100.0))
             }
@@ -200,21 +203,14 @@ pub fn model_insight(models: &[ModelStats]) -> Insight {
 
     match (best_by_reedit, cheapest) {
         (Some(best), Some(cheap)) if best.model == cheap.model => {
-            Insight::success(format!(
-                "{} is both cheapest and most accurate",
-                best.model
-            ))
+            Insight::success(format!("{} is both cheapest and most accurate", best.model))
         }
         (Some(best), Some(cheap)) => Insight::info(format!(
             "{} has lowest re-edits; {} is most cost-effective",
             best.model, cheap.model
         )),
-        (Some(best), None) => {
-            Insight::info(format!("{} has lowest re-edit rate", best.model))
-        }
-        (None, Some(cheap)) => {
-            Insight::info(format!("{} is most cost-effective", cheap.model))
-        }
+        (Some(best), None) => Insight::info(format!("{} has lowest re-edit rate", best.model)),
+        (None, Some(cheap)) => Insight::info(format!("{} is most cost-effective", cheap.model)),
         (None, None) => Insight::info("Multiple models used this period"),
     }
 }

@@ -152,7 +152,10 @@ fn read_keychain_credentials() -> Option<Vec<u8>> {
         }
 
         // Try hex-decoding (macOS keychain sometimes returns hex-encoded UTF-8).
-        let hex = raw.strip_prefix("0x").or(raw.strip_prefix("0X")).unwrap_or(&raw);
+        let hex = raw
+            .strip_prefix("0x")
+            .or(raw.strip_prefix("0X"))
+            .unwrap_or(&raw);
         if !hex.len().is_multiple_of(2) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
             return None;
         }
@@ -188,11 +191,21 @@ fn load_credentials_bytes(home: &std::path::Path) -> Option<Vec<u8>> {
 }
 
 fn no_auth() -> OAuthUsageResponse {
-    OAuthUsageResponse { has_auth: false, error: None, plan: None, tiers: vec![] }
+    OAuthUsageResponse {
+        has_auth: false,
+        error: None,
+        plan: None,
+        tiers: vec![],
+    }
 }
 
 fn auth_error(msg: impl Into<String>) -> OAuthUsageResponse {
-    OAuthUsageResponse { has_auth: true, error: Some(msg.into()), plan: None, tiers: vec![] }
+    OAuthUsageResponse {
+        has_auth: true,
+        error: Some(msg.into()),
+        plan: None,
+        tiers: vec![],
+    }
 }
 
 fn now_ms() -> u64 {
@@ -269,10 +282,7 @@ fn build_tiers(resp: &AnthropicUsageResponse) -> Vec<UsageTier> {
 }
 
 /// Try to refresh the OAuth token. Returns a new access token on success.
-async fn try_refresh_token(
-    client: &reqwest::Client,
-    refresh_token: &str,
-) -> Option<String> {
+async fn try_refresh_token(client: &reqwest::Client, refresh_token: &str) -> Option<String> {
     let body = serde_json::json!({
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -323,19 +333,16 @@ async fn fetch_usage(
 
     tracing::debug!(body = %body, "Anthropic usage API raw response");
 
-    serde_json::from_str::<AnthropicUsageResponse>(&body)
-        .map_err(|e| {
-            tracing::warn!(error = %e, body = %body, "Failed to parse Anthropic usage response");
-            format!("Parse error: {e}")
-        })
+    serde_json::from_str::<AnthropicUsageResponse>(&body).map_err(|e| {
+        tracing::warn!(error = %e, body = %body, "Failed to parse Anthropic usage response");
+        format!("Parse error: {e}")
+    })
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────
 
 /// GET /api/oauth/usage
-pub async fn get_oauth_usage(
-    State(_state): State<Arc<AppState>>,
-) -> Json<OAuthUsageResponse> {
+pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
     // 1. Read credentials (file → keychain fallback).
     let home = match dirs::home_dir() {
         Some(h) => h,
@@ -360,16 +367,13 @@ pub async fn get_oauth_usage(
         _ => return Json(no_auth()),
     };
 
-    let plan = oauth
-        .subscription_type
-        .as_deref()
-        .map(|s| {
-            let mut c = s.chars();
-            match c.next() {
-                Some(first) => first.to_uppercase().to_string() + c.as_str(),
-                None => s.to_string(),
-            }
-        });
+    let plan = oauth.subscription_type.as_deref().map(|s| {
+        let mut c = s.chars();
+        match c.next() {
+            Some(first) => first.to_uppercase().to_string() + c.as_str(),
+            None => s.to_string(),
+        }
+    });
 
     // 2. Refresh token if expiring soon.
     let client = reqwest::Client::new();

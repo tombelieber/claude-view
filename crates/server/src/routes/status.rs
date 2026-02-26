@@ -3,9 +3,13 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::{get, put}, Json, Router};
-use serde::Deserialize;
+use axum::{
+    extract::State,
+    routing::{get, put},
+    Json, Router,
+};
 use claude_view_db::trends::IndexMetadata;
+use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -21,9 +25,7 @@ use crate::state::AppState;
 /// - commits_found: Commits found in last git sync
 /// - links_created: Session-commit links created in last git sync
 /// - updated_at: When metadata was last updated
-pub async fn get_status(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<IndexMetadata>> {
+pub async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<Json<IndexMetadata>> {
     let metadata = state.db.get_index_metadata().await?;
     Ok(Json(metadata))
 }
@@ -69,8 +71,8 @@ mod tests {
         body::Body,
         http::{Method, Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

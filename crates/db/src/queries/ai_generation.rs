@@ -1,7 +1,7 @@
 // crates/db/src/queries/ai_generation.rs
 // AI generation statistics queries (token usage by model/project).
 
-use super::{AggregateCostBreakdown, AIGenerationStats, TokensByModel, TokensByProject};
+use super::{AIGenerationStats, AggregateCostBreakdown, TokensByModel, TokensByProject};
 use crate::{Database, DbResult};
 
 impl Database {
@@ -20,9 +20,15 @@ impl Database {
         let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
-        let (files_created, total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens, total_cost_usd): (i64, i64, i64, i64, i64, Option<f64>) =
-            sqlx::query_as(
-                r#"
+        let (
+            files_created,
+            total_input_tokens,
+            total_output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            total_cost_usd,
+        ): (i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
+            r#"
                 SELECT
                     COALESCE(SUM(files_edited_count), 0),
                     COALESCE(SUM(total_input_tokens), 0),
@@ -36,13 +42,13 @@ impl Database {
                   AND (?3 IS NULL OR project_id = ?3)
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
-            )
-            .bind(from)
-            .bind(to)
-            .bind(project)
-            .bind(branch)
-            .fetch_one(self.pool())
-            .await?;
+        )
+        .bind(from)
+        .bind(to)
+        .bind(project)
+        .bind(branch)
+        .fetch_one(self.pool())
+        .await?;
 
         let model_rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
             r#"

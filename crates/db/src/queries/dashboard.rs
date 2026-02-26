@@ -876,20 +876,18 @@ impl Database {
 
     /// Get the total count of sessions (excluding sidechains).
     pub async fn get_session_count(&self) -> DbResult<i64> {
-        let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-                .fetch_one(self.pool())
-                .await?;
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
         Ok(count)
     }
 
     /// Get the total count of projects.
     pub async fn get_project_count(&self) -> DbResult<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM valid_sessions",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM valid_sessions")
+                .fetch_one(self.pool())
+                .await?;
         Ok(count)
     }
 

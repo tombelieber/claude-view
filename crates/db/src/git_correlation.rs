@@ -231,7 +231,9 @@ pub async fn scan_repo_commits(
                     // Git error code 128 often means not a repo or corrupt
                     ScanResult {
                         not_a_repo: true,
-                        error: Some("Git returned error 128 (not a repository or corrupt)".to_string()),
+                        error: Some(
+                            "Git returned error 128 (not a repository or corrupt)".to_string(),
+                        ),
                         ..Default::default()
                     }
                 } else {
@@ -287,7 +289,7 @@ fn parse_git_log_line(line: &str, repo_path: &Path) -> Option<GitCommit> {
             Some(author.to_string())
         },
         timestamp,
-        branch: None, // Set later
+        branch: None,        // Set later
         files_changed: None, // Set later via get_commit_diff_stats
         insertions: None,
         deletions: None,
@@ -317,7 +319,10 @@ pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffS
     let output = match output {
         Ok(Ok(o)) if o.status.success() => o,
         Ok(Ok(o)) => {
-            tracing::debug!("git show returned non-zero for {commit_hash}: {:?}", o.status);
+            tracing::debug!(
+                "git show returned non-zero for {commit_hash}: {:?}",
+                o.status
+            );
             return DiffStats::default();
         }
         Ok(Err(e)) => {
@@ -367,8 +372,7 @@ pub async fn get_batch_diff_stats(
         }
 
         // Collect results preserving original order
-        let mut batch_results: Vec<(usize, String, DiffStats)> =
-            Vec::with_capacity(batch.len());
+        let mut batch_results: Vec<(usize, String, DiffStats)> = Vec::with_capacity(batch.len());
         while let Some(res) = set.join_next().await {
             match res {
                 Ok(tuple) => batch_results.push(tuple),
@@ -397,10 +401,7 @@ pub async fn get_batch_diff_stats(
 /// " N file changed"
 fn parse_diff_stats_from_output(output: &str) -> DiffStats {
     // Find the summary line (last non-empty line containing "changed")
-    let summary_line = output
-        .lines()
-        .rev()
-        .find(|line| line.contains("changed"));
+    let summary_line = output.lines().rev().find(|line| line.contains("changed"));
 
     let line = match summary_line {
         Some(l) => l.trim(),
@@ -423,7 +424,11 @@ fn parse_diff_stats_from_output(output: &str) -> DiffStats {
     if let Some(pos) = line.find("insertion") {
         // Find the number before "insertion"
         let prefix = &line[..pos];
-        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+        if let Some(num_str) = prefix
+            .split(',')
+            .next_back()
+            .and_then(|s| s.split_whitespace().next())
+        {
             if let Ok(n) = num_str.parse::<u32>() {
                 stats.insertions = n;
             }
@@ -434,7 +439,11 @@ fn parse_diff_stats_from_output(output: &str) -> DiffStats {
     if let Some(pos) = line.find("deletion") {
         // Find the number before "deletion"
         let prefix = &line[..pos];
-        if let Some(num_str) = prefix.split(',').next_back().and_then(|s| s.split_whitespace().next()) {
+        if let Some(num_str) = prefix
+            .split(',')
+            .next_back()
+            .and_then(|s| s.split_whitespace().next())
+        {
             if let Ok(n) = num_str.parse::<u32>() {
                 stats.deletions = n;
             }
@@ -644,10 +653,7 @@ impl DiffStats {
 /// - Git command fails
 /// - Repo path doesn't exist
 /// - Commit hash is invalid
-pub async fn extract_commit_diff_stats(
-    repo_path: &Path,
-    commit_hash: &str,
-) -> Option<DiffStats> {
+pub async fn extract_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> Option<DiffStats> {
     let output = tokio::time::timeout(
         Duration::from_secs(5),
         Command::new("git")
@@ -796,7 +802,7 @@ impl Database {
             .await?;
 
             let should_insert = match existing {
-                None => true,                          // No existing link
+                None => true,                                     // No existing link
                 Some((existing_tier,)) => m.tier < existing_tier, // Only insert if new tier is better
             };
 
@@ -828,9 +834,20 @@ impl Database {
         session_id: &str,
     ) -> DbResult<Vec<(GitCommit, i32, String)>> {
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, String, Option<String>, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
-            sqlx::query_as(
-                r#"
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            i64,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            i32,
+            String,
+        )> = sqlx::query_as(
+            r#"
             SELECT c.hash, c.repo_path, c.message, c.author, c.timestamp, c.branch,
                    c.files_changed, c.insertions, c.deletions,
                    sc.tier, sc.evidence
@@ -839,15 +856,27 @@ impl Database {
             WHERE sc.session_id = ?1
             ORDER BY c.timestamp DESC
             "#,
-            )
-            .bind(session_id)
-            .fetch_all(self.pool())
-            .await?;
+        )
+        .bind(session_id)
+        .fetch_all(self.pool())
+        .await?;
 
         let results = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions, tier, evidence)| {
+                |(
+                    hash,
+                    repo_path,
+                    message,
+                    author,
+                    timestamp,
+                    branch,
+                    files_changed,
+                    insertions,
+                    deletions,
+                    tier,
+                    evidence,
+                )| {
                     let commit = GitCommit {
                         hash,
                         repo_path,
@@ -895,7 +924,17 @@ impl Database {
         let commits = rows
             .into_iter()
             .map(
-                |(hash, repo_path, message, author, timestamp, branch, files_changed, insertions, deletions)| GitCommit {
+                |(
+                    hash,
+                    repo_path,
+                    message,
+                    author,
+                    timestamp,
+                    branch,
+                    files_changed,
+                    insertions,
+                    deletions,
+                )| GitCommit {
                     hash,
                     repo_path,
                     message,
@@ -914,12 +953,11 @@ impl Database {
 
     /// Count commits linked to a session (for updating session.commit_count).
     pub async fn count_commits_for_session(&self, session_id: &str) -> DbResult<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_commits WHERE session_id = ?1",
-        )
-        .bind(session_id)
-        .fetch_one(self.pool())
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM session_commits WHERE session_id = ?1")
+                .bind(session_id)
+                .fetch_one(self.pool())
+                .await?;
 
         Ok(count)
     }
@@ -1006,14 +1044,14 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(session_id, project_path, first_message_at, last_message_at)| {
-                SessionSyncInfo {
+            .map(
+                |(session_id, project_path, first_message_at, last_message_at)| SessionSyncInfo {
                     session_id,
                     project_path,
                     first_message_at,
                     last_message_at,
-                }
-            })
+                },
+            )
             .collect())
     }
 }
@@ -1145,9 +1183,7 @@ pub enum GitSyncProgress {
         commits_in_repo: u32,
     },
     /// Emitted before the session correlation loop begins.
-    CorrelatingStarted {
-        total_correlatable_sessions: usize,
-    },
+    CorrelatingStarted { total_correlatable_sessions: usize },
     /// Emitted after each session is correlated (success or failure).
     SessionCorrelated {
         sessions_done: usize,
@@ -1189,10 +1225,7 @@ where
     }
 
     let total_repos = sessions_by_repo.len();
-    tracing::info!(
-        "Git sync: {} unique project paths to scan",
-        total_repos
-    );
+    tracing::info!("Git sync: {} unique project paths to scan", total_repos);
 
     on_progress(GitSyncProgress::ScanningStarted { total_repos });
 
@@ -1282,7 +1315,9 @@ where
                     session.session_id,
                     e
                 );
-                result.errors.push(format!("session {}: {}", session.session_id, e));
+                result
+                    .errors
+                    .push(format!("session {}: {}", session.session_id, e));
                 sessions_done += 1;
                 on_progress(GitSyncProgress::SessionCorrelated {
                     sessions_done,
@@ -1377,10 +1412,7 @@ mod tests {
             assert_eq!(commit.hash.len(), 40, "Hash should be 40 characters");
             assert!(!commit.message.is_empty(), "Message should not be empty");
             assert!(commit.timestamp > 0, "Timestamp should be positive");
-            assert_eq!(
-                commit.repo_path,
-                repo_path.to_string_lossy().to_string()
-            );
+            assert_eq!(commit.repo_path, repo_path.to_string_lossy().to_string());
         }
     }
 
@@ -1452,7 +1484,10 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].tier, 1);
         assert_eq!(matches[0].session_id, "sess-1");
-        assert_eq!(matches[0].commit_hash, "abc123def456789012345678901234567890abcd");
+        assert_eq!(
+            matches[0].commit_hash,
+            "abc123def456789012345678901234567890abcd"
+        );
         assert_eq!(matches[0].evidence.rule, "commit_skill");
         assert_eq!(matches[0].evidence.skill_name, Some("commit".to_string()));
     }
@@ -1478,7 +1513,11 @@ mod tests {
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
-        assert_eq!(matches.len(), 1, "Should match at edge of window (60s before)");
+        assert_eq!(
+            matches.len(),
+            1,
+            "Should match at edge of window (60s before)"
+        );
     }
 
     #[test]
@@ -1502,7 +1541,11 @@ mod tests {
         }];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
-        assert_eq!(matches.len(), 1, "Should match at edge of window (300s after)");
+        assert_eq!(
+            matches.len(),
+            1,
+            "Should match at edge of window (300s after)"
+        );
     }
 
     #[test]
@@ -1591,7 +1634,11 @@ mod tests {
         ];
 
         let matches = tier1_match("sess-1", "/repo/path", &skills, &commits);
-        assert_eq!(matches.len(), 2, "Should match both skills to their commits");
+        assert_eq!(
+            matches.len(),
+            2,
+            "Should match both skills to their commits"
+        );
     }
 
     // ========================================================================
@@ -1649,7 +1696,11 @@ mod tests {
         ];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
-        assert_eq!(matches.len(), 2, "Should match commits at session boundaries");
+        assert_eq!(
+            matches.len(),
+            2,
+            "Should match commits at session boundaries"
+        );
     }
 
     #[test]
@@ -1680,7 +1731,10 @@ mod tests {
         ];
 
         let matches = tier2_match("sess-1", "/repo/path", 1706400100, 1706400300, &commits);
-        assert!(matches.is_empty(), "Should not match commits outside session");
+        assert!(
+            matches.is_empty(),
+            "Should not match commits outside session"
+        );
     }
 
     #[test]
@@ -2111,21 +2165,21 @@ mod tests {
         assert_eq!(linked.len(), 2);
 
         // Find the tier 1 match
-        let tier1 = linked.iter().find(|(c, t, _)| {
-            c.hash == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && *t == 1
-        });
+        let tier1 = linked
+            .iter()
+            .find(|(c, t, _)| c.hash == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && *t == 1);
         assert!(tier1.is_some(), "Should have Tier 1 match");
 
         // Find the tier 2 match
-        let tier2 = linked.iter().find(|(c, t, _)| {
-            c.hash == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && *t == 2
-        });
+        let tier2 = linked
+            .iter()
+            .find(|(c, t, _)| c.hash == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && *t == 2);
         assert!(tier2.is_some(), "Should have Tier 2 match");
 
         // Wrong repo should not match
-        let no_match = linked.iter().find(|(c, _, _)| {
-            c.hash == "cccccccccccccccccccccccccccccccccccccccc"
-        });
+        let no_match = linked
+            .iter()
+            .find(|(c, _, _)| c.hash == "cccccccccccccccccccccccccccccccccccccccc");
         assert!(no_match.is_none(), "Wrong repo should not match");
 
         // Verify session commit_count was updated
@@ -2323,7 +2377,7 @@ mod tests {
         // Session 2: ineligible (empty project_path)
         sqlx::query(
             "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
-             VALUES ('s2', 'p2', '', 3000, '/tmp/s2.jsonl')"
+             VALUES ('s2', 'p2', '', 3000, '/tmp/s2.jsonl')",
         )
         .execute(db.pool())
         .await
@@ -2332,7 +2386,7 @@ mod tests {
         // Session 3: ineligible (NULL last_message_at)
         sqlx::query(
             "INSERT INTO sessions (id, project_id, project_path, file_path)
-             VALUES ('s3', 'p3', '/home/user/project-b', '/tmp/s3.jsonl')"
+             VALUES ('s3', 'p3', '/home/user/project-b', '/tmp/s3.jsonl')",
         )
         .execute(db.pool())
         .await
@@ -2341,7 +2395,7 @@ mod tests {
         // Session 4: eligible (has project_path and last_message_at, no first_message_at)
         sqlx::query(
             "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
-             VALUES ('s4', 'p4', '/home/user/project-a', 4000, '/tmp/s4.jsonl')"
+             VALUES ('s4', 'p4', '/home/user/project-a', 4000, '/tmp/s4.jsonl')",
         )
         .execute(db.pool())
         .await
@@ -2691,7 +2745,11 @@ mod tests {
             .expect("git config");
 
         // Create a file with 10 lines
-        std::fs::write(repo_path.join("file.txt"), "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n").unwrap();
+        std::fs::write(
+            repo_path.join("file.txt"),
+            "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n",
+        )
+        .unwrap();
 
         std::process::Command::new("git")
             .args(["add", "."])
@@ -3185,7 +3243,10 @@ mod tests {
         let inserted2 = correlate_session(&db, &session_info, &commits)
             .await
             .unwrap();
-        assert_eq!(inserted2, 0, "Should insert zero matches on second run (idempotent)");
+        assert_eq!(
+            inserted2, 0,
+            "Should insert zero matches on second run (idempotent)"
+        );
 
         let row2: (i64, i64, i64) = sqlx::query_as(
             "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
@@ -3228,7 +3289,11 @@ mod tests {
             .expect("git config");
 
         // Commit adding 10 lines
-        std::fs::write(repo_path.join("file.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n").unwrap();
+        std::fs::write(
+            repo_path.join("file.txt"),
+            "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n",
+        )
+        .unwrap();
         std::process::Command::new("git")
             .args(["add", "."])
             .current_dir(repo_path)
@@ -3264,7 +3329,7 @@ mod tests {
 
         // Verify LOC stats were extracted and set to git-verified (loc_source = 2)
         let row: (i64, i64, i64) = sqlx::query_as(
-            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'"
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
         )
         .fetch_one(db.pool())
         .await

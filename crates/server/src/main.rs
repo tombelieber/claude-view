@@ -11,11 +11,14 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use indicatif::{ProgressBar, ProgressStyle};
-use tracing_subscriber::FmtSubscriber;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
-use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus, SearchIndexHolder};
+use claude_view_server::{
+    create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus,
+    SearchIndexHolder,
+};
+use indicatif::{ProgressBar, ProgressStyle};
+use tracing_subscriber::FmtSubscriber;
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -263,7 +266,10 @@ async fn main() -> Result<()> {
                 Arc::new(RwLock::new(Some(Arc::new(idx))))
             }
             Err(e) => {
-                tracing::warn!("Failed to open search index: {}. Search will be unavailable.", e);
+                tracing::warn!(
+                    "Failed to open search index: {}. Search will be unavailable.",
+                    e
+                );
                 Arc::new(RwLock::new(None))
             }
         }
@@ -307,7 +313,8 @@ async fn main() -> Result<()> {
         let hint_count = hints.len();
         idx_state.set_sessions_found(hint_count);
         // Count unique projects from hints for the "ready" SSE event
-        let unique_projects: std::collections::HashSet<&str> = hints.values()
+        let unique_projects: std::collections::HashSet<&str> = hints
+            .values()
             .filter_map(|h| h.project_display_name.as_deref())
             .collect();
         idx_state.set_projects_found(unique_projects.len());
@@ -341,8 +348,14 @@ async fn main() -> Result<()> {
                 tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
             }
             Ok(stored) => {
-                let reason = if stored.is_none() { "first run" } else { "registry changed" };
-                tracing::info!("Registry hash mismatch ({reason}), marking all sessions for re-index");
+                let reason = if stored.is_none() {
+                    "first run"
+                } else {
+                    "registry changed"
+                };
+                tracing::info!(
+                    "Registry hash mismatch ({reason}), marking all sessions for re-index"
+                );
                 match idx_db.mark_all_sessions_for_reindex().await {
                     Ok(n) => tracing::info!("Marked {n} sessions for re-index"),
                     Err(e) => tracing::warn!("Failed to mark sessions for re-index: {e}"),
@@ -364,17 +377,34 @@ async fn main() -> Result<()> {
         idx_state.set_total(hint_count);
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
-        match scan_and_index_all(&claude_dir, &idx_db, &hints, search_for_scan, Some(registry_arc.clone()), move |_session_id| {
-            state_for_progress.increment_indexed();
-        }).await {
+        match scan_and_index_all(
+            &claude_dir,
+            &idx_db,
+            &hints,
+            search_for_scan,
+            Some(registry_arc.clone()),
+            move |_session_id| {
+                state_for_progress.increment_indexed();
+            },
+        )
+        .await
+        {
             Ok((indexed, skipped)) => {
-                tracing::info!(indexed, skipped, elapsed_ms = index_start.elapsed().as_millis() as u64, "Startup scan complete");
+                tracing::info!(
+                    indexed,
+                    skipped,
+                    elapsed_ms = index_start.elapsed().as_millis() as u64,
+                    "Startup scan complete"
+                );
 
                 // Persist index metadata so Settings > Data Status shows real values.
                 let duration_ms = index_start.elapsed().as_millis() as i64;
                 let sessions = idx_db.get_session_count().await.unwrap_or(0);
                 let projects = idx_db.get_project_count().await.unwrap_or(0);
-                if let Err(e) = idx_db.update_index_metadata_on_success(duration_ms, sessions, projects).await {
+                if let Err(e) = idx_db
+                    .update_index_metadata_on_success(duration_ms, sessions, projects)
+                    .await
+                {
                     tracing::warn!(error = %e, "Failed to persist index metadata");
                 }
 
@@ -409,11 +439,24 @@ async fn main() -> Result<()> {
                     let hints = build_index_hints(&claude_dir);
                     let rescan_start = Instant::now();
                     let search_rescan = idx_search.read().unwrap().clone();
-                    match scan_and_index_all(&claude_dir, &idx_db, &hints, search_rescan, Some(registry_arc.clone()), |_| {}).await {
+                    match scan_and_index_all(
+                        &claude_dir,
+                        &idx_db,
+                        &hints,
+                        search_rescan,
+                        Some(registry_arc.clone()),
+                        |_| {},
+                    )
+                    .await
+                    {
                         Ok((indexed, _)) => {
                             if indexed > 0 {
                                 tracing::info!(indexed, "Periodic re-scan indexed new sessions");
-                                record_sync("periodic-rescan", rescan_start.elapsed(), Some(indexed as u64));
+                                record_sync(
+                                    "periodic-rescan",
+                                    rescan_start.elapsed(),
+                                    Some(indexed as u64),
+                                );
                             }
                         }
                         Err(e) => tracing::warn!(error = %e, "Periodic re-scan failed (non-fatal)"),
@@ -462,13 +505,13 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_dir = claude_view_core::paths::lock_dir()
-            .unwrap_or_else(|| std::env::temp_dir());
+        let lock_dir = claude_view_core::paths::lock_dir().unwrap_or_else(|| std::env::temp_dir());
         let _ = std::fs::create_dir_all(&lock_dir);
         let lock_path = lock_dir.join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {
             // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
-            lock_path.metadata()
+            lock_path
+                .metadata()
                 .and_then(|m| m.modified())
                 .map(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(5))
                 .unwrap_or(true)
@@ -591,18 +634,12 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 tracing::info!("Periodic facet re-ingest starting");
-                match claude_view_server::facet_ingest::run_facet_ingest(
-                    &db,
-                    &ingest_state,
-                    None,
-                )
-                .await
+                match claude_view_server::facet_ingest::run_facet_ingest(&db, &ingest_state, None)
+                    .await
                 {
                     Ok(n) => {
                         if n > 0 {
-                            tracing::info!(
-                                "Periodic facet ingest: imported {n} new facets"
-                            );
+                            tracing::info!("Periodic facet ingest: imported {n} new facets");
                         }
                     }
                     Err(e) => tracing::warn!("Periodic facet ingest failed: {e}"),

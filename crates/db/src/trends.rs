@@ -714,7 +714,7 @@ mod tests {
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
-            0, // total_task_time_seconds
+            0,    // total_task_time_seconds
             None, // longest_task_seconds
             None, // longest_task_preview
             0.0,  // total_cost_usd

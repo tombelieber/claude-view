@@ -4,8 +4,8 @@ use std::time::Instant;
 use tantivy::collector::{Count, TopDocs};
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
 use tantivy::schema::IndexRecordOption;
-use tantivy::snippet::SnippetGenerator;
 use tantivy::schema::Value;
+use tantivy::snippet::SnippetGenerator;
 use tantivy::{DocAddress, TantivyDocument, Term};
 use tracing::debug;
 
@@ -45,9 +45,10 @@ fn is_session_id(query: &str) -> bool {
         return false;
     }
     // Check all other chars are hex digits
-    trimmed.chars().enumerate().all(|(i, c)| {
-        i == 8 || i == 13 || i == 18 || i == 23 || c.is_ascii_hexdigit()
-    })
+    trimmed
+        .chars()
+        .enumerate()
+        .all(|(i, c)| i == 8 || i == 13 || i == 18 || i == 23 || c.is_ascii_hexdigit())
 }
 
 /// Parse a raw query string into text query + qualifiers.
@@ -251,7 +252,11 @@ impl SearchIndex {
                 sessions: vec![SessionHit {
                     session_id,
                     project,
-                    branch: if branch.is_empty() { None } else { Some(branch) },
+                    branch: if branch.is_empty() {
+                        None
+                    } else {
+                        Some(branch)
+                    },
                     modified_at: latest_timestamp,
                     match_count: matches.len(),
                     best_score: 1.0,
@@ -284,7 +289,8 @@ impl SearchIndex {
                 sub_queries.push((Occur::Must, parsed));
             } else {
                 // Unquoted: apply fuzzy matching per term (Levenshtein distance=1)
-                let tokens: Vec<&str> = trimmed.split_whitespace()
+                let tokens: Vec<&str> = trimmed
+                    .split_whitespace()
                     .filter(|t| !t.is_empty())
                     .collect();
 
@@ -311,7 +317,7 @@ impl SearchIndex {
             let (field, is_text) = match qual.key.as_str() {
                 "project" => (self.project_field, false),
                 "branch" => (self.branch_field, false),
-                "model" => (self.model_field, true),  // TEXT field: tokenized, needs lowercase
+                "model" => (self.model_field, true), // TEXT field: tokenized, needs lowercase
                 "role" => (self.role_field, false),
                 "skill" => (self.skills_field, false),
                 _ => continue,
@@ -325,7 +331,10 @@ impl SearchIndex {
                 let lowered = qual.value.to_lowercase();
                 let mut token_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
                 // Split on non-alphanumeric to mirror Tantivy's default tokenizer
-                for token in lowered.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()) {
+                for token in lowered
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|t| !t.is_empty())
+                {
                     let term = Term::from_field_text(field, token);
                     let term_query = TermQuery::new(term, IndexRecordOption::Basic);
                     token_queries.push((Occur::Must, Box::new(term_query)));
@@ -363,7 +372,10 @@ impl SearchIndex {
         let total_matches_all = searcher.search(&combined_query, &Count)?;
 
         // Fetch all matching docs for accurate session grouping and ranking.
-        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(total_matches_all.max(1)))?;
+        let top_docs = searcher.search(
+            &combined_query,
+            &TopDocs::with_limit(total_matches_all.max(1)),
+        )?;
 
         // Group by session_id
         let mut session_groups: HashMap<String, Vec<(f32, DocAddress)>> = HashMap::new();
@@ -398,8 +410,14 @@ impl SearchIndex {
         let mut session_entries: Vec<(String, Vec<(f32, DocAddress)>)> =
             session_groups.into_iter().collect();
         session_entries.sort_by(|a, b| {
-            let best_a = a.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
-            let best_b = b.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
+            let best_a =
+                a.1.iter()
+                    .map(|(s, _)| *s)
+                    .fold(f32::NEG_INFINITY, f32::max);
+            let best_b =
+                b.1.iter()
+                    .map(|(s, _)| *s)
+                    .fold(f32::NEG_INFINITY, f32::max);
             best_b
                 .partial_cmp(&best_a)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -417,10 +435,7 @@ impl SearchIndex {
 
         for (session_id, mut scored_docs) in paginated {
             // Sort docs within session by score descending
-            scored_docs.sort_by(|a, b| {
-                b.0.partial_cmp(&a.0)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+            scored_docs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
             let mut matches = Vec::with_capacity(scored_docs.len());
             let mut best_score = f32::NEG_INFINITY;
@@ -453,7 +468,8 @@ impl SearchIndex {
                         let snip = gen.snippet_from_doc(&retrieved);
                         // Tantivy's to_html() wraps matches in <b> tags;
                         // frontend expects <mark> tags for highlight styling
-                        let html = snip.to_html()
+                        let html = snip
+                            .to_html()
                             .replace("<b>", "<mark>")
                             .replace("</b>", "</mark>");
                         if html.is_empty() {

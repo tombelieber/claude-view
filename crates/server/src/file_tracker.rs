@@ -141,10 +141,7 @@ mod tests {
 
         // Write initial content
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap();
+            let mut f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             write!(f, "line1\nline2\n").unwrap();
         }
 
@@ -179,10 +176,7 @@ mod tests {
 
         // Write initial content
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap();
+            let mut f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             write!(f, "original-line1\noriginal-line2\n").unwrap();
         }
 
@@ -212,10 +206,7 @@ mod tests {
 
         // Write a line WITHOUT a trailing newline
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap();
+            let mut f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             write!(f, "partial-line").unwrap();
         }
 
@@ -247,10 +238,7 @@ mod tests {
 
         // Write initial content
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap();
+            let mut f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             write!(f, "existing1\nexisting2\n").unwrap();
         }
 
@@ -280,10 +268,7 @@ mod tests {
 
         // Write two complete lines and one incomplete
         {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .unwrap();
+            let mut f = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             write!(f, "complete1\ncomplete2\nincomplete").unwrap();
         }
 

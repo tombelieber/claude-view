@@ -147,9 +147,7 @@ impl ClaudeCliStatus {
 
     /// Resolve `claude` via the user's login shell.
     fn which_via_shell(shell: &str) -> Option<String> {
-        let output = Self::run_with_timeout(
-            Command::new(shell).args(["-lc", "which claude"]),
-        )?;
+        let output = Self::run_with_timeout(Command::new(shell).args(["-lc", "which claude"]))?;
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() && std::path::Path::new(&path).exists() {
@@ -205,7 +203,11 @@ impl ClaudeCliStatus {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let trimmed = stderr.trim();
             if let Some(v) = trimmed.split_whitespace().last() {
-                if v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                if v.chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+                {
                     return Some(v.to_string());
                 }
             }
@@ -334,27 +336,36 @@ mod tests {
                 }
             }
         }
-        let sub = oauth.subscription_type.map(|s| s.to_lowercase()).filter(|s| !s.is_empty());
+        let sub = oauth
+            .subscription_type
+            .map(|s| s.to_lowercase())
+            .filter(|s| !s.is_empty());
         (true, sub)
     }
 
     #[test]
     fn test_creds_max_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("max"));
     }
 
     #[test]
     fn test_creds_pro_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Pro","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"subscriptionType":"Pro","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("pro"));
     }
 
     #[test]
     fn test_creds_free_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Free","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"subscriptionType":"Free","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("free"));
     }
@@ -368,7 +379,8 @@ mod tests {
 
     #[test]
     fn test_creds_expired_token() {
-        let (auth, _) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":1000}}"#);
+        let (auth, _) =
+            parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":1000}}"#);
         assert!(!auth);
     }
 
@@ -392,7 +404,8 @@ mod tests {
 
     #[test]
     fn test_creds_zero_expiry_treated_as_no_expiry() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":0}}"#);
+        let (auth, sub) =
+            parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":0}}"#);
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("max"));
     }
@@ -406,7 +419,8 @@ mod tests {
 
     #[test]
     fn test_creds_empty_subscription_type_filtered() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"","expiresAt":9999999999999}}"#);
+        let (auth, sub) =
+            parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"","expiresAt":9999999999999}}"#);
         assert!(auth);
         assert_eq!(sub, None);
     }

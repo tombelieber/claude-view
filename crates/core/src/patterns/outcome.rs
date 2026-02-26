@@ -6,9 +6,11 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-
 /// Calculate all outcome patterns from session data.
-pub fn calculate_outcome_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_outcome_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = o01_commit_rate(sessions, time_range_days) {
@@ -52,7 +54,10 @@ fn o01_commit_rate(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
 }
 
 /// O02: Session Outcomes - categorize sessions by activity type.
-fn o02_session_outcomes(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn o02_session_outcomes(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     if sessions.len() < 100 {
         return None;
     }
@@ -83,8 +88,14 @@ fn o02_session_outcomes(sessions: &[SessionInfo], time_range_days: u32) -> Optio
     let sample_size = sessions.len() as u32;
     let mut vars = HashMap::new();
     vars.insert("deep_work_pct".to_string(), format!("{:.0}", deep_work_pct));
-    vars.insert("quick_task_pct".to_string(), format!("{:.0}", quick_task_pct));
-    vars.insert("exploration_pct".to_string(), format!("{:.0}", exploration_pct));
+    vars.insert(
+        "quick_task_pct".to_string(),
+        format!("{:.0}", quick_task_pct),
+    );
+    vars.insert(
+        "exploration_pct".to_string(),
+        format!("{:.0}", exploration_pct),
+    );
     vars.insert("minimal_pct".to_string(), format!("{:.0}", minimal_pct));
 
     let mut comparison = HashMap::new();
@@ -120,14 +131,7 @@ mod tests {
             .map(|i| {
                 let commit = if i % 3 == 0 { 2 } else { 0 };
                 let duration = if i % 5 == 0 { 120 } else { 900 };
-                make_session_with_stats(
-                    &format!("o{}", i),
-                    duration,
-                    3,
-                    1,
-                    5,
-                    commit,
-                )
+                make_session_with_stats(&format!("o{}", i), duration, 3, 1, 5, commit)
             })
             .collect()
     }
