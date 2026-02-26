@@ -45,7 +45,7 @@ export function useStatus() {
  * Format a timestamp as relative time (e.g., "5 minutes ago").
  * Returns null if timestamp is null.
  */
-export function formatRelativeTime(timestamp: bigint | null): string | null {
+export function formatRelativeTime(timestamp: bigint | number | null): string | null {
   if (timestamp === null) return null
   // Guard against epoch-zero: ts=0 means "never synced", not Jan 1 1970.
   // See CLAUDE.md: "Every function that does new Date(ts * 1000) must check ts <= 0 first."

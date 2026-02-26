@@ -57,7 +57,7 @@ export function formatBytes(bytes: bigint | number | null): string {
 /**
  * Format a Unix timestamp as a relative time string or date.
  */
-export function formatTimestamp(timestamp: bigint | null): string {
+export function formatTimestamp(timestamp: bigint | number | null): string {
   if (timestamp === null) return 'Never'
 
   const ts = Number(timestamp)
@@ -86,7 +86,7 @@ export function formatTimestamp(timestamp: bigint | null): string {
 /**
  * Format duration in milliseconds to human-readable string.
  */
-export function formatDurationMs(ms: bigint | null): string {
+export function formatDurationMs(ms: bigint | number | null): string {
   if (ms === null) return '--'
   const num = Number(ms)
 

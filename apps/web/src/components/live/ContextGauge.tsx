@@ -67,7 +67,7 @@ export function ContextGauge({
   tokens,
   turnCount,
   expanded = false,
-  agentLabel,
+  agentLabel: _agentLabel,
   agentStateKey,
 }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
@@ -89,7 +89,7 @@ export function ContextGauge({
     }
     prevStateKeyRef.current = agentStateKey
   }, [agentStateKey, isCompacting])
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({})

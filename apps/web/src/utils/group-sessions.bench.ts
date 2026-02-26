@@ -14,8 +14,8 @@ function makeSession(i: number): SessionInfo {
     project: `project-${i % 5}`,
     projectPath: `/test/project-${i % 5}`,
     filePath: `/test/file-${i}.jsonl`,
-    modifiedAt: BigInt(baseTime),
-    sizeBytes: BigInt(1024 * (i + 1)),
+    modifiedAt: baseTime,
+    sizeBytes: 1024 * (i + 1),
     preview: `Session preview ${i}`,
     lastMessage: `Last message ${i}`,
     filesTouched: [`file${i}.ts`, `file${i + 1}.ts`],
@@ -37,8 +37,8 @@ function makeSession(i: number): SessionInfo {
     commitCount: i % 2,
     gitBranch: branches[i % branches.length],
     primaryModel: models[i % models.length],
-    totalInputTokens: BigInt(5000 + i * 100),
-    totalOutputTokens: BigInt(2000 + i * 50),
+    totalInputTokens: 5000 + i * 100,
+    totalOutputTokens: 2000 + i * 50,
     thinkingBlockCount: 0,
     apiErrorCount: 0,
     compactionCount: 0,
@@ -50,6 +50,8 @@ function makeSession(i: number): SessionInfo {
     linesRemoved: i * 3,
     locSource: 100 + i,
     parseVersion: 1,
+    correctionCount: 0,
+    sameFileEditCount: 0,
   }
 }
 

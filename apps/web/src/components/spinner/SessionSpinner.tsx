@@ -59,7 +59,6 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // Determine live-mode specifics via discriminant narrowing (no `as` casts)
   const agentStateGroup =
     props.mode === 'live' ? (props.agentStateGroup ?? 'autonomous') : 'autonomous'
-  const agentStateLabel = props.mode === 'live' ? props.agentStateLabel : undefined
   const agentStateKey = props.mode === 'live' ? props.agentStateKey : undefined
   const isStalled = props.mode === 'live' ? (props.isStalled ?? false) : false
   const lastCacheHitAt = props.mode === 'live' ? (props.lastCacheHitAt ?? null) : null

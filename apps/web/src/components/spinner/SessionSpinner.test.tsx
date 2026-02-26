@@ -50,7 +50,9 @@ function getPopperWrapper(): Element | null {
 describe('SessionSpinner', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(false))
+    window.matchMedia = vi.fn(() =>
+      createMockMediaQueryList(false),
+    ) as unknown as typeof window.matchMedia
   })
 
   afterEach(() => {

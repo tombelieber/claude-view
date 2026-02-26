@@ -184,29 +184,6 @@ function getIcon(type: XmlCardProps['type']) {
   }
 }
 
-function getLabel(type: XmlCardProps['type']) {
-  switch (type) {
-    case 'observed_from_primary_session':
-      return 'Tool Call'
-    case 'observation':
-      return 'Observation'
-    case 'tool_call':
-      return 'Tool'
-    case 'local_command':
-      return 'Command Output'
-    case 'task_notification':
-      return 'Agent Task'
-    case 'command':
-      return 'Command'
-    case 'tool_error':
-      return 'Tool Error'
-    case 'untrusted_data':
-      return 'External Content'
-    default:
-      return 'Structured Content'
-  }
-}
-
 interface ParsedTaskNotification {
   taskId?: string
   status?: string
@@ -264,7 +241,6 @@ export function XmlCard({ content, type }: XmlCardProps) {
   if (type === 'hidden') return null
 
   const Icon = getIcon(type)
-  const label = getLabel(type)
 
   // Local command output: render as terminal-style inline block (no collapse)
   if (type === 'local_command') {

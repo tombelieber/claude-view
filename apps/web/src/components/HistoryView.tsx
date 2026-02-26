@@ -73,8 +73,8 @@ function formatSortMetric(
     durationSeconds?: number
     userPromptCount?: number
     filesEditedCount?: number
-    totalInputTokens?: bigint | null
-    totalOutputTokens?: bigint | null
+    totalInputTokens?: number | null
+    totalOutputTokens?: number | null
   },
   sort: SessionSort,
 ): string | null {
@@ -92,7 +92,7 @@ function formatSortMetric(
       return count > 0 ? `${count} files` : null
     }
     case 'tokens': {
-      const total = Number((session.totalInputTokens ?? 0n) + (session.totalOutputTokens ?? 0n))
+      const total = (session.totalInputTokens ?? 0) + (session.totalOutputTokens ?? 0)
       if (total <= 0) return null
       if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M tokens`
       if (total >= 1_000) return `${(total / 1_000).toFixed(0)}K tokens`
@@ -203,7 +203,7 @@ export function HistoryView() {
     return [...set].sort()
   }, [sessions])
 
-  const isFiltered =
+  const isFiltered = !!(
     debouncedSearch ||
     sidebarProject ||
     sidebarBranch ||
@@ -217,6 +217,7 @@ export function HistoryView() {
     filters.minTokens !== null ||
     filters.branches.length > 0 ||
     filters.models.length > 0
+  )
 
   const tooManyToGroup = shouldDisableGrouping(sessions.length)
 

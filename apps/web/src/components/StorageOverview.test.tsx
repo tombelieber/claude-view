@@ -5,7 +5,7 @@ import { StorageOverview } from './StorageOverview'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
-global.fetch = mockFetch
+globalThis.fetch = mockFetch
 
 // Create a wrapper with QueryClient
 function createWrapper() {

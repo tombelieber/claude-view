@@ -280,8 +280,8 @@ export function StorageOverview() {
                 innerRadius={52}
                 outerRadius={76}
                 paddingAngle={2}
-                activeIndex={activeSlice}
-                activeShape={renderActiveShape}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                {...({ activeIndex: activeSlice, activeShape: renderActiveShape } as any)}
                 onMouseEnter={onPieEnter}
                 onMouseLeave={onPieLeave}
                 animationBegin={0}

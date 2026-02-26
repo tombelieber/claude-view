@@ -5,8 +5,6 @@ import { DateRangePicker, type DateRangePickerProps } from './DateRangePicker'
 
 // Capture onSelect callback so tests can simulate range picks
 let rangeOnSelect: ((range: DateRange | undefined) => void) | null = null
-let lastSelected: DateRange | undefined = undefined
-
 vi.mock('react-day-picker', () => ({
   DayPicker: (props: {
     mode: string
@@ -16,7 +14,6 @@ vi.mock('react-day-picker', () => ({
     disabled?: unknown
   }) => {
     rangeOnSelect = props.onSelect ?? null
-    lastSelected = props.selected
     return (
       <div
         data-testid="range-calendar"
@@ -31,8 +28,9 @@ vi.mock('react-day-picker', () => ({
 
 // Mock Radix Popover to render inline (no portal) with proper open/close behavior.
 // We use a module-level ref so all sub-components share the same open/onOpenChange.
-vi.mock('@radix-ui/react-popover', () => {
-  const React = require('react')
+vi.mock('@radix-ui/react-popover', async () => {
+  const R = await import('react')
+  type RNode = React.ReactNode
 
   // Shared state between Root, Trigger, Content, Close
   const ctx = { open: false, onOpenChange: (_b: boolean) => {} }
@@ -41,20 +39,20 @@ vi.mock('@radix-ui/react-popover', () => {
     open,
     onOpenChange,
     children,
-  }: { open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode }) => {
+  }: { open: boolean; onOpenChange: (o: boolean) => void; children: RNode }) => {
     ctx.open = open
     ctx.onOpenChange = onOpenChange
     return <>{children}</>
   }
 
-  const Trigger = React.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
+  const Trigger = R.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
     const handleClick = (e: any) => {
       props.onClick?.(e)
       children?.props?.onClick?.(e)
       ctx.onOpenChange(!ctx.open)
     }
-    if (asChild && React.isValidElement(children)) {
-      return React.cloneElement(children, { ...props, ref, onClick: handleClick })
+    if (asChild && R.isValidElement(children)) {
+      return R.cloneElement(children, { ...props, ref, onClick: handleClick })
     }
     return (
       <button ref={ref} {...props} onClick={handleClick}>
@@ -64,9 +62,9 @@ vi.mock('@radix-ui/react-popover', () => {
   })
   Trigger.displayName = 'Trigger'
 
-  const Portal = ({ children }: { children: React.ReactNode }) => <>{children}</>
+  const Portal = ({ children }: { children: RNode }) => <>{children}</>
 
-  const Content = React.forwardRef(({ children, ...props }: any, ref: any) => {
+  const Content = R.forwardRef(({ children, ...props }: any, ref: any) => {
     if (!ctx.open) return null
     return (
       <div ref={ref} {...props}>
@@ -76,14 +74,14 @@ vi.mock('@radix-ui/react-popover', () => {
   })
   Content.displayName = 'Content'
 
-  const Close = React.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
+  const Close = R.forwardRef(({ asChild, children, ...props }: any, ref: any) => {
     const handleClick = (e: any) => {
       props.onClick?.(e)
       children?.props?.onClick?.(e)
       ctx.onOpenChange(false)
     }
-    if (asChild && React.isValidElement(children)) {
-      return React.cloneElement(children, { ...props, ref, onClick: handleClick })
+    if (asChild && R.isValidElement(children)) {
+      return R.cloneElement(children, { ...props, ref, onClick: handleClick })
     }
     return (
       <button ref={ref} {...props} onClick={handleClick}>
@@ -108,13 +106,14 @@ const jan20 = new Date(2024, 0, 20)
 const feb1 = new Date(2024, 1, 1)
 
 function renderPicker(overrides: Partial<DateRangePickerProps> = {}) {
+  const onChange = vi.fn() as unknown as DateRangePickerProps['onChange'] & ReturnType<typeof vi.fn>
   const defaultProps: DateRangePickerProps = {
     value: null,
-    onChange: vi.fn(),
+    onChange,
     ...overrides,
   }
   const result = render(<DateRangePicker {...defaultProps} />)
-  return { ...result, onChange: defaultProps.onChange as ReturnType<typeof vi.fn> }
+  return { ...result, onChange: defaultProps.onChange as typeof onChange }
 }
 
 /** Click the trigger button to toggle the popover */
@@ -144,7 +143,6 @@ describe('DateRangePicker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     rangeOnSelect = null
-    lastSelected = undefined
   })
 
   describe('initial render', () => {

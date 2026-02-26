@@ -72,7 +72,7 @@ export interface MonitorPaneProps {
 export function MonitorPane({
   session,
   isSelected,
-  isExpanded,
+  isExpanded: _isExpanded,
   isPinned,
   compactHeader,
   isVisible,

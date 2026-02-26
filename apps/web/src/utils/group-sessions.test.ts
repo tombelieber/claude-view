@@ -1,7 +1,8 @@
 // src/utils/group-sessions.test.ts
 import { describe, expect, it } from 'vitest'
+import type { SessionInfo } from '../types/generated/SessionInfo'
 import type { ToolCounts } from '../types/generated/ToolCounts'
-import { type SessionInfo, groupSessions, shouldDisableGrouping } from './group-sessions'
+import { groupSessions, shouldDisableGrouping } from './group-sessions'
 
 // Helper to create a test session
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -17,8 +18,8 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     project: 'test-project',
     projectPath: '/test/path',
     filePath: '/test/file.jsonl',
-    modifiedAt: BigInt(Math.floor(Date.now() / 1000)),
-    sizeBytes: BigInt(1024),
+    modifiedAt: Math.floor(Date.now() / 1000),
+    sizeBytes: 1024,
     preview: 'Test preview',
     lastMessage: 'Last message',
     filesTouched: [],
@@ -45,7 +46,12 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     bashProgressCount: 0,
     hookProgressCount: 0,
     mcpProgressCount: 0,
+    linesAdded: 0,
+    linesRemoved: 0,
+    locSource: 0,
     parseVersion: 1,
+    correctionCount: 0,
+    sameFileEditCount: 0,
     totalTaskTimeSeconds: null,
     longestTaskSeconds: null,
     longestTaskPreview: null,
@@ -205,17 +211,17 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(day1.getTime() / 1000)),
+          modifiedAt: Math.floor(day1.getTime() / 1000),
           filesEditedCount: 5,
         }),
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(day2.getTime() / 1000)),
+          modifiedAt: Math.floor(day2.getTime() / 1000),
           filesEditedCount: 10,
         }),
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(day1.getTime() / 1000) + 3600),
+          modifiedAt: Math.floor(day1.getTime() / 1000) + 3600,
           filesEditedCount: 3,
         }), // Same day, 1 hour later
       ]
@@ -234,15 +240,15 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-10').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-10').getTime() / 1000),
         }),
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-15').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-15').getTime() / 1000),
         }),
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-12').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-12').getTime() / 1000),
         }),
       ]
 
@@ -264,17 +270,17 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(tue.getTime() / 1000)),
+          modifiedAt: Math.floor(tue.getTime() / 1000),
           filesEditedCount: 5,
         }),
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(wed.getTime() / 1000)),
+          modifiedAt: Math.floor(wed.getTime() / 1000),
           filesEditedCount: 10,
         }),
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(nextTue.getTime() / 1000)),
+          modifiedAt: Math.floor(nextTue.getTime() / 1000),
           filesEditedCount: 3,
         }),
       ]
@@ -294,15 +300,15 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-13').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-13').getTime() / 1000),
         }), // Week of Jan 12
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-27').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-27').getTime() / 1000),
         }), // Week of Jan 26
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-20').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-20').getTime() / 1000),
         }), // Week of Jan 19
       ]
 
@@ -317,17 +323,17 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-05').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-05').getTime() / 1000),
           filesEditedCount: 5,
         }),
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(new Date('2026-02-10').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-02-10').getTime() / 1000),
           filesEditedCount: 10,
         }),
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-25').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-25').getTime() / 1000),
           filesEditedCount: 3,
         }),
       ]
@@ -346,15 +352,15 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-15').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-15').getTime() / 1000),
         }),
         makeSession({
           id: 's2',
-          modifiedAt: BigInt(Math.floor(new Date('2026-03-15').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-03-15').getTime() / 1000),
         }),
         makeSession({
           id: 's3',
-          modifiedAt: BigInt(Math.floor(new Date('2026-02-15').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-02-15').getTime() / 1000),
         }),
       ]
 
@@ -370,14 +376,14 @@ describe('groupSessions', () => {
         makeSession({
           id: 's1',
           gitBranch: 'main',
-          totalInputTokens: BigInt(10000),
-          totalOutputTokens: BigInt(5000),
+          totalInputTokens: 10000,
+          totalOutputTokens: 5000,
         }),
         makeSession({
           id: 's2',
           gitBranch: 'main',
-          totalInputTokens: BigInt(20000),
-          totalOutputTokens: BigInt(10000),
+          totalInputTokens: 20000,
+          totalOutputTokens: 10000,
         }),
       ]
 
@@ -398,8 +404,8 @@ describe('groupSessions', () => {
         makeSession({
           id: 's2',
           gitBranch: 'main',
-          totalInputTokens: BigInt(10000),
-          totalOutputTokens: BigInt(5000),
+          totalInputTokens: 10000,
+          totalOutputTokens: 5000,
         }),
       ]
 
@@ -428,8 +434,8 @@ describe('groupSessions', () => {
           id: 's1',
           gitBranch: 'main',
           filesEditedCount: 23,
-          totalInputTokens: BigInt(100000),
-          totalOutputTokens: BigInt(45000),
+          totalInputTokens: 100000,
+          totalOutputTokens: 45000,
           commitCount: 5,
         }),
       ]
@@ -438,7 +444,7 @@ describe('groupSessions', () => {
 
       expect(groups[0].label).toContain('main')
       expect(groups[0].label).toContain('1 sessions')
-      expect(groups[0].label).toContain('145K tokens')
+      expect(groups[0].label).toContain('145k tokens')
       expect(groups[0].label).toContain('23 files')
     })
 
@@ -446,7 +452,7 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000),
         }),
       ]
 
@@ -460,7 +466,7 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000),
         }),
       ]
 
@@ -474,7 +480,7 @@ describe('groupSessions', () => {
       const sessions = [
         makeSession({
           id: 's1',
-          modifiedAt: BigInt(Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000)),
+          modifiedAt: Math.floor(new Date('2026-01-15T10:00:00Z').getTime() / 1000),
         }),
       ]
 
