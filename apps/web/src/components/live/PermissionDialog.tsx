@@ -10,19 +10,25 @@ interface PermissionDialogProps {
 export function PermissionDialog({ request, onRespond }: PermissionDialogProps) {
   const [countdown, setCountdown] = useState(60)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onRespondRef = useRef(onRespond)
+  onRespondRef.current = onRespond
+
+  // Derive primitives for stable deps (per CLAUDE.md: useMemo on a primitive key)
+  const requestId = request?.requestId ?? null
+  const timeoutMs = request?.timeoutMs ?? 60000
 
   // Reset countdown when a new request comes in
   useEffect(() => {
-    if (!request) return
+    if (!requestId) return
 
-    const totalSeconds = Math.ceil((request.timeoutMs || 60000) / 1000)
+    const totalSeconds = Math.ceil(timeoutMs / 1000)
     setCountdown(totalSeconds)
 
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           // Auto-deny on timeout
-          onRespond(request.requestId, false)
+          onRespondRef.current(requestId, false)
           return 0
         }
         return prev - 1
@@ -32,7 +38,7 @@ export function PermissionDialog({ request, onRespond }: PermissionDialogProps) 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [request?.requestId]) // Only re-run when requestId changes
+  }, [requestId, timeoutMs])
 
   if (!request) return null
 
