@@ -208,7 +208,7 @@ saved_hook_context      →  System
 result                  →  (skipped or System)
 ```
 
-**TypeScript type** (`src/types/generated/Role.ts`):
+**TypeScript type** (`apps/web/src/types/generated/Role.ts`):
 ```typescript
 export type Role = "user" | "assistant" | "tool_use" | "tool_result" | "system" | "progress" | "summary";
 ```
@@ -341,7 +341,7 @@ Tool calls and events are categorized for filtering in the Action Log.
 | **Hook Handler** | `crates/server/src/routes/hooks.rs` | Receives hook POSTs, resolves agent state |
 | **Hook DB** | `crates/db/src/queries/hook_events.rs` | SQLite read/write for hook_events |
 | **Schema** | `crates/db/src/migrations.rs` | Migration 24: hook_events table |
-| **TS Types** | `src/types/generated/Role.ts` | Generated TypeScript Role type |
-| **Rich Pane** | `src/components/live/RichPane.tsx` | RichMessage type + renderer dispatch |
-| **Hook→Message** | `src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items |
-| **Action Types** | `src/components/live/action-log/types.ts` | ActionCategory type + HookEventItem |
+| **TS Types** | `apps/web/src/types/generated/Role.ts` | Generated TypeScript Role type |
+| **Rich Pane** | `apps/web/src/components/live/RichPane.tsx` | RichMessage type + renderer dispatch |
+| **Hook→Message** | `apps/web/src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items |
+| **Action Types** | `apps/web/src/components/live/action-log/types.ts` | ActionCategory type + HookEventItem |
