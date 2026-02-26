@@ -25,7 +25,7 @@ use crate::state::AppState;
 
 /// A single turn in the session breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnInfo {
     /// 1-based turn index.

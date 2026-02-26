@@ -27,7 +27,7 @@ use crate::state::AppState;
 
 /// Top-level category breakdown percentages.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryBreakdown {
     pub code_work: CategorySummary,
@@ -38,7 +38,7 @@ pub struct CategoryBreakdown {
 
 /// Count and percentage for a single L1 category.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CategorySummary {
     pub count: u32,
@@ -47,7 +47,7 @@ pub struct CategorySummary {
 
 /// Hierarchical category node for treemap.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryNode {
     /// Hierarchical ID: "code_work", "code_work/feature", "code_work/feature/new-component"
@@ -77,7 +77,7 @@ pub struct CategoryNode {
 
 /// Full categories response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesResponse {
     /// High-level breakdown percentages
@@ -90,7 +90,7 @@ pub struct CategoriesResponse {
 
 /// Overall averages across all sessions for comparison.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct OverallAverages {
     pub avg_reedit_rate: f64,
@@ -105,7 +105,7 @@ pub struct OverallAverages {
 
 /// Full insights API response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsResponse {
     /// Hero insight (highest impact).
@@ -122,7 +122,7 @@ pub struct InsightsResponse {
 
 /// Overview statistics for the insights page.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsOverview {
     pub work_breakdown: WorkBreakdown,
@@ -132,7 +132,7 @@ pub struct InsightsOverview {
 
 /// Work type breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkBreakdown {
     pub total_sessions: u32,
@@ -143,7 +143,7 @@ pub struct WorkBreakdown {
 
 /// Efficiency trend stats.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyStats {
     pub avg_reedit_rate: f64,
@@ -154,7 +154,7 @@ pub struct EfficiencyStats {
 
 /// Best time of day/week stats.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct BestTimeStats {
     pub day_of_week: String,
@@ -164,7 +164,7 @@ pub struct BestTimeStats {
 
 /// Patterns grouped by impact tier.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PatternGroups {
     pub high: Vec<GeneratedInsight>,
@@ -174,7 +174,7 @@ pub struct PatternGroups {
 
 /// Classification coverage status.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationCoverage {
     pub classified: u32,
@@ -185,7 +185,7 @@ pub struct ClassificationCoverage {
 
 /// Response metadata.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsMeta {
     #[ts(type = "number")]

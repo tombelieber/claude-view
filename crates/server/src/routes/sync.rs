@@ -39,7 +39,7 @@ fn get_deep_index_mutex() -> &'static Mutex<()> {
 
 /// Status value for accepted sync responses.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum SyncStatus {
     Accepted,
@@ -47,7 +47,7 @@ pub enum SyncStatus {
 
 /// Response for successful sync initiation.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncAcceptedResponse {
     pub message: String,

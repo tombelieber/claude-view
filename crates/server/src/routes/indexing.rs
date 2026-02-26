@@ -18,7 +18,7 @@ use crate::state::AppState;
 
 /// JSON snapshot of current indexing progress (for polling).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexingStatusResponse {
     pub phase: String,

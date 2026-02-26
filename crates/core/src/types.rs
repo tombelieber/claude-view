@@ -4,7 +4,7 @@ use ts_rs::TS;
 
 /// Tool usage statistics for a session
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 pub struct ToolCounts {
     pub edit: usize,
     pub read: usize,
@@ -24,7 +24,7 @@ impl ToolCounts {
 
 /// Message role in a conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     /// Real user prompt (string content)
@@ -45,7 +45,7 @@ pub enum Role {
 
 /// A tool call made by the assistant
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 pub struct ToolCall {
     pub name: String,
     pub count: usize,
@@ -58,7 +58,7 @@ pub struct ToolCall {
 
 /// A message in a conversation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -154,7 +154,7 @@ pub struct SearchableMessage {
 
 /// Session metadata extracted from parsing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadata {
     pub total_messages: usize,
@@ -163,7 +163,7 @@ pub struct SessionMetadata {
 
 /// A parsed session with messages and metadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 pub struct ParsedSession {
     pub messages: Vec<Message>,
     pub metadata: SessionMetadata,
@@ -193,7 +193,7 @@ impl ParsedSession {
 
 /// A paginated slice of session messages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginatedMessages {
     pub messages: Vec<Message>,
@@ -205,7 +205,7 @@ pub struct PaginatedMessages {
 
 /// Session info for listing (without full message content)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: String,
@@ -378,7 +378,7 @@ impl SessionInfo {
 
 /// Project info with sessions
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
     pub name: String,
@@ -400,7 +400,7 @@ impl ProjectInfo {
 
 /// Lightweight project summary for sidebar — no sessions array.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub name: String,
@@ -415,7 +415,7 @@ pub struct ProjectSummary {
 
 /// Paginated sessions response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsPage {
     pub sessions: Vec<SessionInfo>,
@@ -424,7 +424,7 @@ pub struct SessionsPage {
 
 /// Pre-computed dashboard statistics.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardStats {
     pub total_sessions: usize,
@@ -441,7 +441,7 @@ pub struct DashboardStats {
 
 /// A single day in the activity heatmap.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DayActivity {
     pub date: String,
@@ -450,7 +450,7 @@ pub struct DayActivity {
 
 /// A skill with its usage count.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillStat {
     pub name: String,
@@ -459,7 +459,7 @@ pub struct SkillStat {
 
 /// A project with its session count (for dashboard top projects).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectStat {
     pub name: String,
@@ -469,7 +469,7 @@ pub struct ProjectStat {
 
 /// A session entry for the "Longest Tasks" dashboard card.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDurationStat {
     pub id: String,
@@ -586,7 +586,7 @@ pub enum ContentBlock {
 
 /// Status of a classification job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum ClassificationJobStatus {
     Running,
@@ -620,7 +620,7 @@ impl ClassificationJobStatus {
 
 /// A classification job record.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationJob {
     #[ts(type = "number")]
@@ -653,7 +653,7 @@ pub struct ClassificationJob {
 
 /// Type of index run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunType {
     Full,
@@ -684,7 +684,7 @@ impl IndexRunType {
 
 /// Status of an index run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunStatus {
     Running,
@@ -715,7 +715,7 @@ impl IndexRunStatus {
 
 /// An index run record.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRun {
     #[ts(type = "number")]
@@ -740,7 +740,7 @@ pub struct IndexRun {
 
 /// Metrics for a time period (used in Then vs Now comparison).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PeriodMetrics {
     /// Re-edit rate: files re-edited / files edited (0.0-1.0)
@@ -755,7 +755,7 @@ pub struct PeriodMetrics {
 
 /// Improvement percentages between two periods.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImprovementMetrics {
     /// Re-edit rate change (negative = improvement)
@@ -770,7 +770,7 @@ pub struct ImprovementMetrics {
 
 /// Progress comparison between first and last month.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressComparison {
     pub first_month: Option<PeriodMetrics>,
@@ -781,7 +781,7 @@ pub struct ProgressComparison {
 
 /// Verdict for category performance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum CategoryVerdict {
     Excellent,
@@ -792,7 +792,7 @@ pub enum CategoryVerdict {
 
 /// Performance metrics for a single category.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryPerformance {
     pub category: String,
@@ -805,7 +805,7 @@ pub struct CategoryPerformance {
 
 /// Learning curve data point.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurvePoint {
     pub session: u32,
@@ -814,7 +814,7 @@ pub struct LearningCurvePoint {
 
 /// Skill adoption with impact metrics.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillAdoption {
     pub skill: String,
@@ -827,7 +827,7 @@ pub struct SkillAdoption {
 
 /// Monthly report summary.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSummary {
     pub month: String,
@@ -844,7 +844,7 @@ pub struct ReportSummary {
 
 /// Full benchmarks response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarksResponse {
     pub progress: ProgressComparison,
