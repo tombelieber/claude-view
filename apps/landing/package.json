@@ -1,0 +1,10 @@
+{
+  "name": "@claude-view/landing",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "open src/index.html",
+    "build": "mkdir -p dist && cp -r src/* dist/ && cp -r public/* dist/",
+    "deploy": "wrangler pages deploy dist"
+  }
+}
