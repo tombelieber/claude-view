@@ -9,6 +9,12 @@ use super::types::{
     ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError,
 };
 
+/// Return type for streaming completions: a text-chunk receiver paired with a task handle.
+type StreamResult = (
+    tokio::sync::mpsc::Receiver<String>,
+    tokio::task::JoinHandle<Result<(), LlmError>>,
+);
+
 /// LLM provider that uses the Claude CLI binary.
 ///
 /// Spawns `claude -p --output-format json` to classify sessions.
@@ -40,16 +46,7 @@ impl ClaudeCliProvider {
     /// When the CLI exits, the channel closes.
     ///
     /// Uses `--output-format text` (not json) since we want raw text streaming.
-    pub fn stream_completion(
-        &self,
-        prompt: String,
-    ) -> Result<
-        (
-            tokio::sync::mpsc::Receiver<String>,
-            tokio::task::JoinHandle<Result<(), LlmError>>,
-        ),
-        LlmError,
-    > {
+    pub fn stream_completion(&self, prompt: String) -> Result<StreamResult, LlmError> {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         // Strip ALL Claude Code env vars to prevent nested session detection.

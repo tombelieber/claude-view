@@ -181,9 +181,8 @@ async fn generate_report(
     // Spawn Claude CLI for streaming
     let provider = super::settings::create_llm_provider(&state.db)
         .await
-        .map_err(|e| {
+        .inspect_err(|_| {
             GENERATING.store(false, Ordering::SeqCst);
-            e
         })?;
     let generation_model = provider.model().to_string();
     let (mut rx, _handle) = match provider.stream_completion(prompt) {

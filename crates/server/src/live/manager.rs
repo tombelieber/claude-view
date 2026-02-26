@@ -1240,10 +1240,10 @@ impl LiveSessionManager {
 
             // --- Tool integration tracking (MCP servers + skills) ---
             for tool_name in &line.tool_names {
-                if tool_name.starts_with("mcp__") {
+                if let Some(rest) = tool_name.strip_prefix("mcp__") {
                     // Pattern: mcp__{server}__{tool} — extract the server segment
-                    if let Some(idx) = tool_name[5..].find("__") {
-                        let server = &tool_name[5..5 + idx];
+                    if let Some(idx) = rest.find("__") {
+                        let server = &rest[..idx];
                         acc.mcp_servers.insert(server.to_string());
                     }
                 }
@@ -1498,7 +1498,7 @@ fn extract_project_info(
     // Use cached cwd if available, else resolve from JSONL on disk.
     let cwd = cached_cwd.map(|s| s.to_string()).or_else(|| {
         path.parent()
-            .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
+            .and_then(claude_view_core::resolve_cwd_for_project)
     });
 
     let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(

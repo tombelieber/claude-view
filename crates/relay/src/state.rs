@@ -28,7 +28,7 @@ pub struct RegisteredDevice {
 }
 
 /// Shared relay server state.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RelayState {
     /// Active WebSocket connections, keyed by device_id.
     pub connections: Arc<DashMap<String, DeviceConnection>>,
