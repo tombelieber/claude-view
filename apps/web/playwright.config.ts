@@ -21,7 +21,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'cd ../.. && cargo run -p claude-view-server',
+    command: `cd ${path.resolve(__dirname, '../..')} && cargo run -p claude-view-server`,
     env: { STATIC_DIR: path.resolve(__dirname, 'dist') },
     url: 'http://localhost:47892/api/health',
     reuseExistingServer: !process.env.CI,
