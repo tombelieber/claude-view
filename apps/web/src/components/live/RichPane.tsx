@@ -330,7 +330,7 @@ function AssistantMessage({
 function ToolResultMessage({
   message,
   index,
-  verboseMode = false,
+  verboseMode: _verboseMode = false,
 }: { message: RichMessage; index: number; verboseMode?: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const hasContent = message.content.length > 0
@@ -501,8 +501,9 @@ function SystemMessageCard({
   message,
   verboseMode,
 }: { message: RichMessage; verboseMode?: boolean }) {
-  const m = message.metadata
-  const subtype = m?.type ?? m?.subtype
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = (message.metadata ?? {}) as Record<string, any>
+  const subtype = m.type ?? m.subtype
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const effectiveMode = cardOverride ?? richRenderMode
@@ -635,8 +636,9 @@ function ProgressMessageCard({
   message,
   verboseMode,
 }: { message: RichMessage; verboseMode?: boolean }) {
-  const m = message.metadata
-  const subtype = m?.type
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = (message.metadata ?? {}) as Record<string, any>
+  const subtype = m.type
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const effectiveMode = cardOverride ?? richRenderMode
@@ -750,9 +752,10 @@ function SummaryMessageCard({
   message,
   verboseMode,
 }: { message: RichMessage; verboseMode?: boolean }) {
-  const m = message.metadata
-  const summary = m?.summary || message.content
-  const leafUuid = m?.leafUuid || ''
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = (message.metadata ?? {}) as Record<string, any>
+  const summary = (m.summary || message.content) as string
+  const leafUuid = (m.leafUuid || '') as string
   const wordCount = (summary || '').split(/\s+/).filter(Boolean).length
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)

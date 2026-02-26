@@ -189,7 +189,7 @@ export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
         toolName: subtype ?? 'progress',
         label: progressLabel(m),
         status: 'success',
-        output: m.output,
+        output: m.output as string | undefined,
       } satisfies ActionItem)
       continue
     }
@@ -212,7 +212,7 @@ export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
 
     // Summary events
     if (msg.type === 'summary') {
-      const summary = msg.metadata?.summary || msg.content || ''
+      const summary = (msg.metadata?.summary as string) || msg.content || ''
       items.push({
         id: `action-${actionIndex++}`,
         timestamp: msg.ts,

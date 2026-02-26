@@ -10,7 +10,7 @@ function makeMessage(
     role: 'user' as const,
     content: 'Hello world',
     ...overrides,
-  }
+  } as import('../types/generated').Message
 }
 
 describe('ConversationThreading', () => {

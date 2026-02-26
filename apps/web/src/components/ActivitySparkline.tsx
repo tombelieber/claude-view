@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
-  type TooltipProps,
   XAxis,
   YAxis,
 } from 'recharts'
@@ -201,9 +200,12 @@ function formatBucketLabel(date: string, bucket: string): string {
 }
 
 /** Custom tooltip matching the existing dark style */
-function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
+function CustomTooltip({
+  active,
+  payload,
+}: { active?: boolean; payload?: Array<{ payload: ChartDatum }> }) {
   if (!active || !payload?.[0]) return null
-  const datum = payload[0].payload as ChartDatum
+  const datum = payload[0].payload
   return (
     <div className="px-2.5 py-1.5 bg-gray-900 text-white text-[11px] rounded-md shadow-lg whitespace-nowrap tabular-nums">
       {datum.label}

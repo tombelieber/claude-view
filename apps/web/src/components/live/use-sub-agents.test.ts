@@ -281,7 +281,7 @@ describe('useSubAgents', () => {
 
       let renderCount = 0
       const { result, rerender } = renderHook(
-        ({ subAgents, _tick }) => {
+        ({ subAgents }) => {
           renderCount++
           return useSubAgents(subAgents)
         },

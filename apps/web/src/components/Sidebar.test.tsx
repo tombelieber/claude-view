@@ -58,22 +58,22 @@ vi.mock('../hooks/use-recent-sessions', () => ({
 describe('Sidebar three-zone architecture', () => {
   // Zone 1 tests
   describe('Zone 1: Navigation Tabs', () => {
-    it('renders Fluency, Sessions, and Contributions nav links', () => {
+    it('renders Live Monitor, Sessions, and Analytics nav links', () => {
       render(<Sidebar projects={mockProjects} />, { wrapper: createWrapper() })
 
       const nav = screen.getByRole('navigation', { name: /main navigation/i })
-      expect(within(nav).getByText('Fluency')).toBeInTheDocument()
+      expect(within(nav).getByText('Live Monitor')).toBeInTheDocument()
       expect(within(nav).getByText('Sessions')).toBeInTheDocument()
-      expect(within(nav).getByText('Contributions')).toBeInTheDocument()
+      expect(within(nav).getByText('Analytics')).toBeInTheDocument()
     })
 
     it('highlights the active route', () => {
       render(<Sidebar projects={mockProjects} />, { wrapper: createWrapper('/') })
 
       const nav = screen.getByRole('navigation', { name: /main navigation/i })
-      const fluencyLink = within(nav).getByText('Fluency').closest('a')
+      const liveMonitorLink = within(nav).getByText('Live Monitor').closest('a')
       // Active link uses bg-blue-500 text-white
-      expect(fluencyLink?.className).toContain('bg-blue-500')
+      expect(liveMonitorLink?.className).toContain('bg-blue-500')
     })
 
     it('highlights Sessions link when on /sessions route', () => {
@@ -98,12 +98,9 @@ describe('Sidebar three-zone architecture', () => {
       })
 
       const nav = screen.getByRole('navigation', { name: /main navigation/i })
-      const contributionsLink = within(nav).getByText('Contributions').closest('a')
-      expect(contributionsLink).toHaveAttribute(
-        'href',
-        expect.stringContaining('project=project-a'),
-      )
-      expect(contributionsLink).toHaveAttribute('href', expect.stringContaining('branch=main'))
+      const analyticsLink = within(nav).getByText('Analytics').closest('a')
+      expect(analyticsLink).toHaveAttribute('href', expect.stringContaining('project=project-a'))
+      expect(analyticsLink).toHaveAttribute('href', expect.stringContaining('branch=main'))
     })
 
     it('nav links have no query params when no scope is set', () => {

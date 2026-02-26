@@ -61,21 +61,27 @@ const createWrapper = () => {
 
 const mockProjects: ProjectSummary[] = [
   {
-    projectPath: '/project1',
+    name: 'project1',
+    displayName: 'Project 1',
+    path: '/project1',
     sessionCount: 10,
-    latestTs: BigInt(Math.floor(Date.now() / 1000)),
+    activeCount: 0,
+    lastActivityAt: Math.floor(Date.now() / 1000),
   },
   {
-    projectPath: '/project2',
+    name: 'project2',
+    displayName: 'Project 2',
+    path: '/project2',
     sessionCount: 5,
-    latestTs: BigInt(Math.floor(Date.now() / 1000)),
+    activeCount: 0,
+    lastActivityAt: Math.floor(Date.now() / 1000),
   },
 ]
 
 describe('StatusBar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    global.fetch = mockFetch
+    globalThis.fetch = mockFetch
 
     // Default mock implementations
     mockUseStatus.mockReturnValue({

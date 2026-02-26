@@ -6,8 +6,8 @@ describe('CompactBoundaryCard', () => {
   describe('Happy path', () => {
     it('should render pre and post token counts', () => {
       render(<CompactBoundaryCard trigger="auto-triggered" preTokens={8000} postTokens={4500} />)
-      expect(screen.getByText(/8,000/)).toBeInTheDocument()
-      expect(screen.getByText(/4,500/)).toBeInTheDocument()
+      expect(screen.getByText(/8\.0K/)).toBeInTheDocument()
+      expect(screen.getByText(/4\.5K/)).toBeInTheDocument()
     })
 
     it('should render the trigger description', () => {
@@ -38,15 +38,15 @@ describe('CompactBoundaryCard', () => {
   describe('Edge cases', () => {
     it('should show only preTokens when postTokens is undefined', () => {
       render(<CompactBoundaryCard trigger="auto" preTokens={8000} />)
-      expect(screen.getByText(/8,000/)).toBeInTheDocument()
+      expect(screen.getByText(/8\.0K/)).toBeInTheDocument()
       // Should not show arrow or postTokens
       expect(screen.queryByText(/\u2192/)).not.toBeInTheDocument()
     })
 
-    it('should format large numbers with commas', () => {
+    it('should format large numbers with K suffix', () => {
       render(<CompactBoundaryCard trigger="auto" preTokens={120000} postTokens={60000} />)
-      expect(screen.getByText(/120,000/)).toBeInTheDocument()
-      expect(screen.getByText(/60,000/)).toBeInTheDocument()
+      expect(screen.getByText(/120\.0K/)).toBeInTheDocument()
+      expect(screen.getByText(/60\.0K/)).toBeInTheDocument()
     })
   })
 

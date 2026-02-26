@@ -3,14 +3,47 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SessionInfo } from '../hooks/use-projects'
 import { ActivityCalendar } from './ActivityCalendar'
 
-// Helper to create mock session data
+// Helper to create mock session data — only fields needed by ActivityCalendar
 function createMockSession(id: string, modifiedAt: number): SessionInfo {
   return {
     id,
+    project: 'test-project',
     projectPath: '/test/project',
-    projectDisplayName: 'Test Project',
+    filePath: '/test/file.jsonl',
     modifiedAt,
+    sizeBytes: 0,
     preview: 'Test session',
+    lastMessage: '',
+    filesTouched: [],
+    skillsUsed: [],
+    toolCounts: { bash: 0, edit: 0, read: 0, write: 0 },
+    messageCount: 0,
+    turnCount: 0,
+    isSidechain: false,
+    deepIndexed: false,
+    userPromptCount: 0,
+    apiCallCount: 0,
+    toolCallCount: 0,
+    filesRead: [],
+    filesEdited: [],
+    filesReadCount: 0,
+    filesEditedCount: 0,
+    reeditedFilesCount: 0,
+    durationSeconds: 0,
+    commitCount: 0,
+    thinkingBlockCount: 0,
+    apiErrorCount: 0,
+    compactionCount: 0,
+    agentSpawnCount: 0,
+    bashProgressCount: 0,
+    hookProgressCount: 0,
+    mcpProgressCount: 0,
+    linesAdded: 0,
+    linesRemoved: 0,
+    locSource: 0,
+    parseVersion: 1,
+    correctionCount: 0,
+    sameFileEditCount: 0,
   }
 }
 

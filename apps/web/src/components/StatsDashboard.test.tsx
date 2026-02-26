@@ -214,9 +214,9 @@ describe('StatsDashboard', () => {
       expect(screen.getByText('50')).toBeInTheDocument()
     })
 
-    it('should render Longest Sessions', () => {
+    it('should render Longest Tasks', () => {
       renderDashboard()
-      expect(screen.getByText('Longest Sessions')).toBeInTheDocument()
+      expect(screen.getByText('Longest Tasks')).toBeInTheDocument()
       expect(screen.getByText('Long session')).toBeInTheDocument()
       expect(screen.getByText('1.0h')).toBeInTheDocument()
     })

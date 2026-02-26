@@ -5,21 +5,41 @@
 export function cleanPreviewText(text: string): string {
   // Remove XML-like tags (including empty tags like <>)
   let cleaned = text.replace(/<[^>]*>/g, '')
-  // Remove leading/trailing quotes
-  cleaned = cleaned.replace(/^["']|["']$/g, '')
   // Remove slash-command prefixes like "/superpowers:brainstorm"
   cleaned = cleaned.replace(/\/[\w-]+:[\w-]+\s*/g, '')
   // Remove "superpowers:" prefixed words
   cleaned = cleaned.replace(/superpowers:\S+\s*/g, '')
   // Unescape JSON escape sequences (raw JSONL content has literal \n, \\, \", \t)
-  // Order matters: replace \\ first so \\n becomes \n, then \n becomes space
-  cleaned = cleaned.replace(/\\\\/g, '\\')
-  cleaned = cleaned.replace(/\\n/g, ' ')
-  cleaned = cleaned.replace(/\\r/g, ' ')
-  cleaned = cleaned.replace(/\\t/g, ' ')
-  cleaned = cleaned.replace(/\\"/g, '"')
+  // Single-pass replacement to avoid \\t being mis-parsed as \t after \\ -> \ substitution
+  // Use a Unicode private-use-area placeholder for literal backslash so it survives cleanup
+  const BACKSLASH_PLACEHOLDER = '\uE000'
+  cleaned = cleaned.replace(/\\(\\|n|r|t|")/g, (_match, ch) => {
+    switch (ch) {
+      case '\\':
+        return BACKSLASH_PLACEHOLDER
+      case 'n':
+        return ' '
+      case 'r':
+        return ' '
+      case 't':
+        return ' '
+      case '"':
+        return '"'
+      default:
+        return ch
+    }
+  })
   // Strip any remaining lone backslashes before non-escape chars
   cleaned = cleaned.replace(/\\(?![\\nrt"])/g, '')
+  // Restore literal backslashes from placeholder
+  cleaned = cleaned.replaceAll(BACKSLASH_PLACEHOLDER, '\\')
+  // Remove matching surrounding quotes (after escape processing so \" doesn't lose its quote)
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1)
+  }
   // Collapse whitespace
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
   // If it starts with common system prompt patterns, show a clean label
