@@ -8,9 +8,12 @@
 use std::sync::Arc;
 
 use axum::body::Body;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::Path;
 use axum::response::Response;
 use axum::{extract::State, routing::post, Json, Router};
 use bytes::Bytes;
+use futures_util::{SinkExt, StreamExt};
 use http_body_util::{BodyExt, Full};
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
@@ -223,7 +226,7 @@ async fn list_sessions(State(state): State<Arc<AppState>>) -> Result<Response, A
 /// DELETE /api/control/sessions/:id — terminate a control session
 async fn terminate_session(
     State(state): State<Arc<AppState>>,
-    axum::extract::Path(control_id): axum::extract::Path<String>,
+    Path(control_id): Path<String>,
 ) -> Result<Response, ApiError> {
     proxy_to_sidecar(
         &state,
@@ -232,6 +235,140 @@ async fn terminate_session(
         None,
     )
     .await
+}
+
+/// WS /api/control/sessions/:id/stream — bidirectional relay to sidecar
+async fn ws_stream(
+    ws: WebSocketUpgrade,
+    Path(control_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    ws.on_upgrade(move |socket| handle_ws_relay(socket, control_id, state))
+}
+
+async fn handle_ws_relay(frontend_ws: WebSocket, control_id: String, state: Arc<AppState>) {
+    // Ensure sidecar is running
+    let socket_path = match state.sidecar.ensure_running().await {
+        Ok(p) => p,
+        Err(e) => {
+            let (mut sink, _) = frontend_ws.split();
+            let _ = sink
+                .send(Message::Text(
+                    serde_json::json!({
+                        "type": "error",
+                        "message": format!("Sidecar unavailable: {e}"),
+                        "fatal": true,
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    // Connect to sidecar WebSocket via Unix socket
+    let sidecar_path = format!("/control/sessions/{control_id}/stream");
+
+    let unix_stream = match UnixStream::connect(&socket_path).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to connect to sidecar Unix socket: {e}");
+            let (mut sink, _) = frontend_ws.split();
+            let _ = sink
+                .send(Message::Text(
+                    serde_json::json!({
+                        "type": "error",
+                        "message": "Failed to connect to sidecar",
+                        "fatal": true,
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    let ws_url = format!("ws://localhost{sidecar_path}");
+    let (sidecar_ws, _) = match tokio_tungstenite::client_async(ws_url, unix_stream).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::error!("Sidecar WS handshake failed: {e}");
+            let (mut sink, _) = frontend_ws.split();
+            let _ = sink
+                .send(Message::Text(
+                    serde_json::json!({
+                        "type": "error",
+                        "message": "Sidecar WebSocket handshake failed",
+                        "fatal": true,
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    // Split both WebSockets and relay bidirectionally
+    let (mut fe_sink, mut fe_stream) = frontend_ws.split();
+    let (mut sc_sink, mut sc_stream) = sidecar_ws.split();
+
+    // In Axum 0.8 + tungstenite 0.28, Message::Text wraps Utf8Bytes, not String.
+    // Use .as_ref() to read and .into() to convert when relaying between
+    // axum::extract::ws::Message and tokio_tungstenite::tungstenite::Message.
+    let fe_to_sc = async {
+        while let Some(Ok(msg)) = fe_stream.next().await {
+            match msg {
+                Message::Text(text) => {
+                    let s: &str = text.as_ref();
+                    if sc_sink
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            s.to_string().into(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Message::Ping(data) => {
+                    let _ = sc_sink
+                        .send(tokio_tungstenite::tungstenite::Message::Ping(
+                            data.to_vec().into(),
+                        ))
+                        .await;
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    };
+
+    let sc_to_fe = async {
+        while let Some(Ok(msg)) = sc_stream.next().await {
+            match msg {
+                tokio_tungstenite::tungstenite::Message::Text(text) => {
+                    let s: &str = text.as_ref();
+                    if fe_sink
+                        .send(Message::Text(s.to_string().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                tokio_tungstenite::tungstenite::Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = fe_to_sc => {},
+        _ = sc_to_fe => {},
+    }
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -243,6 +380,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/control/sessions/{id}",
             axum::routing::delete(terminate_session),
+        )
+        .route(
+            "/control/sessions/{id}/stream",
+            axum::routing::get(ws_stream),
         )
 }
 
