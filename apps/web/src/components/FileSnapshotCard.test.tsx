@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { FileSnapshotCard } from './FileSnapshotCard'
 
 describe('FileSnapshotCard', () => {
@@ -11,7 +11,7 @@ describe('FileSnapshotCard', () => {
           timestamp="14:32"
           files={['a.ts', 'b.ts', 'c.ts', 'd.ts']}
           isIncremental={false}
-        />
+        />,
       )
       expect(screen.getByText(/4 files backed up at 14:32/)).toBeInTheDocument()
     })
@@ -23,7 +23,7 @@ describe('FileSnapshotCard', () => {
           timestamp="14:32"
           files={['a.ts', 'b.ts']}
           isIncremental={true}
-        />
+        />,
       )
       expect(screen.getByText(/incremental/i)).toBeInTheDocument()
     })
@@ -35,7 +35,7 @@ describe('FileSnapshotCard', () => {
           timestamp="14:32"
           files={['src/app.ts', 'src/index.ts', 'README.md']}
           isIncremental={false}
-        />
+        />,
       )
       // With <= 10 files, should default expanded
       expect(screen.getByText('src/app.ts')).toBeInTheDocument()
@@ -47,12 +47,7 @@ describe('FileSnapshotCard', () => {
   describe('visual styling', () => {
     it('should have a blue left border', () => {
       const { container } = render(
-        <FileSnapshotCard
-          fileCount={1}
-          timestamp="14:32"
-          files={['a.ts']}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={1} timestamp="14:32" files={['a.ts']} isIncremental={false} />,
       )
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toMatch(/border-l/)
@@ -61,12 +56,7 @@ describe('FileSnapshotCard', () => {
 
     it('should render the Archive icon', () => {
       const { container } = render(
-        <FileSnapshotCard
-          fileCount={1}
-          timestamp="14:32"
-          files={['a.ts']}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={1} timestamp="14:32" files={['a.ts']} isIncremental={false} />,
       )
       const svg = container.querySelector('svg')
       expect(svg).toBeInTheDocument()
@@ -77,12 +67,7 @@ describe('FileSnapshotCard', () => {
     it('should default collapsed when >10 files', () => {
       const files = Array.from({ length: 15 }, (_, i) => `file-${i}.ts`)
       render(
-        <FileSnapshotCard
-          fileCount={15}
-          timestamp="14:32"
-          files={files}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={15} timestamp="14:32" files={files} isIncremental={false} />,
       )
       // Files should NOT be visible when collapsed
       expect(screen.queryByText('file-0.ts')).not.toBeInTheDocument()
@@ -91,12 +76,7 @@ describe('FileSnapshotCard', () => {
     it('should default expanded when <=10 files', () => {
       const files = ['a.ts', 'b.ts', 'c.ts']
       render(
-        <FileSnapshotCard
-          fileCount={3}
-          timestamp="14:32"
-          files={files}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={3} timestamp="14:32" files={files} isIncremental={false} />,
       )
       expect(screen.getByText('a.ts')).toBeInTheDocument()
     })
@@ -104,12 +84,7 @@ describe('FileSnapshotCard', () => {
     it('should toggle file list on button click', () => {
       const files = Array.from({ length: 15 }, (_, i) => `file-${i}.ts`)
       render(
-        <FileSnapshotCard
-          fileCount={15}
-          timestamp="14:32"
-          files={files}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={15} timestamp="14:32" files={files} isIncremental={false} />,
       )
       // Initially collapsed
       expect(screen.queryByText('file-0.ts')).not.toBeInTheDocument()
@@ -126,12 +101,7 @@ describe('FileSnapshotCard', () => {
     it('should be keyboard navigable (Enter key)', () => {
       const files = Array.from({ length: 15 }, (_, i) => `file-${i}.ts`)
       render(
-        <FileSnapshotCard
-          fileCount={15}
-          timestamp="14:32"
-          files={files}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={15} timestamp="14:32" files={files} isIncremental={false} />,
       )
       const button = screen.getByRole('button')
       fireEvent.keyDown(button, { key: 'Enter' })
@@ -142,26 +112,12 @@ describe('FileSnapshotCard', () => {
 
   describe('edge cases', () => {
     it('should show "No files" when files array is empty', () => {
-      render(
-        <FileSnapshotCard
-          fileCount={0}
-          timestamp="14:32"
-          files={[]}
-          isIncremental={false}
-        />
-      )
+      render(<FileSnapshotCard fileCount={0} timestamp="14:32" files={[]} isIncremental={false} />)
       expect(screen.getByText(/No files/i)).toBeInTheDocument()
     })
 
     it('should show "Empty snapshot" when fileCount is 0', () => {
-      render(
-        <FileSnapshotCard
-          fileCount={0}
-          timestamp="14:32"
-          files={[]}
-          isIncremental={false}
-        />
-      )
+      render(<FileSnapshotCard fileCount={0} timestamp="14:32" files={[]} isIncremental={false} />)
       expect(screen.getByText(/Empty snapshot/i)).toBeInTheDocument()
     })
   })
@@ -174,7 +130,7 @@ describe('FileSnapshotCard', () => {
           timestamp="14:32"
           files={['a.ts', 'b.ts', 'c.ts']}
           isIncremental={false}
-        />
+        />,
       )
       expect(screen.getByLabelText(/file snapshot/i)).toBeInTheDocument()
     })
@@ -182,12 +138,7 @@ describe('FileSnapshotCard', () => {
     it('should have aria-expanded on the collapse button', () => {
       const files = Array.from({ length: 15 }, (_, i) => `file-${i}.ts`)
       render(
-        <FileSnapshotCard
-          fileCount={15}
-          timestamp="14:32"
-          files={files}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={15} timestamp="14:32" files={files} isIncremental={false} />,
       )
       const button = screen.getByRole('button')
       expect(button).toHaveAttribute('aria-expanded', 'false')
@@ -195,12 +146,7 @@ describe('FileSnapshotCard', () => {
 
     it('should have aria-hidden on the icon', () => {
       const { container } = render(
-        <FileSnapshotCard
-          fileCount={1}
-          timestamp="14:32"
-          files={['a.ts']}
-          isIncremental={false}
-        />
+        <FileSnapshotCard fileCount={1} timestamp="14:32" files={['a.ts']} isIncremental={false} />,
       )
       const svg = container.querySelector('svg')
       expect(svg?.getAttribute('aria-hidden')).toBe('true')

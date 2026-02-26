@@ -1,14 +1,14 @@
-import { useState, useCallback } from 'react'
+import { Check, Copy, User } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { User, Copy, Check } from 'lucide-react'
+import remarkGfm from 'remark-gfm'
 import type { Message as MessageType } from '../hooks/use-session'
-import { ToolBadge } from './ToolBadge'
-import { CodeBlock } from './CodeBlock'
-import { XmlCard, extractXmlBlocks } from './XmlCard'
-import { ThinkingBlock } from './ThinkingBlock'
 import { cn } from '../lib/utils'
+import { CodeBlock } from './CodeBlock'
+import { ThinkingBlock } from './ThinkingBlock'
+import { ToolBadge } from './ToolBadge'
+import { XmlCard, extractXmlBlocks } from './XmlCard'
 
 interface MessageProps {
   message: MessageType
@@ -31,7 +31,21 @@ function formatTime(timestamp?: string | null): string | null {
  * Returns segments of text and XML for mixed rendering
  * Uses position tracking from original content to handle duplicate XML blocks correctly
  */
-function processContent(content: string): Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown' }> {
+function processContent(content: string): Array<{
+  type: 'text' | 'xml'
+  content: string
+  xmlType?:
+    | 'observed_from_primary_session'
+    | 'observation'
+    | 'tool_call'
+    | 'local_command'
+    | 'task_notification'
+    | 'command'
+    | 'tool_error'
+    | 'untrusted_data'
+    | 'hidden'
+    | 'unknown'
+}> {
   const xmlBlocks = extractXmlBlocks(content)
 
   if (xmlBlocks.length === 0) {
@@ -39,7 +53,21 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
   }
 
   // Find positions of each block in original content, tracking search offset for duplicates
-  const blocksWithPositions: Array<{ xml: string; type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown'; index: number }> = []
+  const blocksWithPositions: Array<{
+    xml: string
+    type:
+      | 'observed_from_primary_session'
+      | 'observation'
+      | 'tool_call'
+      | 'local_command'
+      | 'task_notification'
+      | 'command'
+      | 'tool_error'
+      | 'untrusted_data'
+      | 'hidden'
+      | 'unknown'
+    index: number
+  }> = []
   let searchOffset = 0
 
   for (const block of xmlBlocks) {
@@ -53,7 +81,21 @@ function processContent(content: string): Array<{ type: 'text' | 'xml'; content:
   // Sort by position (should already be sorted, but ensure correctness)
   blocksWithPositions.sort((a, b) => a.index - b.index)
 
-  const segments: Array<{ type: 'text' | 'xml'; content: string; xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown' }> = []
+  const segments: Array<{
+    type: 'text' | 'xml'
+    content: string
+    xmlType?:
+      | 'observed_from_primary_session'
+      | 'observation'
+      | 'tool_call'
+      | 'local_command'
+      | 'task_notification'
+      | 'command'
+      | 'tool_error'
+      | 'untrusted_data'
+      | 'hidden'
+      | 'unknown'
+  }> = []
   let lastIndex = 0
 
   for (const block of blocksWithPositions) {
@@ -100,7 +142,9 @@ export function Message({ message, messageIndex }: MessageProps) {
     <div
       className={cn(
         'p-4 rounded-lg group',
-        isUser ? 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700' : 'bg-gray-50 dark:bg-gray-800'
+        isUser
+          ? 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700'
+          : 'bg-gray-50 dark:bg-gray-800',
       )}
     >
       {/* Header */}
@@ -130,9 +174,7 @@ export function Message({ message, messageIndex }: MessageProps) {
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
-              {time && (
-                <span className="text-xs text-gray-400">{time}</span>
-              )}
+              {time && <span className="text-xs text-gray-400">{time}</span>}
             </div>
           </div>
         </div>
@@ -141,22 +183,17 @@ export function Message({ message, messageIndex }: MessageProps) {
       {/* Content */}
       <div className="pl-11">
         {/* Thinking block (merged from preceding thinking-only message) */}
-        {message.thinking && (
-          <ThinkingBlock thinking={message.thinking} />
-        )}
+        {message.thinking && <ThinkingBlock thinking={message.thinking} />}
 
         {processContent(message.content).map((segment, i) => {
           if (segment.type === 'xml' && segment.xmlType) {
-            return (
-              <XmlCard
-                key={i}
-                content={segment.content}
-                type={segment.xmlType}
-              />
-            )
+            return <XmlCard key={i} content={segment.content} type={segment.xmlType} />
           }
           return (
-            <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words">
+            <div
+              key={i}
+              className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words"
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
@@ -178,9 +215,8 @@ export function Message({ message, messageIndex }: MessageProps) {
                         )
                       }
 
-                      const blockId = messageIndex !== undefined
-                        ? `${messageIndex}-${blockCounter++}`
-                        : undefined
+                      const blockId =
+                        messageIndex !== undefined ? `${messageIndex}-${blockCounter++}` : undefined
 
                       return (
                         <CodeBlock
@@ -239,7 +275,9 @@ export function Message({ message, messageIndex }: MessageProps) {
                   table({ children }) {
                     return (
                       <div className="overflow-x-auto my-2">
-                        <table className="min-w-full border border-gray-200 dark:border-gray-700">{children}</table>
+                        <table className="min-w-full border border-gray-200 dark:border-gray-700">
+                          {children}
+                        </table>
                       </div>
                     )
                   },
@@ -252,7 +290,9 @@ export function Message({ message, messageIndex }: MessageProps) {
                   },
                   td({ children }) {
                     return (
-                      <td className="px-3 py-2 border border-gray-200 dark:border-gray-700">{children}</td>
+                      <td className="px-3 py-2 border border-gray-200 dark:border-gray-700">
+                        {children}
+                      </td>
                     )
                   },
                 }}

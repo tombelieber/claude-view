@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Feature 2D: AI Generation Breakdown', () => {
   /**
@@ -8,7 +8,9 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
    * when data is available. The section may be hidden if there is no
    * AI generation data, which is valid behavior (component returns null).
    */
-  test('TC-2D-01: AI generation section is visible on dashboard when data exists', async ({ page }) => {
+  test('TC-2D-01: AI generation section is visible on dashboard when data exists', async ({
+    page,
+  }) => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
 
@@ -211,7 +213,8 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
 
     // Verify tokensByModel is sorted by usage (highest first)
     for (let i = 1; i < data.tokensByModel.length; i++) {
-      const prevTotal = data.tokensByModel[i - 1].inputTokens + data.tokensByModel[i - 1].outputTokens
+      const prevTotal =
+        data.tokensByModel[i - 1].inputTokens + data.tokensByModel[i - 1].outputTokens
       const currTotal = data.tokensByModel[i].inputTokens + data.tokensByModel[i].outputTokens
       expect(prevTotal).toBeGreaterThanOrEqual(currTotal)
     }
@@ -229,10 +232,9 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
     const now = Date.now()
     const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000
 
-    const response = await request.get(
-      `/api/stats/ai-generation?from=${oneYearAgo}&to=${now}`,
-      { timeout: 60000 }
-    )
+    const response = await request.get(`/api/stats/ai-generation?from=${oneYearAgo}&to=${now}`, {
+      timeout: 60000,
+    })
 
     // API may return 500 if database hasn't been deep-indexed yet (e.g., missing primary_model column).
     // In that case, skip the structural checks rather than hard-failing.
@@ -342,7 +344,7 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
   test('TC-2D-08c: loading state shows skeleton with pulse animation', async ({ page }) => {
     // Intercept the API to delay the response significantly
     await page.route('**/api/stats/ai-generation*', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
       await route.continue()
     })
 
@@ -351,7 +353,10 @@ test.describe('Feature 2D: AI Generation Breakdown', () => {
 
     // Check for the skeleton loading state (animate-pulse class)
     const skeleton = page.locator('.animate-pulse')
-    const isSkeletonVisible = await skeleton.first().isVisible({ timeout: 5000 }).catch(() => false)
+    const isSkeletonVisible = await skeleton
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false)
 
     if (isSkeletonVisible) {
       // Skeleton should be visible while data is loading

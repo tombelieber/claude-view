@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Feature 2C: Sync Button Redesign', () => {
   test('TC-2C-01: Labeled Sync Button Visibility', async ({ page }) => {
@@ -35,7 +35,7 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
     // Intercept the sync API to delay the response so we can observe the loading state
     await page.route('/api/sync/git', async (route) => {
       // Delay the response to give us time to assert on the loading state
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
       await route.fulfill({
         status: 202,
         contentType: 'application/json',
@@ -148,8 +148,14 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
     await expect(footer.locator('text=/\\d+ sessions/')).toBeVisible({ timeout: 10000 })
 
     // Check for "Last update:" text or "Not yet synced" (depending on backend state)
-    const hasLastUpdate = await footer.locator('text=/Last update:/').isVisible({ timeout: 3000 }).catch(() => false)
-    const hasNotSynced = await footer.locator('text=Not yet synced').isVisible({ timeout: 1000 }).catch(() => false)
+    const hasLastUpdate = await footer
+      .locator('text=/Last update:/')
+      .isVisible({ timeout: 3000 })
+      .catch(() => false)
+    const hasNotSynced = await footer
+      .locator('text=Not yet synced')
+      .isVisible({ timeout: 1000 })
+      .catch(() => false)
 
     // One of these must be true
     expect(hasLastUpdate || hasNotSynced).toBeTruthy()
@@ -159,7 +165,10 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
       // Commit count is optional - only shown if commitsFound > 0
       // Just verify the structure exists (session count is already verified above)
       const commitIcon = footer.locator('svg') // GitCommitHorizontal icon
-      const hasCommits = await commitIcon.first().isVisible({ timeout: 2000 }).catch(() => false)
+      const hasCommits = await commitIcon
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false)
       // This is informational - commits may or may not exist depending on backend state
       if (hasCommits) {
         // Verify the commit count is a number (use .first() since multiple

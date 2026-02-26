@@ -1,6 +1,6 @@
-import { AlertTriangle, RefreshCw, ExternalLink, X, Clock, FileCode2 } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import { AlertTriangle, Clock, ExternalLink, FileCode2, RefreshCw, X } from 'lucide-react'
 import { formatNumber } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
 import type { UncommittedWork as UncommittedWorkType } from '../../types/generated'
 
 interface UncommittedWorkSectionProps {
@@ -36,7 +36,10 @@ export function UncommittedWorkSection({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          <AlertTriangle
+            className="w-4 h-4 text-amber-600 dark:text-amber-400"
+            aria-hidden="true"
+          />
           <h2 className="text-xs font-medium text-amber-800 dark:text-amber-300 uppercase tracking-wider">
             Uncommitted AI Work
           </h2>
@@ -48,7 +51,7 @@ export function UncommittedWorkSection({
               'flex items-center gap-1 px-2 py-1 text-xs font-medium rounded',
               'text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/50',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400',
-              'transition-colors cursor-pointer'
+              'transition-colors cursor-pointer',
             )}
             aria-label="Refresh uncommitted work"
           >
@@ -107,14 +110,8 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <FileCode2 className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-          <span className="font-medium text-gray-900 dark:text-gray-100">
-            {projectName}
-          </span>
-          {branch && (
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              ({branch})
-            </span>
-          )}
+          <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
+          {branch && <span className="text-sm text-gray-500 dark:text-gray-400">({branch})</span>}
         </div>
         {onDismiss && (
           <button
@@ -149,9 +146,7 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
 
       {/* Insight */}
       {insight && (
-        <p className="text-xs text-amber-700 dark:text-amber-400 mb-3 italic">
-          {insight}
-        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-400 mb-3 italic">{insight}</p>
       )}
 
       {/* Actions */}
@@ -163,7 +158,7 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
               'px-3 py-1.5 text-xs font-medium rounded',
               'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400',
-              'transition-colors cursor-pointer'
+              'transition-colors cursor-pointer',
             )}
           >
             Dismiss
@@ -176,7 +171,7 @@ function UncommittedItem({ item, onDismiss, onView }: UncommittedItemProps) {
               'flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded',
               'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-              'transition-colors cursor-pointer'
+              'transition-colors cursor-pointer',
             )}
           >
             View
@@ -201,4 +196,3 @@ function formatRelativeTime(timestamp: number): string {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
   return `${Math.floor(diff / 604800)}w ago`
 }
-

@@ -1,4 +1,4 @@
-import { MessageCircle, Keyboard } from 'lucide-react'
+import { Keyboard, MessageCircle } from 'lucide-react'
 
 interface QuestionOption {
   label: string

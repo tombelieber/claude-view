@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { MessageTyped, MAX_INDENT_LEVEL, INDENT_PX } from './MessageTyped'
+import { render } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import { INDENT_PX, MAX_INDENT_LEVEL, MessageTyped } from './MessageTyped'
 
 /** Helper to create a minimal message for testing */
-function makeMessage(overrides: Partial<{ role: string; content: string; timestamp: string }> = {}) {
+function makeMessage(
+  overrides: Partial<{ role: string; content: string; timestamp: string }> = {},
+) {
   return {
     role: 'user' as const,
     content: 'Hello world',
@@ -14,42 +16,32 @@ function makeMessage(overrides: Partial<{ role: string; content: string; timesta
 describe('ConversationThreading', () => {
   describe('indent rendering', () => {
     it('root messages have no indent (indent=0)', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={0} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={0} />)
       const article = container.querySelector('[role="article"]')!
       // No paddingLeft when indent is 0
       expect(article.getAttribute('style')).toBeNull()
     })
 
     it('child message has correct indent (indent=1)', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={1} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={1} />)
       const article = container.querySelector('[role="article"]')!
       expect(article).toHaveStyle({ paddingLeft: `${INDENT_PX}px` })
     })
 
     it('grandchild has double indent (indent=2)', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={2} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={2} />)
       const article = container.querySelector('[role="article"]')!
       expect(article).toHaveStyle({ paddingLeft: `${2 * INDENT_PX}px` })
     })
 
     it('maximum indent is capped at MAX_INDENT_LEVEL', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={10} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
       const article = container.querySelector('[role="article"]')!
       expect(article).toHaveStyle({ paddingLeft: `${MAX_INDENT_LEVEL * INDENT_PX}px` })
     })
 
     it('negative indent is clamped to 0', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={-3} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={-3} />)
       const article = container.querySelector('[role="article"]')!
       // Should behave like indent=0, no paddingLeft
       expect(article.getAttribute('style')).toBeNull()
@@ -59,7 +51,7 @@ describe('ConversationThreading', () => {
   describe('connector line for child messages', () => {
     it('child message renders dashed connector line', () => {
       const { container } = render(
-        <MessageTyped message={makeMessage()} indent={1} isChildMessage />
+        <MessageTyped message={makeMessage()} indent={1} isChildMessage />,
       )
       const article = container.querySelector('[role="article"]')!
       expect(article).toHaveStyle({ borderLeftStyle: 'dashed' })
@@ -68,7 +60,7 @@ describe('ConversationThreading', () => {
 
     it('non-child message does not render dashed connector', () => {
       const { container } = render(
-        <MessageTyped message={makeMessage()} indent={0} isChildMessage={false} />
+        <MessageTyped message={makeMessage()} indent={0} isChildMessage={false} />,
       )
       const article = container.querySelector('[role="article"]')!
       // Should not have dashed border style in inline styles
@@ -79,7 +71,7 @@ describe('ConversationThreading', () => {
 
     it('child message has thread-child CSS class', () => {
       const { container } = render(
-        <MessageTyped message={makeMessage()} indent={1} isChildMessage />
+        <MessageTyped message={makeMessage()} indent={1} isChildMessage />,
       )
       const article = container.querySelector('[role="article"]')!
       expect(article.classList.contains('thread-child')).toBe(true)
@@ -88,34 +80,26 @@ describe('ConversationThreading', () => {
 
   describe('ARIA attributes', () => {
     it('root message has aria-level=1', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={0} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={0} />)
       const article = container.querySelector('[role="article"]')!
       expect(article.getAttribute('aria-level')).toBe('1')
     })
 
     it('child message has aria-level=2', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={1} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={1} />)
       const article = container.querySelector('[role="article"]')!
       expect(article.getAttribute('aria-level')).toBe('2')
     })
 
     it('deeply nested message has capped aria-level', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} indent={10} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
       const article = container.querySelector('[role="article"]')!
       // Capped at MAX_INDENT_LEVEL, so aria-level = MAX_INDENT_LEVEL + 1
       expect(article.getAttribute('aria-level')).toBe(String(MAX_INDENT_LEVEL + 1))
     })
 
     it('all messages have role="article"', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} />)
       const article = container.querySelector('[role="article"]')
       expect(article).not.toBeNull()
     })
@@ -124,16 +108,14 @@ describe('ConversationThreading', () => {
   describe('parentUuid prop', () => {
     it('sets data-parent-uuid attribute when parentUuid is provided', () => {
       const { container } = render(
-        <MessageTyped message={makeMessage()} parentUuid="abc-123" indent={1} isChildMessage />
+        <MessageTyped message={makeMessage()} parentUuid="abc-123" indent={1} isChildMessage />,
       )
       const article = container.querySelector('[role="article"]')!
       expect(article.getAttribute('data-parent-uuid')).toBe('abc-123')
     })
 
     it('does not set data-parent-uuid when parentUuid is not provided', () => {
-      const { container } = render(
-        <MessageTyped message={makeMessage()} />
-      )
+      const { container } = render(<MessageTyped message={makeMessage()} />)
       const article = container.querySelector('[role="article"]')!
       expect(article.hasAttribute('data-parent-uuid')).toBe(false)
     })

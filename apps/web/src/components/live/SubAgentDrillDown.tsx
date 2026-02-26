@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react'
 import { X } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { cn } from '../../lib/utils'
 import { RichPane } from './RichPane'
 import { useSubAgentStream } from './use-subagent-stream'
-import { cn } from '../../lib/utils'
 
 interface SubAgentDrillDownProps {
   sessionId: string
@@ -23,7 +23,11 @@ export function SubAgentDrillDown({
 
   const noop = useCallback(() => {}, [])
 
-  const { connectionState, messages: streamMessages, bufferDone } = useSubAgentStream({
+  const {
+    connectionState,
+    messages: streamMessages,
+    bufferDone,
+  } = useSubAgentStream({
     sessionId,
     agentId,
     enabled: true,
@@ -38,16 +42,20 @@ export function SubAgentDrillDown({
           {agentType}
         </span>
         <span className="text-xs text-gray-400 dark:text-gray-500">id:{agentId}</span>
-        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{description}</span>
+        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">
+          {description}
+        </span>
 
         {/* Connection status */}
-        <span className={cn(
-          'text-[10px] font-mono',
-          connectionState === 'connected' && 'text-green-600 dark:text-green-400',
-          connectionState === 'connecting' && 'text-yellow-600 dark:text-yellow-400',
-          connectionState === 'disconnected' && 'text-gray-400 dark:text-gray-500',
-          connectionState === 'error' && 'text-red-500 dark:text-red-400',
-        )}>
+        <span
+          className={cn(
+            'text-[10px] font-mono',
+            connectionState === 'connected' && 'text-green-600 dark:text-green-400',
+            connectionState === 'connecting' && 'text-yellow-600 dark:text-yellow-400',
+            connectionState === 'disconnected' && 'text-gray-400 dark:text-gray-500',
+            connectionState === 'error' && 'text-red-500 dark:text-red-400',
+          )}
+        >
           {connectionState}
         </span>
 

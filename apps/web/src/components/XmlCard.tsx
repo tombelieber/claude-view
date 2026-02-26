@@ -1,13 +1,37 @@
-import { useState } from 'react'
-import { ChevronRight, ChevronDown, FileText, Brain, Wrench, FileCode, Terminal, Bot, CheckCircle2, XCircle, AlertTriangle, Zap, Shield } from 'lucide-react'
 import DOMPurify from 'dompurify'
+import {
+  AlertTriangle,
+  Bot,
+  Brain,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  FileText,
+  Shield,
+  Terminal,
+  Wrench,
+  XCircle,
+  Zap,
+} from 'lucide-react'
+import { useState } from 'react'
 import { cn } from '../lib/utils'
-import { ToolCallCard } from './ToolCallCard'
 import { StructuredDataCard } from './StructuredDataCard'
+import { ToolCallCard } from './ToolCallCard'
 
 interface XmlCardProps {
   content: string
-  type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown'
+  type:
+    | 'observed_from_primary_session'
+    | 'observation'
+    | 'tool_call'
+    | 'local_command'
+    | 'task_notification'
+    | 'command'
+    | 'tool_error'
+    | 'untrusted_data'
+    | 'hidden'
+    | 'unknown'
 }
 
 interface ParsedObservation {
@@ -49,7 +73,7 @@ function parseObservation(xml: string): ParsedObservation {
   if (factsMatch) {
     const factMatches = factsMatch[1].match(/<fact>([^<]+)<\/fact>/g)
     if (factMatches) {
-      result.facts = factMatches.map(f => f.replace(/<\/?fact>/g, ''))
+      result.facts = factMatches.map((f) => f.replace(/<\/?fact>/g, ''))
     }
   }
 
@@ -60,7 +84,7 @@ function parseObservation(xml: string): ParsedObservation {
   if (filesReadMatch) {
     const fileMatches = filesReadMatch[1].match(/<file>([^<]+)<\/file>/g)
     if (fileMatches) {
-      result.filesRead = fileMatches.map(f => f.replace(/<\/?file>/g, ''))
+      result.filesRead = fileMatches.map((f) => f.replace(/<\/?file>/g, ''))
     }
   }
 
@@ -93,15 +117,19 @@ function parseToolCallForCard(xml: string): ParsedToolCallForCard {
   const result: ParsedToolCallForCard = { name: '', input: {}, description: '' }
 
   // Extract tool name from <tool_name> or <name> tag
-  const nameMatch = xml.match(/<tool_name>([^<]+)<\/tool_name>/) || xml.match(/<name>([^<]+)<\/name>/)
+  const nameMatch =
+    xml.match(/<tool_name>([^<]+)<\/tool_name>/) || xml.match(/<name>([^<]+)<\/name>/)
   if (nameMatch) result.name = nameMatch[1].trim()
 
   // Extract description from <what_happened> or <description> tag
-  const descMatch = xml.match(/<what_happened>([^<]+)<\/what_happened>/) || xml.match(/<description>([^<]+)<\/description>/)
+  const descMatch =
+    xml.match(/<what_happened>([^<]+)<\/what_happened>/) ||
+    xml.match(/<description>([^<]+)<\/description>/)
   if (descMatch) result.description = descMatch[1].trim()
 
   // Extract input/parameters - try JSON first, then structured tags
-  const paramsMatch = xml.match(/<parameters>([\s\S]*?)<\/parameters>/) || xml.match(/<input>([\s\S]*?)<\/input>/)
+  const paramsMatch =
+    xml.match(/<parameters>([\s\S]*?)<\/parameters>/) || xml.match(/<input>([\s\S]*?)<\/input>/)
   if (paramsMatch) {
     const raw = paramsMatch[1].trim()
     try {
@@ -220,7 +248,9 @@ function computeDefaultExpanded(content: string, type: XmlCardProps['type']): bo
     return args.split('\n').length <= 10
   }
   if (type === 'untrusted_data') {
-    const tagMatch = content.match(/<untrusted-data-[a-f0-9-]+>([\s\S]*?)<\/untrusted-data-[a-f0-9-]+>/)
+    const tagMatch = content.match(
+      /<untrusted-data-[a-f0-9-]+>([\s\S]*?)<\/untrusted-data-[a-f0-9-]+>/,
+    )
     const inner = tagMatch?.[1]?.trim() || content.trim()
     return inner.split('\n').length <= 10
   }
@@ -245,18 +275,26 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const isError = !!stderr && !stdout
 
     return (
-      <div className={cn(
-        'flex items-start gap-2 my-2 px-3 py-2 rounded-lg font-mono text-xs',
-        isError ? 'bg-red-950' : 'bg-gray-900'
-      )}>
-        <Terminal className={cn(
-          'w-3.5 h-3.5 flex-shrink-0 mt-0.5',
-          isError ? 'text-red-400' : 'text-green-400'
-        )} />
-        <span className={cn(
-          'break-all whitespace-pre-wrap',
-          isError ? 'text-red-300' : 'text-green-300'
-        )}>{outputText}</span>
+      <div
+        className={cn(
+          'flex items-start gap-2 my-2 px-3 py-2 rounded-lg font-mono text-xs',
+          isError ? 'bg-red-950' : 'bg-gray-900',
+        )}
+      >
+        <Terminal
+          className={cn(
+            'w-3.5 h-3.5 flex-shrink-0 mt-0.5',
+            isError ? 'text-red-400' : 'text-green-400',
+          )}
+        />
+        <span
+          className={cn(
+            'break-all whitespace-pre-wrap',
+            isError ? 'text-red-300' : 'text-green-300',
+          )}
+        >
+          {outputText}
+        </span>
       </div>
     )
   }
@@ -267,7 +305,11 @@ export function XmlCard({ content, type }: XmlCardProps) {
     const isCompleted = parsed.status === 'completed'
     const isFailed = parsed.status === 'failed'
     const StatusIcon = isFailed ? XCircle : isCompleted ? CheckCircle2 : AlertTriangle
-    const statusColor = isFailed ? 'text-red-500' : isCompleted ? 'text-green-500' : 'text-yellow-500'
+    const statusColor = isFailed
+      ? 'text-red-500'
+      : isCompleted
+        ? 'text-green-500'
+        : 'text-yellow-500'
 
     return (
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900 my-2">
@@ -309,20 +351,18 @@ export function XmlCard({ content, type }: XmlCardProps) {
           onClick={() => hasArgs && shouldCollapse && setExpanded(!expanded)}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 text-left bg-indigo-950/30',
-            hasArgs && shouldCollapse && 'cursor-pointer hover:bg-indigo-950/40 transition-colors'
+            hasArgs && shouldCollapse && 'cursor-pointer hover:bg-indigo-950/40 transition-colors',
           )}
         >
           <Zap className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-          <span className="text-sm font-mono text-indigo-300 flex-1">
-            {parsed.name}
-          </span>
-          {hasArgs && shouldCollapse && (
-            expanded ? (
+          <span className="text-sm font-mono text-indigo-300 flex-1">{parsed.name}</span>
+          {hasArgs &&
+            shouldCollapse &&
+            (expanded ? (
               <ChevronDown className="w-4 h-4 text-indigo-400" />
             ) : (
               <ChevronRight className="w-4 h-4 text-indigo-400" />
-            )
-          )}
+            ))}
         </button>
         {hasArgs && (
           <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -355,7 +395,9 @@ export function XmlCard({ content, type }: XmlCardProps) {
           {errorType && (
             <>
               <span className="text-gray-300">·</span>
-              <span className="text-sm text-red-600 dark:text-red-400 truncate flex-1">{errorType}</span>
+              <span className="text-sm text-red-600 dark:text-red-400 truncate flex-1">
+                {errorType}
+              </span>
             </>
           )}
         </div>
@@ -368,7 +410,9 @@ export function XmlCard({ content, type }: XmlCardProps) {
 
   // Untrusted data: render external content with amber dashed border (plaintext only for security)
   if (type === 'untrusted_data') {
-    const tagMatch = content.match(/<untrusted-data-[a-f0-9-]+>([\s\S]*?)<\/untrusted-data-[a-f0-9-]+>/)
+    const tagMatch = content.match(
+      /<untrusted-data-[a-f0-9-]+>([\s\S]*?)<\/untrusted-data-[a-f0-9-]+>/,
+    )
     const innerContent = tagMatch?.[1]?.trim() || content.trim()
     const lines = innerContent.split('\n')
     const shouldCollapse = lines.length > 10
@@ -388,13 +432,14 @@ export function XmlCard({ content, type }: XmlCardProps) {
     // - All attributes are removed (onclick, onerror, src, etc. removed)
     // - Text content is preserved
     // Final result: dangerous markup becomes plaintext when rendered in <pre>
-    const sanitized = (!displayContent || !displayContent.trim())
-      ? ''
-      : DOMPurify.sanitize(displayContent, {
-          ALLOWED_TAGS: [],
-          ALLOWED_ATTR: [],
-          KEEP_CONTENT: true,
-        })
+    const sanitized =
+      !displayContent || !displayContent.trim()
+        ? ''
+        : DOMPurify.sanitize(displayContent, {
+            ALLOWED_TAGS: [],
+            ALLOWED_ATTR: [],
+            KEEP_CONTENT: true,
+          })
 
     return (
       <div className="border border-dashed border-l-4 border-l-amber-400 rounded-lg overflow-hidden bg-amber-950/20 my-2">
@@ -403,16 +448,13 @@ export function XmlCard({ content, type }: XmlCardProps) {
           className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-amber-950/30 transition-colors"
         >
           <Shield className="w-4 h-4 text-amber-400 flex-shrink-0" />
-          <span className="text-sm text-amber-200 flex-1">
-            External Content
-          </span>
-          {shouldCollapse && (
-            expanded ? (
+          <span className="text-sm text-amber-200 flex-1">External Content</span>
+          {shouldCollapse &&
+            (expanded ? (
               <ChevronDown className="w-4 h-4 text-amber-400" />
             ) : (
               <ChevronRight className="w-4 h-4 text-amber-400" />
-            )
-          )}
+            ))}
         </button>
         <pre className="px-3 py-2 border-t border-amber-900/50 bg-amber-950/10 text-amber-100 whitespace-pre-wrap font-mono text-xs overflow-auto break-all">
           {sanitized}
@@ -424,20 +466,12 @@ export function XmlCard({ content, type }: XmlCardProps) {
   // tool_call type: render as ToolCallCard (dedicated component)
   if (type === 'tool_call') {
     const parsed = parseToolCallForCard(content)
-    return (
-      <ToolCallCard
-        name={parsed.name}
-        input={parsed.input}
-        description={parsed.description}
-      />
-    )
+    return <ToolCallCard name={parsed.name} input={parsed.input} description={parsed.description} />
   }
 
   // unknown type: render as StructuredDataCard (semantic rendering)
   if (type === 'unknown') {
-    return (
-      <StructuredDataCard xml={content} type="unknown" />
-    )
+    return <StructuredDataCard xml={content} type="unknown" />
   }
 
   // Parse based on type
@@ -455,9 +489,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
     details = (
       <div className="space-y-2 text-sm">
         {parsed.workingDirectory && (
-          <p className="text-gray-500 font-mono text-xs truncate">
-            {parsed.workingDirectory}
-          </p>
+          <p className="text-gray-500 font-mono text-xs truncate">{parsed.workingDirectory}</p>
         )}
         {parsed.parameters && (
           <p className="text-gray-600">
@@ -472,9 +504,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
 
     details = (
       <div className="space-y-3 text-sm">
-        {parsed.subtitle && (
-          <p className="text-gray-600 italic">{parsed.subtitle}</p>
-        )}
+        {parsed.subtitle && <p className="text-gray-600 italic">{parsed.subtitle}</p>}
         {parsed.facts && parsed.facts.length > 0 && (
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Key facts:</p>
@@ -489,9 +519,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
           </div>
         )}
         {parsed.filesRead && parsed.filesRead.length > 0 && (
-          <p className="text-gray-500 text-xs">
-            Files: {parsed.filesRead.join(', ')}
-          </p>
+          <p className="text-gray-500 text-xs">Files: {parsed.filesRead.join(', ')}</p>
         )}
       </div>
     )
@@ -505,9 +533,7 @@ export function XmlCard({ content, type }: XmlCardProps) {
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       >
         <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">
-          {summary}
-        </span>
+        <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">{summary}</span>
         {expanded ? (
           <ChevronDown className="w-4 h-4 text-gray-400" />
         ) : (
@@ -553,7 +579,11 @@ export function detectXmlType(content: string): XmlCardProps['type'] | null {
   if (/<untrusted-data-[a-f0-9-]+>/.test(content)) {
     return 'untrusted_data'
   }
-  if (content.includes('<local-command-caveat>') || content.includes('<system-reminder>') || content.includes('<claude-mem-context>')) {
+  if (
+    content.includes('<local-command-caveat>') ||
+    content.includes('<system-reminder>') ||
+    content.includes('<claude-mem-context>')
+  ) {
     return 'hidden'
   }
   // Check for any XML-like structure
@@ -572,17 +602,40 @@ export function extractXmlBlocks(content: string): { xml: string; type: XmlCardP
   // Specific patterns with known types
   // Order matters: grouped command pattern must come before individual command-* hidden patterns
   const knownPatterns = [
-    { regex: /<observed_from_primary_session>[\s\S]*?<\/observed_from_primary_session>/g, type: 'observed_from_primary_session' as const },
+    {
+      regex: /<observed_from_primary_session>[\s\S]*?<\/observed_from_primary_session>/g,
+      type: 'observed_from_primary_session' as const,
+    },
     { regex: /<observation>[\s\S]*?<\/observation>/g, type: 'observation' as const },
     { regex: /<tool_call>[\s\S]*?<\/tool_call>/g, type: 'tool_call' as const },
-    { regex: /<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, type: 'local_command' as const },
-    { regex: /<local-command-stderr>[\s\S]*?<\/local-command-stderr>/g, type: 'local_command' as const },
-    { regex: /<task-notification>[\s\S]*?<\/task-notification>/g, type: 'task_notification' as const },
+    {
+      regex: /<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g,
+      type: 'local_command' as const,
+    },
+    {
+      regex: /<local-command-stderr>[\s\S]*?<\/local-command-stderr>/g,
+      type: 'local_command' as const,
+    },
+    {
+      regex: /<task-notification>[\s\S]*?<\/task-notification>/g,
+      type: 'task_notification' as const,
+    },
     { regex: /<tool_use_error>[\s\S]*?<\/tool_use_error>/g, type: 'tool_error' as const },
-    { regex: /<untrusted-data-[a-f0-9-]+>[\s\S]*?<\/untrusted-data-[a-f0-9-]+>/g, type: 'untrusted_data' as const },
+    {
+      regex: /<untrusted-data-[a-f0-9-]+>[\s\S]*?<\/untrusted-data-[a-f0-9-]+>/g,
+      type: 'untrusted_data' as const,
+    },
     // Command invocations: match either tag order (name-message-args or message-name-args)
-    { regex: /<command-name>[\s\S]*?<\/command-name>\s*<command-message>[\s\S]*?<\/command-message>\s*<command-args>[\s\S]+?<\/command-args>/g, type: 'command' as const },
-    { regex: /<command-message>[\s\S]*?<\/command-message>\s*<command-name>[\s\S]*?<\/command-name>\s*<command-args>[\s\S]+?<\/command-args>/g, type: 'command' as const },
+    {
+      regex:
+        /<command-name>[\s\S]*?<\/command-name>\s*<command-message>[\s\S]*?<\/command-message>\s*<command-args>[\s\S]+?<\/command-args>/g,
+      type: 'command' as const,
+    },
+    {
+      regex:
+        /<command-message>[\s\S]*?<\/command-message>\s*<command-name>[\s\S]*?<\/command-name>\s*<command-args>[\s\S]+?<\/command-args>/g,
+      type: 'command' as const,
+    },
     // Hidden: system noise that shouldn't render
     { regex: /<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, type: 'hidden' as const },
     { regex: /<system-reminder>[\s\S]*?<\/system-reminder>/g, type: 'hidden' as const },
@@ -599,7 +652,7 @@ export function extractXmlBlocks(content: string): { xml: string; type: XmlCardP
     while ((match = regex.exec(content)) !== null) {
       // Skip if already matched by a previous pattern
       const isOverlapping = matchedRanges.some(
-        range => match!.index >= range.start && match!.index < range.end
+        (range) => match!.index >= range.start && match!.index < range.end,
       )
       if (!isOverlapping) {
         blocks.push({ xml: match[0], type })
@@ -615,7 +668,7 @@ export function extractXmlBlocks(content: string): { xml: string; type: XmlCardP
   while ((match = genericRegex.exec(content)) !== null) {
     // Skip if already matched by a known pattern
     const isOverlapping = matchedRanges.some(
-      range => match!.index >= range.start && match!.index < range.end
+      (range) => match!.index >= range.start && match!.index < range.end,
     )
     if (!isOverlapping && match[0].length > 20) {
       blocks.push({ xml: match[0], type: 'unknown' })

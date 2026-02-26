@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useExpandContext } from '../../contexts/ExpandContext'
-import { useMonitorStore } from '../../store/monitor-store'
-import { useTheme } from '../../hooks/use-theme'
 import { useShikiHighlighter } from '../../hooks/use-shiki'
+import { useTheme } from '../../hooks/use-theme'
 import { resolveLanguage } from '../../lib/shiki'
+import { useMonitorStore } from '../../store/monitor-store'
 
 interface CompactCodeBlockProps {
   code: string | null | undefined
@@ -29,9 +29,8 @@ export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockPr
 
   const lines = safeCode.split('\n')
   const shouldCollapse = lines.length > COLLAPSE_THRESHOLD
-  const displayCode = shouldCollapse && !isExpanded
-    ? lines.slice(0, COLLAPSE_THRESHOLD).join('\n')
-    : safeCode
+  const displayCode =
+    shouldCollapse && !isExpanded ? lines.slice(0, COLLAPSE_THRESHOLD).join('\n') : safeCode
   const remainingLines = lines.length - COLLAPSE_THRESHOLD
 
   const handleCopy = useCallback(async () => {

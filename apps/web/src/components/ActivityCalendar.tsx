@@ -1,11 +1,11 @@
-import { useMemo, useState, useRef, useCallback, useId, useEffect } from 'react'
-import { DayPicker, type DateRange } from 'react-day-picker'
-import type { DayButtonProps } from 'react-day-picker'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type DateRange, DayPicker } from 'react-day-picker'
+import type { DayButtonProps } from 'react-day-picker'
+import type { SessionInfo } from '../hooks/use-projects'
 import { countSessionsByDay, toDateKey } from '../lib/date-groups'
 import { cn } from '../lib/utils'
-import type { SessionInfo } from '../hooks/use-projects'
 
 export interface ActivityCalendarProps {
   sessions: SessionInfo[] | null | undefined
@@ -61,11 +61,11 @@ export function ActivityCalendar({
 
   const earliestDate = useMemo(() => {
     if (!safeSessions || safeSessions.length === 0) return null
-    let min = Infinity
+    let min = Number.POSITIVE_INFINITY
     for (const s of safeSessions) {
       if (s?.modifiedAt && s.modifiedAt < min) min = s.modifiedAt
     }
-    return min === Infinity ? null : new Date(min * 1000)
+    return min === Number.POSITIVE_INFINITY ? null : new Date(min * 1000)
   }, [safeSessions])
 
   const totalSessions = safeSessions?.length || 0
@@ -205,7 +205,8 @@ export function ActivityCalendar({
               'transition-all duration-150 cursor-pointer',
               'hover:ring-2 hover:ring-emerald-400/60 hover:scale-105',
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
-              style.bg, style.text,
+              style.bg,
+              style.text,
               isToday && 'ring-2 ring-emerald-500 ring-offset-1',
             )}
           />
@@ -246,11 +247,12 @@ export function ActivityCalendar({
           showOutsideDays={false}
           components={{
             DayButton: HeatmapDayButton,
-            Chevron: ({ orientation }) => (
-              orientation === 'left'
-                ? <ChevronLeft className="w-4 h-4" />
-                : <ChevronRight className="w-4 h-4" />
-            ),
+            Chevron: ({ orientation }) =>
+              orientation === 'left' ? (
+                <ChevronLeft className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              ),
           }}
         />
 
@@ -266,16 +268,21 @@ export function ActivityCalendar({
                 <span>projects</span>
               </>
             )}
-            {sinceLabel && (
-              <span className="text-gray-400 ml-1">since {sinceLabel}</span>
-            )}
+            {sinceLabel && <span className="text-gray-400 ml-1">since {sinceLabel}</span>}
           </div>
 
           {/* Heatmap legend */}
           <div id={legendId} className="flex items-center gap-1.5 text-[10px] text-gray-400">
             <span>Less</span>
-            <div className="flex gap-0.5" role="img" aria-label="Activity intensity scale from low to high">
-              <div className="w-3 h-3 rounded-sm bg-gray-50 border border-gray-200" aria-hidden="true" />
+            <div
+              className="flex gap-0.5"
+              role="img"
+              aria-label="Activity intensity scale from low to high"
+            >
+              <div
+                className="w-3 h-3 rounded-sm bg-gray-50 border border-gray-200"
+                aria-hidden="true"
+              />
               <div className="w-3 h-3 rounded-sm bg-emerald-50" aria-hidden="true" />
               <div className="w-3 h-3 rounded-sm bg-emerald-200" aria-hidden="true" />
               <div className="w-3 h-3 rounded-sm bg-emerald-400" aria-hidden="true" />
@@ -287,8 +294,8 @@ export function ActivityCalendar({
 
         {/* Screen reader only legend description */}
         <div id={`${legendId}-description`} className="sr-only">
-          Activity levels range from no sessions (empty) to high activity (filled).
-          Use arrow keys to navigate between days.
+          Activity levels range from no sessions (empty) to high activity (filled). Use arrow keys
+          to navigate between days.
         </div>
       </div>
     </Tooltip.Provider>

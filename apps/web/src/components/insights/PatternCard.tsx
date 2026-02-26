@@ -21,7 +21,7 @@ function ImpactBar({ score }: { score: number }) {
               ? 'bg-blue-500'
               : score > 0.4
                 ? 'bg-gray-400 dark:bg-gray-500'
-                : 'bg-gray-300 dark:bg-gray-600'
+                : 'bg-gray-300 dark:bg-gray-600',
           )}
           style={{ width: `${percentage}%` }}
         />
@@ -47,10 +47,7 @@ function ComparisonBar({ value, comparison }: { value: number; comparison: numbe
     <div className="mt-3 space-y-1">
       <div className="flex items-center gap-2">
         <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-blue-500 rounded-full"
-            style={{ width: `${valuePct}%` }}
-          />
+          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${valuePct}%` }} />
         </div>
         <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums w-10 text-right">
           {value.toFixed(2)}
@@ -83,11 +80,7 @@ function ConfidenceBadge({ sampleSize }: { sampleSize: number }) {
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-gray-400 dark:text-gray-500'
 
-  return (
-    <span className={cn('text-[10px] font-medium capitalize', color)}>
-      {level} confidence
-    </span>
-  )
+  return <span className={cn('text-[10px] font-medium capitalize', color)}>{level} confidence</span>
 }
 
 export function PatternCard({ pattern }: PatternCardProps) {
@@ -108,9 +101,7 @@ export function PatternCard({ pattern }: PatternCardProps) {
       </div>
 
       {/* Title */}
-      <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
-        {pattern.title}
-      </h4>
+      <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">{pattern.title}</h4>
 
       {/* Body */}
       <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{pattern.body}</p>

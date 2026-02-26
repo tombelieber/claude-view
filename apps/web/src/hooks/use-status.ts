@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import type { IndexMetadata } from '../types/generated'
 
 /**

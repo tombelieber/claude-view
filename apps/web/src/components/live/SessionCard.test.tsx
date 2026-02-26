@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it } from 'vitest'
 import { SessionCard } from './SessionCard'
 import type { LiveSession } from './use-live-sessions'
 
@@ -52,7 +52,7 @@ function renderCard(session: LiveSession) {
   return render(
     <MemoryRouter>
       <SessionCard session={session} currentTime={1_700_000_130} />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -62,7 +62,7 @@ describe('live SessionCard', () => {
       createMockSession({
         title: 'First human prompt about setup',
         lastUserMessage: 'Latest human prompt about auth bug',
-      })
+      }),
     )
 
     const title = container.querySelector('p.text-sm.font-medium')
@@ -95,8 +95,23 @@ describe('SessionCard sub-agent pills', () => {
   it('shows SubAgentPills when session has sub-agents', () => {
     const session = createMockSession({
       subAgents: [
-        { toolUseId: 'toolu_01', agentType: 'Explore', description: 'Search', status: 'running', startedAt: 1_700_000_000, currentActivity: 'Read' },
-        { toolUseId: 'toolu_02', agentType: 'code-reviewer', description: 'Review', status: 'complete', startedAt: 1_700_000_000, completedAt: 1_700_000_030, durationMs: 30000 },
+        {
+          toolUseId: 'toolu_01',
+          agentType: 'Explore',
+          description: 'Search',
+          status: 'running',
+          startedAt: 1_700_000_000,
+          currentActivity: 'Read',
+        },
+        {
+          toolUseId: 'toolu_02',
+          agentType: 'code-reviewer',
+          description: 'Review',
+          status: 'complete',
+          startedAt: 1_700_000_000,
+          completedAt: 1_700_000_030,
+          durationMs: 30000,
+        },
       ],
     })
     renderCard(session)
@@ -119,15 +134,17 @@ describe('SessionCard question display', () => {
         state: 'awaiting_input',
         label: 'Asked you a question',
         context: {
-          questions: [{
-            question: 'Which database should we use?',
-            header: 'DB',
-            options: [
-              { label: 'PostgreSQL', description: 'Relational' },
-              { label: 'SQLite', description: 'Embedded' },
-            ],
-            multiSelect: false,
-          }],
+          questions: [
+            {
+              question: 'Which database should we use?',
+              header: 'DB',
+              options: [
+                { label: 'PostgreSQL', description: 'Relational' },
+                { label: 'SQLite', description: 'Embedded' },
+              ],
+              multiSelect: false,
+            },
+          ],
         },
       },
     })
@@ -144,15 +161,17 @@ describe('SessionCard question display', () => {
         state: 'needs_permission',
         label: 'Asked you a question',
         context: {
-          questions: [{
-            question: 'Which framework?',
-            header: 'Framework',
-            options: [
-              { label: 'React', description: 'Component-based' },
-              { label: 'Vue', description: 'Progressive' },
-            ],
-            multiSelect: false,
-          }],
+          questions: [
+            {
+              question: 'Which framework?',
+              header: 'Framework',
+              options: [
+                { label: 'React', description: 'Component-based' },
+                { label: 'Vue', description: 'Progressive' },
+              ],
+              multiSelect: false,
+            },
+          ],
         },
       },
     })

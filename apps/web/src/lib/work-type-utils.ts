@@ -36,11 +36,15 @@ const NEUTRAL = {
 } as const
 
 export const WORK_TYPE_CONFIG: Record<string, WorkTypeConfig> = {
-  deep_work: { label: 'Deep Work',  ...NEUTRAL, title: 'Extended coding session (>30 min, many files)' },
-  quick_ask: { label: 'Quick Ask',  ...NEUTRAL, title: 'Brief question (<5 min, no edits)' },
-  planning:  { label: 'Planning',   ...NEUTRAL, title: 'Architecture/design discussion' },
-  bug_fix:   { label: 'Bug Fix',    ...NEUTRAL, title: 'Debugging session' },
-  standard:  { label: 'Standard',   ...NEUTRAL, title: 'General development session' },
+  deep_work: {
+    label: 'Deep Work',
+    ...NEUTRAL,
+    title: 'Extended coding session (>30 min, many files)',
+  },
+  quick_ask: { label: 'Quick Ask', ...NEUTRAL, title: 'Brief question (<5 min, no edits)' },
+  planning: { label: 'Planning', ...NEUTRAL, title: 'Architecture/design discussion' },
+  bug_fix: { label: 'Bug Fix', ...NEUTRAL, title: 'Debugging session' },
+  standard: { label: 'Standard', ...NEUTRAL, title: 'General development session' },
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { Message } from '../types/generated/Message'
 import type { ToolCall } from '../types/generated/ToolCall'
-import { buildThreadMap, type ThreadInfo } from './thread-map'
 import { formatTokenCount } from './format-utils'
+import { type ThreadInfo, buildThreadMap } from './thread-map'
 
 // ---------------------------------------------------------------------------
 // ExportMetadata
@@ -30,13 +30,13 @@ export interface ExportMetadata {
 // ---------------------------------------------------------------------------
 
 const EXPORT_TYPE_CONFIG: Record<string, { label: string; iconId: string }> = {
-  user:        { label: 'You',      iconId: 'user' },
-  assistant:   { label: 'Claude',   iconId: 'assistant' },
-  tool_use:    { label: 'Tool',     iconId: 'tool-use' },
-  tool_result: { label: 'Result',   iconId: 'tool-result' },
-  system:      { label: 'System',   iconId: 'system' },
-  progress:    { label: 'Progress', iconId: 'progress' },
-  summary:     { label: 'Summary',  iconId: 'summary' },
+  user: { label: 'You', iconId: 'user' },
+  assistant: { label: 'Claude', iconId: 'assistant' },
+  tool_use: { label: 'Tool', iconId: 'tool-use' },
+  tool_result: { label: 'Result', iconId: 'tool-result' },
+  system: { label: 'System', iconId: 'system' },
+  progress: { label: 'Progress', iconId: 'progress' },
+  summary: { label: 'Summary', iconId: 'summary' },
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ function formatTime(timestamp?: string | null): string {
 const EMPTY_CONTENT = new Set(['(no content)', ''])
 
 function filterExportMessages(messages: Message[]): Message[] {
-  return messages.filter(msg => {
+  return messages.filter((msg) => {
     if (msg.role === 'user') return true
     if (msg.role === 'assistant') {
       // Hide assistant messages with no real content (only tool calls, no text)
@@ -175,13 +175,10 @@ function markdownToHtml(markdown: string): string {
   let html = escapeHtml(markdown)
 
   // Code blocks (must be processed before other formatting)
-  html = html.replace(
-    /```(\w*)\n([\s\S]*?)```/g,
-    (_, lang, code) => {
-      const langLabel = lang || 'text'
-      return `<div class="code-block"><div class="code-header">${escapeHtml(langLabel)}</div><pre><code class="language-${langLabel}">${code.trim()}</code></pre></div>`
-    }
-  )
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const langLabel = lang || 'text'
+    return `<div class="code-block"><div class="code-header">${escapeHtml(langLabel)}</div><pre><code class="language-${langLabel}">${code.trim()}</code></pre></div>`
+  })
 
   // Inline code (must be before bold/italic to avoid conflicts)
   html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
@@ -220,14 +217,14 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/^\* (.+)$/gm, '<li data-list="ul">$1</li>')
   html = html.replace(
     /(<li data-list="ul">[\s\S]*?<\/li>\n?)+/g,
-    (match) => `<ul>${match.replace(/ data-list="ul"/g, '')}</ul>`
+    (match) => `<ul>${match.replace(/ data-list="ul"/g, '')}</ul>`,
   )
 
   // Ordered lists - mark with data attribute first, then wrap
   html = html.replace(/^\d+\. (.+)$/gm, '<li data-list="ol">$1</li>')
   html = html.replace(
     /(<li data-list="ol">[\s\S]*?<\/li>\n?)+/g,
-    (match) => `<ol>${match.replace(/ data-list="ol"/g, '')}</ol>`
+    (match) => `<ol>${match.replace(/ data-list="ol"/g, '')}</ol>`,
   )
 
   // Paragraphs (convert double newlines to paragraph breaks)
@@ -270,12 +267,14 @@ function renderToolCalls(toolCalls: ToolCall[]): string {
   const aggregated = Array.from(counts, ([name, count]) => ({ name, count }))
 
   const totalCount = aggregated.reduce((sum, tc) => sum + tc.count, 0)
-  const badges = aggregated.map((tc) => `<span class="tool-badge">${escapeHtml(tc.name)}</span>`).join('')
+  const badges = aggregated
+    .map((tc) => `<span class="tool-badge">${escapeHtml(tc.name)}</span>`)
+    .join('')
 
   const toolDetails = aggregated
     .map(
       (tc) =>
-        `<div class="tool-item"><span class="tool-badge">${escapeHtml(tc.name)}</span><span class="tool-count">x${tc.count}</span></div>`
+        `<div class="tool-item"><span class="tool-badge">${escapeHtml(tc.name)}</span><span class="tool-count">x${tc.count}</span></div>`,
     )
     .join('')
 
@@ -325,30 +324,48 @@ function renderMetadataHeader(meta: ExportMetadata): string {
   const items: string[] = []
 
   if (meta.primaryModel) {
-    items.push(`<div class="meta-item"><span class="meta-label">Model</span><span class="meta-value">${escapeHtml(meta.primaryModel)}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Model</span><span class="meta-value">${escapeHtml(meta.primaryModel)}</span></div>`,
+    )
   }
   if (meta.durationSeconds && meta.durationSeconds > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Duration</span><span class="meta-value">${formatDuration(meta.durationSeconds)}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Duration</span><span class="meta-value">${formatDuration(meta.durationSeconds)}</span></div>`,
+    )
   }
   if (meta.totalInputTokens != null && meta.totalOutputTokens != null) {
     const total = meta.totalInputTokens + meta.totalOutputTokens
-    items.push(`<div class="meta-item"><span class="meta-label">Tokens</span><span class="meta-value">${formatTokens(total)}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Tokens</span><span class="meta-value">${formatTokens(total)}</span></div>`,
+    )
   }
-  items.push(`<div class="meta-item"><span class="meta-label">Messages</span><span class="meta-value">${meta.messageCount}</span></div>`)
+  items.push(
+    `<div class="meta-item"><span class="meta-label">Messages</span><span class="meta-value">${meta.messageCount}</span></div>`,
+  )
   if (meta.userPromptCount > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Prompts</span><span class="meta-value">${meta.userPromptCount}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Prompts</span><span class="meta-value">${meta.userPromptCount}</span></div>`,
+    )
   }
   if (meta.toolCallCount > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Tool Calls</span><span class="meta-value">${meta.toolCallCount}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Tool Calls</span><span class="meta-value">${meta.toolCallCount}</span></div>`,
+    )
   }
   if (meta.filesEditedCount && meta.filesEditedCount > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Files Edited</span><span class="meta-value">${meta.filesEditedCount}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Files Edited</span><span class="meta-value">${meta.filesEditedCount}</span></div>`,
+    )
   }
   if (meta.filesReadCount && meta.filesReadCount > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Files Read</span><span class="meta-value">${meta.filesReadCount}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Files Read</span><span class="meta-value">${meta.filesReadCount}</span></div>`,
+    )
   }
   if (meta.commitCount && meta.commitCount > 0) {
-    items.push(`<div class="meta-item"><span class="meta-label">Commits</span><span class="meta-value">${meta.commitCount}</span></div>`)
+    items.push(
+      `<div class="meta-item"><span class="meta-label">Commits</span><span class="meta-value">${meta.commitCount}</span></div>`,
+    )
   }
 
   const branchBadge = meta.gitBranch
@@ -388,13 +405,10 @@ function renderMessage(message: Message, thread?: ThreadInfo): string {
   const threadClass = isChild ? ' message--threaded' : ''
   const indentStyle = indentPx > 0 ? ` style="margin-left:${indentPx}px"` : ''
 
-  const thinkingHtml = (message.thinking && message.thinking.trim())
-    ? renderThinkingBlock(message.thinking)
-    : ''
+  const thinkingHtml =
+    message.thinking && message.thinking.trim() ? renderThinkingBlock(message.thinking) : ''
 
-  const contentHtml = message.content.trim()
-    ? markdownToHtml(message.content)
-    : ''
+  const contentHtml = message.content.trim() ? markdownToHtml(message.content) : ''
 
   const toolCallsHtml = renderToolCalls(message.tool_calls || [])
 

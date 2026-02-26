@@ -1,14 +1,14 @@
-import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
+import { Navigate, createBrowserRouter, useParams } from 'react-router-dom'
 import App from './App'
+import { ConversationView } from './components/ConversationView'
 import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
-import { ConversationView } from './components/ConversationView'
 import { SettingsPage } from './components/SettingsPage'
-import { LiveMonitorPage } from './pages/LiveMonitorPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { ActivityPage } from './pages/ActivityPage'
-import { ReportsPage } from './pages/ReportsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
+import { ActivityPage } from './pages/ActivityPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
+import { LiveMonitorPage } from './pages/LiveMonitorPage'
+import { ReportsPage } from './pages/ReportsPage'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
 function OldSessionRedirect() {
@@ -33,7 +33,9 @@ function SingularSessionRedirect() {
 function OldContributionsRedirect() {
   const { projectId } = useParams()
   const project = projectId ? decodeURIComponent(projectId) : ''
-  return <Navigate to={`/analytics?tab=contributions&project=${encodeURIComponent(project)}`} replace />
+  return (
+    <Navigate to={`/analytics?tab=contributions&project=${encodeURIComponent(project)}`} replace />
+  )
 }
 
 /** Redirect old /project/:projectId to flat /?project=... */

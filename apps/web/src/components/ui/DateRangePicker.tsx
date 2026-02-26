@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
-import { DayPicker, type DateRange } from 'react-day-picker'
 import * as Popover from '@radix-ui/react-popover'
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { type DateRange, DayPicker } from 'react-day-picker'
 import { cn } from '../../lib/utils'
 
 export interface DateRangeValue {
@@ -55,14 +55,10 @@ const formatDate = (date: Date | undefined) => {
  * - Apply button commits the selection
  * - Click outside or Escape closes without applying
  */
-export function DateRangePicker({
-  value,
-  onChange,
-  className,
-}: DateRangePickerProps) {
+export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [tempRange, setTempRange] = useState<DateRange | undefined>(
-    value ? { from: value.from, to: value.to } : undefined
+    value ? { from: value.from, to: value.to } : undefined,
   )
 
   // Only reset draft state when popover opens (prevIsOpenRef pattern)
@@ -89,9 +85,7 @@ export function DateRangePicker({
     setTempRange({ from, to })
   }
 
-  const displayLabel = value
-    ? `${formatDate(value.from)} – ${formatDate(value.to)}`
-    : 'Custom'
+  const displayLabel = value ? `${formatDate(value.from)} – ${formatDate(value.to)}` : 'Custom'
 
   const canApply = !!(tempRange?.from && tempRange?.to)
 
@@ -108,7 +102,7 @@ export function DateRangePicker({
             'hover:bg-gray-50 dark:hover:bg-gray-600',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
             'transition-colors duration-150',
-            className
+            className,
           )}
         >
           <Calendar className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -125,7 +119,7 @@ export function DateRangePicker({
           className={cn(
             'z-50 rounded-xl shadow-xl border',
             'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-            'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95'
+            'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           )}
         >
           <div className="flex">
@@ -144,7 +138,7 @@ export function DateRangePicker({
                     'text-gray-600 dark:text-gray-300',
                     'hover:bg-gray-100 dark:hover:bg-gray-700',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                    'transition-colors duration-100'
+                    'transition-colors duration-100',
                   )}
                 >
                   {preset.label}
@@ -192,7 +186,7 @@ export function DateRangePicker({
                         'text-gray-600 dark:text-gray-300',
                         'hover:bg-gray-100 dark:hover:bg-gray-700',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                        'transition-colors duration-150'
+                        'transition-colors duration-150',
                       )}
                     >
                       Cancel
@@ -208,7 +202,7 @@ export function DateRangePicker({
                       'hover:bg-blue-700',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
                       'disabled:opacity-50 disabled:cursor-not-allowed',
-                      'transition-colors duration-150'
+                      'transition-colors duration-150',
                     )}
                   >
                     Apply

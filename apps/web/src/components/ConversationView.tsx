@@ -1,42 +1,59 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, FileX, Terminal, PanelRight } from 'lucide-react'
-import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Copy,
+  Download,
+  FileX,
+  MessageSquare,
+  PanelRight,
+  Terminal,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
-import { useSession, isNotFoundError } from '../hooks/use-session'
-import { useSessionMessages } from '../hooks/use-session-messages'
+import { ExpandProvider } from '../contexts/ExpandContext'
+import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
-import { useSessionDetail } from '../hooks/use-session-detail'
+import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
-import { MessageTyped } from './MessageTyped'
-import { ErrorBoundary } from './ErrorBoundary'
-import { SessionMetricsBar } from './SessionMetricsBar'
-import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
+import { isNotFoundError, useSession } from '../hooks/use-session'
+import { useSessionDetail } from '../hooks/use-session-detail'
+import { useSessionMessages } from '../hooks/use-session-messages'
+import { computeCategoryCounts } from '../lib/compute-category-counts'
+import {
+  type ExportMetadata,
+  downloadHtml,
+  exportToPdf,
+  generateStandaloneHtml,
+} from '../lib/export-html'
+import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
+import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
+import { messagesToRichMessages } from '../lib/message-to-rich'
+import { buildThreadMap, getThreadChain } from '../lib/thread-map'
+import { showToast } from '../lib/toast'
+import { cn } from '../lib/utils'
+import { useMonitorStore } from '../store/monitor-store'
+import type { Message } from '../types/generated'
 import { CommitsPanel } from './CommitsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
+import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
+import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
+import { MessageTyped } from './MessageTyped'
+import { SessionMetricsBar } from './SessionMetricsBar'
+import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
-import { RichPane } from './live/RichPane'
-import { messagesToRichMessages } from '../lib/message-to-rich'
 import { historyToPanelData } from './live/session-panel-data'
-import { generateStandaloneHtml, downloadHtml, exportToPdf, type ExportMetadata } from '../lib/export-html'
-import { generateMarkdown, downloadMarkdown, copyToClipboard } from '../lib/export-markdown'
-import { showToast } from '../lib/toast'
-import { ExpandProvider } from '../contexts/ExpandContext'
-import { Skeleton, ErrorState, EmptyState } from './LoadingStates'
-import { useMonitorStore } from '../store/monitor-store'
-import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { cn } from '../lib/utils'
-import { buildThreadMap, getThreadChain } from '../lib/thread-map'
-import { useHookEvents } from '../hooks/use-hook-events'
-import {
-  hookEventsToRichMessages,
-  mergeByTimestamp,
-} from '../lib/hook-events-to-messages'
-import type { Message } from '../types/generated'
-import type { ProjectSummary } from '../hooks/use-projects'
 
 /** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
-function HistoryRichPane({ messages, categoryCounts }: { messages: import('./live/RichPane').RichMessage[]; categoryCounts?: import('../lib/compute-category-counts').CategoryCounts }) {
+function HistoryRichPane({
+  messages,
+  categoryCounts,
+}: {
+  messages: import('./live/RichPane').RichMessage[]
+  categoryCounts?: import('../lib/compute-category-counts').CategoryCounts
+}) {
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   return (
     <RichPane
@@ -54,7 +71,7 @@ const EMPTY_CONTENT = new Set(['(no content)', ''])
 
 function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
   if (mode === 'full') return messages
-  return messages.filter(msg => {
+  return messages.filter((msg) => {
     if (msg.role === 'user') return true
     if (msg.role === 'assistant') {
       // Hide assistant messages with no real content (only tool calls, no text)
@@ -79,7 +96,7 @@ export function ConversationView() {
   // to get the project directory for the legacy session/messages endpoints
   const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
   const projectDir = sessionDetail?.project ?? ''
-  const project = summaries.find(p => p.name === projectDir)
+  const project = summaries.find((p) => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
@@ -111,17 +128,17 @@ export function ConversationView() {
   } = useSessionMessages(sessionId || null)
 
   // Detect when DB has the session but the JSONL file is gone from disk
-  const isFileGone = !!sessionDetail
-    && (isNotFoundError(messagesError) || isNotFoundError(sessionError))
+  const isFileGone =
+    !!sessionDetail && (isNotFoundError(messagesError) || isNotFoundError(sessionError))
 
   // Only gate initial render on paginated messages — the full session fetch
   // loads in the background for export use. This ensures faster time-to-first-content.
-  const isLoading = isFileGone ? false : (isMessagesLoading || (!sessionDetail && !detailError))
-  const error = isFileGone ? null : (detailError || messagesError)
+  const isLoading = isFileGone ? false : isMessagesLoading || (!sessionDetail && !detailError)
+  const error = isFileGone ? null : detailError || messagesError
   const exportsReady = !!session
 
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
-  const sessionInfo = sessionsPage?.sessions.find(s => s.id === sessionId)
+  const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
 
   // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
   const { data: richData } = useRichSessionData(sessionId || null)
@@ -171,7 +188,10 @@ export function ConversationView() {
     if (!session) return
     const markdown = generateMarkdown(session.messages, projectName, sessionId)
     const ok = await copyToClipboard(markdown)
-    showToast(ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions', ok ? 2000 : 3000)
+    showToast(
+      ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions',
+      ok ? 2000 : 3000,
+    )
   }, [session, projectName, sessionId])
 
   const handleResume = useCallback(async () => {
@@ -191,8 +211,10 @@ export function ConversationView() {
     const cmd = `claude --resume ${sessionId}`
     const ok = await copyToClipboard(cmd)
     showToast(
-      ok ? 'Resume command copied — paste in terminal' : 'Failed to copy — check browser permissions',
-      3000
+      ok
+        ? 'Resume command copied — paste in terminal'
+        : 'Failed to copy — check browser permissions',
+      3000,
     )
   }, [sessionId, sessionDetail])
 
@@ -243,22 +265,19 @@ export function ConversationView() {
   }, [resumeMenuOpen])
 
   const allMessages = useMemo(
-    () => pagesData?.pages.flatMap(page => page.messages) ?? [],
-    [pagesData]
+    () => pagesData?.pages.flatMap((page) => page.messages) ?? [],
+    [pagesData],
   )
 
   // Full session messages for verbose/terminal view (loaded in background by useSession)
   // Falls back to paginated data while session is still loading.
-  const verboseAllMessages = useMemo(
-    () => session?.messages ?? allMessages,
-    [session, allMessages]
-  )
+  const verboseAllMessages = useMemo(() => session?.messages ?? allMessages, [session, allMessages])
 
   const totalMessages = session?.messages?.length ?? pagesData?.pages[0]?.total ?? 0
 
   const filteredMessages = useMemo(
-    () => allMessages.length > 0 ? filterMessages(allMessages, 'compact') : [],
-    [allMessages]
+    () => (allMessages.length > 0 ? filterMessages(allMessages, 'compact') : []),
+    [allMessages],
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
@@ -268,7 +287,7 @@ export function ConversationView() {
   const FIRST_ITEM_START = 1_000_000
   const firstItemIndex = useMemo(
     () => FIRST_ITEM_START - filteredMessages.length,
-    [filteredMessages.length]
+    [filteredMessages.length],
   )
 
   // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
@@ -278,21 +297,21 @@ export function ConversationView() {
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
   const richMessages = useMemo(
-    () => verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : [],
-    [verboseAllMessages]
+    () => (verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : []),
+    [verboseAllMessages],
   )
 
   // Merge hook events into Rich view (both hook_event and hook_progress show)
-  const richHookMessages = useMemo(
-    () => hookEventsToRichMessages(hookEvents),
-    [hookEvents]
-  )
+  const richHookMessages = useMemo(() => hookEventsToRichMessages(hookEvents), [hookEvents])
 
   // Skip SQLite hook-event merge when the parser already includes hook_event
   // entries from JSONL (avoids duplicates). Fall back to SQLite merge for older
   // sessions whose JSONL predates hook_event support.
   const richMessagesWithHookEvents = useMemo(() => {
-    if (richHookMessages.length === 0 || richMessages.some(m => m.metadata?.type === 'hook_event')) {
+    if (
+      richHookMessages.length === 0 ||
+      richMessages.some((m) => m.metadata?.type === 'hook_event')
+    ) {
       return richMessages
     }
     return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
@@ -301,13 +320,18 @@ export function ConversationView() {
   // Shared category counts for both verbose terminal and side panel
   const historyCategoryCounts = useMemo(
     () => computeCategoryCounts(richMessagesWithHookEvents),
-    [richMessagesWithHookEvents]
+    [richMessagesWithHookEvents],
   )
 
   // Build panel data for SessionDetailPanel
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
-    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo, richMessagesWithHookEvents)
+    return historyToPanelData(
+      sessionDetail,
+      richData ?? undefined,
+      sessionInfo,
+      richMessagesWithHookEvents,
+    )
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // When the user scrolls to the top, we want to load ALL remaining history without
@@ -337,14 +361,11 @@ export function ConversationView() {
     }
   }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage])
 
-  const threadMap = useMemo(
-    () => buildThreadMap(filteredMessages),
-    [filteredMessages]
-  )
+  const threadMap = useMemo(() => buildThreadMap(filteredMessages), [filteredMessages])
 
   const getThreadChainForUuid = useCallback(
     (uuid: string) => getThreadChain(uuid, filteredMessages),
-    [filteredMessages]
+    [filteredMessages],
   )
 
   if (isLoading) {
@@ -370,10 +391,7 @@ export function ConversationView() {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <ErrorState
-          message={error.message}
-          onBack={() => navigate(backUrl)}
-        />
+        <ErrorState message={error.message} onBack={() => navigate(backUrl)} />
       </div>
     )
   }
@@ -428,8 +446,8 @@ export function ConversationView() {
                 Session conversation data is no longer available
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                The JSONL file for this session has been removed from disk.
-                Session metrics are still available in the sidebar.
+                The JSONL file for this session has been removed from disk. Session metrics are
+                still available in the sidebar.
               </p>
               <Link
                 to={backUrl}
@@ -447,7 +465,8 @@ export function ConversationView() {
                 prompts={sessionDetail.userPromptCount}
                 tokens={
                   sessionDetail.totalInputTokens != null && sessionDetail.totalOutputTokens != null
-                    ? BigInt(sessionDetail.totalInputTokens) + BigInt(sessionDetail.totalOutputTokens)
+                    ? BigInt(sessionDetail.totalInputTokens) +
+                      BigInt(sessionDetail.totalOutputTokens)
                     : null
                 }
                 filesRead={sessionDetail.filesReadCount}
@@ -464,7 +483,7 @@ export function ConversationView() {
             <FilesTouchedPanel
               files={buildFilesTouched(
                 sessionDetail.filesRead ?? [],
-                sessionDetail.filesEdited ?? []
+                sessionDetail.filesEdited ?? [],
               )}
             />
             <CommitsPanel commits={sessionDetail.commits ?? []} />
@@ -493,9 +512,7 @@ export function ConversationView() {
         <div className="flex items-center gap-2">
           <ViewModeControls />
           {!verboseMode && hiddenCount > 0 && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              {hiddenCount} hidden
-            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{hiddenCount} hidden</span>
           )}
         </div>
 
@@ -508,7 +525,7 @@ export function ConversationView() {
               'p-1.5 rounded-md transition-colors',
               panelOpen
                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
             )}
             title="Toggle detail panel"
           >
@@ -524,35 +541,46 @@ export function ConversationView() {
               aria-expanded={resumeMenuOpen}
               aria-haspopup="menu"
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                 exportsReady
-                  ? "border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer"
-                  : "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400"
+                  ? 'border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer'
+                  : 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400',
               )}
             >
               <Terminal className="w-4 h-4" />
               <span>Continue</span>
-              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", resumeMenuOpen && "rotate-180")} aria-hidden="true" />
+              <ChevronDown
+                className={cn('w-3.5 h-3.5 transition-transform', resumeMenuOpen && 'rotate-180')}
+                aria-hidden="true"
+              />
             </button>
 
             {resumeMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
-                  onClick={() => { handleCopyMarkdown(); setResumeMenuOpen(false) }}
+                  onClick={() => {
+                    handleCopyMarkdown()
+                    setResumeMenuOpen(false)
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
                   <Copy className="w-4 h-4" />
                   Copy Full Transcript
                 </button>
                 <button
-                  onClick={() => { handleResume(); setResumeMenuOpen(false) }}
+                  onClick={() => {
+                    handleResume()
+                    setResumeMenuOpen(false)
+                  }}
                   title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
                   className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
                   <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
                   <span className="flex flex-col items-start">
                     <span>Resume Command</span>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">{sessionDetail?.projectPath ?? ''}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
+                      {sessionDetail?.projectPath ?? ''}
+                    </span>
                   </span>
                 </button>
               </div>
@@ -568,35 +596,47 @@ export function ConversationView() {
               aria-expanded={exportMenuOpen}
               aria-haspopup="menu"
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1",
+                'flex items-center gap-1.5 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                 exportsReady
-                  ? "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                  : "opacity-50 cursor-not-allowed"
+                  ? 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
+                  : 'opacity-50 cursor-not-allowed',
               )}
             >
               <Download className="w-4 h-4" />
               <span>Export</span>
-              <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", exportMenuOpen && "rotate-180")} aria-hidden="true" />
+              <ChevronDown
+                className={cn('w-3.5 h-3.5 transition-transform', exportMenuOpen && 'rotate-180')}
+                aria-hidden="true"
+              />
             </button>
 
             {exportMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
-                  onClick={() => { handleExportHtml(); setExportMenuOpen(false) }}
+                  onClick={() => {
+                    handleExportHtml()
+                    setExportMenuOpen(false)
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   HTML
                 </button>
                 <button
-                  onClick={() => { handleExportPdf(); setExportMenuOpen(false) }}
+                  onClick={() => {
+                    handleExportPdf()
+                    setExportMenuOpen(false)
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   PDF
                 </button>
                 <button
-                  onClick={() => { handleExportMarkdown(); setExportMenuOpen(false) }}
+                  onClick={() => {
+                    handleExportMarkdown()
+                    setExportMenuOpen(false)
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
@@ -614,80 +654,75 @@ export function ConversationView() {
         <div className="flex-1 min-w-0">
           {!verboseMode ? (
             <ThreadHighlightProvider>
-            <ExpandProvider>
-              <Virtuoso
-                data={filteredMessages}
-                firstItemIndex={firstItemIndex}
-                startReached={handleStartReached}
-                initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
-                followOutput="smooth"
-                itemContent={(index, message) => {
-                  const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                  return (
-                    <div className="max-w-4xl mx-auto px-6 pb-4">
-                      <ErrorBoundary key={message.uuid || index}>
-                        <MessageTyped
-                          message={message}
-                          messageIndex={index}
-                          messageType={message.role}
-                          metadata={message.metadata}
-                          parentUuid={thread?.parentUuid}
-                          indent={thread?.indent ?? 0}
-                          isChildMessage={thread?.isChild ?? false}
-                          onGetThreadChain={getThreadChainForUuid}
-                          showThinking={false}
-                        />
-                      </ErrorBoundary>
-                    </div>
-                  )
-                }}
-                components={{
-                  Header: () => (
-                    isFetchingPreviousPage ? (
-                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                        Loading older messages...
+              <ExpandProvider>
+                <Virtuoso
+                  data={filteredMessages}
+                  firstItemIndex={firstItemIndex}
+                  startReached={handleStartReached}
+                  initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                  followOutput="smooth"
+                  itemContent={(index, message) => {
+                    const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                    return (
+                      <div className="max-w-4xl mx-auto px-6 pb-4">
+                        <ErrorBoundary key={message.uuid || index}>
+                          <MessageTyped
+                            message={message}
+                            messageIndex={index}
+                            messageType={message.role}
+                            metadata={message.metadata}
+                            parentUuid={thread?.parentUuid}
+                            indent={thread?.indent ?? 0}
+                            isChildMessage={thread?.isChild ?? false}
+                            onGetThreadChain={getThreadChainForUuid}
+                            showThinking={false}
+                          />
+                        </ErrorBoundary>
                       </div>
-                    ) : hasPreviousPage ? (
-                      <div className="h-6" />
-                    ) : filteredMessages.length > 0 ? (
-                      <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                        Beginning of conversation
-                      </div>
-                    ) : (
-                      <div className="h-6" />
                     )
-                  ),
-                  Footer: () => (
-                    filteredMessages.length > 0 ? (
-                      <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                        {totalMessages} messages
-                        {hiddenCount > 0 && (
-                          <> &bull; {hiddenCount} hidden in chat view</>
-                        )}
-                        {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                          <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                        )}
-                      </div>
-                    ) : null
-                  )
-                }}
-                increaseViewportBy={{ top: 400, bottom: 400 }}
-                className="h-full overflow-auto"
-              />
-            </ExpandProvider>
+                  }}
+                  components={{
+                    Header: () =>
+                      isFetchingPreviousPage ? (
+                        <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                          Loading older messages...
+                        </div>
+                      ) : hasPreviousPage ? (
+                        <div className="h-6" />
+                      ) : filteredMessages.length > 0 ? (
+                        <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                          Beginning of conversation
+                        </div>
+                      ) : (
+                        <div className="h-6" />
+                      ),
+                    Footer: () =>
+                      filteredMessages.length > 0 ? (
+                        <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                          {totalMessages} messages
+                          {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
+                          {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                            <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                          )}
+                        </div>
+                      ) : null,
+                  }}
+                  increaseViewportBy={{ top: 400, bottom: 400 }}
+                  className="h-full overflow-auto"
+                />
+              </ExpandProvider>
             </ThreadHighlightProvider>
           ) : (
-            <HistoryRichPane messages={richMessagesWithHookEvents} categoryCounts={historyCategoryCounts} />
+            <HistoryRichPane
+              messages={richMessagesWithHookEvents}
+              categoryCounts={historyCategoryCounts}
+            />
           )}
         </div>
 
         {/* Right: Detail panel (inline) */}
         {panelOpen && panelData && (
-          <SessionDetailPanel
-            panelData={panelData}
-            onClose={() => setPanelOpen(false)}
-            inline
-          />
+          <SessionDetailPanel panelData={panelData} onClose={() => setPanelOpen(false)} inline />
         )}
       </div>
     </div>

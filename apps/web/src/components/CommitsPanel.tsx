@@ -1,9 +1,9 @@
+import { Check, Clock, Copy, GitCommit } from 'lucide-react'
 import { useState } from 'react'
-import { GitCommit, Copy, Check, Clock } from 'lucide-react'
+import { formatRelativeTime, truncateMessage } from '../lib/format-utils'
 import { cn } from '../lib/utils'
-import { truncateMessage, formatRelativeTime } from '../lib/format-utils'
-import { TierBadge } from './TierBadge'
 import type { CommitWithTier } from '../types/generated'
+import { TierBadge } from './TierBadge'
 
 export interface CommitsPanelProps {
   /** List of commits to display */
@@ -38,7 +38,7 @@ function CommitRow({ commit }: CommitRowProps) {
           'flex items-center gap-1 text-xs font-mono px-1.5 py-0.5 rounded transition-colors flex-shrink-0',
           copied
             ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200',
         )}
         title={copied ? 'Copied!' : 'Click to copy full hash'}
       >
@@ -55,11 +55,7 @@ function CommitRow({ commit }: CommitRowProps) {
         <p className="text-sm text-gray-900 dark:text-gray-100 truncate" title={commit.message}>
           {truncateMessage(commit.message, 50)}
         </p>
-        {commit.branch && (
-          <p className="text-xs text-gray-400 truncate">
-            on {commit.branch}
-          </p>
-        )}
+        {commit.branch && <p className="text-xs text-gray-400 truncate">on {commit.branch}</p>}
       </div>
 
       {/* Tier badge and time */}
@@ -86,7 +82,12 @@ function CommitRow({ commit }: CommitRowProps) {
 export function CommitsPanel({ commits, className }: CommitsPanelProps) {
   if (commits.length === 0) {
     return (
-      <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+      <div
+        className={cn(
+          'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+          className,
+        )}
+      >
         <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
           <GitCommit className="w-4 h-4" />
           Linked Commits
@@ -101,7 +102,12 @@ export function CommitsPanel({ commits, className }: CommitsPanelProps) {
   }
 
   return (
-    <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+    <div
+      className={cn(
+        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+        className,
+      )}
+    >
       <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
         <GitCommit className="w-4 h-4" />
         Linked Commits

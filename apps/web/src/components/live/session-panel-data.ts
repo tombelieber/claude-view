@@ -1,11 +1,11 @@
-// src/components/live/session-panel-data.ts
-import type { LiveSession } from './use-live-sessions'
-import type { AgentState } from './types'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import type { SessionDetail } from '../../types/generated/SessionDetail'
 import type { SessionInfo } from '../../types/generated'
 import type { RichSessionData } from '../../types/generated/RichSessionData'
+import type { SessionDetail } from '../../types/generated/SessionDetail'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { RichMessage } from './RichPane'
+import type { AgentState } from './types'
+// src/components/live/session-panel-data.ts
+import type { LiveSession } from './use-live-sessions'
 
 /**
  * Unified data shape that SessionDetailPanel can render from.

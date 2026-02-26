@@ -1,6 +1,6 @@
-import { Zap, ClipboardList, Bug, Briefcase, Sparkles } from 'lucide-react'
+import { Briefcase, Bug, ClipboardList, Sparkles, Zap } from 'lucide-react'
 import { cn } from '../lib/utils'
-import { getWorkTypeConfig, type WorkType } from '../lib/work-type-utils'
+import { type WorkType, getWorkTypeConfig } from '../lib/work-type-utils'
 
 // Re-export for convenience
 export type { WorkType } from '../lib/work-type-utils'
@@ -49,7 +49,7 @@ export function WorkTypeBadge({ workType, className, showLabel = true }: WorkTyp
         config.bgColor,
         config.textColor,
         config.borderColor,
-        className
+        className,
       )}
       title={config.title}
     >

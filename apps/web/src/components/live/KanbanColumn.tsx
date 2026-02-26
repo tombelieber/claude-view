@@ -1,7 +1,7 @@
-import type { LiveSession } from './use-live-sessions'
-import type { AgentStateGroup } from './types'
-import { SessionCard } from './SessionCard'
 import { cn } from '../../lib/utils'
+import { SessionCard } from './SessionCard'
+import type { AgentStateGroup } from './types'
+import type { LiveSession } from './use-live-sessions'
 
 interface KanbanColumnProps {
   title: string
@@ -19,14 +19,10 @@ interface KanbanColumnProps {
 
 function NeedsYouSubCount({ sessions }: { sessions: LiveSession[] }) {
   const urgent = sessions.filter(
-    (s) => s.agentState.state === 'awaiting_input' || s.agentState.state === 'needs_permission'
+    (s) => s.agentState.state === 'awaiting_input' || s.agentState.state === 'needs_permission',
   ).length
   if (urgent === 0) return null
-  return (
-    <span className="ml-1.5 text-[10px] text-amber-500 font-normal">
-      {urgent} urgent
-    </span>
-  )
+  return <span className="ml-1.5 text-[10px] text-amber-500 font-normal">{urgent} urgent</span>
 }
 
 export function KanbanColumn({
@@ -66,10 +62,15 @@ export function KanbanColumn({
                 className={cn(
                   'cursor-pointer rounded-lg transition-opacity',
                   session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg',
-                  group === 'needs_you' && session.cacheStatus !== 'warm' && 'opacity-70'
+                  group === 'needs_you' && session.cacheStatus !== 'warm' && 'opacity-70',
                 )}
               >
-                <SessionCard session={session} stalledSessions={stalledSessions} currentTime={currentTime} onClickOverride={onCardClick ? () => onCardClick(session.id) : undefined} />
+                <SessionCard
+                  session={session}
+                  stalledSessions={stalledSessions}
+                  currentTime={currentTime}
+                  onClickOverride={onCardClick ? () => onCardClick(session.id) : undefined}
+                />
               </div>
             ))
           )}

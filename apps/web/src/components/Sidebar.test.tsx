@@ -1,12 +1,18 @@
-import { describe, it, expect, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Sidebar } from './Sidebar'
+import { describe, expect, it, vi } from 'vitest'
 import type { ProjectSummary } from '../types/generated/ProjectSummary'
+import { Sidebar } from './Sidebar'
 
 const mockProjects: ProjectSummary[] = [
-  { name: 'project-a', displayName: 'Project A', sessionCount: 10, path: '/path/a', activeCount: 2 },
+  {
+    name: 'project-a',
+    displayName: 'Project A',
+    sessionCount: 10,
+    path: '/path/a',
+    activeCount: 2,
+  },
   { name: 'project-b', displayName: 'Project B', sessionCount: 5, path: '/path/b', activeCount: 1 },
 ]
 
@@ -16,9 +22,7 @@ function createWrapper(initialUrl = '/') {
   })
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialUrl]}>
-        {children}
-      </MemoryRouter>
+      <MemoryRouter initialEntries={[initialUrl]}>{children}</MemoryRouter>
     </QueryClientProvider>
   )
 }
@@ -26,7 +30,12 @@ function createWrapper(initialUrl = '/') {
 // Mock the hooks that make API calls
 vi.mock('../hooks/use-branches', () => ({
   useProjectBranches: () => ({
-    data: { branches: [{ branch: 'main', count: BigInt(5) }, { branch: 'feature/auth', count: BigInt(3) }] },
+    data: {
+      branches: [
+        { branch: 'main', count: BigInt(5) },
+        { branch: 'feature/auth', count: BigInt(3) },
+      ],
+    },
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -84,11 +93,16 @@ describe('Sidebar three-zone architecture', () => {
     })
 
     it('nav links preserve both project and branch params', () => {
-      render(<Sidebar projects={mockProjects} />, { wrapper: createWrapper('/?project=project-a&branch=main') })
+      render(<Sidebar projects={mockProjects} />, {
+        wrapper: createWrapper('/?project=project-a&branch=main'),
+      })
 
       const nav = screen.getByRole('navigation', { name: /main navigation/i })
       const contributionsLink = within(nav).getByText('Contributions').closest('a')
-      expect(contributionsLink).toHaveAttribute('href', expect.stringContaining('project=project-a'))
+      expect(contributionsLink).toHaveAttribute(
+        'href',
+        expect.stringContaining('project=project-a'),
+      )
       expect(contributionsLink).toHaveAttribute('href', expect.stringContaining('branch=main'))
     })
 
@@ -160,7 +174,7 @@ describe('Sidebar three-zone architecture', () => {
 
       const tree = screen.getByRole('tree', { name: /projects/i })
       const treeItems = within(tree).getAllByRole('treeitem')
-      const selectedItem = treeItems.find(item => item.getAttribute('aria-selected') === 'true')
+      const selectedItem = treeItems.find((item) => item.getAttribute('aria-selected') === 'true')
       expect(selectedItem).toBeTruthy()
       expect(selectedItem).toHaveAttribute('aria-current', 'page')
     })
@@ -202,7 +216,7 @@ describe('Sidebar three-zone architecture', () => {
       const quickJump = screen.getByRole('navigation', { name: /recent sessions/i })
       const sessionLinks = within(quickJump).getAllByRole('link')
       // All session links (not the "All" link) should include project param
-      const sessionDetailLinks = sessionLinks.filter(link => {
+      const sessionDetailLinks = sessionLinks.filter((link) => {
         const href = link.getAttribute('href') || ''
         return href.includes('/sessions/') && href.includes('project=project-a')
       })

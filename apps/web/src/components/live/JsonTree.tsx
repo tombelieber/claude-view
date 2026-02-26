@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { CompactCodeBlock } from './CompactCodeBlock'
+import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMonitorStore } from '../../store/monitor-store'
+import { CompactCodeBlock } from './CompactCodeBlock'
 
 interface JsonTreeProps {
   data: unknown
@@ -17,10 +17,24 @@ const DEFAULT_MAX_NODES = 200
 function countNodes(data: unknown): number {
   if (data === null || data === undefined || typeof data !== 'object') return 1
   if (Array.isArray(data)) return 1 + data.reduce((sum: number, item) => sum + countNodes(item), 0)
-  return 1 + Object.values(data as Record<string, unknown>).reduce((sum: number, val) => sum + countNodes(val), 0)
+  return (
+    1 +
+    Object.values(data as Record<string, unknown>).reduce(
+      (sum: number, val) => sum + countNodes(val),
+      0,
+    )
+  )
 }
 
-function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togglePath, verboseMode }: {
+function JsonValue({
+  value,
+  path,
+  depth,
+  defaultExpandDepth,
+  expandedPaths,
+  togglePath,
+  verboseMode,
+}: {
   value: unknown
   path: string
   depth: number
@@ -33,14 +47,13 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
   if (value === undefined) return <span className="text-gray-500">undefined</span>
 
   if (typeof value === 'string') {
-    const display = value.length > MAX_STRING_INLINE
-      ? `"${value.slice(0, MAX_STRING_INLINE)}\u2026"`
-      : `"${value}"`
+    const display =
+      value.length > MAX_STRING_INLINE
+        ? `"${value.slice(0, MAX_STRING_INLINE)}\u2026"`
+        : `"${value}"`
     const needsTooltip = value.length > MAX_STRING_INLINE
 
-    const span = (
-      <span className="text-green-600 dark:text-green-400 break-all">{display}</span>
-    )
+    const span = <span className="text-green-600 dark:text-green-400 break-all">{display}</span>
 
     if (!needsTooltip) return span
 
@@ -62,8 +75,10 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
     )
   }
 
-  if (typeof value === 'number') return <span className="text-orange-600 dark:text-orange-400">{String(value)}</span>
-  if (typeof value === 'boolean') return <span className="text-purple-600 dark:text-purple-400">{String(value)}</span>
+  if (typeof value === 'number')
+    return <span className="text-orange-600 dark:text-orange-400">{String(value)}</span>
+  if (typeof value === 'boolean')
+    return <span className="text-purple-600 dark:text-purple-400">{String(value)}</span>
 
   if (Array.isArray(value)) {
     return (
@@ -104,7 +119,19 @@ function JsonValue({ value, path, depth, defaultExpandDepth, expandedPaths, togg
   return <span className="text-gray-500">{String(value)}</span>
 }
 
-function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, path, depth, defaultExpandDepth, expandedPaths, togglePath, isArray, verboseMode }: {
+function JsonCollapsible({
+  entries,
+  bracketOpen,
+  bracketClose,
+  summaryLabel,
+  path,
+  depth,
+  defaultExpandDepth,
+  expandedPaths,
+  togglePath,
+  isArray,
+  verboseMode,
+}: {
   entries: [string, unknown][]
   bracketOpen: string
   bracketClose: string
@@ -117,8 +144,10 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   isArray?: boolean
   verboseMode?: boolean
 }) {
-  const autoExpand = verboseMode ? depth < defaultExpandDepth : (depth < defaultExpandDepth && entries.length <= 5)
-  const isExpanded = expandedPaths.has(path) ? true : (!expandedPaths.has(`~${path}`) && autoExpand)
+  const autoExpand = verboseMode
+    ? depth < defaultExpandDepth
+    : depth < defaultExpandDepth && entries.length <= 5
+  const isExpanded = expandedPaths.has(path) ? true : !expandedPaths.has(`~${path}`) && autoExpand
 
   const toggle = () => {
     if (isExpanded) {
@@ -131,17 +160,27 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   }
 
   if (entries.length === 0) {
-    return <span className="text-gray-400 dark:text-gray-500">{bracketOpen}{bracketClose}</span>
+    return (
+      <span className="text-gray-400 dark:text-gray-500">
+        {bracketOpen}
+        {bracketClose}
+      </span>
+    )
   }
 
   if (!isExpanded) {
     return (
       <span className="inline-flex items-center gap-0.5">
-        <button onClick={toggle} className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+        <button
+          onClick={toggle}
+          className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
           <ChevronRight className="w-3 h-3" />
           <span>{bracketOpen}</span>
         </button>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic px-1">{summaryLabel}</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic px-1">
+          {summaryLabel}
+        </span>
         <span className="text-gray-400 dark:text-gray-500">{bracketClose}</span>
       </span>
     )
@@ -149,7 +188,10 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
 
   return (
     <span>
-      <button onClick={toggle} className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+      <button
+        onClick={toggle}
+        className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+      >
         <ChevronDown className="w-3 h-3" />
         <span>{bracketOpen}</span>
       </button>
@@ -158,7 +200,11 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
           <div key={key} className="leading-relaxed">
             {!isArray && <span className="text-sky-600 dark:text-sky-400">{key}</span>}
             {!isArray && <span className="text-gray-400 dark:text-gray-500">: </span>}
-            {isArray && <span className="text-gray-400 dark:text-gray-500 text-[9px] mr-1 select-none">{key}</span>}
+            {isArray && (
+              <span className="text-gray-400 dark:text-gray-500 text-[9px] mr-1 select-none">
+                {key}
+              </span>
+            )}
             <JsonValue
               value={val}
               path={`${path}.${key}`}
@@ -177,7 +223,12 @@ function JsonCollapsible({ entries, bracketOpen, bracketClose, summaryLabel, pat
   )
 }
 
-export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_NODES, verboseMode: verboseModeProp }: JsonTreeProps) {
+export function JsonTree({
+  data,
+  defaultExpandDepth = 2,
+  maxNodes = DEFAULT_MAX_NODES,
+  verboseMode: verboseModeProp,
+}: JsonTreeProps) {
   const storeVerbose = useMonitorStore((s) => s.verboseMode)
   const verboseMode = verboseModeProp ?? storeVerbose
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
@@ -190,7 +241,7 @@ export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_
   const isLarge = nodeCount > maxNodes
 
   const togglePath = (path: string) => {
-    setExpandedPaths(prev => {
+    setExpandedPaths((prev) => {
       const next = new Set(prev)
       if (path.startsWith('~')) {
         const realPath = path.slice(1)
@@ -217,7 +268,9 @@ export function JsonTree({ data, defaultExpandDepth = 2, maxNodes = DEFAULT_MAX_
   if (isLarge && !showFallback) {
     return (
       <div className="text-[11px] font-mono">
-        <span className="text-gray-500 dark:text-gray-400">Large object ({nodeCount} nodes) — </span>
+        <span className="text-gray-500 dark:text-gray-400">
+          Large object ({nodeCount} nodes) —{' '}
+        </span>
         <button
           onClick={() => setShowFallback(true)}
           className="text-sky-600 dark:text-sky-400 hover:underline"

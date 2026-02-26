@@ -1,15 +1,21 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  CancelResponse,
+  ClassifyLastRun,
+  ClassifyProgressInfo,
+  ClassifyResponse,
+  ClassifyStatusResponse,
+} from '../types/generated'
+
+// Re-export generated types for consumers
+export type {
   ClassifyProgressInfo,
   ClassifyLastRun,
   ClassifyStatusResponse,
   ClassifyResponse,
   CancelResponse,
-} from '../types/generated'
-
-// Re-export generated types for consumers
-export type { ClassifyProgressInfo, ClassifyLastRun, ClassifyStatusResponse, ClassifyResponse, CancelResponse }
+}
 
 // Alias for backward compat — components reference ClassifyProgress
 export type ClassifyProgress = ClassifyProgressInfo
@@ -180,39 +186,42 @@ export function useClassification(): UseClassificationResult {
   }, [])
 
   // Start classification
-  const startClassification = useCallback(async (mode: ClassifyMode): Promise<ClassifyResponse | null> => {
-    setIsLoading(true)
-    setError(null)
+  const startClassification = useCallback(
+    async (mode: ClassifyMode): Promise<ClassifyResponse | null> => {
+      setIsLoading(true)
+      setError(null)
 
-    try {
-      const res = await fetch('/api/classify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      })
+      try {
+        const res = await fetch('/api/classify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        })
 
-      if (res.status === 202 || res.status === 200) {
-        const data: ClassifyResponse = await res.json()
-        await fetchStatus()
-        connectStream()
-        return data
-      } else if (res.status === 409) {
-        setError('A classification job is already running')
+        if (res.status === 202 || res.status === 200) {
+          const data: ClassifyResponse = await res.json()
+          await fetchStatus()
+          connectStream()
+          return data
+        } else if (res.status === 409) {
+          setError('A classification job is already running')
+          return null
+        } else {
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
+          const message = errorData.details || errorData.error || `Request failed: ${res.status}`
+          setError(message)
+          return null
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to start classification'
+        setError(msg)
         return null
-      } else {
-        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
-        const message = errorData.details || errorData.error || `Request failed: ${res.status}`
-        setError(message)
-        return null
+      } finally {
+        setIsLoading(false)
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start classification'
-      setError(msg)
-      return null
-    } finally {
-      setIsLoading(false)
-    }
-  }, [fetchStatus, connectStream])
+    },
+    [fetchStatus, connectStream],
+  )
 
   // Cancel classification
   const cancelClassification = useCallback(async (): Promise<boolean> => {

@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useCategories } from '../../hooks/use-categories'
-import { CategoryStatsSummary } from './CategoryStatsSummary'
+import type { TimeRange } from '../../hooks/use-insights'
+import type { CategoryNode } from '../../types/generated/CategoryNode'
 import { CategoriesVisualization } from './CategoriesVisualization'
 import { CategoryDrillDown } from './CategoryDrillDown'
-import type { CategoryNode } from '../../types/generated/CategoryNode'
-import type { TimeRange } from '../../hooks/use-insights'
+import { CategoryStatsSummary } from './CategoryStatsSummary'
 
 interface CategoriesTabProps {
   timeRange: TimeRange
@@ -16,25 +16,19 @@ export function CategoriesTab({ timeRange }: CategoriesTabProps) {
   const { data, isLoading, error } = useCategories({ timeRange })
 
   // Find selected category in tree
-  const findCategory = useCallback(
-    (id: string, nodes: CategoryNode[]): CategoryNode | null => {
-      for (const node of nodes) {
-        if (node.id === id) return node
-        if (node.children?.length) {
-          const found = findCategory(id, node.children)
-          if (found) return found
-        }
+  const findCategory = useCallback((id: string, nodes: CategoryNode[]): CategoryNode | null => {
+    for (const node of nodes) {
+      if (node.id === id) return node
+      if (node.children?.length) {
+        const found = findCategory(id, node.children)
+        if (found) return found
       }
-      return null
-    },
-    [],
-  )
+    }
+    return null
+  }, [])
 
   const selectedCategory = useMemo(
-    () =>
-      selectedCategoryId && data
-        ? findCategory(selectedCategoryId, data.categories)
-        : null,
+    () => (selectedCategoryId && data ? findCategory(selectedCategoryId, data.categories) : null),
     [selectedCategoryId, data, findCategory],
   )
 
@@ -68,9 +62,7 @@ export function CategoriesTab({ timeRange }: CategoriesTabProps) {
   if (error) {
     return (
       <div className="text-center py-12">
-        <p className="text-red-600 dark:text-red-400">
-          Failed to load category data
-        </p>
+        <p className="text-red-600 dark:text-red-400">Failed to load category data</p>
         <button
           onClick={() => window.location.reload()}
           className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
@@ -100,10 +92,7 @@ export function CategoriesTab({ timeRange }: CategoriesTabProps) {
   return (
     <div className="space-y-6">
       {/* Quick Stats */}
-      <CategoryStatsSummary
-        breakdown={data.breakdown}
-        onCategoryClick={handleCategoryClick}
-      />
+      <CategoryStatsSummary breakdown={data.breakdown} onCategoryClick={handleCategoryClick} />
 
       {/* Visualization */}
       <CategoriesVisualization

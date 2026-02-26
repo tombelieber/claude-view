@@ -1,4 +1,4 @@
-import { Zap, ArrowRight, BarChart3 } from 'lucide-react'
+import { ArrowRight, BarChart3, Zap } from 'lucide-react'
 import type { HeroInsightData } from '../../hooks/use-insights'
 
 interface HeroInsightProps {
@@ -32,9 +32,7 @@ function HeroInsightEmpty() {
   return (
     <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/40 dark:to-gray-800/20 rounded-xl border border-gray-200 dark:border-gray-700 p-6 text-center">
       <BarChart3 className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-        Not enough data yet
-      </p>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Not enough data yet</p>
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
         Keep using Claude Code and insights will appear as patterns emerge.
       </p>
@@ -64,9 +62,7 @@ export function HeroInsight({ insight, isLoading, onViewDetails }: HeroInsightPr
         {insight.title}
       </h2>
 
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        {insight.description}
-      </p>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{insight.description}</p>
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 dark:text-gray-500">

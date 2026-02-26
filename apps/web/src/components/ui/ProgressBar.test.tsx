@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { ProgressBar } from './ProgressBar'
 
 describe('ProgressBar', () => {
@@ -12,22 +12,13 @@ describe('ProgressBar', () => {
     })
 
     it('should render suffix when provided', () => {
-      render(
-        <ProgressBar
-          label="claude-opus-4"
-          value={3500000}
-          max={4800000}
-          suffix="3.5M"
-        />
-      )
+      render(<ProgressBar label="claude-opus-4" value={3500000} max={4800000} suffix="3.5M" />)
 
       expect(screen.getByText('3.5M')).toBeInTheDocument()
     })
 
     it('should render without suffix', () => {
-      const { container } = render(
-        <ProgressBar label="Progress" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Progress" value={50} max={100} />)
 
       // Should not have extra elements for suffix
       const suffixElements = container.querySelectorAll('.font-medium')
@@ -64,18 +55,14 @@ describe('ProgressBar', () => {
 
   describe('progress bar fill', () => {
     it('should set correct width style on progress fill', () => {
-      const { container } = render(
-        <ProgressBar label="Test" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} />)
 
       const progressFill = container.querySelector('[class*="bg-gradient"]')
       expect(progressFill).toHaveStyle({ width: '50%' })
     })
 
     it('should have gradient styling', () => {
-      const { container } = render(
-        <ProgressBar label="Test" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} />)
 
       const progressFill = container.querySelector('[class*="bg-gradient"]')
       expect(progressFill?.className).toMatch(/bg-gradient-to-r/)
@@ -117,61 +104,36 @@ describe('ProgressBar', () => {
       render(<ProgressBar label="Token Usage" value={50} max={100} />)
 
       const progressbar = screen.getByRole('progressbar')
-      expect(progressbar).toHaveAttribute(
-        'aria-label',
-        expect.stringContaining('Token Usage')
-      )
-      expect(progressbar).toHaveAttribute(
-        'aria-label',
-        expect.stringContaining('50%')
-      )
+      expect(progressbar).toHaveAttribute('aria-label', expect.stringContaining('Token Usage'))
+      expect(progressbar).toHaveAttribute('aria-label', expect.stringContaining('50%'))
     })
 
     it('should include suffix in aria-label when provided', () => {
-      render(
-        <ProgressBar
-          label="Token Usage"
-          value={50}
-          max={100}
-          suffix="500K"
-        />
-      )
+      render(<ProgressBar label="Token Usage" value={50} max={100} suffix="500K" />)
 
       const progressbar = screen.getByRole('progressbar')
-      expect(progressbar).toHaveAttribute(
-        'aria-label',
-        expect.stringContaining('500K')
-      )
+      expect(progressbar).toHaveAttribute('aria-label', expect.stringContaining('500K'))
     })
   })
 
   describe('styling', () => {
     it('should apply custom className', () => {
       const { container } = render(
-        <ProgressBar
-          label="Test"
-          value={50}
-          max={100}
-          className="custom-class"
-        />
+        <ProgressBar label="Test" value={50} max={100} className="custom-class" />,
       )
 
       expect(container.firstChild).toHaveClass('custom-class')
     })
 
     it('should have tabular-nums for numerical display', () => {
-      const { container } = render(
-        <ProgressBar label="Test" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} />)
 
       const numericElements = container.querySelectorAll('.tabular-nums')
       expect(numericElements.length).toBeGreaterThan(0)
     })
 
     it('should have rounded corners on progress bar', () => {
-      const { container } = render(
-        <ProgressBar label="Test" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} />)
 
       const progressContainer = container.querySelector('[role="progressbar"]')
       expect(progressContainer?.className).toMatch(/rounded-full/)
@@ -180,14 +142,7 @@ describe('ProgressBar', () => {
 
   describe('edge cases', () => {
     it('should handle very large numbers', () => {
-      render(
-        <ProgressBar
-          label="Tokens"
-          value={4800000}
-          max={10000000}
-          suffix="4.8M"
-        />
-      )
+      render(<ProgressBar label="Tokens" value={4800000} max={10000000} suffix="4.8M" />)
 
       expect(screen.getByText('48%')).toBeInTheDocument()
       expect(screen.getByText('4.8M')).toBeInTheDocument()
@@ -210,13 +165,7 @@ describe('ProgressBar', () => {
   describe('stacked layout (mobile)', () => {
     it('should render label on its own line when stacked', () => {
       const { container } = render(
-        <ProgressBar
-          label="Token Usage"
-          value={50}
-          max={100}
-          suffix="500K"
-          stacked
-        />
+        <ProgressBar label="Token Usage" value={50} max={100} suffix="500K" stacked />,
       )
 
       // In stacked mode, label should be block display
@@ -226,38 +175,21 @@ describe('ProgressBar', () => {
     })
 
     it('should render percentage and suffix below label when stacked', () => {
-      render(
-        <ProgressBar
-          label="Token Usage"
-          value={50}
-          max={100}
-          suffix="500K"
-          stacked
-        />
-      )
+      render(<ProgressBar label="Token Usage" value={50} max={100} suffix="500K" stacked />)
 
       expect(screen.getByText('50%')).toBeInTheDocument()
       expect(screen.getByText('500K')).toBeInTheDocument()
     })
 
     it('should have proper spacing in stacked mode', () => {
-      const { container } = render(
-        <ProgressBar
-          label="Test"
-          value={50}
-          max={100}
-          stacked
-        />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} stacked />)
 
       // Stacked layout has mb-3 class for more spacing
       expect(container.firstChild).toHaveClass('mb-3')
     })
 
     it('should default to non-stacked layout', () => {
-      const { container } = render(
-        <ProgressBar label="Test" value={50} max={100} />
-      )
+      const { container } = render(<ProgressBar label="Test" value={50} max={100} />)
 
       // Default layout has mb-2 class
       expect(container.firstChild).toHaveClass('mb-2')

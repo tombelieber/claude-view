@@ -1,5 +1,5 @@
+import { ChevronDown, ChevronRight, Plug } from 'lucide-react'
 import { useState } from 'react'
-import { Plug, ChevronRight, ChevronDown } from 'lucide-react'
 import { CompactCodeBlock } from './live/CompactCodeBlock'
 
 interface McpProgressCardProps {
@@ -34,7 +34,8 @@ export function McpProgressCard({
       >
         <Plug className="w-3 h-3 text-purple-500 flex-shrink-0" aria-hidden="true" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
-          {server}.{method}{paramsLabel}
+          {server}.{method}
+          {paramsLabel}
         </span>
         {expanded ? (
           <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />

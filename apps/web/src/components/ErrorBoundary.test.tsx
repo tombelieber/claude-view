@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErrorBoundary } from './ErrorBoundary'
 
 // Suppress console.error for this test suite
@@ -30,7 +30,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowXSSError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Error message should appear as text (escaped), not executed
@@ -45,7 +45,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowHTMLError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should render as text, not as HTML
@@ -60,7 +60,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowHandlerError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should appear as text, not bound as event handler
@@ -75,7 +75,7 @@ describe('ErrorBoundary', () => {
       const { container } = render(
         <ErrorBoundary>
           <ThrowError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Find the error message container and verify no onclick/onerror handlers
@@ -91,7 +91,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={true} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       expect(screen.getByText(/Test error message/)).toBeInTheDocument()
@@ -101,7 +101,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={false} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       expect(screen.getByText('Safe content')).toBeInTheDocument()
@@ -111,7 +111,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={true} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should show error indicator/boundary message
@@ -122,7 +122,7 @@ describe('ErrorBoundary', () => {
       const { container } = render(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={true} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Error boundary container should be identifiable
@@ -140,7 +140,7 @@ describe('ErrorBoundary', () => {
       const { container } = render(
         <ErrorBoundary>
           <ThrowNullError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should render without crashing
@@ -156,7 +156,7 @@ describe('ErrorBoundary', () => {
       const { container } = render(
         <ErrorBoundary>
           <ThrowUndefinedError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should render without crashing
@@ -173,7 +173,7 @@ describe('ErrorBoundary', () => {
       const { container } = render(
         <ErrorBoundary>
           <ThrowLongError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should render without DOM performance issues
@@ -188,7 +188,7 @@ describe('ErrorBoundary', () => {
       render(
         <ErrorBoundary>
           <SpecialCharError />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Should render all characters safely
@@ -201,7 +201,7 @@ describe('ErrorBoundary', () => {
       const { rerender } = render(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={true} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       expect(screen.getByText(/Test error message/)).toBeInTheDocument()
@@ -210,7 +210,7 @@ describe('ErrorBoundary', () => {
       rerender(
         <ErrorBoundary>
           <ThrowingComponent shouldThrow={true} />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       )
 
       // Error should still be displayed
@@ -222,7 +222,9 @@ describe('ErrorBoundary', () => {
 describe('Integration: ErrorBoundary wraps messages', () => {
   it('should catch a crashing MessageTyped without killing the list', () => {
     // Simulate: first child crashes, second child survives
-    const Crasher = () => { throw new Error('boom') }
+    const Crasher = () => {
+      throw new Error('boom')
+    }
 
     const { container } = render(
       <div>
@@ -232,7 +234,7 @@ describe('Integration: ErrorBoundary wraps messages', () => {
         <ErrorBoundary>
           <div data-testid="survivor">I survived</div>
         </ErrorBoundary>
-      </div>
+      </div>,
     )
 
     // Crashed message shows boundary, sibling still renders

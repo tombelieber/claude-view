@@ -1,25 +1,19 @@
+import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { useMemo } from 'react'
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
   CartesianGrid,
-  Tooltip,
+  Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
-import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import type { TrendsGranularity, TrendsMetric } from '../../hooks/use-trends-data'
+import { GRANULARITY_OPTIONS, METRIC_OPTIONS } from '../../hooks/use-trends-data'
 import { cn } from '../../lib/utils'
 import type { MetricDataPoint } from '../../types/generated/MetricDataPoint'
-import type {
-  TrendsMetric,
-  TrendsGranularity,
-} from '../../hooks/use-trends-data'
-import {
-  METRIC_OPTIONS,
-  GRANULARITY_OPTIONS,
-} from '../../hooks/use-trends-data'
 
 // ============================================================================
 // Types
@@ -149,8 +143,7 @@ export function TrendsChart({
       trendValue:
         trendLine.length === 2
           ? trendLine[0].value +
-            ((trendLine[1].value - trendLine[0].value) * i) /
-              Math.max(data.length - 1, 1)
+            ((trendLine[1].value - trendLine[0].value) * i) / Math.max(data.length - 1, 1)
           : undefined,
     }))
   }, [data, trendLine])
@@ -195,10 +188,7 @@ export function TrendsChart({
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-        >
+        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
           <XAxis
             dataKey="date"
@@ -216,10 +206,12 @@ export function TrendsChart({
           />
           <Tooltip
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter={((value: number) => [
-              formatValue(value, metric),
-              METRIC_OPTIONS.find((m) => m.value === metric)?.label ?? metric,
-            ]) as any}
+            formatter={
+              ((value: number) => [
+                formatValue(value, metric),
+                METRIC_OPTIONS.find((m) => m.value === metric)?.label ?? metric,
+              ]) as any
+            }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             labelFormatter={formatDateTooltip as any}
             contentStyle={{
@@ -320,7 +312,7 @@ function GranularitySelector({
             'px-2 py-1 text-xs font-medium rounded transition-all cursor-pointer',
             value === opt.value
               ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
           )}
         >
           {opt.label}

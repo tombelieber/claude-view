@@ -24,12 +24,7 @@ export function HealthIndicator() {
   }
 
   if (isError) {
-    return (
-      <span
-        className="inline-block w-2 h-2 rounded-full bg-red-500"
-        title="Backend offline"
-      />
-    )
+    return <span className="inline-block w-2 h-2 rounded-full bg-red-500" title="Backend offline" />
   }
 
   if (data?.status === 'ok') {
@@ -41,10 +36,5 @@ export function HealthIndicator() {
     )
   }
 
-  return (
-    <span
-      className="inline-block w-2 h-2 rounded-full bg-yellow-400"
-      title="Unknown status"
-    />
-  )
+  return <span className="inline-block w-2 h-2 rounded-full bg-yellow-400" title="Unknown status" />
 }

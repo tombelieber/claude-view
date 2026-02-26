@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { type ReactNode, createContext, useCallback, useContext, useState } from 'react'
 
 interface ThreadHighlightState {
   highlightedUuids: Set<string>
@@ -21,7 +21,9 @@ export function ThreadHighlightProvider({ children }: { children: ReactNode }) {
   const clearHighlight = useCallback(() => setHighlightedUuids(EMPTY_SET), [])
 
   return (
-    <ThreadHighlightContext.Provider value={{ highlightedUuids, setHighlightedUuids, clearHighlight }}>
+    <ThreadHighlightContext.Provider
+      value={{ highlightedUuids, setHighlightedUuids, clearHighlight }}
+    >
       {children}
     </ThreadHighlightContext.Provider>
   )

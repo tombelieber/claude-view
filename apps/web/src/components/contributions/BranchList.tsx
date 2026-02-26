@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
-import { GitBranch, ChevronDown, ArrowUpDown, FolderOpen } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { BranchCard } from './BranchCard'
+import { ArrowUpDown, ChevronDown, FolderOpen, GitBranch } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ContributionsTimeRange } from '../../hooks/use-contributions'
+import { cn } from '../../lib/utils'
 import type { BranchBreakdown } from '../../types/generated'
+import { BranchCard } from './BranchCard'
 
 interface BranchListProps {
   byBranch: BranchBreakdown[]
@@ -31,7 +31,14 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
  * - Expand/collapse individual branches
  * - Shows AI share progress for each branch
  */
-export function BranchList({ byBranch, onSessionDrillDown, timeRange = { preset: '7d' }, projectId, activeBranchFilter, onBranchFilter }: BranchListProps) {
+export function BranchList({
+  byBranch,
+  onSessionDrillDown,
+  timeRange = { preset: '7d' },
+  projectId,
+  activeBranchFilter,
+  onBranchFilter,
+}: BranchListProps) {
   const [sortBy, setSortBy] = useState<SortKey>('lines')
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null)
   const [showSortMenu, setShowSortMenu] = useState(false)
@@ -54,7 +61,7 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = { preset:
 
   // Group by project (only when data has project info and not filtering by a single project)
   const groupedBranches = useMemo(() => {
-    const hasProjects = sortedBranches.some(b => b.projectName)
+    const hasProjects = sortedBranches.some((b) => b.projectName)
     if (!hasProjects) return [{ name: '', branches: sortedBranches }]
 
     const groups = new Map<string, BranchBreakdown[]>()
@@ -122,7 +129,7 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = { preset:
               'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
               'hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-              'cursor-pointer'
+              'cursor-pointer',
             )}
             aria-haspopup="listbox"
             aria-expanded={showSortMenu}
@@ -160,7 +167,7 @@ export function BranchList({ byBranch, onSessionDrillDown, timeRange = { preset:
                       'focus-visible:outline-none focus-visible:bg-blue-50 dark:focus-visible:bg-blue-900/30',
                       option.value === sortBy
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700',
                     )}
                     role="option"
                     aria-selected={option.value === sortBy}

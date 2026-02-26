@@ -1,10 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { HookProgressCard } from './HookProgressCard'
 
 vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  CompactCodeBlock: ({
+    code,
+    language,
+    blockId,
+  }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+      {code}
+    </pre>
   ),
 }))
 
@@ -12,11 +18,7 @@ describe('HookProgressCard', () => {
   describe('Title and status rendering', () => {
     it('should display hook event and command name', () => {
       render(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="setup-env.sh"
-        />
+        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup-env.sh" />,
       )
 
       expect(screen.getByText(/SessionStart/)).toBeInTheDocument()
@@ -25,11 +27,7 @@ describe('HookProgressCard', () => {
 
     it('should have amber left border', () => {
       const { container } = render(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="cmd"
-        />
+        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
       )
 
       const card = container.firstElementChild as HTMLElement
@@ -45,7 +43,7 @@ describe('HookProgressCard', () => {
           hookName="pre-session"
           command="setup.sh"
           output="Environment configured successfully"
-        />
+        />,
       )
 
       expect(screen.getByText(/Environment configured successfully/)).toBeInTheDocument()
@@ -58,7 +56,7 @@ describe('HookProgressCard', () => {
           hookName="pre-session"
           command="setup.sh"
           output="some output"
-        />
+        />,
       )
 
       const codeBlock = screen.getByTestId('compact-code-block')
@@ -68,11 +66,7 @@ describe('HookProgressCard', () => {
 
     it('should not render code block when output is undefined', () => {
       render(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="setup.sh"
-        />
+        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup.sh" />,
       )
 
       expect(screen.queryByTestId('compact-code-block')).not.toBeInTheDocument()
@@ -82,11 +76,7 @@ describe('HookProgressCard', () => {
   describe('Accessibility', () => {
     it('should have aria-hidden on decorative icon', () => {
       const { container } = render(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="cmd"
-        />
+        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
       )
       const svg = container.querySelector('svg')
       expect(svg?.getAttribute('aria-hidden')).toBe('true')

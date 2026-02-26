@@ -1,35 +1,30 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  GitBranch,
-  Download,
-  Info,
-  RefreshCw,
-  Loader2,
-  CheckCircle2,
   AlertCircle,
-  XCircle,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
   Command,
+  Download,
+  GitBranch,
   HardDrive,
   History,
-  AlertTriangle,
-  ChevronDown,
+  Info,
+  Loader2,
+  RefreshCw,
+  XCircle,
 } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useStatus, formatRelativeTime } from '../hooks/use-status'
+import { type ExportFormat, useExport } from '../hooks/use-export'
 import { useGitSync } from '../hooks/use-git-sync'
-import { useExport, type ExportFormat } from '../hooks/use-export'
-import {
-  useSystem,
-  useReset,
-  formatDuration,
-  formatRelativeTimestamp,
-} from '../hooks/use-system'
-import { useQueryClient } from '@tanstack/react-query'
+import { formatRelativeTime, useStatus } from '../hooks/use-status'
+import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '../hooks/use-system'
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
-import { StorageOverview } from './StorageOverview'
-import { ProviderSettings } from './ProviderSettings'
 import type { IndexRunInfo } from '../types/generated'
+import { ProviderSettings } from './ProviderSettings'
+import { StorageOverview } from './StorageOverview'
 
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
@@ -43,10 +38,12 @@ interface SettingsSectionProps {
 
 function SettingsSection({ icon, title, children, className }: SettingsSectionProps) {
   return (
-    <div className={cn(
-      'bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden',
-      className
-    )}>
+    <div
+      className={cn(
+        'bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden',
+        className,
+      )}
+    >
       <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <span className="text-gray-500 dark:text-gray-400">{icon}</span>
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
@@ -116,7 +113,9 @@ function IndexHistorySection({
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-3 cursor-pointer transition-colors"
       >
-        <ChevronDown className={cn('w-4 h-4 transition-transform duration-200', isExpanded && 'rotate-180')} />
+        <ChevronDown
+          className={cn('w-4 h-4 transition-transform duration-200', isExpanded && 'rotate-180')}
+        />
         {isExpanded ? 'Collapse' : `Show ${history.length} runs`}
       </button>
 
@@ -149,7 +148,7 @@ function IndexHistorySection({
                           ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                           : run.type === 'incremental'
                             ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                            : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                            : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
                       )}
                     >
                       {run.type}
@@ -254,7 +253,11 @@ function DangerZoneSection() {
                 htmlFor="reset-confirm"
                 className="text-sm text-red-700 dark:text-red-300 mb-1 block"
               >
-                Type <code className="font-mono bg-red-100 dark:bg-red-900/30 px-1 rounded">RESET_ALL_DATA</code> to confirm:
+                Type{' '}
+                <code className="font-mono bg-red-100 dark:bg-red-900/30 px-1 rounded">
+                  RESET_ALL_DATA
+                </code>{' '}
+                to confirm:
               </label>
               <input
                 id="reset-confirm"
@@ -318,8 +321,19 @@ function DangerZoneSection() {
 export function SettingsPage() {
   const { data: status } = useStatus()
   const { data: systemData, isLoading: systemLoading } = useSystem()
-  const { triggerSync, status: syncStatus, isLoading: isSyncing, error: syncError, reset: resetSync } = useGitSync()
-  const { exportSessions, isExporting, error: exportError, clearError: clearExportError } = useExport()
+  const {
+    triggerSync,
+    status: syncStatus,
+    isLoading: isSyncing,
+    error: syncError,
+    reset: resetSync,
+  } = useGitSync()
+  const {
+    exportSessions,
+    isExporting,
+    error: exportError,
+    clearError: clearExportError,
+  } = useExport()
 
   const queryClient = useQueryClient()
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
@@ -328,29 +342,32 @@ export function SettingsPage() {
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const handleIntervalChange = useCallback(async (value: string) => {
-    const secs = parseInt(value, 10)
-    if (isNaN(secs)) return
+  const handleIntervalChange = useCallback(
+    async (value: string) => {
+      const secs = Number.parseInt(value, 10)
+      if (isNaN(secs)) return
 
-    setIsSavingInterval(true)
-    setIntervalSaveStatus('idle')
-    try {
-      const res = await fetch('/api/settings/git-sync-interval', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intervalSecs: secs }),
-      })
-      if (!res.ok) throw new Error('Failed to save')
-      setIntervalSaveStatus('success')
-      queryClient.invalidateQueries({ queryKey: ['status'] })
-      setTimeout(() => setIntervalSaveStatus('idle'), 2000)
-    } catch {
-      setIntervalSaveStatus('error')
-      setTimeout(() => setIntervalSaveStatus('idle'), 3000)
-    } finally {
-      setIsSavingInterval(false)
-    }
-  }, [queryClient])
+      setIsSavingInterval(true)
+      setIntervalSaveStatus('idle')
+      try {
+        const res = await fetch('/api/settings/git-sync-interval', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intervalSecs: secs }),
+        })
+        if (!res.ok) throw new Error('Failed to save')
+        setIntervalSaveStatus('success')
+        queryClient.invalidateQueries({ queryKey: ['status'] })
+        setTimeout(() => setIntervalSaveStatus('idle'), 2000)
+      } catch {
+        setIntervalSaveStatus('error')
+        setTimeout(() => setIntervalSaveStatus('idle'), 3000)
+      } finally {
+        setIsSavingInterval(false)
+      }
+    },
+    [queryClient],
+  )
 
   const handleSync = async () => {
     resetSync()
@@ -390,14 +407,8 @@ export function SettingsPage() {
                   label="Last sync"
                   value={status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'}
                 />
-                <InfoRow
-                  label="Commits found"
-                  value={formatNumber(status.commitsFound)}
-                />
-                <InfoRow
-                  label="Links created"
-                  value={formatNumber(status.linksCreated)}
-                />
+                <InfoRow label="Commits found" value={formatNumber(status.commitsFound)} />
+                <InfoRow label="Links created" value={formatNumber(status.linksCreated)} />
               </div>
             )}
 
@@ -410,7 +421,9 @@ export function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <select
                     id="sync-interval"
-                    value={status?.gitSyncIntervalSecs != null ? Number(status.gitSyncIntervalSecs) : 60}
+                    value={
+                      status?.gitSyncIntervalSecs != null ? Number(status.gitSyncIntervalSecs) : 60
+                    }
                     onChange={(e) => handleIntervalChange(e.target.value)}
                     disabled={isSavingInterval}
                     className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
@@ -424,9 +437,15 @@ export function SettingsPage() {
                     <option value="1800">30 minutes</option>
                     <option value="3600">1 hour</option>
                   </select>
-                  {isSavingInterval && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
-                  {intervalSaveStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
-                  {intervalSaveStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                  {isSavingInterval && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                  )}
+                  {intervalSaveStatus === 'success' && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  )}
+                  {intervalSaveStatus === 'error' && (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                  )}
                 </div>
               </div>
             </div>
@@ -461,7 +480,7 @@ export function SettingsPage() {
                 'transition-colors duration-150',
                 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
               )}
             >
               {isSyncing ? (
@@ -489,7 +508,9 @@ export function SettingsPage() {
 
             {/* Format selection */}
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Format</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Format
+              </label>
               <div className="flex items-center gap-4">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -518,7 +539,9 @@ export function SettingsPage() {
 
             {/* Scope selection */}
             <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Scope</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Scope
+              </label>
               <div className="flex items-center gap-4">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -541,7 +564,9 @@ export function SettingsPage() {
                     disabled
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Current project only</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Current project only
+                  </span>
                   <span className="text-xs text-gray-400">(coming soon)</span>
                 </label>
               </div>
@@ -565,7 +590,7 @@ export function SettingsPage() {
                 'transition-colors duration-150',
                 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
               )}
             >
               {isExporting ? (
@@ -594,7 +619,9 @@ export function SettingsPage() {
             </div>
 
             <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Keyboard Shortcuts</h3>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                Keyboard Shortcuts
+              </h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="flex items-center gap-2">
                   <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
@@ -610,13 +637,15 @@ export function SettingsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>E
+                    <Command className="w-3 h-3" />
+                    <span className="text-[10px]">Shift</span>E
                   </kbd>
                   <span className="text-gray-600 dark:text-gray-400">Export HTML</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" /><span className="text-[10px]">Shift</span>P
+                    <Command className="w-3 h-3" />
+                    <span className="text-[10px]">Shift</span>P
                   </kbd>
                   <span className="text-gray-600 dark:text-gray-400">Export PDF</span>
                 </div>

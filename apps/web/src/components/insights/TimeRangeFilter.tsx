@@ -1,5 +1,5 @@
-import { cn } from '../../lib/utils'
 import type { TimeRange } from '../../hooks/use-insights'
+import { cn } from '../../lib/utils'
 
 interface TimeRangeFilterProps {
   value: TimeRange
@@ -24,7 +24,7 @@ export function TimeRangeFilter({ value, onChange }: TimeRangeFilterProps) {
             'px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-150 cursor-pointer',
             value === option.value
               ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200',
           )}
         >
           {option.label}

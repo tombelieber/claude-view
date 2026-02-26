@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { buildThreadMap, getThreadChain } from './thread-map'
 
 interface MockMsg {
@@ -73,9 +73,7 @@ describe('buildThreadMap', () => {
   })
 
   it('treats orphaned children (parent_uuid not in list) as root', () => {
-    const msgs: MockMsg[] = [
-      { uuid: 'b', parent_uuid: 'nonexistent' },
-    ]
+    const msgs: MockMsg[] = [{ uuid: 'b', parent_uuid: 'nonexistent' }]
     const map = buildThreadMap(msgs)
     expect(map.get('b')).toEqual({ indent: 0, isChild: false, parentUuid: undefined })
   })

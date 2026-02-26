@@ -86,7 +86,10 @@ export function buildThreadMap(messages: HasUuids[]): Map<string, ThreadInfo> {
  * Returns the full ancestor + descendant chain for a given uuid.
  * Used for hover-highlighting an entire thread.
  */
-export function getThreadChain(uuid: string, messages: { uuid?: string | null; parent_uuid?: string | null }[]): Set<string> {
+export function getThreadChain(
+  uuid: string,
+  messages: { uuid?: string | null; parent_uuid?: string | null }[],
+): Set<string> {
   const chain = new Set<string>()
   const childrenOf = new Map<string, string[]>()
   const parentOf = new Map<string, string>()

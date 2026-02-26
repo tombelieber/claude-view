@@ -1,20 +1,26 @@
-import { useState, useMemo } from 'react'
+import { CheckCircle, Loader2, Wrench, XCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { Wrench, CheckCircle, XCircle, Loader2 } from 'lucide-react'
-import { CompactCodeBlock } from './CompactCodeBlock'
-import { JsonTree } from './JsonTree'
-import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
-import { getToolRenderer } from './ToolRenderers'
-import { useMonitorStore } from '../../store/monitor-store'
-import { cn } from '../../lib/utils'
+import remarkGfm from 'remark-gfm'
 import {
-  tryParseJson, isJsonContent, isDiffContent, isCodeLikeContent,
-  stripLineNumbers, detectCodeLanguage, shortenToolName, toolChipColor,
+  detectCodeLanguage,
+  isCodeLikeContent,
+  isDiffContent,
+  isJsonContent,
+  shortenToolName,
+  stripLineNumbers,
+  toolChipColor,
+  tryParseJson,
 } from '../../lib/content-detection'
 import { markdownComponents } from '../../lib/markdown-components'
+import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
+import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
+import { CompactCodeBlock } from './CompactCodeBlock'
+import { JsonTree } from './JsonTree'
 import type { RichMessage } from './RichPane'
+import { getToolRenderer } from './ToolRenderers'
 
 // --- Helpers ---
 
@@ -59,7 +65,11 @@ function computeDuration(startTs?: number, endTs?: number): string | null {
 
 // --- Result Content Renderer ---
 
-function ResultContent({ content, index, verboseMode }: { content: string; index: number; verboseMode: boolean }) {
+function ResultContent({
+  content,
+  index,
+  verboseMode,
+}: { content: string; index: number; verboseMode: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const hasContent = content.length > 0
   if (!hasContent) return null
@@ -73,7 +83,11 @@ function ResultContent({ content, index, verboseMode }: { content: string; index
 
   if (jsonDetected && parsedJson !== null) {
     return richRenderMode === 'json' ? (
-      <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`result-${index}`} />
+      <CompactCodeBlock
+        code={JSON.stringify(parsedJson, null, 2)}
+        language="json"
+        blockId={`result-${index}`}
+      />
     ) : (
       <JsonTree data={parsedJson} />
     )
@@ -90,7 +104,13 @@ function ResultContent({ content, index, verboseMode }: { content: string; index
   }
   return (
     <div className="text-[10px] text-gray-600 dark:text-gray-500 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{content}</Markdown>
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
+        components={markdownComponents}
+      >
+        {content}
+      </Markdown>
     </div>
   )
 }
@@ -104,14 +124,23 @@ export interface PairedToolCardProps {
   verboseMode?: boolean
 }
 
-export function PairedToolCard({ toolUse, toolResult, index, verboseMode = false }: PairedToolCardProps) {
+export function PairedToolCard({
+  toolUse,
+  toolResult,
+  index,
+  verboseMode = false,
+}: PairedToolCardProps) {
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const rawName = toolUse.name || 'Tool'
   const { short: label, server } = shortenToolName(rawName)
   const chipColor = toolChipColor(rawName)
   const inputObj = toolUse.inputData
-  const isObjectInput = inputObj !== null && inputObj !== undefined && typeof inputObj === 'object' && !Array.isArray(inputObj)
+  const isObjectInput =
+    inputObj !== null &&
+    inputObj !== undefined &&
+    typeof inputObj === 'object' &&
+    !Array.isArray(inputObj)
   const isAskUserQuestion = rawName === 'AskUserQuestion' && isAskUserQuestionInput(inputObj)
 
   const RichRenderer = getToolRenderer(rawName)
@@ -147,7 +176,9 @@ export function PairedToolCard({ toolUse, toolResult, index, verboseMode = false
         <div className="min-w-0 flex-1">
           {/* Tool name + server + toggle */}
           <div className="flex items-start gap-1.5 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 ${chipColor}`}>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 ${chipColor}`}
+            >
               {label}
             </span>
             {server && (
@@ -175,15 +206,27 @@ export function PairedToolCard({ toolUse, toolResult, index, verboseMode = false
           {/* Input section */}
           {showRich ? (
             <div className="mt-1">
-              <RichRenderer inputData={inputObj as Record<string, unknown>} name={rawName} blockIdPrefix={`${index}-`} />
+              <RichRenderer
+                inputData={inputObj as Record<string, unknown>}
+                name={rawName}
+                blockIdPrefix={`${index}-`}
+              />
             </div>
           ) : isObjectInput ? (
             <div className="mt-1">
-              <CompactCodeBlock code={JSON.stringify(inputObj, null, 2)} language="json" blockId={`tool-input-${index}`} />
+              <CompactCodeBlock
+                code={JSON.stringify(inputObj, null, 2)}
+                language="json"
+                blockId={`tool-input-${index}`}
+              />
             </div>
           ) : toolUse.input ? (
             <div className="mt-1">
-              <CompactCodeBlock code={toolUse.input} language="json" blockId={`tool-input-${index}`} />
+              <CompactCodeBlock
+                code={toolUse.input}
+                language="json"
+                blockId={`tool-input-${index}`}
+              />
             </div>
           ) : null}
 
@@ -196,10 +239,12 @@ export function PairedToolCard({ toolUse, toolResult, index, verboseMode = false
                 ) : (
                   <CheckCircle className="w-3 h-3 text-green-500 dark:text-green-400 flex-shrink-0" />
                 )}
-                <span className={cn(
-                  'text-[10px] font-mono',
-                  isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-600',
-                )}>
+                <span
+                  className={cn(
+                    'text-[10px] font-mono',
+                    isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-600',
+                  )}
+                >
                   {isError ? 'error' : 'result'}
                 </span>
                 {duration && (
@@ -209,14 +254,20 @@ export function PairedToolCard({ toolUse, toolResult, index, verboseMode = false
                 )}
               </div>
               <div className="pl-4">
-                <ResultContent content={toolResult.content} index={index} verboseMode={verboseMode} />
+                <ResultContent
+                  content={toolResult.content}
+                  index={index}
+                  verboseMode={verboseMode}
+                />
               </div>
             </div>
           ) : (
             <div className="mt-1 pt-1 border-t border-gray-200/50 dark:border-gray-700/50">
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-3 h-3 text-gray-400 dark:text-gray-600 animate-spin flex-shrink-0" />
-                <span className="text-[10px] text-gray-400 dark:text-gray-600 italic">pending...</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-600 italic">
+                  pending...
+                </span>
               </div>
             </div>
           )}

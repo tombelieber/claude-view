@@ -1,6 +1,6 @@
-import { defaultConfig } from '@tamagui/config/v5';
-import { createTamagui } from 'tamagui';
-import { colors, spacing } from '@claude-view/design-tokens';
+import { colors, spacing } from '@claude-view/design-tokens'
+import { defaultConfig } from '@tamagui/config/v5'
+import { createTamagui } from 'tamagui'
 
 const config = createTamagui({
   ...defaultConfig,
@@ -15,10 +15,10 @@ const config = createTamagui({
       ...spacing,
     },
   },
-});
+})
 
-export default config;
-export type Conf = typeof config;
+export default config
+export type Conf = typeof config
 
 declare module 'tamagui' {
   interface TamaguiCustomConfig extends Conf {}

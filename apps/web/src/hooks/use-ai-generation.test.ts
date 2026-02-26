@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatTokens, formatLineCount } from './use-ai-generation'
+import { describe, expect, it } from 'vitest'
+import { formatLineCount, formatTokens } from './use-ai-generation'
 
 describe('formatTokens', () => {
   it('returns -- for null/undefined', () => {

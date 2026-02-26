@@ -1,29 +1,45 @@
 // src/components/HistoryView.tsx
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Link, useSearchParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search, X, ArrowLeft, Clock, TrendingUp, FileEdit, MessageSquare, Coins, ChevronDown, FolderOpen, Loader2 } from 'lucide-react'
-import { buildSessionUrl } from '../lib/url-utils'
-import { NO_BRANCH } from '../lib/constants'
-import { useProjectSummaries } from '../hooks/use-projects'
-import { useSessionsInfinite } from '../hooks/use-sessions-infinite'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Clock,
+  Coins,
+  FileEdit,
+  FolderOpen,
+  Loader2,
+  MessageSquare,
+  Search,
+  TrendingUp,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useDebounce } from '../hooks/use-debounce'
-import { SessionCard } from './SessionCard'
+import type { IndexingProgress } from '../hooks/use-indexing-progress'
+import { useIsMobile } from '../hooks/use-media-query'
+import { useProjectSummaries } from '../hooks/use-projects'
+import { DEFAULT_FILTERS, useSessionFilters } from '../hooks/use-session-filters'
+import type { SessionSort } from '../hooks/use-session-filters'
+import { useSessionsInfinite } from '../hooks/use-sessions-infinite'
+import { useTimeRange } from '../hooks/use-time-range'
+import { NO_BRANCH } from '../lib/constants'
+import { groupSessionsByDate } from '../lib/date-groups'
+import { buildSessionUrl } from '../lib/url-utils'
+import { cn } from '../lib/utils'
+import {
+  MAX_GROUPABLE_SESSIONS,
+  groupSessions,
+  shouldDisableGrouping,
+} from '../utils/group-sessions'
+import { ActivitySparkline } from './ActivitySparkline'
 import { CompactSessionTable } from './CompactSessionTable'
 import type { SortColumn } from './CompactSessionTable'
+import { SessionsEmptyState, Skeleton } from './LoadingStates'
+import { SessionCard } from './SessionCard'
 import { SessionToolbar } from './SessionToolbar'
-import { ActivitySparkline } from './ActivitySparkline'
-import { useSessionFilters, DEFAULT_FILTERS } from '../hooks/use-session-filters'
-import type { SessionSort } from '../hooks/use-session-filters'
-import { groupSessionsByDate } from '../lib/date-groups'
-import { groupSessions, shouldDisableGrouping, MAX_GROUPABLE_SESSIONS } from '../utils/group-sessions'
-import { Skeleton, SessionsEmptyState } from './LoadingStates'
-import { cn } from '../lib/utils'
-import { useTimeRange } from '../hooks/use-time-range'
-import { TimeRangeSelector, DateRangePicker } from './ui'
-import { useIsMobile } from '../hooks/use-media-query'
-import type { IndexingProgress } from '../hooks/use-indexing-progress'
+import { DateRangePicker, TimeRangeSelector } from './ui'
 
 /** Human-readable labels for sort options */
 const SORT_LABELS: Record<SessionSort, string> = {
@@ -52,7 +68,16 @@ function formatDuration(seconds: number): string {
 }
 
 /** Format value for the sort metric displayed on each card */
-function formatSortMetric(session: { durationSeconds?: number; userPromptCount?: number; filesEditedCount?: number; totalInputTokens?: bigint | null; totalOutputTokens?: bigint | null }, sort: SessionSort): string | null {
+function formatSortMetric(
+  session: {
+    durationSeconds?: number
+    userPromptCount?: number
+    filesEditedCount?: number
+    totalInputTokens?: bigint | null
+    totalOutputTokens?: bigint | null
+  },
+  sort: SessionSort,
+): string | null {
   switch (sort) {
     case 'duration': {
       const dur = session.durationSeconds ?? 0
@@ -102,13 +127,7 @@ export function HistoryView() {
   const sidebarBranch = searchParams.get('branch') || null
 
   // Server-side filtered + paginated query
-  const {
-    data,
-    isLoading,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useSessionsInfinite({
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useSessionsInfinite({
     filters,
     search: debouncedSearch,
     timeAfter: timeRange.fromTimestamp ?? undefined,
@@ -122,7 +141,11 @@ export function HistoryView() {
 
   // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
   const hasDeepLinkSort = filters.sort !== 'recent'
-  const hasDeepLinkFilter = filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null
+  const hasDeepLinkFilter =
+    filters.hasCommits !== 'any' ||
+    filters.hasSkills !== 'any' ||
+    filters.highReedit !== null ||
+    filters.minDuration !== null
   const hasDeepLink = hasDeepLinkSort || hasDeepLinkFilter
 
   // Focus search on mount (only if not deep-linked)
@@ -143,7 +166,7 @@ export function HistoryView() {
           fetchNextPage()
         }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '200px' },
     )
 
     observer.observe(sentinel)
@@ -180,20 +203,33 @@ export function HistoryView() {
     return [...set].sort()
   }, [sessions])
 
-  const isFiltered = debouncedSearch || sidebarProject || sidebarBranch || timeRange.preset !== '30d' || filters.sort !== 'recent' || filters.hasCommits !== 'any' || filters.hasSkills !== 'any' || filters.highReedit !== null || filters.minDuration !== null || filters.minFiles !== null || filters.minTokens !== null || filters.branches.length > 0 || filters.models.length > 0
+  const isFiltered =
+    debouncedSearch ||
+    sidebarProject ||
+    sidebarBranch ||
+    timeRange.preset !== '30d' ||
+    filters.sort !== 'recent' ||
+    filters.hasCommits !== 'any' ||
+    filters.hasSkills !== 'any' ||
+    filters.highReedit !== null ||
+    filters.minDuration !== null ||
+    filters.minFiles !== null ||
+    filters.minTokens !== null ||
+    filters.branches.length > 0 ||
+    filters.models.length > 0
 
-  const tooManyToGroup = shouldDisableGrouping(sessions.length);
+  const tooManyToGroup = shouldDisableGrouping(sessions.length)
 
   // Auto-reset groupBy when session count exceeds the limit
-  const [groupByAutoReset, setGroupByAutoReset] = useState(false);
+  const [groupByAutoReset, setGroupByAutoReset] = useState(false)
   useEffect(() => {
     if (tooManyToGroup && filters.groupBy !== 'none') {
-      setFilters({ ...filters, groupBy: 'none' });
-      setGroupByAutoReset(true);
+      setFilters({ ...filters, groupBy: 'none' })
+      setGroupByAutoReset(true)
     } else if (!tooManyToGroup) {
-      setGroupByAutoReset(false);
+      setGroupByAutoReset(false)
     }
-  }, [tooManyToGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tooManyToGroup]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
@@ -201,23 +237,25 @@ export function HistoryView() {
       return groupSessions(sessions, filters.groupBy)
     }
     // Default behavior: group by date when sort is 'recent', otherwise single group
-    return filters.sort === 'recent' ? groupSessionsByDate(sessions) : [{ label: SORT_LABELS[filters.sort], sessions }]
+    return filters.sort === 'recent'
+      ? groupSessionsByDate(sessions)
+      : [{ label: SORT_LABELS[filters.sort], sessions }]
   }, [sessions, filters.groupBy, filters.sort, tooManyToGroup])
 
   // Collapse state for group headers
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   const toggleGroup = useCallback((label: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
       if (next.has(label)) {
-        next.delete(label);
+        next.delete(label)
       } else {
-        next.add(label);
+        next.add(label)
       }
-      return next;
-    });
-  }, []);
+      return next
+    })
+  }, [])
 
   function clearAll() {
     setSearchText('')
@@ -238,7 +276,6 @@ export function HistoryView() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-5">
-
         {/* Deep-link context banner */}
         {hasDeepLink && (
           <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
@@ -285,7 +322,7 @@ export function HistoryView() {
               ref={searchRef}
               type="text"
               value={searchText}
-              onChange={e => setSearchText(e.target.value)}
+              onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search sessions, files, skills..."
               className="w-full pl-9 pr-9 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none transition-colors focus:bg-white dark:focus:bg-gray-900 focus:border-gray-400 dark:focus:border-gray-500 focus:ring-1 focus:ring-gray-400/20 dark:focus:ring-gray-500/20 placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
             />
@@ -309,7 +346,12 @@ export function HistoryView() {
               {sidebarBranch && (
                 <>
                   <span className="text-blue-300 dark:text-blue-600">/</span>
-                  <span className={cn("text-blue-600 dark:text-blue-400 truncate", sidebarBranch === NO_BRANCH && 'italic')}>
+                  <span
+                    className={cn(
+                      'text-blue-600 dark:text-blue-400 truncate',
+                      sidebarBranch === NO_BRANCH && 'italic',
+                    )}
+                  >
                     {sidebarBranch === NO_BRANCH ? '(no branch)' : sidebarBranch}
                   </span>
                 </>
@@ -357,10 +399,7 @@ export function HistoryView() {
               ]}
             />
             {timeRange.preset === 'custom' && (
-              <DateRangePicker
-                value={timeRange.customRange}
-                onChange={setCustomRange}
-              />
+              <DateRangePicker value={timeRange.customRange} onChange={setCustomRange} />
             )}
 
             {/* Active filter summary */}
@@ -384,35 +423,44 @@ export function HistoryView() {
         {/* Grouping safeguard warning */}
         {tooManyToGroup && groupByAutoReset && (
           <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-            Grouping disabled — {sessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS} session limit. Use filters to narrow results.
+            Grouping disabled — {sessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS}{' '}
+            session limit. Use filters to narrow results.
           </div>
         )}
 
         {/* Classify-all banner — disabled (feature flag off) */}
 
         {/* Inline indexing progress — shows during active startup indexing */}
-        {indexingProgress && (indexingProgress.phase === 'reading-indexes' || indexingProgress.phase === 'ready' || indexingProgress.phase === 'deep-indexing') && (
-          <div className="mt-3 flex items-center gap-2.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <Loader2 className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 animate-spin flex-shrink-0" aria-hidden="true" />
-            <span className="text-xs text-blue-700 dark:text-blue-300">
-              {indexingProgress.phase === 'reading-indexes' && 'Scanning sessions...'}
-              {indexingProgress.phase === 'ready' && `Found ${indexingProgress.sessions.toLocaleString()} sessions. Starting index...`}
-              {indexingProgress.phase === 'deep-indexing' && (
-                indexingProgress.total > 0
-                  ? `Indexing: ${indexingProgress.indexed.toLocaleString()} / ${indexingProgress.total.toLocaleString()} sessions...`
-                  : `Indexing: ${indexingProgress.indexed.toLocaleString()} sessions...`
+        {indexingProgress &&
+          (indexingProgress.phase === 'reading-indexes' ||
+            indexingProgress.phase === 'ready' ||
+            indexingProgress.phase === 'deep-indexing') && (
+            <div className="mt-3 flex items-center gap-2.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <Loader2
+                className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 animate-spin flex-shrink-0"
+                aria-hidden="true"
+              />
+              <span className="text-xs text-blue-700 dark:text-blue-300">
+                {indexingProgress.phase === 'reading-indexes' && 'Scanning sessions...'}
+                {indexingProgress.phase === 'ready' &&
+                  `Found ${indexingProgress.sessions.toLocaleString()} sessions. Starting index...`}
+                {indexingProgress.phase === 'deep-indexing' &&
+                  (indexingProgress.total > 0
+                    ? `Indexing: ${indexingProgress.indexed.toLocaleString()} / ${indexingProgress.total.toLocaleString()} sessions...`
+                    : `Indexing: ${indexingProgress.indexed.toLocaleString()} sessions...`)}
+              </span>
+              {indexingProgress.phase === 'deep-indexing' && indexingProgress.total > 0 && (
+                <div className="flex-1 max-w-32 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300 ease-out"
+                    style={{
+                      width: `${Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))}%`,
+                    }}
+                  />
+                </div>
               )}
-            </span>
-            {indexingProgress.phase === 'deep-indexing' && indexingProgress.total > 0 && (
-              <div className="flex-1 max-w-32 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))}%` }}
-                />
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
         {/* Session List or Table */}
         <div className="mt-5">
@@ -435,19 +483,23 @@ export function HistoryView() {
                   setFilters({ ...filters, sort: newSort })
                 }}
                 sortColumn={
-                  filters.sort === 'prompts' ? 'prompts' :
-                  filters.sort === 'tokens' ? 'prompts' :
-                  filters.sort === 'files_edited' ? 'files' :
-                  filters.sort === 'duration' ? 'duration' :
-                  'time'
+                  filters.sort === 'prompts'
+                    ? 'prompts'
+                    : filters.sort === 'tokens'
+                      ? 'prompts'
+                      : filters.sort === 'files_edited'
+                        ? 'files'
+                        : filters.sort === 'duration'
+                          ? 'duration'
+                          : 'time'
                 }
                 sortDirection="desc"
               />
             ) : (
               /* Timeline view */
               <div>
-                {groups.map(group => {
-                  const isCollapsed = collapsedGroups.has(group.label);
+                {groups.map((group) => {
+                  const isCollapsed = collapsedGroups.has(group.label)
                   return (
                     <div key={group.label}>
                       {/* Group header (collapsible) */}
@@ -460,14 +512,17 @@ export function HistoryView() {
                         <ChevronDown
                           className={cn(
                             'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
-                            isCollapsed && '-rotate-90'
+                            isCollapsed && '-rotate-90',
                           )}
                         />
                         <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
                           {group.label}
                         </span>
                         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                        <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap" aria-label={`${group.sessions.length} sessions`}>
+                        <span
+                          className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap"
+                          aria-label={`${group.sessions.length} sessions`}
+                        >
                           {group.sessions.length}
                         </span>
                       </button>
@@ -476,13 +531,18 @@ export function HistoryView() {
                       {!isCollapsed && (
                         <div className="space-y-1.5 pb-3">
                           {group.sessions.map((session, idx) => {
-                            const metric = filters.sort !== 'recent' ? formatSortMetric(session, filters.sort) : null
+                            const metric =
+                              filters.sort !== 'recent'
+                                ? formatSortMetric(session, filters.sort)
+                                : null
                             return (
                               <div key={session.id} className="relative">
                                 {/* Rank badge for non-default sorts */}
                                 {filters.sort !== 'recent' && (
                                   <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">{idx + 1}</span>
+                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">
+                                      {idx + 1}
+                                    </span>
                                   </div>
                                 )}
                                 <Link
@@ -507,7 +567,7 @@ export function HistoryView() {
                         </div>
                       )}
                     </div>
-                  );
+                  )
                 })}
               </div>
             )

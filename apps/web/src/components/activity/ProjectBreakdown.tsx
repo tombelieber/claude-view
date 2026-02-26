@@ -1,6 +1,6 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { formatHumanDuration } from '../../lib/format-utils'
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ProjectActivity } from '../../lib/activity-utils'
+import { formatHumanDuration } from '../../lib/format-utils'
 
 const BAR_COLORS = [
   '#3b82f6', // blue-500
@@ -19,7 +19,11 @@ interface ProjectBreakdownProps {
   selectedProject?: string | null
 }
 
-export function ProjectBreakdown({ projects, onProjectClick, selectedProject }: ProjectBreakdownProps) {
+export function ProjectBreakdown({
+  projects,
+  onProjectClick,
+  selectedProject,
+}: ProjectBreakdownProps) {
   if (projects.length === 0) {
     return null
   }
@@ -87,9 +91,7 @@ export function ProjectBreakdown({ projects, onProjectClick, selectedProject }: 
               onClick={(_, index) => {
                 const entry = chartData[index]
                 if (entry?.projectPath) {
-                  onProjectClick?.(
-                    selectedProject === entry.projectPath ? null : entry.projectPath
-                  )
+                  onProjectClick?.(selectedProject === entry.projectPath ? null : entry.projectPath)
                 }
               }}
             >

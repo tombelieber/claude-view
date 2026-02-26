@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { RichMessage } from '../RichPane'
-import type { ActionItem, TurnSeparator, TimelineItem, ActionCategory } from './types'
+import type { ActionCategory, ActionItem, TimelineItem, TurnSeparator } from './types'
 
 function makeLabel(toolName: string, input?: string): string {
   if (!input) return toolName
@@ -58,13 +58,20 @@ function makeLabel(toolName: string, input?: string): string {
 /** Map progress subtypes to their logical category */
 function progressCategory(subtype: string | undefined): ActionCategory {
   switch (subtype) {
-    case 'agent_progress': return 'agent'
-    case 'bash_progress': return 'builtin'
-    case 'mcp_progress': return 'mcp'
-    case 'hook_progress': return 'hook_progress'
-    case 'hook_event': return 'hook'
-    case 'waiting_for_task': return 'queue'
-    default: return 'system'
+    case 'agent_progress':
+      return 'agent'
+    case 'bash_progress':
+      return 'builtin'
+    case 'mcp_progress':
+      return 'mcp'
+    case 'hook_progress':
+      return 'hook_progress'
+    case 'hook_event':
+      return 'hook'
+    case 'waiting_for_task':
+      return 'queue'
+    default:
+      return 'system'
   }
 }
 
@@ -81,7 +88,7 @@ function progressLabel(m: Record<string, any>): string {
     case 'hook_progress':
       return m.command
         ? `${m.hookEvent || m.hookName || 'hook'} → ${m.command}`
-        : (m.hookEvent || m.hookName || 'hook progress')
+        : m.hookEvent || m.hookName || 'hook progress'
     case 'hook_event': {
       const he = m._hookEvent
       return he ? `${he.eventName} — ${he.label}` : 'Hook event'
@@ -161,10 +168,11 @@ export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
         if (pending.timestamp && msg.ts) {
           pending.duration = Math.round((msg.ts - pending.timestamp) * 1000)
         }
-        const isError = msg.content.startsWith('Error:') ||
-                        msg.content.startsWith('FAILED') ||
-                        msg.content.includes('exit code') ||
-                        msg.content.includes('Command failed')
+        const isError =
+          msg.content.startsWith('Error:') ||
+          msg.content.startsWith('FAILED') ||
+          msg.content.includes('exit code') ||
+          msg.content.includes('Command failed')
         pending.status = isError ? 'error' : 'success'
       }
       continue
@@ -210,7 +218,10 @@ export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
         timestamp: msg.ts,
         category: msg.category ?? 'system',
         toolName: 'summary',
-        label: summary.length > 60 ? `Session summary (${summary.split(/\s+/).length}w)` : `Summary: ${summary}`,
+        label:
+          summary.length > 60
+            ? `Session summary (${summary.split(/\s+/).length}w)`
+            : `Summary: ${summary}`,
         status: 'success',
         output: summary,
       } satisfies ActionItem)

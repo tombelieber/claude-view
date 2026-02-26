@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Sparkles, X, Loader2, FlaskConical } from 'lucide-react'
+import { FlaskConical, Loader2, Sparkles, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useClassification } from '../hooks/use-classification'
 import { formatCostUsd } from '../lib/format-utils'
 
@@ -17,11 +17,11 @@ interface ClassifyBannerProps {
  * Prompts them to classify all remaining sessions with a clear cost estimate.
  */
 export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: ClassifyBannerProps) {
-  const [dismissed, setDismissed] = useState(() =>
-    localStorage.getItem(BANNER_DISMISSED_KEY) === 'true'
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(BANNER_DISMISSED_KEY) === 'true',
   )
   const [singleCount, setSingleCount] = useState(() =>
-    parseInt(localStorage.getItem(CLASSIFY_COUNT_KEY) || '0', 10)
+    Number.parseInt(localStorage.getItem(CLASSIFY_COUNT_KEY) || '0', 10),
   )
   const { startClassification, isLoading } = useClassification()
   const [isStarting, setIsStarting] = useState(false)
@@ -35,7 +35,7 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
     }
     const handleStorage = (e: StorageEvent) => {
       if (e.key === CLASSIFY_COUNT_KEY && e.newValue) {
-        setSingleCount(parseInt(e.newValue, 10))
+        setSingleCount(Number.parseInt(e.newValue, 10))
       }
     }
     window.addEventListener('classify-single-done', handleCustom)
@@ -51,9 +51,8 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
     return null
   }
 
-  const costDisplay = estimatedCostCents < 1
-    ? '<$0.01'
-    : `~${formatCostUsd(estimatedCostCents / 100)}`
+  const costDisplay =
+    estimatedCostCents < 1 ? '<$0.01' : `~${formatCostUsd(estimatedCostCents / 100)}`
 
   const handleClassifyAll = async () => {
     setIsStarting(true)
@@ -71,8 +70,8 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
       <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
         <Sparkles className="w-4 h-4 flex-shrink-0" />
         <span>
-          <strong>{unclassifiedCount}</strong> sessions unclassified.
-          Classify all ({costDisplay}, ~{Math.ceil(unclassifiedCount * 0.4)}s)
+          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all ({costDisplay}, ~
+          {Math.ceil(unclassifiedCount * 0.4)}s)
         </span>
         <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
           <FlaskConical className="w-2.5 h-2.5" />

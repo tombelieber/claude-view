@@ -1,17 +1,17 @@
-import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import {
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
 } from 'recharts'
 import { cn } from '../../lib/utils'
-import { InsightLine } from './InsightLine'
 import type { LearningCurve as LearningCurveData } from '../../types/generated'
+import { InsightLine } from './InsightLine'
 
 interface LearningCurveProps {
   data: LearningCurveData
@@ -48,7 +48,12 @@ export function LearningCurve({ data }: LearningCurveProps) {
   // Create insight object for InsightLine
   const insight = {
     text: data.insight,
-    kind: improvement > 10 ? ('success' as const) : improvement < -10 ? ('warning' as const) : ('info' as const),
+    kind:
+      improvement > 10
+        ? ('success' as const)
+        : improvement < -10
+          ? ('warning' as const)
+          : ('info' as const),
   }
 
   return (
@@ -70,8 +75,7 @@ export function LearningCurve({ data }: LearningCurveProps) {
 
       {/* Subtitle */}
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Re-edit Rate Over Time{' '}
-        <span className="text-xs">(lower = better prompting)</span>
+        Re-edit Rate Over Time <span className="text-xs">(lower = better prompting)</span>
       </p>
 
       {/* Chart */}
@@ -87,7 +91,11 @@ export function LearningCurve({ data }: LearningCurveProps) {
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #e5e7eb)" vertical={false} />
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--chart-grid, #e5e7eb)"
+                vertical={false}
+              />
               <XAxis
                 dataKey="period"
                 tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
@@ -128,12 +136,7 @@ export function LearningCurve({ data }: LearningCurveProps) {
                 }}
               />
 
-              <Bar
-                dataKey="reeditRate"
-                name="Re-edit Rate"
-                radius={[4, 4, 0, 0]}
-                fill="#22c55e"
-              />
+              <Bar dataKey="reeditRate" name="Re-edit Rate" radius={[4, 4, 0, 0]} fill="#22c55e" />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -154,8 +157,8 @@ function formatPeriod(period: string): string {
   const parts = period.split('-')
   if (parts.length < 2) return period
 
-  const year = parseInt(parts[0], 10)
-  const month = parseInt(parts[1], 10)
+  const year = Number.parseInt(parts[0], 10)
+  const month = Number.parseInt(parts[1], 10)
 
   if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
     return period

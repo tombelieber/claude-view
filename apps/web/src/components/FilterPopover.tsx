@@ -1,74 +1,81 @@
+import { Filter, Search } from 'lucide-react'
 // src/components/FilterPopover.tsx
-import { useState, useRef, useEffect } from 'react';
-import { Filter, Search } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { formatModelName } from '../lib/format-model';
-import type { SessionFilters } from '../hooks/use-session-filters';
+import { useEffect, useRef, useState } from 'react'
+import type { SessionFilters } from '../hooks/use-session-filters'
+import { formatModelName } from '../lib/format-model'
+import { cn } from '../lib/utils'
 
 interface FilterPopoverProps {
-  filters: SessionFilters;
-  onChange: (filters: SessionFilters) => void;
-  onClear: () => void;
-  activeCount: number;
+  filters: SessionFilters
+  onChange: (filters: SessionFilters) => void
+  onClear: () => void
+  activeCount: number
   /** Available branch names derived from loaded sessions */
-  branches: string[];
+  branches: string[]
   /** Available model IDs from indexed session data (data-driven) */
-  models?: string[];
+  models?: string[]
 }
 
-export function FilterPopover({ filters, onChange, onClear, activeCount, branches = [], models = [] }: FilterPopoverProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [branchSearch, setBranchSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+export function FilterPopover({
+  filters,
+  onChange,
+  onClear,
+  activeCount,
+  branches = [],
+  models = [],
+}: FilterPopoverProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [branchSearch, setBranchSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
 
   // Debounce branch search (150ms)
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(branchSearch), 150);
-    return () => clearTimeout(timer);
-  }, [branchSearch]);
+    const timer = setTimeout(() => setDebouncedSearch(branchSearch), 150)
+    return () => clearTimeout(timer)
+  }, [branchSearch])
 
   // Reset branch search when popover opens
-  const prevIsOpenRef = useRef(false);
+  const prevIsOpenRef = useRef(false)
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
-      setBranchSearch('');
+      setBranchSearch('')
     }
-    prevIsOpenRef.current = isOpen;
-  }, [isOpen]);
+    prevIsOpenRef.current = isOpen
+  }, [isOpen])
 
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        setIsOpen(false)
       }
     }
     if (isOpen) {
-      document.addEventListener('mousedown', handleClick);
-      return () => document.removeEventListener('mousedown', handleClick);
+      document.addEventListener('mousedown', handleClick)
+      return () => document.removeEventListener('mousedown', handleClick)
     }
-  }, [isOpen]);
+  }, [isOpen])
 
   // Close on Escape key
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
+        setIsOpen(false)
       }
     }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen]);
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isOpen])
 
   // Filter branches by debounced search query (exclude unnamed/empty branches)
   const filteredBranches = branches
     .filter((branch) => branch !== '')
-    .filter((branch) => branch.toLowerCase().includes(debouncedSearch.toLowerCase()));
+    .filter((branch) => branch.toLowerCase().includes(debouncedSearch.toLowerCase()))
 
-  const modelOptions = models;
+  const modelOptions = models
 
-  const hasAnyFiltersSet = activeCount > 0;
+  const hasAnyFiltersSet = activeCount > 0
 
   return (
     <div className="relative" ref={ref}>
@@ -81,7 +88,7 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
           hasAnyFiltersSet
             ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-750'
+            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-750',
         )}
         aria-expanded={isOpen}
         aria-label={`Filters ${activeCount > 0 ? `(${activeCount} active)` : ''}`}
@@ -128,7 +135,7 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.hasCommits === option
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option === 'any' ? 'Any' : option === 'yes' ? 'Has' : 'None'}
@@ -152,14 +159,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                   <button
                     key={option.label}
                     type="button"
-                    onClick={() =>
-                      onChange({ ...filters, minDuration: option.value })
-                    }
+                    onClick={() => onChange({ ...filters, minDuration: option.value })}
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.minDuration === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option.label}
@@ -200,12 +205,14 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                         onChange={(e) => {
                           const newBranches = e.target.checked
                             ? [...filters.branches, branch]
-                            : filters.branches.filter((b) => b !== branch);
-                          onChange({ ...filters, branches: newBranches });
+                            : filters.branches.filter((b) => b !== branch)
+                          onChange({ ...filters, branches: newBranches })
                         }}
                         className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300 truncate">{branch}</span>
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300 truncate">
+                        {branch}
+                      </span>
                     </label>
                   ))
                 )}
@@ -214,34 +221,34 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
 
             {/* Model filter */}
             {modelOptions.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Model
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {modelOptions.map((model) => (
-                  <label
-                    key={model}
-                    className="flex items-center px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={filters.models.includes(model)}
-                      onChange={(e) => {
-                        const newModels = e.target.checked
-                          ? [...filters.models, model]
-                          : filters.models.filter((m) => m !== model);
-                        onChange({ ...filters, models: newModels });
-                      }}
-                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
-                      {formatModelName(model)}
-                    </span>
-                  </label>
-                ))}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Model
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {modelOptions.map((model) => (
+                    <label
+                      key={model}
+                      className="flex items-center px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.models.includes(model)}
+                        onChange={(e) => {
+                          const newModels = e.target.checked
+                            ? [...filters.models, model]
+                            : filters.models.filter((m) => m !== model)
+                          onChange({ ...filters, models: newModels })
+                        }}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                        {formatModelName(model)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
 
             {/* Has skills filter */}
@@ -261,7 +268,7 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.hasSkills === option
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option === 'any' ? 'Any' : option === 'yes' ? 'Yes' : 'No'}
@@ -283,14 +290,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                   <button
                     key={String(option.value)}
                     type="button"
-                    onClick={() =>
-                      onChange({ ...filters, highReedit: option.value })
-                    }
+                    onClick={() => onChange({ ...filters, highReedit: option.value })}
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.highReedit === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option.label}
@@ -314,14 +319,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                   <button
                     key={String(option.value)}
                     type="button"
-                    onClick={() =>
-                      onChange({ ...filters, minFiles: option.value })
-                    }
+                    onClick={() => onChange({ ...filters, minFiles: option.value })}
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.minFiles === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option.label}
@@ -345,14 +348,12 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
                   <button
                     key={String(option.value)}
                     type="button"
-                    onClick={() =>
-                      onChange({ ...filters, minTokens: option.value })
-                    }
+                    onClick={() => onChange({ ...filters, minTokens: option.value })}
                     className={cn(
                       'flex-1 px-2 py-1.5 text-xs rounded border cursor-pointer transition-colors',
                       filters.minTokens === option.value
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
                     )}
                   >
                     {option.label}
@@ -366,13 +367,15 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
           <div className="flex items-center justify-end px-4 py-3 border-t border-gray-200 dark:border-gray-700">
             <button
               type="button"
-              onClick={() => { onClear(); }}
+              onClick={() => {
+                onClear()
+              }}
               disabled={!hasAnyFiltersSet}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded transition-colors',
                 hasAnyFiltersSet
                   ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50 cursor-pointer'
-                  : 'text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                  : 'text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-not-allowed',
               )}
             >
               Reset all
@@ -381,5 +384,5 @@ export function FilterPopover({ filters, onChange, onClear, activeCount, branche
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -1,24 +1,24 @@
-import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
-  createColumnHelper,
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
   type ColumnDef,
   type SortingState,
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
 } from '@tanstack/react-table'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, ArrowDown, GitBranch, GitCommit, Search, FlaskConical } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { ArrowDown, ArrowUp, FlaskConical, GitBranch, GitCommit, Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import type { SessionInfo } from '../hooks/use-projects'
 import { formatNumber, formatTokenCount } from '../lib/format-utils'
 import { computeWeight } from '../lib/session-weight'
 import { buildSessionUrl } from '../lib/url-utils'
-import type { SessionInfo } from '../hooks/use-projects'
+import { cn } from '../lib/utils'
 import { getSessionTitle } from '../utils/get-session-title'
-import { WeightIndicator } from './WeightIndicator'
-import { QualityBadge } from './QualityBadge'
 import { CategoryBadge } from './CategoryBadge'
+import { QualityBadge } from './QualityBadge'
+import { WeightIndicator } from './WeightIndicator'
 
 export type SortColumn = 'time' | 'branch' | 'prompts' | 'files' | 'commits' | 'duration'
 export type SortDirection = 'asc' | 'desc'
@@ -78,7 +78,9 @@ function sessionUrl(session: SessionInfo): string {
 
 const columnHelper = createColumnHelper<SessionInfo>()
 
-function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<SessionInfo, any>[] {
+function buildColumns(
+  badges: Record<string, BadgeData> | undefined,
+): ColumnDef<SessionInfo, any>[] {
   return [
     columnHelper.display({
       id: 'weight',
@@ -109,9 +111,13 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
         const s = row.original
         const end = Number(s.modifiedAt)
         return (
-          <Link to={sessionUrl(s)} className="block whitespace-nowrap text-[12px] text-gray-700 dark:text-gray-300">
-            <span className="font-medium text-gray-900 dark:text-gray-100">{formatDatePrefix(end)}</span>
-            {' '}
+          <Link
+            to={sessionUrl(s)}
+            className="block whitespace-nowrap text-[12px] text-gray-700 dark:text-gray-300"
+          >
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              {formatDatePrefix(end)}
+            </span>{' '}
             <span className="text-gray-400 dark:text-gray-500">{formatTimeShort(end)}</span>
           </Link>
         )
@@ -189,7 +195,9 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
           <Link to={sessionUrl(s)} className="block whitespace-nowrap">
             {hasActivity ? (
               <span className="text-[12px]">
-                <span className="font-medium text-gray-900 dark:text-gray-100">{s.userPromptCount}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {s.userPromptCount}
+                </span>
                 <span className="text-gray-300 dark:text-gray-600 mx-0.5">/</span>
                 <span className="text-gray-500 dark:text-gray-400">{totalTokens}</span>
               </span>
@@ -213,13 +221,19 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
           <Link to={sessionUrl(s)} className="block whitespace-nowrap">
             {s.filesEditedCount > 0 ? (
               <span className="text-[12px]">
-                <span className="font-medium text-gray-900 dark:text-gray-100">{s.filesEditedCount}f</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {s.filesEditedCount}f
+                </span>
                 {hasLOC && (
                   <>
                     {' '}
-                    <span className="text-green-600 dark:text-green-400">+{formatNumber(s.linesAdded)}</span>
+                    <span className="text-green-600 dark:text-green-400">
+                      +{formatNumber(s.linesAdded)}
+                    </span>
                     <span className="text-gray-300 dark:text-gray-600">/</span>
-                    <span className="text-red-500 dark:text-red-400">-{formatNumber(s.linesRemoved)}</span>
+                    <span className="text-red-500 dark:text-red-400">
+                      -{formatNumber(s.linesRemoved)}
+                    </span>
                   </>
                 )}
               </span>
@@ -262,7 +276,7 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
         const s = row.original
         // Prefer totalTaskTimeSeconds; fall back to durationSeconds for pre-reindex sessions
         const taskTime = s.totalTaskTimeSeconds ?? null
-        const displaySeconds = (taskTime && taskTime > 0) ? taskTime : s.durationSeconds
+        const displaySeconds = taskTime && taskTime > 0 ? taskTime : s.durationSeconds
         const duration = displaySeconds > 0 ? formatDuration(displaySeconds) : null
         return (
           <Link to={sessionUrl(s)} className="block text-[12px]">
@@ -280,8 +294,13 @@ function buildColumns(badges: Record<string, BadgeData> | undefined): ColumnDef<
 
 // --- Component ---
 
-export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirection }: CompactSessionTableProps) {
-  const sessionIds = sessions.map(s => s.id).join(',')
+export function CompactSessionTable({
+  sessions,
+  onSort,
+  sortColumn,
+  sortDirection,
+}: CompactSessionTableProps) {
+  const sessionIds = sessions.map((s) => s.id).join(',')
   const { data: badges } = useQuery<Record<string, BadgeData>>({
     queryKey: ['facet-badges', sessionIds],
     queryFn: async () => {
@@ -297,7 +316,7 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
 
   const sorting: SortingState = useMemo(
     () => [{ id: sortColumn, desc: sortDirection === 'desc' }],
-    [sortColumn, sortDirection]
+    [sortColumn, sortDirection],
   )
 
   const table = useReactTable({
@@ -322,7 +341,9 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
           <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
             <Search className="w-5 h-5 text-gray-400" />
           </div>
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">No sessions found</h3>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+            No sessions found
+          </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">Try adjusting your filters</p>
         </div>
       </div>
@@ -347,10 +368,18 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
                     scope="col"
                     className={cn(
                       'py-2 px-3 uppercase tracking-wider text-[10px] font-semibold text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700',
-                      align === 'right' ? 'text-right' : 'text-left'
+                      align === 'right' ? 'text-right' : 'text-left',
                     )}
                     style={isPreview ? undefined : { width: header.getSize() }}
-                    aria-sort={canSort ? (isSorted ? (isSorted === 'asc' ? 'ascending' : 'descending') : 'other') : 'none'}
+                    aria-sort={
+                      canSort
+                        ? isSorted
+                          ? isSorted === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'other'
+                        : 'none'
+                    }
                   >
                     {canSort ? (
                       <button
@@ -360,11 +389,13 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
                           'inline-flex items-center gap-0.5 transition-colors rounded-sm px-1 -mx-1',
                           'hover:text-gray-600 dark:hover:text-gray-300',
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                          isSorted && 'text-blue-600 dark:text-blue-400 font-bold'
+                          isSorted && 'text-blue-600 dark:text-blue-400 font-bold',
                         )}
                         aria-label={`Sort by ${flexRender(header.column.columnDef.header, header.getContext())}`}
                       >
-                        <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                        <span>
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        </span>
                         {isSorted && (
                           <span className="ml-0.5">
                             {isSorted === 'asc' ? (
@@ -390,7 +421,7 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
               key={row.id}
               className={cn(
                 'border-b border-gray-100 dark:border-gray-800/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors duration-100 cursor-pointer group',
-                idx % 2 === 1 && 'bg-gray-50/40 dark:bg-gray-800/20'
+                idx % 2 === 1 && 'bg-gray-50/40 dark:bg-gray-800/20',
               )}
             >
               {row.getVisibleCells().map((cell) => {
@@ -400,7 +431,7 @@ export function CompactSessionTable({ sessions, onSort, sortColumn, sortDirectio
                     key={cell.id}
                     className={cn(
                       'py-1.5 px-3 overflow-hidden',
-                      align === 'right' && 'text-right tabular-nums'
+                      align === 'right' && 'text-right tabular-nums',
                     )}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -1,13 +1,13 @@
-import { bench, describe } from 'vitest';
-import { groupSessions } from './group-sessions';
-import type { SessionInfo } from '../types/generated/SessionInfo';
-import type { ToolCounts } from '../types/generated/ToolCounts';
+import { bench, describe } from 'vitest'
+import type { SessionInfo } from '../types/generated/SessionInfo'
+import type { ToolCounts } from '../types/generated/ToolCounts'
+import { groupSessions } from './group-sessions'
 
 function makeSession(i: number): SessionInfo {
-  const defaultToolCounts: ToolCounts = { bash: 0, edit: 0, read: 0, write: 0 };
-  const branches = ['main', 'feature/auth', 'feature/ui', 'fix/bug-123', 'dev', 'staging'];
-  const models = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4'];
-  const baseTime = Math.floor(Date.now() / 1000) - i * 3600;
+  const defaultToolCounts: ToolCounts = { bash: 0, edit: 0, read: 0, write: 0 }
+  const branches = ['main', 'feature/auth', 'feature/ui', 'fix/bug-123', 'dev', 'staging']
+  const models = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4']
+  const baseTime = Math.floor(Date.now() / 1000) - i * 3600
 
   return {
     id: `session-${i}`,
@@ -50,42 +50,42 @@ function makeSession(i: number): SessionInfo {
     linesRemoved: i * 3,
     locSource: 100 + i,
     parseVersion: 1,
-  };
+  }
 }
 
 function generateSessions(count: number): SessionInfo[] {
-  return Array.from({ length: count }, (_, i) => makeSession(i));
+  return Array.from({ length: count }, (_, i) => makeSession(i))
 }
 
 describe('groupSessions performance', () => {
-  const sessions100 = generateSessions(100);
-  const sessions500 = generateSessions(500);
+  const sessions100 = generateSessions(100)
+  const sessions500 = generateSessions(500)
 
   bench('group 100 sessions by branch', () => {
-    groupSessions(sessions100, 'branch');
-  });
+    groupSessions(sessions100, 'branch')
+  })
 
   bench('group 500 sessions by branch', () => {
-    groupSessions(sessions500, 'branch');
-  });
+    groupSessions(sessions500, 'branch')
+  })
 
   bench('group 100 sessions by model', () => {
-    groupSessions(sessions100, 'model');
-  });
+    groupSessions(sessions100, 'model')
+  })
 
   bench('group 500 sessions by model', () => {
-    groupSessions(sessions500, 'model');
-  });
+    groupSessions(sessions500, 'model')
+  })
 
   bench('group 100 sessions by week', () => {
-    groupSessions(sessions100, 'week');
-  });
+    groupSessions(sessions100, 'week')
+  })
 
   bench('group 500 sessions by week', () => {
-    groupSessions(sessions500, 'week');
-  });
+    groupSessions(sessions500, 'week')
+  })
 
   bench('group 500 sessions by month', () => {
-    groupSessions(sessions500, 'month');
-  });
-});
+    groupSessions(sessions500, 'month')
+  })
+})

@@ -1,5 +1,5 @@
-import { describe, test, expect } from 'vitest'
-import { getSessionTitle, cleanPreviewText } from './get-session-title'
+import { describe, expect, test } from 'vitest'
+import { cleanPreviewText, getSessionTitle } from './get-session-title'
 
 describe('getSessionTitle', () => {
   test('returns preview when available', () => {

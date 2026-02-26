@@ -1,6 +1,6 @@
-import { useCallback } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { CheckCircle, Loader2, XCircle } from 'lucide-react'
+import { useCallback } from 'react'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 interface SubAgentPillsProps {
@@ -17,7 +17,8 @@ function formatDuration(ms: number): string {
   return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
 }
 
-const TOOLTIP_CONTENT_CLASS = 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
+const TOOLTIP_CONTENT_CLASS =
+  'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
 const TOOLTIP_ARROW_CLASS = 'fill-gray-200 dark:fill-gray-700'
 
 /**
@@ -29,19 +30,22 @@ const TOOLTIP_ARROW_CLASS = 'fill-gray-200 dark:fill-gray-700'
  */
 export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
   // Derive computed values before early return
-  const activeCount = subAgents.filter(a => a.status === 'running').length
+  const activeCount = subAgents.filter((a) => a.status === 'running').length
   const displayAgents = subAgents.slice(0, 3)
   const overflowAgents = subAgents.slice(3)
   const hasMore = overflowAgents.length > 0
 
   // Memoized keyboard handler for performance in list rendering
   // MUST be called before early return to satisfy Rules of Hooks
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault()
-      onExpand()
-    }
-  }, [onExpand])
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (onExpand && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault()
+        onExpand()
+      }
+    },
+    [onExpand],
+  )
 
   // Early return if no sub-agents
   if (subAgents.length === 0) {
@@ -49,9 +53,10 @@ export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
   }
 
   // Calculate summary text
-  const summaryText = activeCount > 0
-    ? `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (${activeCount} active)`
-    : `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (all done)`
+  const summaryText =
+    activeCount > 0
+      ? `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (${activeCount} active)`
+      : `${subAgents.length} agent${subAgents.length > 1 ? 's' : ''} (all done)`
 
   return (
     <Tooltip.Provider delayDuration={200}>
@@ -69,9 +74,7 @@ export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
           {displayAgents.map((agent) => (
             <AgentPill key={agent.toolUseId} agent={agent} />
           ))}
-          {hasMore && (
-            <OverflowPill agents={overflowAgents} />
-          )}
+          {hasMore && <OverflowPill agents={overflowAgents} />}
         </div>
 
         {/* Summary text */}
@@ -118,18 +121,14 @@ function AgentTooltipContent({ agent }: { agent: SubAgentInfo }) {
     <div className="space-y-1.5">
       {/* Full agent name + status */}
       <div className="flex items-center gap-2">
-        <span className="font-medium text-gray-900 dark:text-gray-100">
-          {agent.agentType}
-        </span>
+        <span className="font-medium text-gray-900 dark:text-gray-100">{agent.agentType}</span>
         <span className={`inline-flex items-center gap-0.5 ${statusConfig.textClass}`}>
           {statusConfig.icon}
         </span>
       </div>
 
       {/* Description */}
-      <div className="text-gray-500 dark:text-gray-400">
-        {agent.description}
-      </div>
+      <div className="text-gray-500 dark:text-gray-400">{agent.description}</div>
 
       {/* Running: current activity */}
       {agent.status === 'running' && agent.currentActivity && (
@@ -140,21 +139,24 @@ function AgentTooltipContent({ agent }: { agent: SubAgentInfo }) {
       )}
 
       {/* Completed/Error: metrics row */}
-      {agent.status !== 'running' && (agent.costUsd != null || agent.durationMs != null || agent.toolUseCount != null) && (
-        <div className="flex items-center gap-1.5 font-mono text-gray-400 dark:text-gray-500">
-          {agent.costUsd != null && <span>${agent.costUsd.toFixed(2)}</span>}
-          {agent.costUsd != null && agent.durationMs != null && (
-            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-          )}
-          {agent.durationMs != null && <span>{formatDuration(agent.durationMs)}</span>}
-          {agent.durationMs != null && agent.toolUseCount != null && (
-            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-          )}
-          {agent.toolUseCount != null && (
-            <span>{agent.toolUseCount} tool{agent.toolUseCount !== 1 ? 's' : ''}</span>
-          )}
-        </div>
-      )}
+      {agent.status !== 'running' &&
+        (agent.costUsd != null || agent.durationMs != null || agent.toolUseCount != null) && (
+          <div className="flex items-center gap-1.5 font-mono text-gray-400 dark:text-gray-500">
+            {agent.costUsd != null && <span>${agent.costUsd.toFixed(2)}</span>}
+            {agent.costUsd != null && agent.durationMs != null && (
+              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+            )}
+            {agent.durationMs != null && <span>{formatDuration(agent.durationMs)}</span>}
+            {agent.durationMs != null && agent.toolUseCount != null && (
+              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+            )}
+            {agent.toolUseCount != null && (
+              <span>
+                {agent.toolUseCount} tool{agent.toolUseCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
     </div>
   )
 }

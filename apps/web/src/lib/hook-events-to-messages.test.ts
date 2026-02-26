@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { HookEventItem } from '../components/live/action-log/types'
 import {
+  getMessageSortTs,
   hookEventsToMessages,
   hookEventsToRichMessages,
-  getMessageSortTs,
   mergeByTimestamp,
 } from './hook-events-to-messages'
 
@@ -105,7 +105,7 @@ describe('mergeByTimestamp', () => {
     const a = [{ ts: 1 }, { ts: 3 }, { ts: 5 }]
     const b = [{ ts: 2 }, { ts: 4 }]
     const merged = mergeByTimestamp(a, b, getTs)
-    expect(merged.map(x => x.ts)).toEqual([1, 2, 3, 4, 5])
+    expect(merged.map((x) => x.ts)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('returns a when b is empty', () => {
@@ -124,7 +124,7 @@ describe('mergeByTimestamp', () => {
     const a = [{ ts: 1 }, { ts: undefined }]
     const b = [{ ts: 2 }]
     const merged = mergeByTimestamp(a, b, getTs)
-    expect(merged.map(x => x.ts)).toEqual([1, 2, undefined])
+    expect(merged.map((x) => x.ts)).toEqual([1, 2, undefined])
   })
 
   it('preserves order for equal timestamps (stable)', () => {
@@ -134,4 +134,3 @@ describe('mergeByTimestamp', () => {
     expect(merged[0].src).toBe('a') // a comes first when equal
   })
 })
-

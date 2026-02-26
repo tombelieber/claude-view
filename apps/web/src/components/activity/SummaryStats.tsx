@@ -1,6 +1,6 @@
-import { Clock, Hash, TrendingUp, CalendarDays, Wrench, Bot, Plug, Sparkles } from 'lucide-react'
-import { formatHumanDuration } from '../../lib/format-utils'
+import { Bot, CalendarDays, Clock, Hash, Plug, Sparkles, TrendingUp, Wrench } from 'lucide-react'
 import type { ActivitySummary } from '../../lib/activity-utils'
+import { formatHumanDuration } from '../../lib/format-utils'
 
 /** Format YYYY-MM-DD as readable day name */
 function formatDayName(dateStr: string): string {
@@ -27,8 +27,12 @@ export function SummaryStats({ summary, label }: SummaryStatsProps) {
   if (summary.sessionCount === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-gray-500 dark:text-gray-400">No activity for {label.toLowerCase()}</p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Start a Claude Code session and it will show up here</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No activity for {label.toLowerCase()}
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          Start a Claude Code session and it will show up here
+        </p>
       </div>
     )
   }
@@ -87,7 +91,11 @@ export function SummaryStats({ summary, label }: SummaryStatsProps) {
   return (
     <div>
       <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">{label}</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="list" aria-label="Activity summary">
+      <div
+        className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+        role="list"
+        aria-label="Activity summary"
+      >
         {cards.map((card) => (
           <div
             key={card.label}
@@ -97,13 +105,16 @@ export function SummaryStats({ summary, label }: SummaryStatsProps) {
               <card.icon className={`w-4 h-4 ${card.color}`} />
               <span className="text-xs text-gray-500 dark:text-gray-400">{card.label}</span>
             </div>
-            <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{card.value}</div>
+            <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              {card.value}
+            </div>
           </div>
         ))}
       </div>
       {summary.longestSession && (
         <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          Longest: {formatHumanDuration(summary.longestSession.seconds)} on {summary.longestSession.project}
+          Longest: {formatHumanDuration(summary.longestSession.seconds)} on{' '}
+          {summary.longestSession.project}
         </p>
       )}
     </div>

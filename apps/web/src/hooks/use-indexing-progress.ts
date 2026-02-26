@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type IndexingPhase =
   | 'idle'
@@ -56,7 +56,7 @@ function sseUrl(): string {
  * When `enabled` is false, stays idle (for on-demand usage like StorageOverview).
  * Automatically closes on completion, error, or unmount.
  */
-export function useIndexingProgress(enabled: boolean = true): IndexingProgress {
+export function useIndexingProgress(enabled = true): IndexingProgress {
   const [progress, setProgress] = useState<IndexingProgress>(INITIAL_STATE)
   const startTimeRef = useRef<number | null>(null)
 
@@ -121,9 +121,7 @@ export function useIndexingProgress(enabled: boolean = true): IndexingProgress {
         es.close()
         return
       }
-      const elapsed = startTimeRef.current
-        ? (Date.now() - startTimeRef.current) / 1000
-        : 1
+      const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 1
       const bytesProcessed = data.bytes_processed ?? 0
       const throughput = elapsed > 0 ? bytesProcessed / elapsed : 0
 

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import type { InsightsResponse } from '../types/generated/InsightsResponse'
 import type { GeneratedInsight } from '../types/generated/GeneratedInsight'
+import type { InsightsResponse } from '../types/generated/InsightsResponse'
 
 // ============================================================================
 // Time Range Types
@@ -114,8 +114,7 @@ function mapApiToUi(api: InsightsResponse): InsightsData {
             value: api.topInsight.evidence?.comparisonValues?.['value'] ?? 0,
             comparison: api.topInsight.evidence?.comparisonValues?.['comparison'] ?? 0,
             unit: 're-edit rate',
-            improvement:
-              api.topInsight.evidence?.comparisonValues?.['improvement_pct'] ?? 0,
+            improvement: api.topInsight.evidence?.comparisonValues?.['improvement_pct'] ?? 0,
           },
           sampleSize: api.topInsight.evidence.sampleSize,
         }
@@ -152,7 +151,8 @@ function mapApiToUi(api: InsightsResponse): InsightsData {
 
     meta: {
       totalSessions,
-      patternsReturned: api.patterns.high.length + api.patterns.medium.length + api.patterns.observations.length,
+      patternsReturned:
+        api.patterns.high.length + api.patterns.medium.length + api.patterns.observations.length,
       minSessionsRequired: 20,
       hasEnoughData,
     },

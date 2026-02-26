@@ -9,8 +9,8 @@
  * No dangerouslySetInnerHTML is used.
  */
 
+import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { Bot, ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { CompactCodeBlock } from './live/CompactCodeBlock'
 
@@ -44,9 +44,7 @@ export function AgentProgressCard({
 }: AgentProgressCardProps) {
   const [expanded, setExpanded] = useState(verboseMode ?? false)
 
-  const totalTokens = tokens
-    ? (tokens.input || 0) + (tokens.output || 0)
-    : undefined
+  const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) : undefined
 
   const displayName = agentId ? `Agent #${agentId}` : 'Sub-agent'
 
@@ -90,7 +88,9 @@ export function AgentProgressCard({
               <CompactCodeBlock
                 code={truncatedPrompt}
                 language="text"
-                blockId={blockId ? `${blockId}-prompt` : agentId ? `agent-${agentId}-prompt` : undefined}
+                blockId={
+                  blockId ? `${blockId}-prompt` : agentId ? `agent-${agentId}-prompt` : undefined
+                }
               />
             </div>
           )}

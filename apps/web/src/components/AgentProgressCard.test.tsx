@@ -1,10 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { AgentProgressCard } from './AgentProgressCard'
 
 vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  CompactCodeBlock: ({
+    code,
+    language,
+    blockId,
+  }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+      {code}
+    </pre>
   ),
 }))
 
@@ -66,7 +72,7 @@ describe('AgentProgressCard', () => {
           prompt="Do something"
           model="claude-opus"
           tokens={{ input: 300, output: 200 }}
-        />
+        />,
       )
 
       expect(screen.getByText(/Agent #agent-1/)).toBeInTheDocument()
@@ -75,17 +81,13 @@ describe('AgentProgressCard', () => {
     })
 
     it('should show "Sub-agent" when agentId is undefined', () => {
-      render(
-        <AgentProgressCard prompt="Do something" model="claude-opus" />
-      )
+      render(<AgentProgressCard prompt="Do something" model="claude-opus" />)
 
       expect(screen.getByText(/Sub-agent/)).toBeInTheDocument()
     })
 
     it('should not show token display when tokens undefined', () => {
-      render(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />
-      )
+      render(<AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />)
 
       expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     })
@@ -98,7 +100,7 @@ describe('AgentProgressCard', () => {
           agentId="a1"
           prompt="This is the full prompt text"
           model="claude-opus"
-        />
+        />,
       )
 
       // Prompt should not be visible initially
@@ -113,13 +115,7 @@ describe('AgentProgressCard', () => {
 
     it('should truncate prompt longer than 1000 chars in expanded view', () => {
       const longPrompt = 'A'.repeat(1200)
-      render(
-        <AgentProgressCard
-          agentId="a1"
-          prompt={longPrompt}
-          model="claude-opus"
-        />
-      )
+      render(<AgentProgressCard agentId="a1" prompt={longPrompt} model="claude-opus" />)
 
       fireEvent.click(screen.getByRole('button'))
 
@@ -132,7 +128,7 @@ describe('AgentProgressCard', () => {
   describe('Visual styling', () => {
     it('should have indigo left border', () => {
       const { container } = render(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />
+        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />,
       )
 
       const card = container.firstElementChild as HTMLElement
@@ -141,7 +137,7 @@ describe('AgentProgressCard', () => {
 
     it('should apply nested indentation via indent prop', () => {
       const { container } = render(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" indent={2} />
+        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" indent={2} />,
       )
 
       const card = container.firstElementChild as HTMLElement
@@ -151,17 +147,13 @@ describe('AgentProgressCard', () => {
 
   describe('ARIA and keyboard', () => {
     it('should have ARIA label on the card', () => {
-      render(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />
-      )
+      render(<AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />)
 
       expect(screen.getByRole('button', { name: /agent progress/i })).toBeInTheDocument()
     })
 
     it('should toggle expanded on Enter key', () => {
-      render(
-        <AgentProgressCard agentId="a1" prompt="Prompt text here" model="claude-opus" />
-      )
+      render(<AgentProgressCard agentId="a1" prompt="Prompt text here" model="claude-opus" />)
 
       const button = screen.getByRole('button')
       fireEvent.keyDown(button, { key: 'Enter' })
@@ -177,9 +169,7 @@ describe('AgentProgressCard', () => {
     })
 
     it('should handle empty strings safely', () => {
-      const { container } = render(
-        <AgentProgressCard agentId="" prompt="" model="" />
-      )
+      const { container } = render(<AgentProgressCard agentId="" prompt="" model="" />)
       expect(container).toBeInTheDocument()
     })
   })

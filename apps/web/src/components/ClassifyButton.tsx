@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react'
-import { Loader2, Sparkles, AlertCircle } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { AlertCircle, Loader2, Sparkles } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { useClassifySingle } from '../hooks/use-classify-single'
+import { cn } from '../lib/utils'
 
 interface ClassifyButtonProps {
   sessionId: string
@@ -22,23 +22,26 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
 
   const hasError = lastError !== null
 
-  const handleClick = useCallback(async (e: React.MouseEvent) => {
-    // Stop the parent <Link> from navigating
-    e.preventDefault()
-    e.stopPropagation()
-    // Also stop native propagation for react-router
-    e.nativeEvent.stopImmediatePropagation()
+  const handleClick = useCallback(
+    async (e: React.MouseEvent) => {
+      // Stop the parent <Link> from navigating
+      e.preventDefault()
+      e.stopPropagation()
+      // Also stop native propagation for react-router
+      e.nativeEvent.stopImmediatePropagation()
 
-    setLastError(null)
+      setLastError(null)
 
-    const result = await classifySession(sessionId)
-    if (!result) {
-      // classifySession returns null on error — read the error from the hook's state
-      // won't be available synchronously, so use a generic message
-      setLastError('Classification failed — check server logs')
-      console.error('[ClassifyButton] classify failed for', sessionId)
-    }
-  }, [sessionId, classifySession])
+      const result = await classifySession(sessionId)
+      if (!result) {
+        // classifySession returns null on error — read the error from the hook's state
+        // won't be available synchronously, so use a generic message
+        setLastError('Classification failed — check server logs')
+        console.error('[ClassifyButton] classify failed for', sessionId)
+      }
+    },
+    [sessionId, classifySession],
+  )
 
   return (
     <button
@@ -53,7 +56,11 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
         'disabled:opacity-50 disabled:cursor-wait',
         className,
       )}
-      title={hasError ? `Failed: ${lastError}. Click to retry.` : 'Classify this session with AI (~5s) — experimental, may be inaccurate'}
+      title={
+        hasError
+          ? `Failed: ${lastError}. Click to retry.`
+          : 'Classify this session with AI (~5s) — experimental, may be inaccurate'
+      }
     >
       {isClassifying ? (
         <Loader2 className="w-3 h-3 animate-spin" />
@@ -62,11 +69,7 @@ export function ClassifyButton({ sessionId, className, compact }: ClassifyButton
       ) : (
         <Sparkles className="w-3 h-3" />
       )}
-      {!compact && (
-        <span>
-          {isClassifying ? 'Classifying…' : hasError ? 'Retry' : 'Classify'}
-        </span>
-      )}
+      {!compact && <span>{isClassifying ? 'Classifying…' : hasError ? 'Retry' : 'Classify'}</span>}
     </button>
   )
 }

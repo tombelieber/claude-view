@@ -1,14 +1,14 @@
-import { bench, describe } from 'vitest';
-import type { SessionInfo } from '../types/generated/SessionInfo';
-import type { ToolCounts } from '../types/generated/ToolCounts';
-import type { SessionFilters } from '../hooks/use-session-filters';
-import { DEFAULT_FILTERS } from '../hooks/use-session-filters';
+import { bench, describe } from 'vitest'
+import type { SessionFilters } from '../hooks/use-session-filters'
+import { DEFAULT_FILTERS } from '../hooks/use-session-filters'
+import type { SessionInfo } from '../types/generated/SessionInfo'
+import type { ToolCounts } from '../types/generated/ToolCounts'
 
 function makeSession(i: number): SessionInfo {
-  const defaultToolCounts: ToolCounts = { bash: 0, edit: 0, read: 0, write: 0 };
-  const branches = ['main', 'feature/auth', 'feature/ui', 'fix/bug-123', 'dev', 'staging'];
-  const models = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4'];
-  const baseTime = Math.floor(Date.now() / 1000) - i * 3600;
+  const defaultToolCounts: ToolCounts = { bash: 0, edit: 0, read: 0, write: 0 }
+  const branches = ['main', 'feature/auth', 'feature/ui', 'fix/bug-123', 'dev', 'staging']
+  const models = ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4']
+  const baseTime = Math.floor(Date.now() / 1000) - i * 3600
 
   return {
     id: `session-${i}`,
@@ -51,51 +51,51 @@ function makeSession(i: number): SessionInfo {
     linesRemoved: i * 3,
     locSource: 100 + i,
     parseVersion: 1,
-  };
+  }
 }
 
 function filterSessions(sessions: SessionInfo[], filters: SessionFilters): SessionInfo[] {
-  return sessions.filter(s => {
+  return sessions.filter((s) => {
     if (filters.branches.length > 0) {
-      if (!s.gitBranch || !filters.branches.includes(s.gitBranch)) return false;
+      if (!s.gitBranch || !filters.branches.includes(s.gitBranch)) return false
     }
     if (filters.models.length > 0) {
-      if (!s.primaryModel || !filters.models.includes(s.primaryModel)) return false;
+      if (!s.primaryModel || !filters.models.includes(s.primaryModel)) return false
     }
-    if (filters.hasCommits === 'yes' && (s.commitCount ?? 0) === 0) return false;
-    if (filters.hasCommits === 'no' && (s.commitCount ?? 0) > 0) return false;
-    if (filters.hasSkills === 'yes' && (s.skillsUsed ?? []).length === 0) return false;
-    if (filters.hasSkills === 'no' && (s.skillsUsed ?? []).length > 0) return false;
-    if (filters.minDuration !== null && (s.durationSeconds ?? 0) < filters.minDuration) return false;
-    if (filters.minFiles !== null && (s.filesEditedCount ?? 0) < filters.minFiles) return false;
+    if (filters.hasCommits === 'yes' && (s.commitCount ?? 0) === 0) return false
+    if (filters.hasCommits === 'no' && (s.commitCount ?? 0) > 0) return false
+    if (filters.hasSkills === 'yes' && (s.skillsUsed ?? []).length === 0) return false
+    if (filters.hasSkills === 'no' && (s.skillsUsed ?? []).length > 0) return false
+    if (filters.minDuration !== null && (s.durationSeconds ?? 0) < filters.minDuration) return false
+    if (filters.minFiles !== null && (s.filesEditedCount ?? 0) < filters.minFiles) return false
     if (filters.minTokens !== null) {
-      const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n));
-      if (totalTokens < filters.minTokens) return false;
+      const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
+      if (totalTokens < filters.minTokens) return false
     }
     if (filters.highReedit === true) {
-      const filesEdited = s.filesEditedCount ?? 0;
-      const reeditedFiles = s.reeditedFilesCount ?? 0;
-      const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0;
-      if (reeditRate <= 0.2) return false;
+      const filesEdited = s.filesEditedCount ?? 0
+      const reeditedFiles = s.reeditedFilesCount ?? 0
+      const reeditRate = filesEdited > 0 ? reeditedFiles / filesEdited : 0
+      if (reeditRate <= 0.2) return false
     }
-    return true;
-  });
+    return true
+  })
 }
 
 function generateSessions(count: number): SessionInfo[] {
-  return Array.from({ length: count }, (_, i) => makeSession(i));
+  return Array.from({ length: count }, (_, i) => makeSession(i))
 }
 
 describe('filterSessions performance', () => {
-  const sessions500 = generateSessions(500);
-  const sessions1000 = generateSessions(1000);
+  const sessions500 = generateSessions(500)
+  const sessions1000 = generateSessions(1000)
 
-  const noFilters = DEFAULT_FILTERS;
+  const noFilters = DEFAULT_FILTERS
 
   const branchFilter: SessionFilters = {
     ...DEFAULT_FILTERS,
     branches: ['main', 'feature/auth'],
-  };
+  }
 
   const heavyFilter: SessionFilters = {
     ...DEFAULT_FILTERS,
@@ -105,25 +105,25 @@ describe('filterSessions performance', () => {
     minDuration: 1800,
     minTokens: 50000,
     highReedit: true,
-  };
+  }
 
   bench('filter 500 sessions — no filters', () => {
-    filterSessions(sessions500, noFilters);
-  });
+    filterSessions(sessions500, noFilters)
+  })
 
   bench('filter 500 sessions — branch filter', () => {
-    filterSessions(sessions500, branchFilter);
-  });
+    filterSessions(sessions500, branchFilter)
+  })
 
   bench('filter 500 sessions — all filters active', () => {
-    filterSessions(sessions500, heavyFilter);
-  });
+    filterSessions(sessions500, heavyFilter)
+  })
 
   bench('filter 1000 sessions — no filters', () => {
-    filterSessions(sessions1000, noFilters);
-  });
+    filterSessions(sessions1000, noFilters)
+  })
 
   bench('filter 1000 sessions — all filters active', () => {
-    filterSessions(sessions1000, heavyFilter);
-  });
-});
+    filterSessions(sessions1000, heavyFilter)
+  })
+})

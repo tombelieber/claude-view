@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { PaneContextMenu, type PaneContextMenuProps } from './PaneContextMenu'
 
 function renderContextMenu(overrides: Partial<PaneContextMenuProps> = {}) {
@@ -60,8 +60,7 @@ describe('PaneContextMenu', () => {
 
       expect(screen.getByText('Expand')).toBeInTheDocument()
     })
-
-})
+  })
 
   describe('menu item actions', () => {
     it('calls onPin and onClose when Pin pane is clicked', () => {
@@ -118,7 +117,6 @@ describe('PaneContextMenu', () => {
       expect(onExpand).toHaveBeenCalledTimes(1)
       expect(onClose).toHaveBeenCalledTimes(1)
     })
-
   })
 
   describe('close behavior', () => {

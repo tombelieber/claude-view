@@ -1,19 +1,12 @@
-import { useMemo, useCallback } from 'react'
-import type {
-  LiveSessionFilters,
-  LiveSortField,
-  LiveSortDirection,
-} from './live-filter'
+import { useCallback, useMemo } from 'react'
+import type { LiveSessionFilters, LiveSortDirection, LiveSortField } from './live-filter'
 import { DEFAULT_LIVE_FILTERS } from './live-filter'
 
 const FILTER_KEYS = ['status', 'project', 'branch', 'q', 'sort', 'dir'] as const
 
 export function useLiveSessionFilters(
   searchParams: URLSearchParams,
-  setSearchParams: (
-    params: URLSearchParams,
-    opts?: { replace?: boolean }
-  ) => void
+  setSearchParams: (params: URLSearchParams, opts?: { replace?: boolean }) => void,
 ): [
   LiveSessionFilters,
   {
@@ -29,27 +22,12 @@ export function useLiveSessionFilters(
   // Parse filters from URL params with stable memoization keyed on string
   // eslint-disable-next-line react-hooks/exhaustive-deps -- stable string key per CLAUDE.md
   const filters = useMemo((): LiveSessionFilters => {
-    const statuses =
-      searchParams
-        .get('status')
-        ?.split(',')
-        .filter(Boolean) ?? []
-    const projects =
-      searchParams
-        .get('project')
-        ?.split(',')
-        .filter(Boolean) ?? []
-    const branches =
-      searchParams
-        .get('branch')
-        ?.split(',')
-        .filter(Boolean) ?? []
+    const statuses = searchParams.get('status')?.split(',').filter(Boolean) ?? []
+    const projects = searchParams.get('project')?.split(',').filter(Boolean) ?? []
+    const branches = searchParams.get('branch')?.split(',').filter(Boolean) ?? []
     const search = searchParams.get('q') ?? ''
-    const sort =
-      (searchParams.get('sort') as LiveSortField) ?? DEFAULT_LIVE_FILTERS.sort
-    const sortDir =
-      (searchParams.get('dir') as LiveSortDirection) ??
-      DEFAULT_LIVE_FILTERS.sortDir
+    const sort = (searchParams.get('sort') as LiveSortField) ?? DEFAULT_LIVE_FILTERS.sort
+    const sortDir = (searchParams.get('dir') as LiveSortDirection) ?? DEFAULT_LIVE_FILTERS.sortDir
     return { statuses, projects, branches, search, sort, sortDir }
   }, [searchParams.toString()])
 
@@ -63,7 +41,7 @@ export function useLiveSessionFilters(
       }
       setSearchParams(params, { replace: true })
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   )
 
   const setProjects = useCallback(
@@ -76,7 +54,7 @@ export function useLiveSessionFilters(
       }
       setSearchParams(params, { replace: true })
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   )
 
   const setBranches = useCallback(
@@ -89,7 +67,7 @@ export function useLiveSessionFilters(
       }
       setSearchParams(params, { replace: true })
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   )
 
   const setSearch = useCallback(
@@ -102,7 +80,7 @@ export function useLiveSessionFilters(
       }
       setSearchParams(params, { replace: true })
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   )
 
   const setSort = useCallback(
@@ -123,7 +101,7 @@ export function useLiveSessionFilters(
       }
       setSearchParams(params, { replace: true })
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   )
 
   const clearAll = useCallback(() => {

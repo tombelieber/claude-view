@@ -4,8 +4,8 @@ import type {
   ContributionsResponse,
   SessionContributionResponse,
 } from '../types/generated'
-import type { TimeRangePreset } from './use-time-range'
 import { HttpError, isNotFoundError } from './use-session'
+import type { TimeRangePreset } from './use-time-range'
 
 /**
  * Map frontend presets to the contributions API's expected range strings.
@@ -14,12 +14,18 @@ import { HttpError, isNotFoundError } from './use-session'
  */
 function presetToApiRange(preset: TimeRangePreset): string {
   switch (preset) {
-    case 'today': return 'today'
-    case '7d': return 'week'
-    case '30d': return 'month'
-    case '90d': return '90days'
-    case 'all': return 'all'
-    case 'custom': return 'custom'
+    case 'today':
+      return 'today'
+    case '7d':
+      return 'week'
+    case '30d':
+      return 'month'
+    case '90d':
+      return '90days'
+    case 'all':
+      return 'all'
+    case 'custom':
+      return 'custom'
   }
 }
 
@@ -36,8 +42,8 @@ function toLocalDateStr(unixSeconds: number): string {
 
 export interface ContributionsTimeRange {
   preset: TimeRangePreset
-  from?: number | null  // unix seconds (converted to YYYY-MM-DD before sending)
-  to?: number | null    // unix seconds (converted to YYYY-MM-DD before sending)
+  from?: number | null // unix seconds (converted to YYYY-MM-DD before sending)
+  to?: number | null // unix seconds (converted to YYYY-MM-DD before sending)
 }
 
 /**
@@ -46,7 +52,7 @@ export interface ContributionsTimeRange {
 async function fetchContributions(
   time: ContributionsTimeRange,
   projectId?: string,
-  branch?: string
+  branch?: string,
 ): Promise<ContributionsResponse> {
   const apiRange = presetToApiRange(time.preset)
   let url = `/api/contributions?range=${encodeURIComponent(apiRange)}`
@@ -96,7 +102,11 @@ async function fetchSessionContribution(sessionId: string): Promise<SessionContr
  * - uncommitted: Array<UncommittedWork>
  * - warnings: Array<ContributionWarning>
  */
-export function useContributions(time: ContributionsTimeRange, projectId?: string, branch?: string) {
+export function useContributions(
+  time: ContributionsTimeRange,
+  projectId?: string,
+  branch?: string,
+) {
   return useQuery({
     queryKey: ['contributions', time.preset, time.from, time.to, projectId, branch],
     queryFn: () => fetchContributions(time, projectId, branch),
@@ -127,7 +137,7 @@ export function useSessionContribution(sessionId: string | null) {
 async function fetchBranchSessions(
   branch: string,
   time: ContributionsTimeRange,
-  projectId?: string
+  projectId?: string,
 ): Promise<BranchSessionsResponse> {
   const apiRange = presetToApiRange(time.preset)
   let url = `/api/contributions/branches/${encodeURIComponent(branch)}/sessions?range=${encodeURIComponent(apiRange)}`
@@ -155,8 +165,8 @@ async function fetchBranchSessions(
 export function useBranchSessions(
   branch: string | null,
   time: ContributionsTimeRange = { preset: '7d' },
-  enabled: boolean = true,
-  projectId?: string
+  enabled = true,
+  projectId?: string,
 ) {
   return useQuery({
     queryKey: ['branch-sessions', branch, time.preset, time.from, time.to, projectId],

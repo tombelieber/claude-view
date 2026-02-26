@@ -1,13 +1,13 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { ArrowDown } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { RichMessage } from '../RichPane'
-import { useActionItems } from './use-action-items'
 import { ActionFilterChips } from './ActionFilterChips'
 import { ActionRow } from './ActionRow'
 import { TurnSeparatorRow } from './TurnSeparatorRow'
 import { isTurnSeparator } from './types'
 import type { ActionCategory } from './types'
+import { useActionItems } from './use-action-items'
 
 interface ActionLogTabProps {
   messages: RichMessage[]
@@ -16,7 +16,11 @@ interface ActionLogTabProps {
   categoryCounts?: Record<ActionCategory, number>
 }
 
-export function ActionLogTab({ messages, bufferDone, categoryCounts: countsProp }: ActionLogTabProps) {
+export function ActionLogTab({
+  messages,
+  bufferDone,
+  categoryCounts: countsProp,
+}: ActionLogTabProps) {
   const allItems = useActionItems(messages)
   const [activeFilter, setActiveFilter] = useState<ActionCategory | 'all'>('all')
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -27,7 +31,21 @@ export function ActionLogTab({ messages, bufferDone, categoryCounts: countsProp 
   // Use prop if provided, otherwise compute from allItems (backward compat)
   const counts = useMemo(() => {
     if (countsProp) return countsProp
-    const c: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, error: 0, hook: 0, hook_progress: 0, system: 0, snapshot: 0, queue: 0, context: 0, result: 0, summary: 0 }
+    const c: Record<ActionCategory, number> = {
+      skill: 0,
+      mcp: 0,
+      builtin: 0,
+      agent: 0,
+      error: 0,
+      hook: 0,
+      hook_progress: 0,
+      system: 0,
+      snapshot: 0,
+      queue: 0,
+      context: 0,
+      result: 0,
+      summary: 0,
+    }
     for (const item of allItems) {
       if (!isTurnSeparator(item)) {
         c[item.category]++
@@ -70,7 +88,11 @@ export function ActionLogTab({ messages, bufferDone, categoryCounts: countsProp 
   return (
     <div className="flex flex-col h-full">
       {/* Filter chips */}
-      <ActionFilterChips counts={counts} activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+      <ActionFilterChips
+        counts={counts}
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+      />
 
       {/* Timeline */}
       <div className="flex-1 min-h-0 relative">

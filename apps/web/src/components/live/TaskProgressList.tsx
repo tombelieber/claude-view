@@ -19,7 +19,7 @@ interface TaskProgressListProps {
 export function TaskProgressList({ items }: TaskProgressListProps) {
   if (items.length === 0) return null
 
-  const completed = items.filter(i => i.status === 'completed').length
+  const completed = items.filter((i) => i.status === 'completed').length
   const total = items.length
 
   return (
@@ -40,13 +40,14 @@ export function TaskProgressList({ items }: TaskProgressListProps) {
         {items.slice(0, 5).map((item, idx) => {
           const icon = STATUS_ICON[item.status] ?? '◻'
           const colorClass = STATUS_CLASS[item.status] ?? STATUS_CLASS.pending
-          const label = item.status === 'in_progress' && item.activeForm
-            ? item.activeForm
-            : item.title
+          const label =
+            item.status === 'in_progress' && item.activeForm ? item.activeForm : item.title
           return (
             <li key={item.id ?? idx} className="flex items-start gap-1.5 text-xs leading-tight">
               <span className={`flex-shrink-0 font-mono ${colorClass}`}>{icon}</span>
-              <span className={`truncate ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-600 dark:text-gray-300'}`}>
+              <span
+                className={`truncate ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-600 dark:text-gray-300'}`}
+              >
                 {label}
               </span>
             </li>

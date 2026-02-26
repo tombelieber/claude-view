@@ -1,18 +1,18 @@
 import { useState } from 'react'
-import { formatNumber } from '../../lib/format-utils'
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
 } from 'recharts'
+import { formatNumber } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
-import { InsightLine } from './InsightLine'
 import type { DailyTrendPoint, Insight } from '../../types/generated'
+import { InsightLine } from './InsightLine'
 
 interface TrendChartProps {
   data: DailyTrendPoint[]
@@ -76,7 +76,7 @@ export function TrendChart({ data, insight }: TrendChartProps) {
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset',
                 option.value === metric
                   ? 'bg-blue-500 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
               )}
             >
               {option.label}
@@ -124,10 +124,7 @@ export function TrendChart({ data, insight }: TrendChartProps) {
                   return point?.fullDate || label
                 }}
               />
-              <Legend
-                wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                iconType="line"
-              />
+              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} iconType="line" />
 
               {metric === 'lines' && (
                 <>

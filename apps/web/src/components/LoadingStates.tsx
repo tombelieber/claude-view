@@ -1,4 +1,4 @@
-import { AlertCircle, FolderOpen, Search, RefreshCw } from 'lucide-react'
+import { AlertCircle, FolderOpen, RefreshCw, Search } from 'lucide-react'
 
 /**
  * Skeleton loading component with animate-pulse and proper accessibility.
@@ -15,12 +15,7 @@ interface SkeletonProps {
 
 export function Skeleton({ label, rows = 3, withHeader = true }: SkeletonProps) {
   return (
-    <div
-      className="animate-pulse"
-      role="status"
-      aria-busy="true"
-      aria-label={`Loading ${label}`}
-    >
+    <div className="animate-pulse" role="status" aria-busy="true" aria-label={`Loading ${label}`}>
       <span className="sr-only">Loading {label}...</span>
 
       {withHeader && (
@@ -74,11 +69,14 @@ export function DashboardSkeleton() {
 
         {/* Stats grid */}
         <div className="grid md:grid-cols-2 gap-6">
-          {[1, 2].map(i => (
-            <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6"
+            >
               <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
               <div className="space-y-3">
-                {[1, 2, 3, 4, 5].map(j => (
+                {[1, 2, 3, 4, 5].map((j) => (
                   <div key={j}>
                     <div className="flex justify-between mb-1">
                       <div className="h-4 w-20 bg-gray-100 dark:bg-gray-800 rounded" />
@@ -130,7 +128,7 @@ export function LiveMonitorSkeleton() {
             <div className="flex items-center gap-4">
               <div className="h-5 w-28 bg-gray-200 dark:bg-gray-700 rounded" />
               <div className="flex gap-1">
-                {[1, 2, 3, 4].map(i => (
+                {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="h-8 w-8 bg-gray-100 dark:bg-gray-800 rounded" />
                 ))}
               </div>
@@ -153,7 +151,7 @@ export function LiveMonitorSkeleton() {
 
           {/* Filter bar */}
           <div className="flex gap-2">
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="h-8 w-24 bg-gray-100 dark:bg-gray-800 rounded-lg" />
             ))}
             <div className="ml-auto h-8 w-48 bg-gray-100 dark:bg-gray-800 rounded-lg" />
@@ -164,18 +162,23 @@ export function LiveMonitorSkeleton() {
       {/* Kanban columns */}
       <div className="flex-1 min-h-0 px-6 pt-4 pb-6 animate-pulse">
         <div className="max-w-7xl mx-auto h-full flex gap-4">
-          {['Needs You', 'Running'].map(title => (
+          {['Needs You', 'Running'].map((title) => (
             <div key={title} className="flex-1 flex flex-col min-h-0">
               {/* Column header */}
               <div className="flex items-center gap-2 mb-3 px-1">
-                <div className={`h-2 w-2 rounded-full ${title === 'Needs You' ? 'bg-amber-400/50' : 'bg-green-400/50'}`} />
+                <div
+                  className={`h-2 w-2 rounded-full ${title === 'Needs You' ? 'bg-amber-400/50' : 'bg-green-400/50'}`}
+                />
                 <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
                 <div className="h-4 w-4 bg-gray-100 dark:bg-gray-800 rounded-full" />
               </div>
               {/* Placeholder cards */}
               <div className="space-y-3">
-                {[1, 2].map(j => (
-                  <div key={j} className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                {[1, 2].map((j) => (
+                  <div
+                    key={j}
+                    className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                  >
                     <div className="flex items-center justify-between mb-3">
                       <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
                       <div className="h-5 w-16 bg-gray-100 dark:bg-gray-800 rounded-full" />
@@ -287,7 +290,10 @@ export function ErrorState({ message, onRetry, onBack }: ErrorStateProps) {
 /**
  * Sessions empty state - specific for when no sessions are found.
  */
-export function SessionsEmptyState({ isFiltered, onClearFilters }: {
+export function SessionsEmptyState({
+  isFiltered,
+  onClearFilters,
+}: {
   isFiltered: boolean
   onClearFilters?: () => void
 }) {
@@ -347,4 +353,3 @@ export function LoadingSpinner({ label = 'Loading' }: { label?: string }) {
     </div>
   )
 }
-
