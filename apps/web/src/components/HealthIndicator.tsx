@@ -1,10 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-
-interface HealthResponse {
-  status: string
-  version: string
-  uptime_secs: number
-}
+import type { HealthResponse } from '../types/generated'
 
 export function HealthIndicator() {
   const { data, isError, isLoading } = useQuery<HealthResponse>({

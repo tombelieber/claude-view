@@ -174,6 +174,9 @@ export type { ProgressItem } from './ProgressItem'
 // Live Monitor: Rich Session Data (unified accumulator output)
 export type { RichSessionData } from './RichSessionData'
 
+// Health check types
+export type { HealthResponse } from './HealthResponse'
+
 // Full-text search types
 export type { SearchResponse } from './SearchResponse'
 export type { SessionHit } from './SessionHit'
