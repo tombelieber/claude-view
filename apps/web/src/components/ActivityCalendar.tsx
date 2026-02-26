@@ -55,7 +55,7 @@ export function ActivityCalendar({
   totalProjects,
 }: ActivityCalendarProps) {
   // Null safety: handle null/undefined sessions
-  const safeSessions = sessions || []
+  const safeSessions = Array.isArray(sessions) ? sessions : []
 
   const countsByDay = useMemo(() => countSessionsByDay(safeSessions), [safeSessions])
 

@@ -26,7 +26,7 @@ export function useLiveSessionMessages(
   const [messages, setMessages] = useState<RichMessage[]>([])
   const [hookEvents, setHookEvents] = useState<HookEventItem[]>([])
   const [bufferDone, setBufferDone] = useState(false)
-  const lastToolCategoryRef = useRef<ActionCategory | undefined>()
+  const lastToolCategoryRef = useRef<ActionCategory | undefined>(undefined)
 
   const handleMessage = useCallback((data: string) => {
     // Try to parse as hook_event first (JSON with type field)

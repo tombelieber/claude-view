@@ -116,7 +116,7 @@ export function LearningCurve({ data }: LearningCurveProps) {
                   borderRadius: '8px',
                   fontSize: '12px',
                 }}
-                formatter={(value: number) => [value.toFixed(2), 'Re-edit Rate']}
+                formatter={(value) => [(value as number).toFixed(2), 'Re-edit Rate']}
                 labelFormatter={(label) => {
                   const point = chartData.find((d) => d.period === label)
                   return point?.fullPeriod || label

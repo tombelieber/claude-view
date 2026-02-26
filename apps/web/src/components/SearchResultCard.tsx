@@ -73,7 +73,7 @@ export function SearchResultCard({ hit, isSelected, onSelect }: SearchResultCard
           </span>
         </div>
         <span className="text-gray-400 dark:text-gray-500 text-xs">
-          {formatDate(hit.modifiedAt)}
+          {formatDate(Number(hit.modifiedAt))}
         </span>
       </div>
 

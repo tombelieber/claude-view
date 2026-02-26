@@ -84,7 +84,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
             <XAxis
               type="number"
               tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
-              tickFormatter={(v: number) => formatNumber(v)}
+              tickFormatter={(v) => formatNumber(v as number)}
             />
             <YAxis
               type="category"
@@ -99,9 +99,9 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                 borderRadius: '8px',
                 fontSize: '12px',
               }}
-              formatter={(value: number, _name: string, props: any) => {
-                const item = props.payload
-                const parts = [`${formatNumber(value)} lines`]
+              formatter={(value, _name, props) => {
+                const item = (props as any).payload
+                const parts = [`${formatNumber(value as number)} lines`]
                 if (item.reeditRate !== null) parts.push(`Re-edit: ${item.reeditRate.toFixed(2)}`)
                 if (item.costPerLine !== null)
                   parts.push(`Cost/line: ${formatCostUsd(item.costPerLine)}`)
@@ -115,7 +115,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
               <LabelList
                 dataKey="lines"
                 position="right"
-                formatter={(v: number) => formatNumber(v)}
+                formatter={(v) => formatNumber(v as number)}
                 style={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
               />
             </Bar>

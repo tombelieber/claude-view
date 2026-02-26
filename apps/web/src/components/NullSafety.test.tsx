@@ -49,26 +49,28 @@ describe('Component null/undefined safety', () => {
 
   describe('MetricCard component', () => {
     it('should handle null label safely', () => {
-      const { container } = render(<MetricCard label={null as any} value={42} change={0} />)
+      const { container } = render(<MetricCard {...({ label: null, value: '42' } as any)} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle undefined value safely', () => {
-      const { container } = render(<MetricCard label="Test" value={undefined as any} change={0} />)
+      const { container } = render(<MetricCard {...({ label: 'Test', value: undefined } as any)} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle null change safely', () => {
-      const { container } = render(<MetricCard label="Test" value={42} change={null as any} />)
+      const { container } = render(
+        <MetricCard {...({ label: 'Test', value: '42', trend: null } as any)} />,
+      )
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle all nulls safely', () => {
       const { container } = render(
-        <MetricCard label={null as any} value={null as any} change={null as any} />,
+        <MetricCard {...({ label: null, value: null, change: null } as any)} />,
       )
 
       expect(container).toBeInTheDocument()
@@ -79,10 +81,7 @@ describe('Component null/undefined safety', () => {
     it('should handle null session data safely', () => {
       const { container } = render(
         <SessionCard
-          sessionId="test"
-          title={null as any}
-          created={new Date()}
-          tokens={{} as any}
+          {...({ sessionId: 'test', title: null, created: new Date(), tokens: {} } as any)}
         />,
       )
 
@@ -92,10 +91,7 @@ describe('Component null/undefined safety', () => {
     it('should handle undefined created date safely', () => {
       const { container } = render(
         <SessionCard
-          sessionId="test"
-          title="Test Session"
-          created={undefined as any}
-          tokens={{} as any}
+          {...({ sessionId: 'test', title: 'Test Session', created: undefined, tokens: {} } as any)}
         />,
       )
 
@@ -105,10 +101,12 @@ describe('Component null/undefined safety', () => {
     it('should handle null tokens safely', () => {
       const { container } = render(
         <SessionCard
-          sessionId="test"
-          title="Test Session"
-          created={new Date()}
-          tokens={null as any}
+          {...({
+            sessionId: 'test',
+            title: 'Test Session',
+            created: new Date(),
+            tokens: null,
+          } as any)}
         />,
       )
 
@@ -117,7 +115,14 @@ describe('Component null/undefined safety', () => {
 
     it('should handle empty tokens safely', () => {
       const { container } = render(
-        <SessionCard sessionId="test" title="Test Session" created={new Date()} tokens={{}} />,
+        <SessionCard
+          {...({
+            sessionId: 'test',
+            title: 'Test Session',
+            created: new Date(),
+            tokens: {},
+          } as any)}
+        />,
       )
 
       expect(container).toBeInTheDocument()
@@ -126,25 +131,27 @@ describe('Component null/undefined safety', () => {
 
   describe('DashboardMetricsGrid component', () => {
     it('should handle null metrics safely', () => {
-      const { container } = render(<DashboardMetricsGrid metrics={null as any} />)
+      const { container } = render(<DashboardMetricsGrid trends={null} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle undefined metrics safely', () => {
-      const { container } = render(<DashboardMetricsGrid metrics={undefined as any} />)
+      const { container } = render(<DashboardMetricsGrid trends={undefined} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle empty metrics array safely', () => {
-      const { container } = render(<DashboardMetricsGrid metrics={[]} />)
+      const { container } = render(<DashboardMetricsGrid {...({ trends: [] } as any)} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle undefined array items safely', () => {
-      const { container } = render(<DashboardMetricsGrid metrics={[undefined, null] as any} />)
+      const { container } = render(
+        <DashboardMetricsGrid {...({ trends: [undefined, null] } as any)} />,
+      )
 
       expect(container).toBeInTheDocument()
     })
@@ -152,25 +159,25 @@ describe('Component null/undefined safety', () => {
 
   describe('ActivityCalendar component', () => {
     it('should handle null data safely', () => {
-      const { container } = render(<ActivityCalendar data={null as any} />)
+      const { container } = render(<ActivityCalendar sessions={null} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle undefined data safely', () => {
-      const { container } = render(<ActivityCalendar data={undefined as any} />)
+      const { container } = render(<ActivityCalendar sessions={undefined} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle empty data safely', () => {
-      const { container } = render(<ActivityCalendar data={{}} />)
+      const { container } = render(<ActivityCalendar {...({ sessions: {} } as any)} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle empty data array safely', () => {
-      const { container } = render(<ActivityCalendar data={[]} as any />)
+      const { container } = render(<ActivityCalendar sessions={[]} />)
 
       expect(container).toBeInTheDocument()
     })
@@ -218,13 +225,13 @@ describe('Component null/undefined safety', () => {
     })
 
     it('should handle empty string tier safely', () => {
-      const { container } = render(<TierBadge tier="" />)
+      const { container } = render(<TierBadge tier={'' as any} />)
 
       expect(container).toBeInTheDocument()
     })
 
     it('should handle invalid tier values safely', () => {
-      const { container } = render(<TierBadge tier="invalid-tier-value" />)
+      const { container } = render(<TierBadge tier={'invalid-tier-value' as any} />)
 
       expect(container).toBeInTheDocument()
     })

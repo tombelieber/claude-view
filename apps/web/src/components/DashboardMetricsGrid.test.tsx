@@ -5,9 +5,9 @@ import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 
 function makeTrends(overrides: Partial<DashboardTrends> = {}): DashboardTrends {
   const metric = (current: number) => ({
-    current: BigInt(current),
-    previous: BigInt(0),
-    delta: BigInt(current),
+    current: current,
+    previous: 0,
+    delta: current,
     deltaPercent: current > 0 ? 100 : null,
   })
 
@@ -93,25 +93,25 @@ describe('DashboardMetricsGrid', () => {
   describe('edge cases', () => {
     it('should handle zero values gracefully', () => {
       const zeroTrends = makeTrends({
-        sessions: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
-        tokens: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
+        sessions: { current: 0, previous: 0, delta: 0, deltaPercent: null },
+        tokens: { current: 0, previous: 0, delta: 0, deltaPercent: null },
         filesEdited: {
-          current: BigInt(0),
-          previous: BigInt(0),
-          delta: BigInt(0),
+          current: 0,
+          previous: 0,
+          delta: 0,
           deltaPercent: null,
         },
-        commits: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
+        commits: { current: 0, previous: 0, delta: 0, deltaPercent: null },
         avgTokensPerPrompt: {
-          current: BigInt(0),
-          previous: BigInt(0),
-          delta: BigInt(0),
+          current: 0,
+          previous: 0,
+          delta: 0,
           deltaPercent: null,
         },
         avgReeditRate: {
-          current: BigInt(0),
-          previous: BigInt(0),
-          delta: BigInt(0),
+          current: 0,
+          previous: 0,
+          delta: 0,
           deltaPercent: null,
         },
       })
@@ -126,9 +126,9 @@ describe('DashboardMetricsGrid', () => {
     it('should handle large values with formatting', () => {
       const largeTrends = makeTrends({
         tokens: {
-          current: BigInt(2500000),
-          previous: BigInt(0),
-          delta: BigInt(2500000),
+          current: 2500000,
+          previous: 0,
+          delta: 2500000,
           deltaPercent: 100,
         },
       })

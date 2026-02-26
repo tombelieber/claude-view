@@ -20,7 +20,7 @@ export function NotificationSoundPopover({
   settings,
   onSettingsChange,
   onPreview,
-  audioUnlocked,
+  audioUnlocked: _audioUnlocked,
 }: NotificationSoundPopoverProps) {
   const isEnabled = settings.enabled
 

@@ -72,7 +72,7 @@ describe('ErrorBoundary', () => {
         throw new Error('Error with <b>HTML</b>')
       }
 
-      const { container } = render(
+      const { container: _container } = render(
         <ErrorBoundary>
           <ThrowError />
         </ErrorBoundary>,
@@ -226,7 +226,7 @@ describe('Integration: ErrorBoundary wraps messages', () => {
       throw new Error('boom')
     }
 
-    const { container } = render(
+    const { container: _container } = render(
       <div>
         <ErrorBoundary>
           <Crasher />

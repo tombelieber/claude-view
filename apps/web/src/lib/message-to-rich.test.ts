@@ -28,7 +28,7 @@ describe('messagesToRichMessages', () => {
         makeMsg({
           role: 'tool_use',
           content: '',
-          tool_calls: [{ name: 'Read', input: { file_path: '/foo' } }],
+          tool_calls: [{ name: 'Read', count: 1, input: { file_path: '/foo' } }],
         }),
       ])
       expect(result).toHaveLength(1)
