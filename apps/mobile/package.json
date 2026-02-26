@@ -12,15 +12,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claude-view/shared": "workspace:*",
     "@claude-view/design-tokens": "workspace:*",
+    "@claude-view/shared": "workspace:*",
     "@expo/vector-icons": "^15.0.2",
     "@react-navigation/native": "^7.1.28",
+    "@tamagui/config": "^2.0.0-rc.18",
+    "@tamagui/font-inter": "^2.0.0-rc.18",
     "expo": "~55.0.0",
+    "expo-camera": "~55.0.9",
     "expo-constants": "~55.0.7",
     "expo-font": "~55.0.4",
+    "expo-haptics": "~55.0.8",
     "expo-image": "~55.0.0",
     "expo-linking": "~55.0.7",
+    "expo-notifications": "~55.0.10",
     "expo-router": "~55.0.0",
     "expo-secure-store": "~55.0.0",
     "expo-splash-screen": "~55.0.9",
@@ -34,8 +39,8 @@
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.7.2",
     "tamagui": "^2.0.0-rc.18",
-    "@tamagui/config": "^2.0.0-rc.18",
-    "@tamagui/font-inter": "^2.0.0-rc.18"
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
   },
   "devDependencies": {
     "@tamagui/babel-plugin": "^2.0.0-rc.18",
