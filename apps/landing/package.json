@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "open src/index.html",
     "build": "mkdir -p dist && cp -r src/* dist/ && cp -r public/* dist/",
+    "lint": "biome check .",
     "deploy": "wrangler pages deploy dist"
   }
 }
