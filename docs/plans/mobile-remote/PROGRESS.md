@@ -1,25 +1,20 @@
 # Mobile Remote — Epic Progress
 
 **Epic:** Zero-setup mobile remote monitoring and control for claude-view
-**Branch:** `worktree-mobile-remote`
-**Status:** Deferred to next release cycle
-**Last updated:** 2026-02-25
+**Branch:** `worktree-monorepo-expo`
+**Status:** M1 impl plan audited, 22 gaps fixed — ready to execute
+**Last updated:** 2026-02-27
 
 ---
 
-## Execution Order (Next Release Cycle)
+## Execution Order
 
-These two plans must be executed **in this order**. Plan 2's Phase 1 overlaps with Plan 1 — skip it and start at Phase 2.
+| Order | Plan | Tasks | Status |
+|-------|------|-------|--------|
+| **1** | [Monorepo Restructure](../2026-02-25-monorepo-restructure-impl.md) | 12 | **DONE** |
+| **2** | [clawmini Mobile M1](./2026-02-25-clawmini-mobile-m1-impl.md) | 10 | **Ready to execute** (audited, 22 gaps fixed in plan) |
 
-| Order | Plan | Tasks | Description |
-|-------|------|-------|-------------|
-| **1** | [Monorepo Restructure](../2026-02-25-monorepo-restructure-impl.md) | 12 | Move web SPA to `apps/web/`, Bun workspaces, Turborepo, scaffold `apps/mobile/`, `apps/landing/`, `packages/shared/`, `packages/design-tokens/` |
-| **2** | [clawmini Mobile M1](./2026-02-25-clawmini-mobile-m1-impl.md) | 12 (skip Phase 1) | Relay bug fixes, Expo app (pair screen, dashboard, bottom sheet), deploy pipeline, push notifications |
-
-**Why this order:**
-- Monorepo restructure creates the directory layout, workspace config, and shared packages that the mobile app depends on
-- M1 Phase 1 (Tasks 1-4) is a subset of the monorepo plan — after executing Plan 1, start M1 at **Phase 2, Task 5** (relay bug fixes)
-- Adjust M1 package names from `@clawmini/*` to `@claude-view/*` to match monorepo plan conventions
+Monorepo restructure is complete. M1 impl plan starts at Task 1 (all 10 tasks, 4 phases). Package names use `@claude-view/*`.
 
 ---
 
@@ -29,10 +24,10 @@ These two plans must be executed **in this order**. Plan 2's Phase 1 overlaps wi
 
 | Phase | Plan | Status | Summary |
 |-------|------|--------|---------|
-| **1** | Monorepo restructure (separate plan) | DEFERRED | Infra: `apps/web/`, workspaces, shared packages, Expo scaffold |
-| **2** | M1 impl Tasks 5 | DEFERRED | Fix 3 relay pairing bugs |
-| **3** | M1 impl Tasks 6-9 | DEFERRED | Expo app: scaffold, pair screen, dashboard, bottom sheet |
-| **4** | M1 impl Tasks 10-12 | DEFERRED | EAS build, push notifications, docs |
+| **1** | Monorepo restructure (separate plan) | **DONE** | Infra: `apps/web/`, workspaces, shared packages, Expo scaffold |
+| **2** | M1 impl Tasks 1-3 | **READY** | Shared pkg, relay fixes (push_hint + pair_complete gap-fixed) |
+| **3** | M1 impl Tasks 4-7 | **READY** | Expo app: pair screen, dashboard, bottom sheet |
+| **4** | M1 impl Tasks 8-10 | **READY** | Push notifications, EAS build, docs |
 
 ### M2: "Remote control" — Phone sends commands, Mac executes
 
@@ -65,11 +60,20 @@ These two plans must be executed **in this order**. Plan 2's Phase 1 overlaps wi
 
 Found during shippable audit (2026-02-25). All 3 are in dormant code paths gated behind `RELAY_URL` env var — no impact on shipped functionality.
 
-| # | File | Line | Issue | Fix |
-|---|------|------|-------|-----|
-| 1 | `crates/server/src/live/relay_client.rs` | 220 | `pair_complete` handler is a TODO stub — phone pubkey never decrypted or stored in Keychain | Implement decryption + call `crypto::add_paired_device()` |
-| 2 | `crates/server/src/routes/pairing.rs` | 74 | `let _ =` on relay registration POST — QR returned even if relay is unreachable | Propagate error, return 502/503 to caller |
-| 3 | `crates/server/src/crypto.rs` | 69 | Identity private key file written with default permissions (world-readable) | Set `0o600` permissions after write |
+| # | File | Issue | Status |
+|---|------|-------|--------|
+| 1 | `relay_client.rs` | `pair_complete` handler was a TODO stub | **FIXED** (2026-02-27) — decrypts blob, verifies X25519 key, stores via `add_paired_device()` |
+| 2 | `routes/pairing.rs` | `let _ =` on relay registration POST | Open — propagate error, return 502/503 |
+| 3 | `crypto.rs` | Identity key file written world-readable | Open — set `0o600` permissions after write |
+
+**Audit gap fixes (2026-02-27):** 3 gaps found in impl plan and fixed in code before execution:
+
+- `relay_client.rs`: Added `build_envelope()` helper with `push_hint`/`push_title` for NeedsYou sessions (push notifications would never have fired)
+- `relay_client.rs`: Implemented full `pair_complete` handler — decrypts phone blob, verifies X25519 key match, stores `PairedDevice`
+- `pairing.rs`: Added `x25519_pubkey` to `ClaimRequest`, forwarded in `pair_complete` message
+- `crypto.rs`: Added `decrypt_from_device()` function (symmetric counterpart to `encrypt_for_device`)
+- `ws.rs`: Added `push_hint`/`push_title` optional fields to `RelayEnvelope`
+- Impl plan: Added `projectId` param to `getExpoPushTokenAsync` (Expo SDK 55 requires it)
 
 **Additional hardening (warnings, not blockers):**
 - Relay needs rate limiting on `/pair` and `/pair/claim` endpoints

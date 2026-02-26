@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase E: Custom Layout — Interactive Mockup v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== DESIGN TOKENS (matching real codebase) ===== */
+  :root {
+    /* GitHub-dark palette (from MonitorPane.tsx / design-tokens) */
+    --bg-body: #0F1419;
+    --bg-pane: #0D1117;
+    --bg-header: #161B22;
+    --bg-surface: #1C2128;
+    --border: #21262D;
+    --border-hover: #30363D;
+    --border-active: #58a6ff;
+
+    /* Text */
+    --text-primary: #F0F6FC;
+    --text-secondary: #C9D1D9;
+    --text-muted: #8B949E;
+    --text-dim: #6E7681;
+
+    /* Status colors (from design-tokens/colors.ts) */
+    --status-active: #22c55e;
+    --status-waiting: #f59e0b;
+    --status-idle: #3b82f6;
+    --status-done: #6b7280;
+    --status-error: #ef4444;
+
+    /* UI accents */
+    --indigo: #818cf8;
+    --indigo-dim: rgba(99, 102, 241, 0.1);
+    --indigo-border: #6366f1;
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.08);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.08);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.08);
+    --red: #ef4444;
+    --purple: #a78bfa;
+    --purple-dim: rgba(167, 139, 250, 0.08);
+
+    /* Split bar */
+    --split: #21262D;
+    --split-hover: #30363D;
+    --split-active: #22c55e;
+
+    /* Fonts */
+    --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Monaco, monospace;
+
+    /* Radii */
+    --radius: 6px;
+    --radius-sm: 4px;
+  }
+
+  /* ===== RESET ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-body);
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  /* ===== APP SHELL ===== */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ===== DESIGN CHOOSER (mockup-only meta control) ===== */
+  .design-chooser {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: #1a1a2e;
+    border-bottom: 1px solid #30363D;
+    flex-shrink: 0;
+  }
+  .design-chooser-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    font-weight: 600;
+  }
+  .design-chooser-group {
+    display: flex;
+    gap: 4px;
+    background: rgba(0,0,0,0.3);
+    padding: 3px;
+    border-radius: var(--radius);
+  }
+  .design-chooser-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+    white-space: nowrap;
+  }
+  .design-chooser-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+  }
+  .design-chooser-btn.active {
+    background: var(--amber-dim);
+    color: var(--amber);
+    font-weight: 500;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .design-chooser-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 8px;
+    font-style: italic;
+  }
+
+  /* ===== TOOLBAR (matching real GridControls) ===== */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(22, 27, 34, 0.5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin: 8px 12px 0;
+    flex-shrink: 0;
+  }
+
+  .toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 2px;
+  }
+
+  /* ===== SEGMENTED CONTROL (matches ViewModeSwitcher) ===== */
+  .segmented {
+    display: flex;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .seg-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+    white-space: nowrap;
+    position: relative;
+  }
+
+  .seg-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.04);
+  }
+
+  .seg-btn.active {
+    background: var(--indigo-dim);
+    color: var(--indigo);
+    font-weight: 500;
+  }
+
+  .seg-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 4px;
+    right: 4px;
+    height: 2px;
+    background: var(--indigo-border);
+    border-radius: 1px;
+  }
+
+  .seg-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* ===== PRESET BUTTON ===== */
+  .preset-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+  }
+  .preset-btn:hover {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.03);
+  }
+  .preset-btn.active-preset {
+    border-color: var(--indigo-border);
+    color: var(--indigo);
+    background: var(--indigo-dim);
+  }
+  .preset-btn svg { width: 12px; height: 12px; }
+
+  /* ===== RESET BUTTON ===== */
+  .reset-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 150ms;
+  }
+  .reset-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.04);
+  }
+  .reset-btn svg { width: 12px; height: 12px; }
+
+  /* ===== SESSION COUNT ===== */
+  .session-count {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: auto;
+    font-family: var(--font-mono);
+  }
+  .session-count .num { color: var(--green); font-weight: 600; }
+
+  /* ===== DOCK AREA ===== */
+  .dock-area {
+    flex: 1;
+    margin: 8px 12px 12px;
+    overflow: hidden;
+    position: relative;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    display: grid;
+  }
+
+  /* Layout modes */
+  .dock-area.layout-3-1 {
+    grid-template-columns: 1fr 4px 2fr;
+    grid-template-rows: 1fr;
+  }
+  .dock-area.layout-2x2 {
+    grid-template-columns: 1fr 4px 1fr;
+    grid-template-rows: 1fr 4px 1fr;
+  }
+  .dock-area.layout-focus {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  /* ===== SPLIT BARS ===== */
+  .split-v {
+    background: var(--split);
+    cursor: col-resize;
+    transition: background 150ms;
+    position: relative;
+    z-index: 2;
+  }
+  .split-v::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: var(--border-hover);
+    border-radius: 1px;
+  }
+  .split-v:hover { background: var(--split-hover); }
+  .split-v:hover::after { background: var(--text-muted); }
+  .split-v:active { background: var(--split-active); }
+
+  .split-h {
+    height: 4px;
+    background: var(--split);
+    cursor: row-resize;
+    transition: background 150ms;
+    position: relative;
+    z-index: 2;
+  }
+  .split-h::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 2px;
+    background: var(--border-hover);
+    border-radius: 1px;
+  }
+  .split-h:hover { background: var(--split-hover); }
+  .split-h:hover::after { background: var(--text-muted); }
+  .split-h:active { background: var(--split-active); }
+
+  /* ===== LEFT STACK (3+1 layout) ===== */
+  .left-stack {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== PANEL ===== */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1;
+    background: var(--bg-pane);
+  }
+
+  /* ===== DOCKVIEW TAB BAR ===== */
+  .dock-tab-bar {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    height: 32px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .dock-tab-bar::-webkit-scrollbar { display: none; }
+
+  .dock-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 100ms;
+    white-space: nowrap;
+    user-select: none;
+    position: relative;
+  }
+  .dock-tab:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.03);
+  }
+  .dock-tab.active {
+    color: var(--text-primary);
+    background: var(--bg-pane);
+  }
+  .dock-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--indigo-border);
+  }
+
+  /* Status dot */
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot.working { background: var(--status-active); box-shadow: 0 0 6px rgba(34,197,94,0.3); }
+  .status-dot.paused { background: var(--status-waiting); box-shadow: 0 0 6px rgba(245,158,11,0.3); }
+  .status-dot.idle { background: var(--status-idle); box-shadow: 0 0 6px rgba(59,130,246,0.3); }
+  .status-dot.done { background: var(--status-done); }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .status-dot.working { animation: pulse-dot 2s ease-in-out infinite; }
+
+  /* Tab close button */
+  .dock-tab .close-btn {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 100ms;
+    margin-left: 2px;
+  }
+  .dock-tab:hover .close-btn { opacity: 0.5; }
+  .dock-tab .close-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+
+  /* Tab bar actions */
+  .dock-tab-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0 4px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .dock-tab-actions button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 100ms;
+  }
+  .dock-tab-actions button:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* ===== RICH TAB (Option A: info packed into tab) ===== */
+  .dock-tab.rich-tab {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .rich-tab-metrics {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .rich-tab-cost { color: var(--text-muted); }
+  .rich-tab-ctx { color: var(--green); }
+  .rich-tab-ctx.warn { color: var(--amber); }
+  .rich-tab-ctx.critical { color: var(--red); }
+
+  /* ===== MONITOR PANE HEADER (Option B: full header inside panel) ===== */
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 32px;
+  }
+  .pane-header .project-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pane-header .branch-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.04);
+    padding: 1px 6px;
+    border-radius: 3px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pane-header .metrics {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+  .pane-header .cost { color: var(--text-muted); }
+  .pane-header .ctx { padding: 1px 4px; border-radius: 2px; }
+  .pane-header .ctx.ok { color: var(--green); background: var(--green-dim); }
+  .pane-header .ctx.warn { color: var(--amber); background: var(--amber-dim); }
+  .pane-header .ctx.crit { color: var(--red); background: rgba(239,68,68,0.08); }
+  .pane-header .actions {
+    display: flex;
+    gap: 2px;
+    margin-left: 4px;
+  }
+  .pane-header .actions button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 100ms;
+  }
+  .pane-header .actions button:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* ===== SLIM INFO BAR (Option C: compact metrics bar) ===== */
+  .slim-info-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px;
+    background: rgba(22, 27, 34, 0.6);
+    border-bottom: 1px solid rgba(33, 38, 45, 0.5);
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .slim-info-bar .branch { color: var(--text-dim); }
+  .slim-info-bar .dot { color: var(--border-hover); }
+  .slim-info-bar .cost { color: var(--text-muted); }
+  .slim-info-bar .ctx { color: var(--green); }
+  .slim-info-bar .ctx.warn { color: var(--amber); }
+  .slim-info-bar .turns { color: var(--text-dim); }
+
+  /* ===== RICH PANE CONTENT (matching real RichPane) ===== */
+  .rich-content {
+    flex: 1;
+    background: var(--bg-pane);
+    overflow-y: auto;
+    padding: 8px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hover) transparent;
+  }
+
+  /* Message bubble base */
+  .msg {
+    display: flex;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    border-left: 3px solid transparent;
+    transition: background 100ms;
+  }
+  .msg:hover { background: rgba(255,255,255,0.02); }
+
+  .msg-icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    border-radius: 50%;
+    font-size: 10px;
+  }
+  .msg-body { flex: 1; min-width: 0; }
+
+  /* User message */
+  .msg.user { border-left-color: var(--blue); }
+  .msg.user .msg-icon { background: var(--blue-dim); color: var(--blue); }
+  .msg.user .msg-body { color: var(--text-primary); }
+
+  /* Assistant message */
+  .msg.assistant { border-left-color: var(--border-hover); }
+  .msg.assistant .msg-icon { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+  .msg.assistant .msg-body { color: var(--text-secondary); }
+
+  /* Tool call */
+  .msg.tool {
+    border-left-color: transparent;
+    padding: 3px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .msg.tool .msg-icon { background: rgba(99, 102, 241, 0.08); color: var(--indigo); font-size: 9px; }
+  .msg.tool .tool-name { color: var(--indigo); font-weight: 500; }
+  .msg.tool .tool-path { color: var(--text-dim); }
+
+  /* Tool result */
+  .msg.result {
+    border-left-color: transparent;
+    padding: 2px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .msg.result .msg-icon { background: var(--green-dim); color: var(--green); font-size: 9px; }
+  .msg.result .msg-body { color: var(--green); opacity: 0.8; }
+
+  /* Thinking */
+  .msg.thinking { border-left-color: var(--purple); padding: 4px 12px; }
+  .msg.thinking .msg-icon { background: var(--purple-dim); color: var(--purple); font-size: 9px; }
+  .msg.thinking .msg-body { color: var(--purple); font-style: italic; opacity: 0.7; font-size: 11px; }
+
+  /* Cost badge */
+  .cost-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--green-dim);
+    color: var(--green);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    margin-left: 6px;
+  }
+
+  /* ===== PANE FOOTER ===== */
+  .pane-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-header);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .pane-footer .activity {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+  .pane-footer .turn-count { font-family: var(--font-mono); color: var(--text-muted); flex-shrink: 0; }
+  .pane-footer .agent-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--indigo);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    flex-shrink: 0;
+  }
+
+  /* ===== FLOATING PANEL ===== */
+  .floating-panel {
+    position: fixed;
+    width: 380px;
+    height: 300px;
+    background: var(--bg-header);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    right: 28px;
+    bottom: 28px;
+  }
+  .floating-panel .dock-tab-bar { cursor: move; background: var(--bg-surface); }
+  .floating-panel .resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+  }
+  .floating-panel .resize-handle::before {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-dim);
+    border-bottom: 2px solid var(--text-dim);
+    opacity: 0.4;
+  }
+
+  /* ===== HELP BADGE ===== */
+  .help-badge {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    z-index: 300;
+    line-height: 1.6;
+    max-width: 280px;
+  }
+  .help-badge strong { color: var(--text-muted); }
+  .help-badge kbd {
+    background: var(--bg-body);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== HIDDEN STATE ===== */
+  .hidden { display: none !important; }
+
+  /* ===== PRESET POPOVER ===== */
+  .preset-popover {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 180px;
+    z-index: 100;
+    padding: 4px;
+    display: none;
+  }
+  .preset-popover.open { display: block; }
+  .preset-popover .section-label {
+    padding: 6px 8px 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .preset-popover .preset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: all 100ms;
+  }
+  .preset-popover .preset-item:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-primary);
+  }
+  .preset-popover .preset-item.active {
+    background: var(--indigo-dim);
+    color: var(--indigo);
+  }
+  .preset-popover .preset-icon {
+    width: 20px;
+    height: 14px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    display: flex;
+    opacity: 0.5;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .preset-popover .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 0;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== DESIGN APPROACH CHOOSER (mockup-only) ===== -->
+  <div class="design-chooser">
+    <span class="design-chooser-label">Compare Pane Headers</span>
+    <div class="design-chooser-group">
+      <button class="design-chooser-btn active" data-approach="rich-tab">A: Rich Tab</button>
+      <button class="design-chooser-btn" data-approach="full-header">B: Full Header</button>
+      <button class="design-chooser-btn" data-approach="hybrid">C: Hybrid</button>
+    </div>
+    <span class="design-chooser-desc" id="approach-desc">Metrics in dockview tab. Actions via right-click + tab bar actions. Clean, minimal.</span>
+  </div>
+
+  <!-- ===== TOOLBAR ===== -->
+  <div class="toolbar">
+    <div class="toolbar-section">
+      <div class="segmented" id="modeToggle">
+        <button class="seg-btn" data-mode="grid">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Grid
+        </button>
+        <button class="seg-btn active" data-mode="dock">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="9" y1="13" x2="22" y2="13"/></svg>
+          Dock
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-section" id="dock-controls" style="position: relative;">
+      <button class="preset-btn active-preset" id="presetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="9" y1="13" x2="22" y2="13"/></svg>
+        <span id="presetLabel">3 + 1</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
+      <div class="preset-popover" id="presetPopover">
+        <div class="section-label">Built-in</div>
+        <div class="preset-item" data-layout="2x2">
+          <div class="preset-icon" style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;">
+            <div style="background:currentColor;opacity:0.4"></div>
+            <div style="background:currentColor;opacity:0.4"></div>
+            <div style="background:currentColor;opacity:0.4"></div>
+            <div style="background:currentColor;opacity:0.4"></div>
+          </div>
+          2 x 2
+        </div>
+        <div class="preset-item active" data-layout="3+1">
+          <div class="preset-icon" style="display:grid;grid-template-columns:1fr 2fr;gap:1px;">
+            <div style="background:currentColor;opacity:0.4"></div>
+            <div style="background:currentColor;opacity:0.6"></div>
+          </div>
+          3 + 1
+        </div>
+        <div class="preset-item" data-layout="focus">
+          <div class="preset-icon" style="background:currentColor;opacity:0.4"></div>
+          Focus
+        </div>
+        <div class="sep"></div>
+        <div class="section-label">Saved</div>
+        <div class="preset-item" data-layout="custom">
+          <div class="preset-icon" style="display:grid;grid-template-columns:2fr 1fr;gap:1px;">
+            <div style="background:currentColor;opacity:0.4"></div>
+            <div style="background:currentColor;opacity:0.4"></div>
+          </div>
+          My Dev Setup
+        </div>
+      </div>
+
+      <button class="reset-btn" id="resetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Reset
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-section">
+      <div class="segmented">
+        <button class="seg-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+          Compact
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-section">
+      <div class="segmented">
+        <button class="seg-btn active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Chat
+        </button>
+        <button class="seg-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Verbose
+        </button>
+      </div>
+    </div>
+
+    <div class="session-count">
+      <span class="num">4</span> active &middot; 2 waiting
+    </div>
+  </div>
+
+  <!-- ===== DOCK AREA ===== -->
+  <div class="dock-area layout-3-1" id="dockArea">
+
+    <!-- LEFT COLUMN: 3 stacked panes -->
+    <div class="left-stack" id="leftStack">
+
+      <!-- PANE 1: api-server (working) -->
+      <div class="panel" id="pane1">
+        <!-- Approach A: Rich Tab -->
+        <div class="dock-tab-bar approach-a">
+          <div class="dock-tab active rich-tab">
+            <div class="status-dot working"></div>
+            <span>api-server</span>
+            <div class="rich-tab-metrics">
+              <span class="rich-tab-cost">$0.04</span>
+              <span class="rich-tab-ctx">78%</span>
+            </div>
+            <div class="close-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+          </div>
+          <div class="dock-tab-actions">
+            <button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button>
+            <button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button>
+          </div>
+        </div>
+        <!-- Approach B: Dockview tab + full header -->
+        <div class="dock-tab-bar approach-b hidden">
+          <div class="dock-tab active"><div class="status-dot working"></div><span>api-server</span><div class="close-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>
+          <div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div>
+        </div>
+        <div class="pane-header approach-b hidden">
+          <span class="project-name">api-server</span>
+          <span class="branch-badge">main</span>
+          <div class="metrics"><span class="cost">$0.04</span><span class="ctx ok">78%</span><span style="color:var(--text-dim)">T12</span></div>
+          <div class="actions">
+            <button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button>
+            <button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+            <button title="Hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+        </div>
+        <!-- Approach C: Minimal tab + slim info bar -->
+        <div class="dock-tab-bar approach-c hidden">
+          <div class="dock-tab active"><div class="status-dot working"></div><span>api-server</span><div class="close-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>
+          <div class="dock-tab-actions">
+            <button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button>
+            <button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+            <button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button>
+          </div>
+        </div>
+        <div class="slim-info-bar approach-c hidden">
+          <span class="branch">main</span><span class="dot">&middot;</span><span class="cost">$0.04</span><span class="dot">&middot;</span><span class="ctx">78% ctx</span><span class="dot">&middot;</span><span class="turns">T12</span>
+        </div>
+
+        <div class="rich-content">
+          <div class="msg user"><div class="msg-icon">U</div><div class="msg-body">Add rate limiting middleware to the API routes</div></div>
+          <div class="msg thinking"><div class="msg-icon">~</div><div class="msg-body">Analyzing the existing middleware chain...</div></div>
+          <div class="msg tool"><div class="msg-icon">R</div><div class="msg-body"><span class="tool-name">Read</span> <span class="tool-path">src/middleware/auth.ts</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Read 47 lines</div></div>
+          <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Edit</span> <span class="tool-path">src/middleware/rate-limit.ts</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Created file (23 lines)</div></div>
+          <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">Created rate limiter using sliding window algorithm. Now integrating into the route chain.</div></div>
+          <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Edit</span> <span class="tool-path">src/routes/api.ts</span> <span class="cost-badge">$0.004</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Edited (added import + middleware)</div></div>
+        </div>
+        <div class="pane-footer"><span class="activity">Editing src/routes/api.ts</span><span class="turn-count">T12</span></div>
+      </div>
+
+      <div class="split-h"></div>
+
+      <!-- PANE 2: frontend-app (paused) -->
+      <div class="panel" id="pane2">
+        <div class="dock-tab-bar approach-a"><div class="dock-tab active rich-tab"><div class="status-dot paused"></div><span>frontend-app</span><div class="rich-tab-metrics"><span class="rich-tab-cost">$0.02</span><span class="rich-tab-ctx warn">92%</span></div></div><div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="dock-tab-bar approach-b hidden"><div class="dock-tab active"><div class="status-dot paused"></div><span>frontend-app</span></div><div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="pane-header approach-b hidden"><span class="project-name">frontend-app</span><span class="branch-badge">feat/datepicker</span><div class="metrics"><span class="cost">$0.02</span><span class="ctx warn">92%</span><span style="color:var(--text-dim)">T8</span></div><div class="actions"><button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+        <div class="dock-tab-bar approach-c hidden"><div class="dock-tab active"><div class="status-dot paused"></div><span>frontend-app</span></div><div class="dock-tab-actions"><button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="slim-info-bar approach-c hidden"><span class="branch">feat/datepicker</span><span class="dot">&middot;</span><span class="cost">$0.02</span><span class="dot">&middot;</span><span class="ctx warn">92% ctx</span><span class="dot">&middot;</span><span class="turns">T8</span></div>
+
+        <div class="rich-content">
+          <div class="msg user"><div class="msg-icon">U</div><div class="msg-body">The DatePicker component needs a timezone prop</div></div>
+          <div class="msg tool"><div class="msg-icon">R</div><div class="msg-body"><span class="tool-name">Read</span> <span class="tool-path">src/components/DatePicker.tsx</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Read 89 lines</div></div>
+          <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">I see the DatePicker accepts value and onChange. Should I add the timezone as an optional prop with Intl.DateTimeFormat or use date-fns-tz?</div></div>
+        </div>
+        <div class="pane-footer"><span class="activity" style="color:var(--amber)">Waiting for user response...</span><span class="turn-count">T8</span></div>
+      </div>
+
+      <div class="split-h"></div>
+
+      <!-- PANE 3: Tab group (infra-deploy + db-migration) -->
+      <div class="panel" id="pane3">
+        <div class="dock-tab-bar approach-a"><div class="dock-tab active rich-tab"><div class="status-dot working"></div><span>infra-deploy</span><div class="rich-tab-metrics"><span class="rich-tab-cost">$0.08</span><span class="rich-tab-ctx">45%</span></div></div><div class="dock-tab rich-tab"><div class="status-dot done"></div><span>db-migration</span><div class="rich-tab-metrics"><span class="rich-tab-cost">$0.01</span></div></div><div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="dock-tab-bar approach-b hidden"><div class="dock-tab active"><div class="status-dot working"></div><span>infra-deploy</span></div><div class="dock-tab"><div class="status-dot done"></div><span>db-migration</span></div><div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="pane-header approach-b hidden"><span class="project-name">infra-deploy</span><span class="branch-badge">main</span><div class="metrics"><span class="cost">$0.08</span><span class="ctx ok">45%</span><span style="color:var(--text-dim)">T24</span></div><div class="actions"><button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+        <div class="dock-tab-bar approach-c hidden"><div class="dock-tab active"><div class="status-dot working"></div><span>infra-deploy</span></div><div class="dock-tab"><div class="status-dot done"></div><span>db-migration</span></div><div class="dock-tab-actions"><button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+        <div class="slim-info-bar approach-c hidden"><span class="branch">main</span><span class="dot">&middot;</span><span class="cost">$0.08</span><span class="dot">&middot;</span><span class="ctx">45% ctx</span><span class="dot">&middot;</span><span class="turns">T24</span></div>
+
+        <div class="rich-content">
+          <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">Deploying to staging environment...</div></div>
+          <div class="msg tool"><div class="msg-icon">$</div><div class="msg-body"><span class="tool-name">Bash</span> <span class="tool-path">kubectl apply -f k8s/staging/</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">deployment.apps/api configured</div></div>
+          <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">service/api unchanged</div></div>
+          <div class="msg tool"><div class="msg-icon">$</div><div class="msg-body"><span class="tool-name">Bash</span> <span class="tool-path">kubectl rollout status deployment/api -n staging</span></div></div>
+          <div class="msg result"><div class="msg-icon">&#8987;</div><div class="msg-body" style="color:var(--amber)">Waiting for rollout: 1 of 3 replicas updated...</div></div>
+        </div>
+        <div class="pane-footer"><span class="activity">kubectl rollout status...</span><span class="turn-count">T24</span><span class="agent-pill">sub-agent</span></div>
+      </div>
+    </div>
+
+    <!-- VERTICAL SPLIT BAR -->
+    <div class="split-v" id="splitV"></div>
+
+    <!-- RIGHT: Large focus pane -->
+    <div class="panel" id="pane4">
+      <div class="dock-tab-bar approach-a"><div class="dock-tab active rich-tab"><div class="status-dot working"></div><span>claude-view</span><div class="rich-tab-metrics"><span class="rich-tab-cost">$0.13</span><span class="rich-tab-ctx">62%</span></div></div><div class="dock-tab-actions"><button title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+      <div class="dock-tab-bar approach-b hidden"><div class="dock-tab active"><div class="status-dot working"></div><span>claude-view</span></div><div class="dock-tab-actions"><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+      <div class="pane-header approach-b hidden"><span class="project-name">claude-view</span><span class="branch-badge">feat/phase-e</span><div class="metrics"><span class="cost">$0.13</span><span class="ctx ok">62%</span><span style="color:var(--text-dim)">T36</span></div><div class="actions"><button style="color:var(--blue)" title="Pinned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+      <div class="dock-tab-bar approach-c hidden"><div class="dock-tab active"><div class="status-dot working"></div><span>claude-view</span></div><div class="dock-tab-actions"><button style="color:var(--blue)" title="Pinned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button><button title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button><button title="Float"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg></button></div></div>
+      <div class="slim-info-bar approach-c hidden"><span class="branch">feat/phase-e</span><span class="dot">&middot;</span><span class="cost">$0.13</span><span class="dot">&middot;</span><span class="ctx">62% ctx</span><span class="dot">&middot;</span><span class="turns">T36</span></div>
+
+      <div class="rich-content">
+        <div class="msg user"><div class="msg-icon">U</div><div class="msg-body">Implement the custom layout feature using dockview for Phase E</div></div>
+        <div class="msg thinking"><div class="msg-icon">~</div><div class="msg-body">Planning the implementation approach...</div></div>
+        <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">I'll implement the custom layout feature. First, let me add the dependency and create the layout component.</div></div>
+        <div class="msg tool"><div class="msg-icon">$</div><div class="msg-body"><span class="tool-name">Bash</span> <span class="tool-path">cd apps/web && bun add dockview dockview-react</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">installed dockview@5.0.0, dockview-react@5.0.0</div></div>
+        <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Write</span> <span class="tool-path">apps/web/src/components/live/DockLayout.tsx</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Created file (142 lines)</div></div>
+        <div class="msg tool"><div class="msg-icon">R</div><div class="msg-body"><span class="tool-name">Read</span> <span class="tool-path">apps/web/src/components/live/MonitorView.tsx</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Read 287 lines</div></div>
+        <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">Now I'll integrate the dock layout into MonitorView with a toggle between Auto Grid and Custom Layout modes.</div></div>
+        <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Edit</span> <span class="tool-path">apps/web/src/components/live/MonitorView.tsx</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Edited (added imports, layout toggle, conditional render)</div></div>
+        <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Write</span> <span class="tool-path">apps/web/src/hooks/use-layout-mode.ts</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Created file (58 lines)</div></div>
+        <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">The layout hook manages mode switching and persists the dockview layout to localStorage using the built-in toJSON/fromJSON serialization.</div></div>
+        <div class="msg tool"><div class="msg-icon">W</div><div class="msg-body"><span class="tool-name">Write</span> <span class="tool-path">apps/web/src/styles/dockview-dark.css</span> <span class="cost-badge">$0.013</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">Created file (67 lines)</div></div>
+        <div class="msg thinking"><div class="msg-icon">~</div><div class="msg-body">Adding dark theme overrides to match the OLED design system...</div></div>
+        <div class="msg tool"><div class="msg-icon">$</div><div class="msg-body"><span class="tool-name">Bash</span> <span class="tool-path">cd apps/web && bunx vitest run</span></div></div>
+        <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">142 tests passed <span class="cost-badge">$0.002</span></div></div>
+      </div>
+      <div class="pane-footer"><span class="activity">Running vitest...</span><span class="turn-count">T36</span></div>
+    </div>
+  </div>
+
+  <!-- ===== FLOATING PANEL ===== -->
+  <div class="floating-panel" id="floatingPanel">
+    <div class="dock-tab-bar approach-a"><div class="dock-tab active rich-tab"><div class="status-dot idle"></div><span>test-runner</span><div class="rich-tab-metrics"><span class="rich-tab-cost">$0.01</span><span class="rich-tab-ctx">23%</span></div></div><div class="dock-tab-actions"><button title="Dock back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg></button><button title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+    <div class="dock-tab-bar approach-b hidden"><div class="dock-tab active"><div class="status-dot idle"></div><span>test-runner</span></div><div class="dock-tab-actions"><button title="Dock back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg></button><button title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+    <div class="pane-header approach-b hidden"><span class="project-name">test-runner</span><span class="branch-badge">main</span><div class="metrics"><span class="cost">$0.01</span><span class="ctx ok">23%</span></div></div>
+    <div class="dock-tab-bar approach-c hidden"><div class="dock-tab active"><div class="status-dot idle"></div><span>test-runner</span></div><div class="dock-tab-actions"><button title="Dock back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg></button><button title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+    <div class="slim-info-bar approach-c hidden"><span class="branch">main</span><span class="dot">&middot;</span><span class="cost">$0.01</span><span class="dot">&middot;</span><span class="ctx">23% ctx</span></div>
+
+    <div class="rich-content">
+      <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">Running test suite for the auth module.</div></div>
+      <div class="msg tool"><div class="msg-icon">$</div><div class="msg-body"><span class="tool-name">Bash</span> <span class="tool-path">bun test auth/</span></div></div>
+      <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">auth.login.test.ts (3 tests)</div></div>
+      <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">auth.signup.test.ts (5 tests)</div></div>
+      <div class="msg result"><div class="msg-icon">&#10003;</div><div class="msg-body">auth.refresh.test.ts (2 tests)</div></div>
+      <div class="msg assistant"><div class="msg-icon">A</div><div class="msg-body">All 10 tests passed, 0 failed.</div></div>
+    </div>
+    <div class="resize-handle"></div>
+  </div>
+
+  <!-- ===== HELP BADGE ===== -->
+  <div class="help-badge">
+    <strong>Phase E Mockup v2</strong> — Interactive preview<br>
+    Click <strong>A/B/C</strong> to compare pane header styles<br>
+    Click presets dropdown to switch layouts<br>
+    <kbd>Ctrl+Shift+G</kbd> Grid &nbsp;
+    <kbd>Ctrl+Shift+L</kbd> Dock
+  </div>
+</div>
+
+<script>
+  // ===== Approach switching =====
+  var approachConfig = {
+    'rich-tab': { cls: 'approach-a', desc: 'Metrics in dockview tab. Actions via right-click + tab bar actions. Clean, minimal.' },
+    'full-header': { cls: 'approach-b', desc: 'Full MonitorPane header below dockview tab. All controls visible. More vertical space used.' },
+    'hybrid': { cls: 'approach-c', desc: 'Slim info bar below tab. Action buttons in dockview tab bar. Best of both.' }
+  };
+
+  var currentApproach = 'rich-tab';
+
+  function setApproach(name) {
+    currentApproach = name;
+    var config = approachConfig[name];
+
+    // Update chooser buttons
+    var btns = document.querySelectorAll('.design-chooser-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.remove('active');
+      if (btns[i].getAttribute('data-approach') === name) {
+        btns[i].classList.add('active');
+      }
+    }
+
+    // Update description
+    document.getElementById('approach-desc').textContent = config.desc;
+
+    // Hide all approach elements
+    var allClasses = ['approach-a', 'approach-b', 'approach-c'];
+    for (var c = 0; c < allClasses.length; c++) {
+      var els = document.querySelectorAll('.' + allClasses[c]);
+      for (var j = 0; j < els.length; j++) {
+        els[j].classList.add('hidden');
+      }
+    }
+
+    // Show current approach elements
+    var showEls = document.querySelectorAll('.' + config.cls);
+    for (var k = 0; k < showEls.length; k++) {
+      showEls[k].classList.remove('hidden');
+    }
+  }
+
+  // ===== Approach button click handlers =====
+  var approachBtns = document.querySelectorAll('.design-chooser-btn');
+  for (var i = 0; i < approachBtns.length; i++) {
+    approachBtns[i].addEventListener('click', function() {
+      setApproach(this.getAttribute('data-approach'));
+    });
+  }
+
+  // ===== Preset dropdown =====
+  var presetBtn = document.getElementById('presetBtn');
+  var presetPopover = document.getElementById('presetPopover');
+
+  presetBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    presetPopover.classList.toggle('open');
+  });
+
+  // Preset item clicks
+  var presetItems = document.querySelectorAll('.preset-item');
+  for (var p = 0; p < presetItems.length; p++) {
+    presetItems[p].addEventListener('click', function() {
+      var layout = this.getAttribute('data-layout');
+      if (layout) {
+        setLayout(layout);
+      }
+      presetPopover.classList.remove('open');
+    });
+  }
+
+  // Close preset popover on outside click
+  document.addEventListener('click', function(e) {
+    if (!presetPopover.contains(e.target) && !presetBtn.contains(e.target)) {
+      presetPopover.classList.remove('open');
+    }
+  });
+
+  // Reset button
+  document.getElementById('resetBtn').addEventListener('click', function() {
+    setLayout('3+1');
+  });
+
+  // ===== Layout switching =====
+  function setLayout(name) {
+    var dock = document.getElementById('dockArea');
+    var leftStack = document.getElementById('leftStack');
+    var splitV = document.getElementById('splitV');
+    var pane4 = document.getElementById('pane4');
+
+    // Remove all layout classes
+    dock.classList.remove('layout-3-1', 'layout-2x2', 'layout-focus');
+
+    // Update preset label
+    var labels = { '2x2': '2 x 2', '3+1': '3 + 1', 'focus': 'Focus' };
+    document.getElementById('presetLabel').textContent = labels[name] || name;
+
+    // Update preset menu active state
+    var items = document.querySelectorAll('.preset-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.remove('active');
+      if (items[i].getAttribute('data-layout') === name) {
+        items[i].classList.add('active');
+      }
+    }
+
+    if (name === 'focus') {
+      dock.classList.add('layout-focus');
+      leftStack.style.display = 'none';
+      splitV.style.display = 'none';
+      pane4.style.display = 'flex';
+    } else if (name === '3+1') {
+      dock.classList.add('layout-3-1');
+      leftStack.style.display = 'flex';
+      splitV.style.display = 'block';
+      pane4.style.display = 'flex';
+    } else {
+      // Default to 3+1 for other layouts in this mockup
+      dock.classList.add('layout-3-1');
+      leftStack.style.display = 'flex';
+      splitV.style.display = 'block';
+      pane4.style.display = 'flex';
+    }
+  }
+
+  // ===== Mode toggle =====
+  var modeToggle = document.getElementById('modeToggle');
+  var modeBtns = modeToggle.querySelectorAll('.seg-btn');
+  for (var m = 0; m < modeBtns.length; m++) {
+    modeBtns[m].addEventListener('click', function() {
+      for (var j = 0; j < modeBtns.length; j++) { modeBtns[j].classList.remove('active'); }
+      this.classList.add('active');
+      var mode = this.getAttribute('data-mode');
+      document.getElementById('dock-controls').style.display = mode === 'dock' ? 'flex' : 'none';
+    });
+  }
+
+  // ===== Keyboard shortcuts =====
+  document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
+      modeBtns[0].click();
+      e.preventDefault();
+    }
+    if (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
+      modeBtns[1].click();
+      e.preventDefault();
+    }
+  });
+
+  // Initialize
+  setApproach('rich-tab');
+</script>
+</body>
+</html>

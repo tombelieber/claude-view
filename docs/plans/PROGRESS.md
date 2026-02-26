@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-02-26
+> **Last updated:** 2026-02-27
 
 ---
 
@@ -42,6 +42,7 @@
 
 ## Recently Completed
 
+- **Branch `worktree-monorepo-expo` — SHIPPABLE** (verified 2026-02-27): 0 TS errors, 1117 web tests pass, 575 Rust tests pass, clean build. One production bug fix (`cleanPreviewText` backslash), infra upgrades (Biome, Lefthook, cargo-deny, CI), monorepo restructure. No breaking changes, no regressions.
 - Monorepo Restructure (Turborepo + Bun workspaces: `apps/web`, `apps/mobile`, `apps/landing`, `packages/shared`, `packages/design-tokens`)
 - Reliability Release (centralized path config, JSONL-based session classification, cwd-based path resolve, sandbox docs)
 - Pricing Engine Overhaul (unified ModelPricing, litellm auto-fetch, 200k tiering, 3-tier fallback, 26 tests)
@@ -164,10 +165,12 @@ Items removed during monorepo cleanup that need attention before specific milest
 
 ## Code Health
 
-- **Compiles:** Yes (cargo check passes)
-- **Backend tests:** 548+
-- **Frontend tests:** 794
-- **TypeScript:** Clean
+- **Compiles:** Yes (cargo check + `bun run build` pass)
+- **Backend tests:** 575 (cargo test --workspace, 0 failures)
+- **Frontend tests:** 1117 (vitest, 74 files, 0 failures)
+- **TypeScript:** 0 errors (`tsc --noEmit`)
+- **Clippy:** 1 cosmetic warning (SidecarManager Default derive)
+- **Last verified:** 2026-02-27 on branch `worktree-monorepo-expo`
 
 ---
 

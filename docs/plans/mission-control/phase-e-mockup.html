@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase E: Custom Layout — Dockview Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Fira+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ===== DESIGN TOKENS (from packages/design-tokens) ===== */
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-surface: #0d1117;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.15);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.15);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.15);
+    --gray: #6b7280;
+    --red: #ef4444;
+    --split-bar: #1e293b;
+    --split-bar-hover: #334155;
+    --split-bar-active: #22c55e;
+    --font-sans: 'Fira Sans', -apple-system, sans-serif;
+    --font-mono: 'Fira Code', monospace;
+    --radius: 6px;
+    --radius-sm: 4px;
+  }
+
+  /* ===== RESET ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  /* ===== LAYOUT SHELL ===== */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ===== TOP TOOLBAR ===== */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--bg-tertiary);
+    flex-shrink: 0;
+  }
+
+  .toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--bg-tertiary);
+    margin: 0 4px;
+  }
+
+  .toolbar-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  /* ===== VIEW MODE SWITCHER (existing from Phase B) ===== */
+  .view-switcher {
+    display: flex;
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .view-switcher button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .view-switcher button:hover {
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+  }
+
+  .view-switcher button.active {
+    background: var(--green);
+    color: #000;
+    font-weight: 600;
+  }
+
+  .view-switcher button svg { width: 14px; height: 14px; }
+
+  /* ===== LAYOUT MODE TOGGLE (new Phase E) ===== */
+  .layout-toggle {
+    display: flex;
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .layout-toggle button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .layout-toggle button:hover {
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+  }
+
+  .layout-toggle button.active {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .layout-toggle button svg { width: 14px; height: 14px; }
+
+  /* ===== PRESET DROPDOWN ===== */
+  .preset-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+  }
+
+  .preset-btn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+  }
+
+  .preset-btn svg { width: 12px; height: 12px; }
+
+  /* ===== RESET BUTTON ===== */
+  .reset-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms;
+  }
+
+  .reset-btn:hover {
+    color: var(--text-secondary);
+    border-color: var(--bg-tertiary);
+  }
+
+  .reset-btn svg { width: 14px; height: 14px; }
+
+  /* ===== SESSION COUNT ===== */
+  .session-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  .session-count strong {
+    color: var(--green);
+    font-weight: 600;
+  }
+
+  /* ===== DOCKVIEW LAYOUT AREA ===== */
+  .dock-area {
+    flex: 1;
+    display: grid;
+    overflow: hidden;
+    /* 3+1 layout: 3 small left, 1 large right */
+    grid-template-columns: 1fr 4px 2fr;
+    grid-template-rows: 1fr;
+  }
+
+  /* ===== SPLIT BAR (vertical) ===== */
+  .split-v {
+    background: var(--split-bar);
+    cursor: col-resize;
+    transition: background 150ms;
+    position: relative;
+  }
+
+  .split-v::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: var(--bg-tertiary);
+    border-radius: 1px;
+  }
+
+  .split-v:hover {
+    background: var(--split-bar-hover);
+  }
+
+  .split-v:hover::after {
+    background: var(--text-muted);
+  }
+
+  .split-v:active {
+    background: var(--split-bar-active);
+  }
+
+  /* ===== SPLIT BAR (horizontal) ===== */
+  .split-h {
+    height: 4px;
+    background: var(--split-bar);
+    cursor: row-resize;
+    transition: background 150ms;
+    position: relative;
+  }
+
+  .split-h::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 2px;
+    background: var(--bg-tertiary);
+    border-radius: 1px;
+  }
+
+  .split-h:hover {
+    background: var(--split-bar-hover);
+  }
+
+  .split-h:hover::after {
+    background: var(--text-muted);
+  }
+
+  .split-h:active {
+    background: var(--split-bar-active);
+  }
+
+  /* ===== LEFT COLUMN (stacked) ===== */
+  .left-stack {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== PANEL ===== */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1;
+  }
+
+  /* ===== TAB BAR (dockview-style) ===== */
+  .tab-bar {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--bg-tertiary);
+    flex-shrink: 0;
+    height: 34px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tab-bar::-webkit-scrollbar { display: none; }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-right: 1px solid var(--bg-tertiary);
+    cursor: pointer;
+    transition: all 100ms;
+    white-space: nowrap;
+    user-select: none;
+    position: relative;
+  }
+
+  .tab:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.03);
+  }
+
+  .tab.active {
+    color: var(--text-primary);
+    background: var(--bg-surface);
+  }
+
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--green);
+  }
+
+  .tab .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .tab .status-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green-dim); }
+  .tab .status-dot.waiting { background: var(--amber); box-shadow: 0 0 6px var(--amber-dim); }
+  .tab .status-dot.idle { background: var(--blue); box-shadow: 0 0 6px var(--blue-dim); }
+  .tab .status-dot.done { background: var(--gray); }
+
+  .tab .close-btn {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 100ms;
+    margin-left: 2px;
+  }
+
+  .tab:hover .close-btn { opacity: 0.5; }
+  .tab .close-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+
+  .tab-bar-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0 4px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .tab-bar-actions button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 100ms;
+  }
+
+  .tab-bar-actions button:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+  }
+
+  /* ===== PANE CONTENT ===== */
+  .pane-content {
+    flex: 1;
+    background: var(--bg-surface);
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-tertiary) transparent;
+  }
+
+  .pane-content .line {
+    display: flex;
+    gap: 8px;
+    padding: 1px 0;
+  }
+
+  .pane-content .line-num {
+    color: var(--text-muted);
+    opacity: 0.4;
+    min-width: 24px;
+    text-align: right;
+    user-select: none;
+  }
+
+  .pane-content .tool-use {
+    color: var(--blue);
+  }
+
+  .pane-content .tool-result {
+    color: var(--green);
+  }
+
+  .pane-content .assistant {
+    color: var(--text-primary);
+  }
+
+  .pane-content .thinking {
+    color: var(--amber);
+    font-style: italic;
+    opacity: 0.7;
+  }
+
+  .pane-content .error {
+    color: var(--red);
+  }
+
+  .pane-content .cost-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--green-dim);
+    color: var(--green);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+
+  /* ===== RUNNING ANIMATION ===== */
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-dot.active {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  /* ===== DRAG PREVIEW (shown during drag) ===== */
+  .drag-preview-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    display: none;
+  }
+
+  .drag-preview-overlay.visible {
+    display: block;
+    pointer-events: all;
+  }
+
+  .drop-zone {
+    position: absolute;
+    border: 2px dashed var(--green);
+    background: rgba(34, 197, 94, 0.06);
+    border-radius: var(--radius);
+    transition: all 150ms;
+  }
+
+  .drop-zone.top { top: 0; left: 0; right: 0; height: 50%; }
+  .drop-zone.bottom { bottom: 0; left: 0; right: 0; height: 50%; }
+  .drop-zone.left { top: 0; left: 0; bottom: 0; width: 50%; }
+  .drop-zone.right { top: 0; right: 0; bottom: 0; width: 50%; }
+  .drop-zone.center {
+    top: 25%;
+    left: 25%;
+    right: 25%;
+    bottom: 25%;
+    border-style: solid;
+  }
+
+  /* ===== FLOATING PANEL DEMO ===== */
+  .floating-panel {
+    position: fixed;
+    width: 360px;
+    height: 280px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    right: 24px;
+    bottom: 24px;
+  }
+
+  .floating-panel .tab-bar {
+    cursor: move;
+  }
+
+  .floating-panel .resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+  }
+
+  .floating-panel .resize-handle::before {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    opacity: 0.4;
+  }
+
+  /* ===== PRESET DROPDOWN (popover) ===== */
+  .preset-popover {
+    position: absolute;
+    top: 44px;
+    left: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 200px;
+    z-index: 100;
+    padding: 4px;
+    display: none;
+  }
+
+  .preset-popover.open { display: block; }
+
+  .preset-popover .preset-section-label {
+    padding: 6px 8px 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .preset-popover .preset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: all 100ms;
+  }
+
+  .preset-popover .preset-item:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .preset-popover .preset-item.active {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .preset-popover .preset-item .preset-icon {
+    width: 20px;
+    height: 14px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    display: flex;
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+
+  .preset-popover .preset-sep {
+    height: 1px;
+    background: var(--bg-tertiary);
+    margin: 4px 0;
+  }
+
+  .preset-popover .preset-save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: all 100ms;
+  }
+
+  .preset-popover .preset-save:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+
+  /* ===== ANNOTATIONS (for mockup) ===== */
+  .annotation {
+    position: absolute;
+    background: var(--amber);
+    color: #000;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    z-index: 200;
+    pointer-events: none;
+  }
+
+  .annotation::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+
+  .annotation.arrow-down::after {
+    bottom: -6px;
+    left: 12px;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--amber);
+  }
+
+  .annotation.arrow-up::after {
+    top: -6px;
+    left: 12px;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid var(--amber);
+  }
+
+  .annotation.arrow-left::after {
+    left: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: 6px solid var(--amber);
+  }
+
+  /* ===== HELP BADGE ===== */
+  .help-badge {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    z-index: 300;
+    line-height: 1.5;
+  }
+
+  .help-badge kbd {
+    background: var(--bg-primary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    border: 1px solid var(--bg-tertiary);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== TOOLBAR ===== -->
+  <div class="toolbar">
+    <!-- View mode switcher (existing Phase B) -->
+    <div class="toolbar-section">
+      <div class="view-switcher">
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Grid
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          List
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>
+          Kanban
+        </button>
+        <button class="active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="2" y1="12" x2="12" y2="12"/></svg>
+          Monitor
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Layout mode toggle (NEW Phase E) -->
+    <div class="toolbar-section">
+      <span class="toolbar-label">Layout</span>
+      <div class="layout-toggle">
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Auto
+        </button>
+        <button class="active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="9" y1="13" x2="22" y2="13"/></svg>
+          Custom
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Presets (NEW Phase E) -->
+    <div class="toolbar-section" style="position: relative;">
+      <button class="preset-btn" onclick="document.querySelector('.preset-popover').classList.toggle('open')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="9" y1="13" x2="22" y2="13"/></svg>
+        3 + 1
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
+      <!-- Preset dropdown -->
+      <div class="preset-popover">
+        <div class="preset-section-label">Built-in</div>
+        <div class="preset-item">
+          <div class="preset-icon" style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;">
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+          </div>
+          2 x 2
+        </div>
+        <div class="preset-item active">
+          <div class="preset-icon" style="display:grid;grid-template-columns:1fr 2fr;gap:1px;">
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+            <div style="background:currentColor;border-radius:1px;opacity:0.6"></div>
+          </div>
+          3 + 1
+        </div>
+        <div class="preset-item">
+          <div class="preset-icon" style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+          Focus
+        </div>
+        <div class="preset-sep"></div>
+        <div class="preset-section-label">Saved</div>
+        <div class="preset-item">
+          <div class="preset-icon" style="display:grid;grid-template-columns:2fr 1fr;gap:1px;">
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+            <div style="background:currentColor;border-radius:1px;opacity:0.4"></div>
+          </div>
+          My Dev Setup
+        </div>
+        <div class="preset-sep"></div>
+        <div class="preset-save">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Save current layout...
+        </div>
+      </div>
+    </div>
+
+    <!-- Reset button -->
+    <button class="reset-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      Reset
+    </button>
+
+    <!-- Session count (right-aligned) -->
+    <div class="session-count">
+      <strong>4</strong> active &middot; <span>2 waiting</span>
+    </div>
+  </div>
+
+  <!-- ===== DOCK LAYOUT ===== -->
+  <div class="dock-area">
+
+    <!-- LEFT COLUMN: 3 stacked panes -->
+    <div class="left-stack">
+
+      <!-- PANE 1: api-server (active) -->
+      <div class="panel">
+        <div class="tab-bar">
+          <div class="tab active">
+            <div class="status-dot active"></div>
+            <span>api-server</span>
+            <div class="close-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+          </div>
+          <div class="tab-bar-actions">
+            <button title="Maximize">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </button>
+            <button title="Float">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="pane-content">
+          <div class="line"><span class="line-num">1</span><span class="assistant">I'll add the rate limiting middleware to the API routes.</span></div>
+          <div class="line"><span class="line-num">2</span><span class="thinking">Analyzing the existing middleware chain...</span></div>
+          <div class="line"><span class="line-num">3</span><span class="tool-use">Read src/middleware/auth.ts</span></div>
+          <div class="line"><span class="line-num">4</span><span class="tool-result">✓ Read 47 lines</span></div>
+          <div class="line"><span class="line-num">5</span><span class="tool-use">Edit src/middleware/rate-limit.ts</span></div>
+          <div class="line"><span class="line-num">6</span><span class="tool-result">✓ Created file (23 lines)</span></div>
+          <div class="line"><span class="line-num">7</span><span class="assistant">Created rate limiter using sliding window algorithm...</span></div>
+          <div class="line"><span class="line-num">8</span><span class="tool-use">Edit src/routes/api.ts</span></div>
+          <div class="line"><span class="line-num">9</span><span class="tool-result">✓ Edited (added import + middleware)</span> <span class="cost-badge">$0.0042</span></div>
+        </div>
+      </div>
+
+      <div class="split-h"></div>
+
+      <!-- PANE 2: frontend-app (waiting) -->
+      <div class="panel">
+        <div class="tab-bar">
+          <div class="tab active">
+            <div class="status-dot waiting"></div>
+            <span>frontend-app</span>
+            <div class="close-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+          </div>
+          <div class="tab-bar-actions">
+            <button title="Maximize">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="pane-content">
+          <div class="line"><span class="line-num">1</span><span class="assistant">The DatePicker component needs a timezone prop.</span></div>
+          <div class="line"><span class="line-num">2</span><span class="tool-use">Read src/components/DatePicker.tsx</span></div>
+          <div class="line"><span class="line-num">3</span><span class="tool-result">✓ Read 89 lines</span></div>
+          <div class="line"><span class="line-num">4</span><span class="thinking">Waiting for user response...</span></div>
+        </div>
+      </div>
+
+      <div class="split-h"></div>
+
+      <!-- PANE 3: Tab group with 2 sessions stacked -->
+      <div class="panel">
+        <div class="tab-bar">
+          <div class="tab active">
+            <div class="status-dot active"></div>
+            <span>infra-deploy</span>
+            <div class="close-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+          </div>
+          <div class="tab">
+            <div class="status-dot done"></div>
+            <span>db-migration</span>
+            <div class="close-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+          </div>
+          <div class="tab-bar-actions">
+            <button title="Maximize">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="pane-content">
+          <div class="line"><span class="line-num">1</span><span class="assistant">Deploying to staging environment...</span></div>
+          <div class="line"><span class="line-num">2</span><span class="tool-use">Bash: kubectl apply -f k8s/staging/</span></div>
+          <div class="line"><span class="line-num">3</span><span class="tool-result">✓ deployment.apps/api configured</span></div>
+          <div class="line"><span class="line-num">4</span><span class="tool-result">✓ service/api unchanged</span></div>
+          <div class="line"><span class="line-num">5</span><span class="tool-use">Bash: kubectl rollout status deployment/api -n staging</span></div>
+          <div class="line"><span class="line-num">6</span><span class="tool-result">Waiting for rollout to finish: 1 of 3 replicas updated...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VERTICAL SPLIT BAR -->
+    <div class="split-v"></div>
+
+    <!-- RIGHT: Large focus pane -->
+    <div class="panel">
+      <div class="tab-bar">
+        <div class="tab active">
+          <div class="status-dot active"></div>
+          <span>claude-view</span>
+          <div class="close-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="tab-bar-actions">
+          <button title="Maximize">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          </button>
+          <button title="Float">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M15 2h7v7"/><path d="M22 2L13 11"/></svg>
+            </button>
+        </div>
+      </div>
+      <div class="pane-content">
+        <div class="line"><span class="line-num">1</span><span class="assistant">I'll implement the custom layout feature using dockview.</span></div>
+        <div class="line"><span class="line-num">2</span><span class="thinking">Planning the implementation approach...</span></div>
+        <div class="line"><span class="line-num">3</span><span class="assistant">First, let me add the dockview dependency and create the layout component.</span></div>
+        <div class="line"><span class="line-num">4</span><span class="tool-use">Bash: cd apps/web && bun add dockview dockview-react</span></div>
+        <div class="line"><span class="line-num">5</span><span class="tool-result">✓ installed dockview@5.0.0</span></div>
+        <div class="line"><span class="line-num">6</span><span class="tool-result">✓ installed dockview-react@5.0.0</span></div>
+        <div class="line"><span class="line-num">7</span><span class="tool-use">Write apps/web/src/components/live/DockLayout.tsx</span></div>
+        <div class="line"><span class="line-num">8</span><span class="tool-result">✓ Created file (142 lines)</span></div>
+        <div class="line"><span class="line-num">9</span><span class="tool-use">Read apps/web/src/components/live/MonitorView.tsx</span></div>
+        <div class="line"><span class="line-num">10</span><span class="tool-result">✓ Read 287 lines</span></div>
+        <div class="line"><span class="line-num">11</span><span class="assistant">Now I'll integrate the dock layout into MonitorView with a toggle between Auto Grid and Custom Layout modes.</span></div>
+        <div class="line"><span class="line-num">12</span><span class="tool-use">Edit apps/web/src/components/live/MonitorView.tsx</span></div>
+        <div class="line"><span class="line-num">13</span><span class="tool-result">✓ Edited (added imports, layout toggle, conditional render)</span></div>
+        <div class="line"><span class="line-num">14</span><span class="tool-use">Write apps/web/src/hooks/use-layout-mode.ts</span></div>
+        <div class="line"><span class="line-num">15</span><span class="tool-result">✓ Created file (58 lines)</span></div>
+        <div class="line"><span class="line-num">16</span><span class="assistant">The layout hook manages mode switching and persists the dockview layout to localStorage using dockview's built-in toJSON/fromJSON serialization.</span></div>
+        <div class="line"><span class="line-num">17</span><span class="tool-use">Write apps/web/src/styles/dockview-dark.css</span></div>
+        <div class="line"><span class="line-num">18</span><span class="tool-result">✓ Created file (67 lines)</span> <span class="cost-badge">$0.0128</span></div>
+        <div class="line"><span class="line-num">19</span><span class="thinking">Now let me add the dark theme overrides to match the OLED design system...</span></div>
+        <div class="line"><span class="line-num">20</span><span class="tool-use">Edit apps/web/src/index.css</span></div>
+        <div class="line"><span class="line-num">21</span><span class="tool-result">✓ Edited (added dockview CSS import)</span></div>
+        <div class="line"><span class="line-num">22</span><span class="assistant">Let me now run the tests and build to verify everything works.</span></div>
+        <div class="line"><span class="line-num">23</span><span class="tool-use">Bash: cd apps/web && bunx vitest run</span></div>
+        <div class="line"><span class="line-num">24</span><span class="tool-result">✓ 142 tests passed</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FLOATING PANEL (dockview feature) ===== -->
+  <div class="floating-panel">
+    <div class="tab-bar">
+      <div class="tab active">
+        <div class="status-dot idle"></div>
+        <span>test-runner</span>
+        <div class="close-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+      </div>
+      <div class="tab-bar-actions">
+        <button title="Dock">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+        </button>
+        <button title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="pane-content">
+      <div class="line"><span class="line-num">1</span><span class="assistant">Running test suite for the auth module.</span></div>
+      <div class="line"><span class="line-num">2</span><span class="tool-use">Bash: bun test auth/</span></div>
+      <div class="line"><span class="line-num">3</span><span class="tool-result">✓ auth.login.test.ts (3 tests)</span></div>
+      <div class="line"><span class="line-num">4</span><span class="tool-result">✓ auth.signup.test.ts (5 tests)</span></div>
+      <div class="line"><span class="line-num">5</span><span class="tool-result">✓ auth.refresh.test.ts (2 tests)</span></div>
+      <div class="line"><span class="line-num">6</span><span class="tool-result">10 passed, 0 failed</span></div>
+    </div>
+    <div class="resize-handle"></div>
+  </div>
+
+  <!-- ===== ANNOTATIONS ===== -->
+  <div class="annotation arrow-down" style="top: 48px; left: 310px;">
+    Layout toggle (new)
+  </div>
+
+  <div class="annotation arrow-down" style="top: 48px; left: 480px;">
+    Preset selector (new)
+  </div>
+
+  <div class="annotation arrow-left" style="right: 400px; top: 50%;">
+    Drag to resize
+  </div>
+
+  <div class="annotation arrow-up" style="bottom: 310px; right: 52px;">
+    Floating panel (dockview)
+  </div>
+
+  <div class="annotation arrow-down" style="top: 48px; left: 630px;">
+    Reset to Auto Grid
+  </div>
+
+  <!-- ===== HELP BADGE ===== -->
+  <div class="help-badge">
+    <strong>Phase E Mockup</strong> — Static preview, not interactive<br>
+    <kbd>Ctrl+Shift+G</kbd> Auto Grid &nbsp;
+    <kbd>Ctrl+Shift+L</kbd> Custom Layout &nbsp;
+    <kbd>1</kbd>-<kbd>9</kbd> Focus pane
+  </div>
+
+</div>
+
+<script>
+  // Close preset popover on outside click
+  document.addEventListener('click', (e) => {
+    const popover = document.querySelector('.preset-popover');
+    const btn = document.querySelector('.preset-btn');
+    if (!popover.contains(e.target) && !btn.contains(e.target)) {
+      popover.classList.remove('open');
+    }
+  });
+</script>
+</body>
+</html>

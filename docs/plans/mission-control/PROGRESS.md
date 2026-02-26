@@ -18,7 +18,7 @@ feature: mission-control
 | C | Monitor Mode | `done` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
 | D | Sub-Agent Visualization | `done` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | D.2 | Sub-Agent Deep Dive | `done` | Real-time progress, drill-down conversations, sub-agent WebSocket streaming |
-| E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
+| E | Custom Layout | `pending` | dockview drag-and-drop, tab groups, floating panels, layout save/load, presets |
 | F | Interactive Control | `ready` (impl plan done) | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
 | G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
 | H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support |
@@ -89,7 +89,8 @@ Phase A ──► Phase G ──► Phase H ──┐
 | 2026-02-10 | Prompt caching education via contextual tooltips, not docs pages | "Saved you $X" messaging at decision points. |
 | 2026-02-10 | 4 view modes: Grid, List, Kanban, Monitor | Progressive complexity. Grid default for few sessions, List for many. |
 | 2026-02-10 | Swim lanes for sub-agent visualization, timeline for history | Most intuitive for real-time parallel work. Node graph deferred to Teams/Swarm mode. |
-| 2026-02-10 | react-mosaic for custom layout (Phase E) | Lightweight (8KB), React-native, used by Palantir. Over GoldenLayout (jQuery-era). |
+| 2026-02-26 | **dockview for custom layout (Phase E)** — replaces react-mosaic | dockview v5.0.0: zero deps, VS Code-style UX, tab groups, floating panels, popout windows, full toJSON/fromJSON serialization. react-mosaic: binary tree only, no floating panels, slowed maintenance. Desktop-only (mobile handled by Expo native app). |
+| 2026-02-10 | ~~react-mosaic for custom layout (Phase E)~~ | **Superseded by dockview (2026-02-26).** Original: Lightweight (8KB), React-native, used by Palantir. Over GoldenLayout (jQuery-era). |
 | 2026-02-10 | Node.js sidecar for Agent SDK (Phase F) | SDK is npm-only. Rust handles HTTP/SSE/WebSocket/SQLite. Node handles Agent SDK IPC. |
 
 ## Phase D: Sub-Agent Visualization - Implementation Progress

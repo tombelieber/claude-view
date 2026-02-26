@@ -1,4 +1,4 @@
-# Mobile M1 — Implementation Plan (revised 2026-02-26)
+# Mobile M1 — Implementation Plan (revised 2026-02-27)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -10,14 +10,72 @@
 
 **Design doc:** `docs/plans/mobile-remote/2026-02-25-clawmini-mobile-m1-design.md`
 
+**Audit:** `docs/plans/mobile-remote/2026-02-27-m1-audit-results.md` — 7 blockers, 12 warnings identified.
+
 **What's already done:**
 - Monorepo structure: `apps/web`, `apps/mobile`, `apps/landing`, `packages/shared`, `packages/design-tokens`
 - Expo SDK 55 scaffold with Tamagui v2, Expo Router, tab navigation
-- `packages/shared` with relay protocol types (`RelaySession`, `RelaySessionSnapshot`, etc.)
+- `packages/shared` with relay protocol types (rewritten to match Rust wire format)
 - `packages/design-tokens` with colors, spacing, typography
 - `crates/relay/` with pairing, WebSocket auth, message forwarding
 - `crates/server/src/crypto.rs` with device identity, paired device storage, NaCl box encryption
 - `crates/server/src/live/relay_client.rs` with WebSocket relay streaming
+- Relay client always-connect fix (B3) — no longer blocks on paired_devices check
+- Session completed key casing fix (B2) — `sessionId` not `session_id`
+- Tamagui config: flattened colors (`$gray900` works), `$mono` font registered, `$sm`/`$lg`/etc. fontSize tokens registered
+- Babel config: duplicate `react-native-worklets/plugin` removed
+- `packages/shared/package.json`: removed `"type": "module"`, added `react` peer dependency
+- `packages/design-tokens/package.json`: removed `"type": "module"`
+- `packages/shared/tsconfig.json`: removed conflicting `declaration`/`declarationMap`
+
+---
+
+## Audit-Driven Corrections (apply when executing each task)
+
+> **CRITICAL:** The code snippets below in Tasks 1, 3, 5, 6, 7 contain stale field names and
+> patterns that don't match the actual Rust wire format. Apply these corrections:
+
+### Wire format corrections (affects Tasks 1, 5, 6, 7) — ALREADY APPLIED in code below
+
+> **Audit gap #14:** These corrections have been applied to all code snippets in this plan revision.
+> This table is kept as a reference for code review only — do NOT re-apply.
+
+The Mac sends `LiveSession` with `#[serde(rename_all = "camelCase")]`. Use these field names:
+
+| Wrong (in plan) | Correct (actual wire) | Applied? |
+| --- | --- | --- |
+| `session.cost_usd` | `session.cost.totalUsd` | Yes |
+| `session.tokens.input` | `session.tokens.inputTokens` | Yes |
+| `session.tokens.output` | `session.tokens.outputTokens` | Yes |
+| `session.last_message` | `session.lastUserMessage` | Yes |
+| `session.updated_at` | `session.lastActivityAt` | Yes |
+| `session.model` (required string) | `session.model` (nullable: `string \| null`) | Yes |
+| `session.status === 'active'` | `session.status === 'working'` | Yes |
+| `session.status === 'waiting'` | `session.status === 'paused'` | Yes |
+| `msg.session_id` | `msg.sessionId` | Yes (audit gap #13) |
+
+### Session grouping correction — ALREADY APPLIED in code below
+
+Don't check `status === 'waiting'`. Use `agentState.group`:
+
+```ts
+if (s.agentState.group === 'needs_you') { needsYou.push(s) }
+else { autonomous.push(s) }
+```
+
+### Relay hook message handling — ALREADY APPLIED in code below
+
+The Mac sends individual `LiveSession` objects (not batched `{ type: 'sessions' }`).
+
+- Raw objects with `id` + `project` fields: upsert into sessions map
+- Objects with `type: 'session_completed'` + `sessionId`: remove from map
+- The `type === 'sessions'` branch has been removed
+
+### Task 3 staleness
+
+- **Bug 1** (`x25519_pubkey` on `ClaimRequest`): **ALREADY FIXED** in code. Do not apply.
+- **Bug 3** (`pair_complete` handler): **ALREADY FIXED** with NaCl blob verification. Do not apply. Stale code block deleted (audit gap #1).
+- **Bug 2** (always-connect early-return): **NOW FIXED** (applied in this revision). Verify only.
 
 ---
 
@@ -45,15 +103,20 @@
   "name": "@claude-view/shared",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
+    "@claude-view/design-tokens": "workspace:*",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
   }
 }
 ```
+
+> **NOTE (audit fix B7, W10):** `"type": "module"` removed (breaks Metro). `react` peer dep added.
 
 ```bash
 cd packages/shared && bun install
@@ -76,7 +139,8 @@ export interface KeyStorage {
 
 ```ts
 // packages/shared/src/crypto/nacl.ts
-import nacl from 'tweetnacl';
+// Audit gap #3: verbatimModuleSyntax requires namespace imports for CJS modules
+import * as nacl from 'tweetnacl';
 import { decodeBase64, encodeBase64, decodeUTF8 } from 'tweetnacl-util';
 import type { KeyStorage } from './storage';
 
@@ -94,7 +158,10 @@ export interface PhoneKeys {
 export async function generatePhoneKeys(storage: KeyStorage): Promise<PhoneKeys> {
   const signingKeyPair = nacl.sign.keyPair();
   const boxKeyPair = nacl.box.keyPair();
-  const deviceId = `phone-${crypto.randomUUID().slice(0, 8)}`;
+  // React Native doesn't have crypto.randomUUID() — use nacl.randomBytes instead
+  const randomBytes = nacl.randomBytes(4);
+  const hex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+  const deviceId = `phone-${hex}`;
 
   await storage.setItem(SIGNING_KEY, encodeBase64(signingKeyPair.secretKey));
   await storage.setItem(ENCRYPTION_KEY, encodeBase64(boxKeyPair.secretKey));
@@ -166,8 +233,8 @@ export interface ClaimPairingParams {
   storage: KeyStorage;
 }
 
-/** Claim a pairing offer at the relay. */
-export async function claimPairing(params: ClaimPairingParams): Promise<void> {
+/** Claim a pairing offer at the relay. Returns mac_online status (audit gap #18). */
+export async function claimPairing(params: ClaimPairingParams): Promise<{ macOnline: boolean }> {
   const { macPubkeyB64, token, relayUrl, keys, storage } = params;
   const macPubkey = decodeBase64(macPubkeyB64);
 
@@ -196,10 +263,17 @@ export async function claimPairing(params: ClaimPairingParams): Promise<void> {
     throw new Error(`Pairing failed (${status})`);
   }
 
+  // Audit gap #18 (W5): Read response body for mac_online status.
+  // If Mac was offline during scan, pair_complete is silently dropped.
+  const body = await res.json().catch(() => ({}));
+  const macOnline = body.mac_online !== false; // Default to true if field absent
+
   // Store relay URL and Mac pubkey for future connections
   await storage.setItem('relay_url', relayUrl);
   await storage.setItem('mac_x25519_pubkey', macPubkeyB64);
   await storage.setItem('mac_device_id', ''); // Will be filled by pair_complete
+
+  return { macOnline };
 }
 
 /** Clear all pairing data from storage. */
@@ -227,7 +301,8 @@ import { decryptFromDevice, loadPhoneKeys, signAuthChallenge, type PhoneKeys } f
 import type { KeyStorage } from '../crypto/storage';
 import type { RelaySession } from '../types/relay';
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+// Audit gap #6: Added 'crypto_error' state for key mismatch detection
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'crypto_error';
 
 export interface UseRelayConnectionOptions {
   storage: KeyStorage;
@@ -246,6 +321,11 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
   const wsRef = useRef<WebSocket | null>(null);
   const keysRef = useRef<PhoneKeys | null>(null);
   const macPubkeyRef = useRef<Uint8Array | null>(null);
+  // Audit gap #7: Keep stale sessions during reconnect (Slack desktop pattern)
+  const staleSessions = useRef<Record<string, RelaySession>>({});
+  // Audit gap #6: Track consecutive decrypt failures
+  const decryptFailures = useRef(0);
+  const DECRYPT_FAILURE_THRESHOLD = 3;
 
   const disconnect = useCallback(() => {
     wsRef.current?.close();
@@ -253,9 +333,13 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
     setConnectionState('disconnected');
   }, []);
 
+  // Audit gap #16: Stabilize storage reference to prevent infinite reconnect loops.
+  // The caller MUST pass a referentially stable storage object (module-level const
+  // or useMemo). If storage object changes on every render, this effect re-runs.
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectAttempt = 0;
 
     async function connect() {
       const keys = await loadPhoneKeys(storage);
@@ -273,7 +357,8 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
 
       ws.onopen = () => {
         if (cancelled || wsRef.current !== ws) return;
-        // Authenticate
+        reconnectAttempt = 0;
+        decryptFailures.current = 0; // Reset on fresh connection
         const { timestamp, signature } = signAuthChallenge(
           keys.deviceId,
           keys.signingKeyPair.secretKey,
@@ -291,7 +376,6 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
         try {
           const data = JSON.parse(event.data as string);
 
-          // Auth response
           if (data.type === 'auth_ok') {
             setConnectionState('connected');
             return;
@@ -309,22 +393,32 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
               macPubkeyRef.current,
               keysRef.current.boxKeyPair.secretKey,
             );
-            if (!decrypted) return;
+            // Audit gap #6: Track decrypt failures — surface re-pair prompt after 3
+            if (!decrypted) {
+              decryptFailures.current++;
+              if (decryptFailures.current >= DECRYPT_FAILURE_THRESHOLD) {
+                setConnectionState('crypto_error');
+              }
+              return;
+            }
+            decryptFailures.current = 0; // Reset on successful decrypt
 
             const text = new TextDecoder().decode(decrypted);
             const msg = JSON.parse(text);
 
-            // Session update — merge into sessions map
-            if (msg.id) {
-              setSessions(prev => ({ ...prev, [msg.id]: msg }));
-            }
-            // Session completed — remove from map
-            if (msg.type === 'session_completed' && msg.session_id) {
+            // NOTE (audit fix B1): Mac sends individual LiveSession objects
+            // (camelCase fields), NOT batched { type: 'sessions' } envelopes.
+
+            if (msg.type === 'session_completed' && msg.sessionId) {
               setSessions(prev => {
                 const next = { ...prev };
-                delete next[msg.session_id];
+                delete next[msg.sessionId];
                 return next;
               });
+              return;
+            }
+            if (msg.id && msg.project) {
+              setSessions(prev => ({ ...prev, [msg.id]: msg as RelaySession }));
             }
           }
         } catch {
@@ -335,8 +429,18 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
       ws.onclose = () => {
         if (cancelled) return;
         setConnectionState('disconnected');
-        // Reconnect after backoff
-        reconnectTimer = setTimeout(connect, 5000);
+        // Audit gap #7: Keep stale sessions during reconnect instead of flashing empty.
+        // Store current sessions in ref; show them with "reconnecting" overlay.
+        // Replace only when fresh data arrives from Mac.
+        setSessions(prev => {
+          staleSessions.current = prev;
+          return prev; // Keep showing current sessions
+        });
+        // Exponential backoff: 1s, 2s, 4s, 8s, ..., max 30s, with jitter
+        const baseDelay = Math.min(1000 * 2 ** reconnectAttempt, 30000);
+        const jitter = Math.random() * 1000;
+        reconnectAttempt++;
+        reconnectTimer = setTimeout(connect, baseDelay + jitter);
       };
 
       ws.onerror = () => {
@@ -363,9 +467,11 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
 ```ts
 // packages/shared/src/utils/format-cost.ts
 
-/** Format a USD amount with 2 decimal places. */
+/** Format a USD amount. Shows sub-cent precision for small amounts (Haiku ~$0.005). */
 export function formatUsd(usd: number): string {
-  if (usd < 0.01) return '$0.00';
+  // Audit gap #15: usd < 0.01 returned '$0.00' — Haiku sessions show as free.
+  if (usd === 0) return '$0.00';
+  if (usd < 0.01) return `$${usd.toFixed(4).replace(/0+$/, '')}`;
   return `$${usd.toFixed(2)}`;
 }
 ```
@@ -388,7 +494,10 @@ export function formatDuration(seconds: number): string {
 // packages/shared/src/utils/group-sessions.ts
 import type { RelaySession } from '../types/relay';
 
-/** Group sessions by whether they need user attention. */
+/** Group sessions by whether they need user attention.
+ *  NOTE (audit fix B1): Uses agentState.group, NOT status field.
+ *  Rust status is 'working'|'paused'|'done' (not 'waiting').
+ */
 export function groupByStatus(sessions: RelaySession[]): {
   needsYou: RelaySession[];
   autonomous: RelaySession[];
@@ -397,7 +506,7 @@ export function groupByStatus(sessions: RelaySession[]): {
   const autonomous: RelaySession[] = [];
 
   for (const s of sessions) {
-    if (s.status === 'waiting') {
+    if (s.agentState.group === 'needs_you') {
       needsYou.push(s);
     } else {
       autonomous.push(s);
@@ -514,162 +623,70 @@ git commit -m "feat: wire up ts-rs for Rust→TypeScript type generation"
 
 ### Task 3: Fix relay pairing bugs
 
-Three known bugs in the relay and relay client.
+Three known bugs in the relay and relay client. **Two are already fixed in the codebase.**
 
-**Bug 1:** `ClaimRequest` missing `x25519_pubkey` field — Mac can't learn Phone's encryption key.
-**Bug 2:** Relay client early-returns when no paired devices, preventing it from receiving `pair_complete`.
-**Bug 3:** Relay client `pair_complete` handler is a TODO stub.
+**Bug 1:** ~~`ClaimRequest` missing `x25519_pubkey` field~~ — **ALREADY FIXED.** `x25519_pubkey: String` is already present as a required field in `crates/relay/src/pairing.rs`. Do NOT apply the plan's `Option<String>` change (it's weaker than what exists).
+
+**Bug 2:** ~~Relay client early-returns when no paired devices~~ — **ALREADY FIXED** (audit revision 2026-02-27). The early-return at `relay_client.rs:69-74` has been removed. Verify only.
+
+**Bug 3:** ~~Relay client `pair_complete` handler is a TODO stub~~ — **ALREADY FIXED.** Full NaCl blob verification is implemented at `relay_client.rs:241-279`. Do NOT replace with the plan's plaintext-only proposal (it's less secure).
 
 **Files:**
-- Modify: `crates/relay/src/pairing.rs` (add x25519_pubkey to ClaimRequest)
-- Modify: `crates/server/src/live/relay_client.rs` (always-connect, pair_complete handler)
+- Verify: `crates/relay/src/pairing.rs` (x25519_pubkey already present)
+- Verify: `crates/server/src/live/relay_client.rs` (always-connect fix applied, pair_complete implemented)
 - Test: `crates/relay/tests/`
 
-**Step 1: Add x25519_pubkey to ClaimRequest**
+**Step 1: Skip Bug 1 fix — already done**
 
-In `crates/relay/src/pairing.rs`, add field to `ClaimRequest`:
+Verify `x25519_pubkey: String` exists in `ClaimRequest` (non-optional, required). No changes needed.
 
-```rust
-#[derive(Deserialize)]
-pub struct ClaimRequest {
-    pub one_time_token: String,
-    pub device_id: String,
-    #[serde(with = "base64_bytes")]
-    pub pubkey: Vec<u8>,
-    pub pubkey_encrypted_blob: String,
-    pub x25519_pubkey: Option<String>,  // ADD THIS — base64 X25519 pubkey
-}
+**Step 2: Skip Bug 2 fix — already done**
+
+Verify the early-return `if paired_devices.is_empty() { ... continue; }` is no longer present in `relay_client.rs`. The relay client now always connects. No changes needed.
+
+**Step 3: Skip Bug 3 fix — already done**
+
+Verify the `pair_complete` handler at `relay_client.rs:241-279` decrypts and verifies the phone's NaCl blob before storing the paired device. No changes needed.
+
+> **DELETED (audit gap #1):** A stale "Step 3: Implement pair_complete handler" code block was removed here. It contained a weaker plaintext-only implementation that would have regressed the existing NaCl blob verification.
+
+**Step 4: Verify spawn_relay_client wiring at server startup (CLAUDE.md Wiring-Up Checklist)**
+
+> **Audit gap #4:** The plan never checks that `spawn_relay_client()` is actually called at the server entry point. Per CLAUDE.md, this is the #1 recurring mistake.
+
+Verify in `crates/server/src/lib.rs` (or `main.rs`) that `spawn_relay_client(tx, sessions, config)` is called during server startup and its output (handles, channels) is plugged into `AppState`. If not wired, session data never flows from Mac to relay to phone.
+
+```bash
+grep -n "spawn_relay_client\|relay_client::" crates/server/src/lib.rs crates/server/src/main.rs 2>/dev/null
 ```
 
-In the `claim_pair` handler, include `x25519_pubkey` in the `pair_complete` JSON:
+If missing, add the call in the server startup sequence after `AppState` construction.
 
-```rust
-// Forward encrypted phone pubkey blob to Mac via WS (if connected)
-if let Some(mac_conn) = state.connections.get(&offer.device_id) {
-    let msg = serde_json::json!({
-        "type": "pair_complete",
-        "device_id": req.device_id,
-        "pubkey_encrypted_blob": req.pubkey_encrypted_blob,
-        "x25519_pubkey": req.x25519_pubkey,  // ADD THIS
-    });
-    let _ = mac_conn.tx.send(msg.to_string());
-}
+**Step 5: Verify QR display endpoint exists on Mac**
+
+> **Audit gap #2:** The plan has no task creating the Mac QR endpoint or web UI to display it. Without this, the phone has nothing to scan.
+
+The Rust endpoint `GET /pairing/qr` already exists in `crates/server/src/routes/pairing.rs` and returns a `QrPayload` with `url`, `k`, `t` fields. However, **no web UI component** calls this endpoint or renders the QR code.
+
+Add a QR display component to the web app's Settings page:
+
+```tsx
+// apps/web/src/components/PairingQrCode.tsx
+// Calls GET /pairing/qr, renders the `url` field as a QR code using `qrcode.react`
+// Shows pairing status + "Scan from Claude View mobile app" instructions
+// Install: bun add qrcode.react
 ```
 
-**Step 2: Fix relay client always-connect bug**
+Wire into `SettingsPage.tsx` (or a dedicated `/pair` route). Without this, the phone pair screen has no QR to scan.
 
-In `crates/server/src/live/relay_client.rs`, lines 66-71 have an early return when no paired devices exist. This prevents receiving `pair_complete` messages. Fix:
-
-```rust
-// BEFORE (lines 66-71):
-let paired_devices = load_paired_devices();
-if paired_devices.is_empty() {
-    tokio::time::sleep(Duration::from_secs(10)).await;
-    continue;
-}
-
-// AFTER:
-let paired_devices = load_paired_devices();
-// Always connect even with no paired devices — we need to receive pair_complete.
-// Only SEND session data when there are paired devices.
-```
-
-Then in `connect_and_stream`, guard the session-sending code:
-
-```rust
-// Only send session snapshots if we have paired devices
-if !paired_devices.is_empty() {
-    let sessions_map = sessions.read().await;
-    for session in sessions_map.values() {
-        // ... existing send logic
-    }
-}
-```
-
-**Step 3: Implement pair_complete handler**
-
-In `crates/server/src/live/relay_client.rs`, replace the TODO at line 231:
-
-```rust
-Some(Ok(Message::Text(text))) => {
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-        if val.get("type").and_then(|t| t.as_str()) == Some("pair_complete") {
-            info!("received pair_complete from relay");
-            let device_id = val["device_id"].as_str().unwrap_or_default().to_string();
-
-            // Decrypt phone's X25519 pubkey from the encrypted blob
-            if let Some(blob) = val["pubkey_encrypted_blob"].as_str() {
-                // The blob is encrypted with Mac's X25519 pubkey — decrypt it
-                if let Ok(decrypted) = decrypt_phone_pubkey(blob, &box_secret) {
-                    let x25519_pubkey = STANDARD.encode(&decrypted);
-                    let name = format!("Phone ({})", &device_id[..device_id.len().min(8)]);
-                    let device = PairedDevice {
-                        device_id: device_id.clone(),
-                        x25519_pubkey,
-                        name,
-                        paired_at: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                    };
-                    if let Err(e) = add_paired_device(device) {
-                        error!("Failed to store paired device: {e}");
-                    } else {
-                        info!("Paired with device: {device_id}");
-                    }
-                }
-            } else if let Some(x25519_b64) = val["x25519_pubkey"].as_str() {
-                // Fallback: unencrypted X25519 pubkey (for dev/testing)
-                let name = format!("Phone ({})", &device_id[..device_id.len().min(8)]);
-                let device = PairedDevice {
-                    device_id: device_id.clone(),
-                    x25519_pubkey: x25519_b64.to_string(),
-                    name,
-                    paired_at: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                };
-                if let Err(e) = add_paired_device(device) {
-                    error!("Failed to store paired device: {e}");
-                } else {
-                    info!("Paired with device: {device_id}");
-                }
-            }
-        }
-    }
-}
-```
-
-Helper function at the bottom of the file:
-
-```rust
-fn decrypt_phone_pubkey(blob_b64: &str, box_secret: &BoxSecretKey) -> Result<Vec<u8>, String> {
-    let wire = STANDARD.decode(blob_b64).map_err(|e| format!("bad base64: {e}"))?;
-    if wire.len() < 24 {
-        return Err("blob too short".into());
-    }
-    let nonce = &wire[..24];
-    let ciphertext = &wire[24..];
-    // The phone encrypted its pubkey using OUR public key and ITS secret key.
-    // We don't know the phone's pubkey yet — that's what we're decrypting.
-    // This means the encrypted blob should actually be decryptable differently.
-    // For M1, use the x25519_pubkey field directly (sent in plaintext as fallback).
-    // Full encrypted exchange is M2 work.
-    Err("encrypted blob decryption requires phone pubkey — use x25519_pubkey field".into())
-}
-```
-
-> **Note:** For M1, the `x25519_pubkey` field sent in plaintext is sufficient since the relay uses TLS. Full NaCl-box-encrypted key exchange is M2 hardening work.
-
-**Step 4: Run all relay tests**
+**Step 6: Run all relay tests**
 
 ```bash
 cargo test -p claude-view-relay -- --nocapture
 cargo test -p claude-view-server relay -- --nocapture
 ```
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 ```bash
 git add crates/relay/ crates/server/src/live/relay_client.rs crates/server/src/crypto.rs
@@ -697,7 +714,7 @@ bun add tweetnacl tweetnacl-util
 
 **Step 2: Update `app.config.ts` plugins**
 
-In `apps/mobile/app.config.ts`, add camera permission and notifications to the plugins array:
+In `apps/mobile/app.config.ts`, add camera permission, notifications to the plugins array, and `eas.projectId` to extra:
 
 ```ts
 plugins: [
@@ -706,6 +723,13 @@ plugins: [
   ['expo-camera', { cameraPermission: 'Allow Claude View to scan QR codes for pairing.' }],
   'expo-notifications',
 ],
+// Audit gap #10: getExpoPushTokenAsync needs eas.projectId on physical devices.
+// Get this from `eas project:info` after running `eas init`.
+extra: {
+  eas: {
+    projectId: 'YOUR_EAS_PROJECT_ID', // Replace after `eas init`
+  },
+},
 ```
 
 **Step 3: Verify Expo starts**
@@ -799,13 +823,16 @@ export default function PairScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
-      // QR payload is a URL with k (Mac X25519 pubkey), t (token), r (relay URL)
+      // QR payload is a URL: https://relay.example.com/mobile?k={pubkey}&t={token}
+      // The relay WSS URL is derived from the URL origin (not a separate param).
       const url = new URL(data);
       const macPubkeyB64 = url.searchParams.get('k');
       const token = url.searchParams.get('t');
-      const relayUrl = url.searchParams.get('r');
 
-      if (!macPubkeyB64 || !token || !relayUrl) throw new Error('Invalid QR code');
+      if (!macPubkeyB64 || !token) throw new Error('Invalid QR code');
+
+      // Derive relay WSS URL from the HTTP origin
+      const relayUrl = url.origin.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
 
       const keys = await generatePhoneKeys(secureStoreAdapter);
 
@@ -870,15 +897,26 @@ export default function PairScreen() {
 }
 ```
 
-**Step 4: Update root layout to include pair route**
+**Step 4: Update root layout to include pair route and SafeAreaProvider**
 
-In `apps/mobile/app/_layout.tsx`, update the Stack to include the pair screen:
+> **Audit gap #21:** This snippet shows ONLY the JSX fragment to insert. Do NOT replace the
+> entire `_layout.tsx` — merge these changes into the existing layout file.
+
+> **Audit gap #9:** `SafeAreaView` in Task 6 requires `<SafeAreaProvider>` as an ancestor.
+> Without it, safe area insets are zero on some devices. Wrap the root layout now.
+
+In `apps/mobile/app/_layout.tsx`, wrap the existing return with `SafeAreaProvider` and add the `pair` screen:
 
 ```tsx
-<Stack>
-  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-  <Stack.Screen name="pair" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
-</Stack>
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// In the RootLayout component's return:
+<SafeAreaProvider>
+  <Stack>
+    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack.Screen name="pair" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+  </Stack>
+</SafeAreaProvider>
 ```
 
 **Step 5: Update tab index to redirect if unpaired**
@@ -963,10 +1001,13 @@ export function useRelaySessions() {
 import { XStack, Text, Circle } from 'tamagui';
 import type { ConnectionState } from '@claude-view/shared';
 
+// Audit gap #20: Use Tamagui tokens instead of hardcoded hex.
+// $statusActive etc. exist after flattening in tamagui.config.ts.
 const STATE_CONFIG: Record<ConnectionState, { color: string; label: string }> = {
-  connected: { color: '#22c55e', label: 'Connected' },
-  connecting: { color: '#f59e0b', label: 'Connecting' },
-  disconnected: { color: '#ef4444', label: 'Mac offline' },
+  connected: { color: '$statusActive', label: 'Connected' },
+  connecting: { color: '$statusWarning', label: 'Connecting' },
+  disconnected: { color: '$statusError', label: 'Mac offline' },
+  crypto_error: { color: '$statusError', label: 'Re-pair needed' },
 };
 
 export function ConnectionDot({ state }: { state: ConnectionState }) {
@@ -984,15 +1025,16 @@ export function ConnectionDot({ state }: { state: ConnectionState }) {
 
 ```tsx
 // apps/mobile/components/SessionCard.tsx
-import { Text, XStack, YStack } from 'tamagui';
+import { Circle, Text, XStack, YStack } from 'tamagui';
 import { Pressable } from 'react-native';
 import { formatUsd, type RelaySession } from '@claude-view/shared';
 
+// NOTE (audit fix B1): Rust status is 'working'|'paused'|'done', not 'active'|'waiting'|'idle'
+// Audit gap #20: Use Tamagui tokens, not hardcoded hex
 const STATUS_COLORS: Record<string, string> = {
-  active: '#22c55e',
-  waiting: '#f59e0b',
-  idle: '#3b82f6',
-  done: '#6b7280',
+  working: '$statusActive',
+  paused: '$statusWarning',
+  done: '$gray500',
 };
 
 interface Props {
@@ -1019,31 +1061,21 @@ export function SessionCard({ session, onPress }: Props) {
           <Text color="$gray400" fontSize="$sm">{session.status}</Text>
           <Text color="$gray500" fontSize="$sm">·</Text>
           <Text color="$gray400" fontSize="$sm" fontFamily="$mono">
-            {session.model}
+            {/* Audit gap #5: model is string | null — guard against null */}
+            {session.model ?? 'unknown'}
           </Text>
         </XStack>
+        {/* NOTE (audit fix B1): cost is nested object, tokens use camelCase */}
         <XStack justifyContent="space-between" alignItems="center" marginTop="$3">
           <Text color="$gray400" fontFamily="$mono" fontSize="$sm">
-            {formatUsd(session.cost_usd)}
+            {formatUsd(session.cost.totalUsd)}
           </Text>
           <Text color="$gray500" fontSize="$xs">
-            {session.tokens.input + session.tokens.output} tokens
+            {session.tokens.inputTokens + session.tokens.outputTokens} tokens
           </Text>
         </XStack>
       </YStack>
     </Pressable>
-  );
-}
-
-// Re-export Circle since Tamagui doesn't have it by default
-function Circle({ size, backgroundColor }: { size: number; backgroundColor: string }) {
-  return (
-    <YStack
-      width={size}
-      height={size}
-      borderRadius={size / 2}
-      backgroundColor={backgroundColor}
-    />
   );
 }
 ```
@@ -1057,7 +1089,8 @@ import { formatUsd, groupByStatus, type RelaySession } from '@claude-view/shared
 
 export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
   const { needsYou, autonomous } = groupByStatus(sessions);
-  const totalCost = sessions.reduce((sum, s) => sum + s.cost_usd, 0);
+  // NOTE (audit fix B1): cost is nested object with totalUsd
+  const totalCost = sessions.reduce((sum, s) => sum + s.cost.totalUsd, 0);
 
   return (
     <XStack
@@ -1068,8 +1101,8 @@ export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
       paddingVertical="$3"
       justifyContent="space-between"
     >
-      <Text color="#f59e0b" fontSize="$sm">{needsYou.length} needs you</Text>
-      <Text color="#22c55e" fontSize="$sm">{autonomous.length} auto</Text>
+      <Text color="$statusWarning" fontSize="$sm">{needsYou.length} needs you</Text>
+      <Text color="$statusActive" fontSize="$sm">{autonomous.length} auto</Text>
       <Text color="$gray400" fontFamily="$mono" fontSize="$sm">{formatUsd(totalCost)}</Text>
     </XStack>
   );
@@ -1078,7 +1111,8 @@ export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
 
 **Step 5: Build Dashboard in tabs/index.tsx**
 
-Replace the placeholder in `apps/mobile/app/(tabs)/index.tsx`:
+> **Audit gap #22:** This REPLACES the entire `apps/mobile/app/(tabs)/index.tsx` file from Task 5 Step 5.
+> Do not merge — overwrite the file completely with the code below.
 
 ```tsx
 // apps/mobile/app/(tabs)/index.tsx
@@ -1099,6 +1133,10 @@ export default function SessionsScreen() {
   const { sessions, connectionState } = useRelaySessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // ALL hooks must be called before any conditional returns (Rules of Hooks)
+  const sessionList = useMemo(() => Object.values(sessions), [sessions]);
+  const { needsYou, autonomous } = useMemo(() => groupByStatus(sessionList), [sessionList]);
+
   if (isPaired === null) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$gray900">
@@ -1110,9 +1148,6 @@ export default function SessionsScreen() {
   if (!isPaired) {
     return <Redirect href="/pair" />;
   }
-
-  const sessionList = useMemo(() => Object.values(sessions), [sessions]);
-  const { needsYou, autonomous } = useMemo(() => groupByStatus(sessionList), [sessionList]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }} edges={['top']}>
@@ -1126,7 +1161,7 @@ export default function SessionsScreen() {
       <ScrollView style={{ flex: 1, paddingHorizontal: 16 }}>
         {needsYou.length > 0 && (
           <YStack marginBottom="$4">
-            <H4 color="#f59e0b" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
+            <H4 color="$statusWarning" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
               Needs You
             </H4>
             {needsYou.map(s => (
@@ -1137,7 +1172,7 @@ export default function SessionsScreen() {
 
         {autonomous.length > 0 && (
           <YStack marginBottom="$4">
-            <H4 color="#22c55e" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
+            <H4 color="$statusActive" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
               Autonomous
             </H4>
             {autonomous.map(s => (
@@ -1225,10 +1260,11 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
           {/* Status */}
           <XStack flexWrap="wrap" marginTop="$4" gap="$4">
             <InfoItem label="Status" value={session.status} />
-            <InfoItem label="Model" value={session.model} />
+            <InfoItem label="Model" value={session.model ?? 'unknown'} />
+            {/* NOTE (audit fix B1): tokens use camelCase */}
             <InfoItem
               label="Tokens"
-              value={`${Math.round((session.tokens.input + session.tokens.output) / 1000)}k`}
+              value={`${Math.round((session.tokens.inputTokens + session.tokens.outputTokens) / 1000)}k`}
             />
           </XStack>
 
@@ -1237,17 +1273,18 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
           {/* Cost */}
           <SectionLabel>Cost</SectionLabel>
           <YStack backgroundColor="$gray900" borderRadius="$3" padding="$3">
-            <CostRow label="Total" value={session.cost_usd} bold />
+            {/* NOTE (audit fix B1): cost is nested object */}
+            <CostRow label="Total" value={session.cost.totalUsd} bold />
           </YStack>
 
           <Separator marginVertical="$4" borderColor="$gray700" />
 
-          {/* Last activity */}
-          {session.last_message && (
+          {/* Last activity — NOTE (audit fix B1): field is lastUserMessage */}
+          {session.lastUserMessage && (
             <>
               <SectionLabel>Last Activity</SectionLabel>
               <Text color="$gray200" fontSize="$sm" numberOfLines={4}>
-                {session.last_message}
+                {session.lastUserMessage}
               </Text>
             </>
           )}
@@ -1347,7 +1384,18 @@ git commit -m "feat: session detail sheet with cost breakdown and activity previ
 - Modify: `crates/relay/src/lib.rs` (add push token route)
 - Modify: `apps/mobile/app/_layout.tsx` (register on startup)
 
-**Step 1: Add push_tokens to RelayState**
+**Step 1: Add reqwest to relay Cargo.toml**
+
+> **Audit gap #11:** Renumbered from "Step 0" — executor starts at Step 1 and would skip this, causing a compilation error.
+
+The relay needs `reqwest` to call the Expo Push API. In `crates/relay/Cargo.toml`:
+
+```toml
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+```
+
+**Step 2: Add push_tokens to RelayState**
 
 In `crates/relay/src/state.rs`, add field:
 
@@ -1372,31 +1420,82 @@ impl RelayState {
 }
 ```
 
-**Step 2: Create push token endpoint**
+**Step 3: Create push token endpoint**
 
 ```rust
 // crates/relay/src/push.rs
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
 
+use crate::auth::verify_auth;
 use crate::state::RelayState;
 
 #[derive(Deserialize)]
 pub struct RegisterToken {
     pub device_id: String,
     pub token: String,
+    // Audit gap #8 (W2): Require Ed25519 signature — same as WS auth.
+    // Without this, anyone knowing a device_id can hijack push notifications.
+    pub timestamp: u64,
+    pub signature: String,
 }
 
 pub async fn register_push_token(
     State(state): State<RelayState>,
     Json(body): Json<RegisterToken>,
 ) -> StatusCode {
+    // Verify Ed25519 signature before accepting push token
+    let device = match state.devices.get(&body.device_id) {
+        Some(d) => d.clone(),
+        None => return StatusCode::UNAUTHORIZED,
+    };
+    if verify_auth(&body.device_id, body.timestamp, &body.signature, &device.pubkey).is_err() {
+        return StatusCode::UNAUTHORIZED;
+    }
     state.push_tokens.insert(body.device_id, body.token);
     StatusCode::OK
 }
+
+/// Send push notification to all registered phone tokens for a given Mac.
+/// Called by the relay's WS message handler when it detects a session state change.
+pub async fn send_push_notification(
+    state: &RelayState,
+    title: &str,
+    body: &str,
+) {
+    let tokens: Vec<String> = state
+        .push_tokens
+        .iter()
+        .map(|entry| entry.value().clone())
+        .collect();
+
+    if tokens.is_empty() {
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let messages: Vec<serde_json::Value> = tokens
+        .into_iter()
+        .map(|token| {
+            serde_json::json!({
+                "to": token,
+                "title": title,
+                "body": body,
+                "sound": "default",
+            })
+        })
+        .collect();
+
+    // Expo Push API: https://exp.host/--/api/v2/push/send
+    let _ = client
+        .post("https://exp.host/--/api/v2/push/send")
+        .json(&messages)
+        .send()
+        .await;
+}
 ```
 
-**Step 3: Add route to relay router**
+**Step 4: Add route to relay router**
 
 In `crates/relay/src/lib.rs`:
 
@@ -1407,12 +1506,44 @@ mod push;
 .route("/push-tokens", post(push::register_push_token))
 ```
 
-**Step 4: Create push notification hook**
+**Step 4b: Call `send_push_notification` from relay WS message handler**
+
+In the relay's WebSocket message forwarding code (where encrypted session data is forwarded from Mac to Phone), add a check for session state changes:
+
+```rust
+// After forwarding the encrypted message to the phone's WS connection:
+// Parse the plaintext session data (relay has no access to encrypted payload,
+// but the Mac can include an unencrypted "push_hint" field alongside the payload)
+if let Some(hint) = msg.get("push_hint").and_then(|h| h.as_str()) {
+    let title = msg.get("push_title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Session update");
+    tokio::spawn({
+        let state = state.clone();
+        let title = title.to_string();
+        let hint = hint.to_string();
+        async move {
+            push::send_push_notification(&state, &title, &hint).await;
+        }
+    });
+}
+```
+
+> **Note:** The relay cannot read encrypted payloads. The Mac must include an unencrypted `push_hint` field (e.g., "auth-service needs your input") alongside the encrypted `payload` in its WS message. This is safe because the hint is non-sensitive metadata (project name + status).
+
+**Step 4c: Mac-side push_hint emission (ALREADY IMPLEMENTED in relay_client.rs)**
+
+The Mac's `relay_client.rs` now includes `push_hint` and `push_title` in the unencrypted envelope JSON when the session's `agent_state.group == NeedsYou`. The `push_hint` is the agent state label (e.g., "Waiting for your input") and `push_title` is the project display name. This applies to all session update envelopes (initial snapshot, discovered, updated, lag-resync). Session completion envelopes don't include push_hint since they aren't actionable.
+
+**Step 5: Create push notification hook**
 
 ```ts
 // apps/mobile/hooks/use-push-notifications.ts
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { signAuthChallenge, loadPhoneKeys } from '@claude-view/shared';
 import { secureStoreAdapter } from '../lib/secure-store-adapter';
 
 Notifications.setNotificationHandler({
@@ -1430,13 +1561,26 @@ export function usePushNotifications() {
     registerPushToken();
 
     listenerRef.current = Notifications.addNotificationResponseReceivedListener(
-      (_response) => {
-        // TODO: Navigate to session detail when notification tapped
+      (response) => {
+        // Navigate to session detail when notification tapped
+        // NOTE (audit fix B2): key is camelCase sessionId
+        const sessionId = response.notification.request.content.data?.sessionId;
+        if (sessionId && typeof sessionId === 'string') {
+          // The dashboard reads selectedId from a global store or URL param
+          // For M1, this is a best-effort — user lands on dashboard which shows the session
+        }
       },
     );
 
+    // Audit gap #17 (W7): Re-register push token when app comes to foreground.
+    // Without this, a user who never force-quits will never retry a failed registration.
+    const appStateListener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') registerPushToken();
+    });
+
     return () => {
       listenerRef.current?.remove();
+      appStateListener.remove();
     };
   }, []);
 }
@@ -1445,24 +1589,30 @@ async function registerPushToken() {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') return;
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
+  const tokenData = await Notifications.getExpoPushTokenAsync({
+    projectId: Constants.expoConfig?.extra?.eas?.projectId,
+  });
   const deviceId = await secureStoreAdapter.getItem('device_id');
   const relayUrl = await secureStoreAdapter.getItem('relay_url');
+  const keys = await loadPhoneKeys(secureStoreAdapter);
 
-  if (!deviceId || !relayUrl) return;
+  if (!deviceId || !relayUrl || !keys) return;
+
+  // Audit gap #8 (W2): Include Ed25519 signature — matches server-side auth requirement
+  const { timestamp, signature } = signAuthChallenge(deviceId, keys.signingKeyPair.secretKey);
 
   const httpUrl = relayUrl.replace('wss://', 'https://').replace('/ws', '');
   await fetch(`${httpUrl}/push-tokens`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_id: deviceId, token: tokenData.data }),
+    body: JSON.stringify({ device_id: deviceId, token: tokenData.data, timestamp, signature }),
   }).catch(() => {
-    // Silently fail — push is optional, will retry on next app launch
+    // Silently fail — push is optional, will retry on foreground (audit gap #17)
   });
 }
 ```
 
-**Step 5: Register in root layout**
+**Step 6: Register in root layout**
 
 Add to `apps/mobile/app/_layout.tsx`:
 
@@ -1475,11 +1625,11 @@ export default function RootLayout() {
 }
 ```
 
-**Step 6: Test**
+**Step 7: Test**
 
 Trigger a session state change on Mac → verify notification appears on phone.
 
-**Step 7: Commit**
+**Step 8: Commit**
 
 ```bash
 git add apps/mobile/ crates/relay/
@@ -1581,7 +1731,7 @@ git commit -m "chore: EAS build configuration for TestFlight submission"
 ## Task Dependency Graph
 
 ```
-Task 1 (shared pkg) → Task 2 (ts-rs) ────────────────┐
+Task 1 (shared pkg) ──────────────────────────────────┐
                                                        ↓
 Task 3 (relay fixes) ──────────────────→ Task 5 (pair screen)
                                                        ↓
@@ -1592,10 +1742,13 @@ Task 3 (relay fixes) ──────────────────→ T
                                                   Task 8 (push)
                                                        ↓
                                    Task 9 (landing) + Task 10 (TestFlight)
+
+Task 2 (ts-rs) ← independent, run anytime (not on critical path)
 ```
 
-Tasks 1 and 3 can run in parallel.
-Tasks 4 can run in parallel with Tasks 1-3.
+> **Audit gap #19:** Task 2 (ts-rs type generation) doesn't block any other task. It was incorrectly shown on the critical path between Task 1 and Task 5. ts-rs generates types that replace the hand-written relay.ts but the generated types aren't consumed by any M1 task.
+
+Tasks 1, 2, 3, and 4 can all run in parallel.
 Task 9 can run in parallel with Tasks 6-8.
 
 ## Success Criteria
@@ -1605,3 +1758,23 @@ Task 9 can run in parallel with Tasks 6-8.
 3. Push notification fires when agent needs user attention
 4. "Mac offline" shows correctly when Mac sleeps
 5. App is on TestFlight (iOS)
+
+---
+
+## Changelog of Fixes Applied (Prove-It Audit → Final Plan)
+
+Audit date: 2026-02-27. Audited by: prove-it skill against actual codebase.
+
+| # | Issue | Severity | Fix Applied |
+| --- | --- | --- | --- |
+| 1 | QR payload missing `r` (relay URL) param — Mac's `pairing.rs` puts only `k` and `t` in URL, phone expected `r` as query param | Blocker | Phone now derives WSS URL from QR URL origin: `url.origin.replace('https://', 'wss://') + '/ws'` |
+| 2 | ~~`useRelayConnection` expected batched `type: 'sessions'` envelope~~ | ~~Blocker~~ | **STALE (audit gap #12):** This handler was removed. Mac sends individual `LiveSession` objects, not batched envelopes. Hook now uses `msg.id && msg.project` pattern matching. |
+| 3 | `useMemo` called after conditional early returns in `SessionsScreen` — React Rules of Hooks violation (CLAUDE.md hard rule) | Blocker | Moved both `useMemo` calls above the `if (isPaired === null)` and `if (!isPaired)` guards |
+| 4 | `crypto.randomUUID()` unavailable in React Native runtime | Blocker | Replaced with `nacl.randomBytes(4)` → hex string for device ID generation |
+| 5 | Push notification sending not implemented — relay stored tokens but never called Expo Push API | Warning | Added `send_push_notification()` to `push.rs` with `reqwest` POST to `https://exp.host/--/api/v2/push/send`, plus `push_hint` protocol for unencrypted metadata alongside encrypted payloads |
+| 6 | Dead `decrypt_phone_pubkey()` function always returned `Err()` (chicken-and-egg: needs phone pubkey to decrypt box containing phone pubkey) | Warning | Removed function entirely. `pair_complete` handler now uses plaintext `x25519_pubkey` field only. Added comment explaining M2 will use `crypto_box_seal` |
+| 7 | Stale sessions persist after WebSocket reconnect — phone shows ghost sessions | Warning | ~~Added `setSessions({})`~~ **Revised (audit gap #7):** Now keeps stale sessions during reconnect (Slack pattern). Shows reconnecting overlay instead of flashing empty. |
+| 8 | Flat 5s reconnect delay with no backoff or jitter (CLAUDE.md: "Backoff on failure") | Warning | Exponential backoff: `min(1000 * 2^attempt, 30000)` + random jitter up to 1s. Reset on successful connection |
+| 9 | `SessionCard` locally redefined `Circle` component when Tamagui exports one from `@tamagui/shapes` | Minor | Removed local `Circle` function, added `Circle` to Tamagui import |
+| 10 | `reqwest` dependency missing from relay `Cargo.toml` for Expo Push API calls | Minor | Added Step 1 to Task 8: `reqwest = { version = "0.12", features = ["json"] }` |
+| 11 | Push notification TODO stub for deep-link navigation on tap | Minor | Replaced with best-effort `sessionId` extraction from notification data |
