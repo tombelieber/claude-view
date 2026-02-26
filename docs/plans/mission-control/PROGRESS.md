@@ -19,7 +19,7 @@ feature: mission-control
 | D | Sub-Agent Visualization | `done` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | D.2 | Sub-Agent Deep Dive | `done` | Real-time progress, drill-down conversations, sub-agent WebSocket streaming |
 | E | Custom Layout | `pending` | react-mosaic drag-and-drop, layout save/load, presets |
-| F | Interactive Control | `pending` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
+| F | Interactive Control | `ready` (impl plan done) | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
 | G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
 | H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support |
 | I | Codex Live Mission Control | `pending` | Codex watcher/process/parser integration into live manager + mixed-source Mission Control UI |

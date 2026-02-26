@@ -1,230 +1,49 @@
-# clawmini Mobile M1 — Implementation Plan
+# Mobile M1 — Implementation Plan (revised 2026-02-26)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Ship an Expo native app that pairs with Mac via QR and shows a real-time live dashboard of AI agent sessions.
 
-**Architecture:** Monorepo restructure (`apps/web`, `apps/mobile`, `packages/shared`), Expo/React Native + NativeWind, keypair auth, dumb relay, ts-rs type sync.
+**Architecture:** Monorepo already restructured (`apps/web`, `apps/mobile`, `packages/shared`). Expo/React Native + Tamagui v2, keypair auth, dumb relay, relay protocol types in shared package.
 
-**Tech Stack:** Expo SDK 54, React Native, NativeWind, Turborepo, Bun workspaces, tweetnacl, ts-rs, Axum relay
+**Tech Stack:** Expo SDK 55, React Native 0.83, Tamagui v2, Turborepo, Bun workspaces, tweetnacl, Axum relay
 
 **Design doc:** `docs/plans/mobile-remote/2026-02-25-clawmini-mobile-m1-design.md`
 
----
-
-## Phase 1: Monorepo Infrastructure
-
-### Task 1: Move web app to `apps/web/`
-
-**Files:**
-- Create: `apps/web/` directory
-- Move: `src/` → `apps/web/src/`
-- Move: `public/` → `apps/web/public/`
-- Move: `index.html` → `apps/web/index.html`
-- Move: `vite.config.ts` → `apps/web/vite.config.ts`
-- Move: `vitest.config.ts` → `apps/web/vitest.config.ts`
-- Move: `tsconfig.json` → `apps/web/tsconfig.json`
-- Move: `tsconfig.app.json` → `apps/web/tsconfig.app.json`
-- Move: `tsconfig.node.json` → `apps/web/tsconfig.node.json`
-- Move: `eslint.config.js` → `apps/web/eslint.config.js`
-- Move: `playwright.config.ts` → `apps/web/playwright.config.ts`
-- Move: `e2e/` → `apps/web/e2e/`
-- Move: `tests/` → `apps/web/tests/`
-- Create: `apps/web/package.json` (split from root)
-- Modify: root `package.json` (workspace root, remove app-specific deps)
-- Create: `tsconfig.base.json` (shared TS config at root)
-
-**Step 1: Create directory structure**
-
-```bash
-mkdir -p apps/web
-```
-
-**Step 2: Move files with git (preserves history)**
-
-```bash
-git mv src apps/web/src
-git mv public apps/web/public
-git mv index.html apps/web/index.html
-git mv vite.config.ts apps/web/vite.config.ts
-git mv vitest.config.ts apps/web/vitest.config.ts
-git mv tsconfig.json apps/web/tsconfig.json
-git mv tsconfig.app.json apps/web/tsconfig.app.json
-git mv tsconfig.node.json apps/web/tsconfig.node.json
-git mv eslint.config.js apps/web/eslint.config.js
-git mv playwright.config.ts apps/web/playwright.config.ts
-git mv e2e apps/web/e2e
-git mv tests apps/web/tests
-```
-
-**Step 3: Create `apps/web/package.json`**
-
-Split all React/frontend dependencies from root `package.json` into `apps/web/package.json`. Keep:
-- `name`: `@clawmini/web`
-- All React, Radix, Recharts, Tailwind, Vite, Vitest, Playwright deps
-- All scripts: `dev:client`, `build`, `test:client`, `test:e2e`, `lint`, `typecheck`
-
-Root `package.json` becomes workspace root with only:
-- `name`: `claude-view`
-- `workspaces` field
-- `scripts` that delegate to workspace packages and Rust
-- Shared devDeps: `typescript`, `turbo`
-
-**Step 4: Create `tsconfig.base.json` at root**
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx"
-  }
-}
-```
-
-Update `apps/web/tsconfig.json` to extend: `"extends": "../../tsconfig.base.json"`
-
-**Step 5: Fix path alias in vite.config.ts**
-
-Update `apps/web/vite.config.ts` resolve alias:
-```ts
-resolve: {
-  alias: {
-    '@': path.resolve(__dirname, './src'),
-  },
-},
-```
-
-**Step 6: Verify web app builds and tests pass**
-
-```bash
-cd apps/web && bun run build
-cd apps/web && bun run test:client -- --run
-```
-
-**Step 7: Commit**
-
-```bash
-git add -A
-git commit -m "refactor: move web app to apps/web/ (monorepo restructure step 1)"
-```
+**What's already done:**
+- Monorepo structure: `apps/web`, `apps/mobile`, `apps/landing`, `packages/shared`, `packages/design-tokens`
+- Expo SDK 55 scaffold with Tamagui v2, Expo Router, tab navigation
+- `packages/shared` with relay protocol types (`RelaySession`, `RelaySessionSnapshot`, etc.)
+- `packages/design-tokens` with colors, spacing, typography
+- `crates/relay/` with pairing, WebSocket auth, message forwarding
+- `crates/server/src/crypto.rs` with device identity, paired device storage, NaCl box encryption
+- `crates/server/src/live/relay_client.rs` with WebSocket relay streaming
 
 ---
 
-### Task 2: Set up Bun workspaces + Turborepo
+## Phase 1: Shared Package & Types
+
+### Task 1: Extend `packages/shared/` with crypto, relay hook, and utility functions
+
+**Context:** `packages/shared/` currently only exports relay TypeScript types and a theme placeholder. We need to add the crypto module (NaCl keypair management, encryption, signing), a relay WebSocket hook, and shared utility functions that both the web and mobile apps will use.
 
 **Files:**
-- Modify: root `package.json` (add workspaces)
-- Create: `turbo.json`
-
-**Step 1: Add workspace config to root package.json**
-
-```json
-{
-  "name": "claude-view",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "dev:server": "cargo run -p claude-view-server",
-    "test:rust": "cargo test --workspace"
-  },
-  "devDependencies": {
-    "turbo": "^2",
-    "typescript": "^5.9"
-  }
-}
-```
-
-**Step 2: Create `turbo.json`**
-
-```json
-{
-  "$schema": "https://turbo.build/schema.json",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "test": {
-      "dependsOn": ["^build"]
-    },
-    "lint": {},
-    "typecheck": {
-      "dependsOn": ["^build"]
-    }
-  }
-}
-```
-
-**Step 3: Install turbo and regenerate lockfiles**
-
-```bash
-bun add -D turbo
-bun install
-```
-
-**Step 4: Verify workspace resolution**
-
-```bash
-bun run build
-```
-
-**Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: add Bun workspaces + Turborepo configuration"
-```
-
----
-
-### Task 3: Create `packages/shared/`
-
-Extract reusable TypeScript logic from `apps/web/src/` into a shared package.
-
-**Files:**
-- Create: `packages/shared/package.json`
-- Create: `packages/shared/tsconfig.json`
-- Create: `packages/shared/src/index.ts`
-- Move: `apps/web/src/lib/mobile-crypto.ts` → `packages/shared/src/crypto/nacl.ts`
-- Move: `apps/web/src/lib/mobile-storage.ts` → `packages/shared/src/crypto/storage.ts` (refactor to abstract interface)
-- Move: `apps/web/src/hooks/use-mobile-relay.ts` → `packages/shared/src/relay/use-mobile-relay.ts`
+- Modify: `packages/shared/package.json` (add dependencies)
+- Modify: `packages/shared/tsconfig.json` (if needed)
+- Create: `packages/shared/src/crypto/nacl.ts`
+- Create: `packages/shared/src/crypto/storage.ts`
+- Create: `packages/shared/src/relay/use-relay-connection.ts`
 - Create: `packages/shared/src/utils/format-cost.ts`
-- Create: `packages/shared/src/utils/group-sessions.ts`
 - Create: `packages/shared/src/utils/format-duration.ts`
-- Create: `packages/shared/src/types/` (placeholder for ts-rs output)
+- Create: `packages/shared/src/utils/group-sessions.ts`
+- Modify: `packages/shared/src/index.ts` (add new exports)
 
-**Step 1: Create package structure**
-
-```bash
-mkdir -p packages/shared/src/{crypto,relay,utils,types}
-```
-
-**Step 2: Create `packages/shared/package.json`**
+**Step 1: Add dependencies to `packages/shared/package.json`**
 
 ```json
 {
-  "name": "@clawmini/shared",
-  "version": "0.0.1",
+  "name": "@claude-view/shared",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -236,26 +55,16 @@ mkdir -p packages/shared/src/{crypto,relay,utils,types}
 }
 ```
 
-**Step 3: Create `packages/shared/tsconfig.json`**
-
-```json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
-  },
-  "include": ["src/**/*"]
-}
+```bash
+cd packages/shared && bun install
 ```
 
-**Step 4: Extract crypto module**
-
-Move `apps/web/src/lib/mobile-crypto.ts` → `packages/shared/src/crypto/nacl.ts`.
-
-Create `packages/shared/src/crypto/storage.ts` with an abstract interface:
+**Step 2: Create abstract key storage interface**
 
 ```ts
+// packages/shared/src/crypto/storage.ts
+
+/** Abstract key storage — web uses IndexedDB, mobile uses expo-secure-store */
 export interface KeyStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -263,93 +72,404 @@ export interface KeyStorage {
 }
 ```
 
-The web app passes an IndexedDB implementation. The Expo app will pass an `expo-secure-store` implementation. Crypto logic doesn't care.
+**Step 3: Create NaCl crypto module**
 
-**Step 5: Extract relay hook**
+```ts
+// packages/shared/src/crypto/nacl.ts
+import nacl from 'tweetnacl';
+import { decodeBase64, encodeBase64, decodeUTF8 } from 'tweetnacl-util';
+import type { KeyStorage } from './storage';
 
-Move `apps/web/src/hooks/use-mobile-relay.ts` → `packages/shared/src/relay/use-mobile-relay.ts`.
+const SIGNING_KEY = 'device_signing_key';
+const ENCRYPTION_KEY = 'device_encryption_key';
+const DEVICE_ID_KEY = 'device_id';
 
-Parameterize the storage backend (takes `KeyStorage` interface instead of importing IndexedDB directly).
+export interface PhoneKeys {
+  signingKeyPair: nacl.SignKeyPair;
+  boxKeyPair: nacl.BoxKeyPair;
+  deviceId: string;
+}
 
-**Step 6: Extract utility functions**
+/** Generate and store phone keypair in secure storage. */
+export async function generatePhoneKeys(storage: KeyStorage): Promise<PhoneKeys> {
+  const signingKeyPair = nacl.sign.keyPair();
+  const boxKeyPair = nacl.box.keyPair();
+  const deviceId = `phone-${crypto.randomUUID().slice(0, 8)}`;
 
-Create these in `packages/shared/src/utils/`:
+  await storage.setItem(SIGNING_KEY, encodeBase64(signingKeyPair.secretKey));
+  await storage.setItem(ENCRYPTION_KEY, encodeBase64(boxKeyPair.secretKey));
+  await storage.setItem(DEVICE_ID_KEY, deviceId);
 
-- `format-cost.ts` — `formatUsd(cents: number): string`
-- `group-sessions.ts` — `groupByAgentState(sessions: LiveSession[]): { needsYou: LiveSession[], autonomous: LiveSession[] }`
-- `format-duration.ts` — `formatDuration(seconds: number): string`
+  return { signingKeyPair, boxKeyPair, deviceId };
+}
 
-Extract from existing code in `apps/web/src/lib/` and `apps/web/src/components/`.
+/** Load existing keys from storage, or null if not paired. */
+export async function loadPhoneKeys(storage: KeyStorage): Promise<PhoneKeys | null> {
+  const [signingB64, encryptionB64, deviceId] = await Promise.all([
+    storage.getItem(SIGNING_KEY),
+    storage.getItem(ENCRYPTION_KEY),
+    storage.getItem(DEVICE_ID_KEY),
+  ]);
+  if (!signingB64 || !encryptionB64 || !deviceId) return null;
 
-**Step 7: Create barrel export**
+  const signingSecret = decodeBase64(signingB64);
+  const boxSecret = decodeBase64(encryptionB64);
+  return {
+    signingKeyPair: nacl.sign.keyPair.fromSecretKey(signingSecret),
+    boxKeyPair: nacl.box.keyPair.fromSecretKey(boxSecret),
+    deviceId,
+  };
+}
+
+/** Sign auth challenge: "timestamp:device_id" */
+export function signAuthChallenge(
+  deviceId: string,
+  signingSecretKey: Uint8Array,
+): { timestamp: number; signature: string } {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const payload = `${timestamp}:${deviceId}`;
+  const signature = nacl.sign.detached(decodeUTF8(payload), signingSecretKey);
+  return { timestamp, signature: encodeBase64(signature) };
+}
+
+/** Decrypt a NaCl box message (nonce || ciphertext) from Mac. */
+export function decryptFromDevice(
+  encryptedB64: string,
+  senderPubkey: Uint8Array,
+  recipientSecretKey: Uint8Array,
+): Uint8Array | null {
+  const wire = decodeBase64(encryptedB64);
+  const nonce = wire.slice(0, nacl.box.nonceLength);
+  const ciphertext = wire.slice(nacl.box.nonceLength);
+  return nacl.box.open(ciphertext, nonce, senderPubkey, recipientSecretKey);
+}
+
+/** Encrypt phone pubkey for Mac using NaCl box. */
+export function encryptForDevice(
+  plaintext: Uint8Array,
+  recipientPubkey: Uint8Array,
+  senderSecretKey: Uint8Array,
+): string {
+  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  const ciphertext = nacl.box(plaintext, nonce, recipientPubkey, senderSecretKey);
+  const wire = new Uint8Array(nonce.length + ciphertext.length);
+  wire.set(nonce);
+  wire.set(ciphertext, nonce.length);
+  return encodeBase64(wire);
+}
+
+export interface ClaimPairingParams {
+  macPubkeyB64: string;
+  token: string;
+  relayUrl: string;
+  keys: PhoneKeys;
+  storage: KeyStorage;
+}
+
+/** Claim a pairing offer at the relay. */
+export async function claimPairing(params: ClaimPairingParams): Promise<void> {
+  const { macPubkeyB64, token, relayUrl, keys, storage } = params;
+  const macPubkey = decodeBase64(macPubkeyB64);
+
+  // Encrypt phone's X25519 pubkey for Mac
+  const encryptedBlob = encryptForDevice(keys.boxKeyPair.publicKey, macPubkey, keys.boxKeyPair.secretKey);
+
+  // HTTP base URL (relay WS URL -> HTTPS)
+  const httpUrl = relayUrl.replace('wss://', 'https://').replace('/ws', '');
+
+  const res = await fetch(`${httpUrl}/pair/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      one_time_token: token,
+      device_id: keys.deviceId,
+      pubkey: encodeBase64(keys.signingKeyPair.publicKey),
+      pubkey_encrypted_blob: encryptedBlob,
+      x25519_pubkey: encodeBase64(keys.boxKeyPair.publicKey),
+    }),
+  });
+
+  if (!res.ok) {
+    const status = res.status;
+    if (status === 404) throw new Error('Pairing code not found. Try scanning again.');
+    if (status === 410) throw new Error('Pairing code expired. Generate a new one on Mac.');
+    throw new Error(`Pairing failed (${status})`);
+  }
+
+  // Store relay URL and Mac pubkey for future connections
+  await storage.setItem('relay_url', relayUrl);
+  await storage.setItem('mac_x25519_pubkey', macPubkeyB64);
+  await storage.setItem('mac_device_id', ''); // Will be filled by pair_complete
+}
+
+/** Clear all pairing data from storage. */
+export async function unpair(storage: KeyStorage): Promise<void> {
+  await Promise.all([
+    storage.removeItem(SIGNING_KEY),
+    storage.removeItem(ENCRYPTION_KEY),
+    storage.removeItem(DEVICE_ID_KEY),
+    storage.removeItem('relay_url'),
+    storage.removeItem('mac_x25519_pubkey'),
+    storage.removeItem('mac_device_id'),
+  ]);
+}
+```
+
+**Step 4: Create relay WebSocket connection hook**
+
+This is a React hook that connects to the relay via WebSocket, authenticates, and exposes a sessions map + connection state.
+
+```ts
+// packages/shared/src/relay/use-relay-connection.ts
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { decodeBase64 } from 'tweetnacl-util';
+import { decryptFromDevice, loadPhoneKeys, signAuthChallenge, type PhoneKeys } from '../crypto/nacl';
+import type { KeyStorage } from '../crypto/storage';
+import type { RelaySession } from '../types/relay';
+
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+
+export interface UseRelayConnectionOptions {
+  storage: KeyStorage;
+}
+
+export interface UseRelayConnectionResult {
+  sessions: Record<string, RelaySession>;
+  connectionState: ConnectionState;
+  disconnect: () => void;
+}
+
+export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayConnectionResult {
+  const { storage } = opts;
+  const [sessions, setSessions] = useState<Record<string, RelaySession>>({});
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const wsRef = useRef<WebSocket | null>(null);
+  const keysRef = useRef<PhoneKeys | null>(null);
+  const macPubkeyRef = useRef<Uint8Array | null>(null);
+
+  const disconnect = useCallback(() => {
+    wsRef.current?.close();
+    wsRef.current = null;
+    setConnectionState('disconnected');
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
+    async function connect() {
+      const keys = await loadPhoneKeys(storage);
+      if (!keys || cancelled) return;
+      keysRef.current = keys;
+
+      const relayUrl = await storage.getItem('relay_url');
+      const macPubkeyB64 = await storage.getItem('mac_x25519_pubkey');
+      if (!relayUrl || !macPubkeyB64 || cancelled) return;
+      macPubkeyRef.current = decodeBase64(macPubkeyB64);
+
+      setConnectionState('connecting');
+      const ws = new WebSocket(relayUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled || wsRef.current !== ws) return;
+        // Authenticate
+        const { timestamp, signature } = signAuthChallenge(
+          keys.deviceId,
+          keys.signingKeyPair.secretKey,
+        );
+        ws.send(JSON.stringify({
+          type: 'auth',
+          device_id: keys.deviceId,
+          timestamp,
+          signature,
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        if (cancelled || wsRef.current !== ws) return;
+        try {
+          const data = JSON.parse(event.data as string);
+
+          // Auth response
+          if (data.type === 'auth_ok') {
+            setConnectionState('connected');
+            return;
+          }
+          if (data.type === 'error') {
+            console.error('Relay auth error:', data.message);
+            ws.close();
+            return;
+          }
+
+          // Encrypted message from Mac
+          if (data.payload && macPubkeyRef.current && keysRef.current) {
+            const decrypted = decryptFromDevice(
+              data.payload,
+              macPubkeyRef.current,
+              keysRef.current.boxKeyPair.secretKey,
+            );
+            if (!decrypted) return;
+
+            const text = new TextDecoder().decode(decrypted);
+            const msg = JSON.parse(text);
+
+            // Session update — merge into sessions map
+            if (msg.id) {
+              setSessions(prev => ({ ...prev, [msg.id]: msg }));
+            }
+            // Session completed — remove from map
+            if (msg.type === 'session_completed' && msg.session_id) {
+              setSessions(prev => {
+                const next = { ...prev };
+                delete next[msg.session_id];
+                return next;
+              });
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
+        setConnectionState('disconnected');
+        // Reconnect after backoff
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimer);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [storage]);
+
+  return { sessions, connectionState, disconnect };
+}
+```
+
+**Step 5: Create utility functions**
+
+```ts
+// packages/shared/src/utils/format-cost.ts
+
+/** Format a USD amount with 2 decimal places. */
+export function formatUsd(usd: number): string {
+  if (usd < 0.01) return '$0.00';
+  return `$${usd.toFixed(2)}`;
+}
+```
+
+```ts
+// packages/shared/src/utils/format-duration.ts
+
+/** Format seconds into human-readable duration. */
+export function formatDuration(seconds: number): string {
+  if (seconds < 0) return '0s';
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+```
+
+```ts
+// packages/shared/src/utils/group-sessions.ts
+import type { RelaySession } from '../types/relay';
+
+/** Group sessions by whether they need user attention. */
+export function groupByStatus(sessions: RelaySession[]): {
+  needsYou: RelaySession[];
+  autonomous: RelaySession[];
+} {
+  const needsYou: RelaySession[] = [];
+  const autonomous: RelaySession[] = [];
+
+  for (const s of sessions) {
+    if (s.status === 'waiting') {
+      needsYou.push(s);
+    } else {
+      autonomous.push(s);
+    }
+  }
+
+  return { needsYou, autonomous };
+}
+```
+
+**Step 6: Update barrel export**
 
 ```ts
 // packages/shared/src/index.ts
+export * from './types/relay';
+export * from './theme';
 export * from './crypto/nacl';
 export * from './crypto/storage';
-export * from './relay/use-mobile-relay';
+export { useRelayConnection, type ConnectionState, type UseRelayConnectionResult } from './relay/use-relay-connection';
 export * from './utils/format-cost';
-export * from './utils/group-sessions';
 export * from './utils/format-duration';
-export type * from './types';
+export * from './utils/group-sessions';
 ```
 
-**Step 8: Update web app imports**
-
-Replace all `apps/web/src/` imports of moved modules with `@clawmini/shared`:
-
-```ts
-// Before
-import { encryptForDevice } from '../lib/mobile-crypto';
-// After
-import { encryptForDevice } from '@clawmini/shared';
-```
-
-**Step 9: Verify web app still builds**
+**Step 7: Verify the shared package builds**
 
 ```bash
-cd apps/web && bun run build && bun run test:client -- --run
+cd packages/shared && bun run tsc --noEmit
 ```
 
-**Step 10: Commit**
+**Step 8: Commit**
 
 ```bash
-git add -A
-git commit -m "feat: create packages/shared with extracted crypto, relay, and utils"
+git add packages/shared/
+git commit -m "feat: extend packages/shared with crypto, relay hook, and utility functions"
 ```
 
 ---
 
-### Task 4: Wire up ts-rs type generation
+### Task 2: Wire up ts-rs type generation
 
 **Files:**
-- Modify: `crates/core/Cargo.toml` (add ts-rs dependency)
-- Modify: `crates/server/Cargo.toml` (add ts-rs dependency)
-- Modify: `crates/server/src/live/types.rs` (add `#[derive(TS)]` to LiveSession and related structs)
+- Modify: `crates/core/Cargo.toml` (verify ts-rs dependency)
+- Modify: relevant Rust struct files (add `#[derive(TS)]`)
 - Create: `packages/shared/src/types/generated/` (output directory)
 - Create: `scripts/generate-types.sh`
 
-**Step 1: Add ts-rs to crate dependencies**
+**Step 1: Verify ts-rs is in workspace dependencies**
 
-In `crates/server/Cargo.toml` under `[dependencies]`:
+Check root `Cargo.toml` for:
 ```toml
+ts-rs = { version = "11", features = ["serde-compat"] }
+```
+
+If not present, add it. Then in `crates/core/Cargo.toml`:
+```toml
+[dependencies]
 ts-rs = { workspace = true }
 ```
 
-(`ts-rs` is already in workspace `Cargo.toml` as `ts-rs = { version = "11", features = ["serde-compat"] }`)
-
 **Step 2: Add `#[derive(TS)]` to key structs**
 
-Find and annotate these structs (in `crates/server/src/live/` or `crates/core/src/`):
+Find these structs in `crates/core/src/` and `crates/server/src/live/`:
 
 ```rust
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../packages/shared/src/types/generated/")]
-pub struct LiveSession { ... }
+pub struct LiveSession { /* ... */ }
 
-// Repeat for: AgentState, CostBreakdown, TokenUsage, SubAgentInfo, ProgressItem, ToolUsed, SessionEvent
+// Repeat for: SubAgentInfo, SubAgentStatus, ProgressItem
 ```
 
 **Step 3: Create generation script**
@@ -359,12 +479,13 @@ pub struct LiveSession { ... }
 # scripts/generate-types.sh
 set -euo pipefail
 echo "Generating TypeScript types from Rust structs..."
+cargo test -p claude-view-core export_bindings -- --nocapture 2>/dev/null || true
 cargo test -p claude-view-server export_bindings -- --nocapture 2>/dev/null || true
 echo "Types written to packages/shared/src/types/generated/"
 ls packages/shared/src/types/generated/*.ts 2>/dev/null | head -20
 ```
 
-**Step 4: Run type generation**
+**Step 4: Run and verify**
 
 ```bash
 chmod +x scripts/generate-types.sh
@@ -375,19 +496,15 @@ chmod +x scripts/generate-types.sh
 
 ```ts
 // packages/shared/src/types/index.ts
-export * from './generated/LiveSession';
-export * from './generated/AgentState';
-// ... etc
+export * from './relay';
+// Add generated exports as they appear:
+// export * from './generated/LiveSession';
 ```
 
-**Step 6: Verify types match existing TS types in web app**
-
-Compare generated types with `apps/web/src/types/` to ensure compatibility. Fix any mismatches.
-
-**Step 7: Commit**
+**Step 6: Commit**
 
 ```bash
-git add -A
+git add packages/shared/src/types/ scripts/generate-types.sh crates/
 git commit -m "feat: wire up ts-rs for Rust→TypeScript type generation"
 ```
 
@@ -395,31 +512,20 @@ git commit -m "feat: wire up ts-rs for Rust→TypeScript type generation"
 
 ## Phase 2: Relay Fixes
 
-### Task 5: Fix relay pairing bugs
+### Task 3: Fix relay pairing bugs
 
-The 3 known bugs from the old Phase A plan, plus the `pair_complete` handler. These are absorbed into one task since they're all small changes in the same files.
+Three known bugs in the relay and relay client.
+
+**Bug 1:** `ClaimRequest` missing `x25519_pubkey` field — Mac can't learn Phone's encryption key.
+**Bug 2:** Relay client early-returns when no paired devices, preventing it from receiving `pair_complete`.
+**Bug 3:** Relay client `pair_complete` handler is a TODO stub.
 
 **Files:**
-- Modify: `crates/relay/src/pairing.rs` (add x25519_pubkey to ClaimRequest, forward in pair_complete)
-- Modify: `crates/server/src/live/relay_client.rs` (always connect, handle pair_complete)
+- Modify: `crates/relay/src/pairing.rs` (add x25519_pubkey to ClaimRequest)
+- Modify: `crates/server/src/live/relay_client.rs` (always-connect, pair_complete handler)
 - Test: `crates/relay/tests/`
 
-**Step 1: Write failing test for x25519_pubkey in ClaimRequest**
-
-Create test in `crates/relay/tests/pairing_test.rs`:
-
-```rust
-#[tokio::test]
-async fn test_claim_includes_x25519_pubkey() {
-    // Setup: create offer, then claim with x25519_pubkey
-    // Assert: pair_complete message sent to Mac includes x25519_pubkey
-}
-```
-
-Run: `cargo test -p claude-view-relay pairing_test -- --nocapture`
-Expected: FAIL
-
-**Step 2: Fix ClaimRequest struct**
+**Step 1: Add x25519_pubkey to ClaimRequest**
 
 In `crates/relay/src/pairing.rs`, add field to `ClaimRequest`:
 
@@ -428,284 +534,210 @@ In `crates/relay/src/pairing.rs`, add field to `ClaimRequest`:
 pub struct ClaimRequest {
     pub one_time_token: String,
     pub device_id: String,
-    pub pubkey: String,
-    pub pubkey_encrypted_blob: Option<String>,
-    pub x25519_pubkey: Option<String>,  // ADD THIS
+    #[serde(with = "base64_bytes")]
+    pub pubkey: Vec<u8>,
+    pub pubkey_encrypted_blob: String,
+    pub x25519_pubkey: Option<String>,  // ADD THIS — base64 X25519 pubkey
 }
 ```
 
-In the claim handler, include `x25519_pubkey` in the `pair_complete` JSON sent to Mac:
+In the `claim_pair` handler, include `x25519_pubkey` in the `pair_complete` JSON:
 
 ```rust
-let pair_complete = serde_json::json!({
-    "type": "pair_complete",
-    "device_id": &claim.device_id,
-    "pubkey": &claim.pubkey,
-    "pubkey_encrypted_blob": &claim.pubkey_encrypted_blob,
-    "x25519_pubkey": &claim.x25519_pubkey,  // ADD THIS
-});
+// Forward encrypted phone pubkey blob to Mac via WS (if connected)
+if let Some(mac_conn) = state.connections.get(&offer.device_id) {
+    let msg = serde_json::json!({
+        "type": "pair_complete",
+        "device_id": req.device_id,
+        "pubkey_encrypted_blob": req.pubkey_encrypted_blob,
+        "x25519_pubkey": req.x25519_pubkey,  // ADD THIS
+    });
+    let _ = mac_conn.tx.send(msg.to_string());
+}
 ```
 
-**Step 3: Run test to verify it passes**
+**Step 2: Fix relay client always-connect bug**
 
-```bash
-cargo test -p claude-view-relay pairing_test -- --nocapture
-```
-
-**Step 4: Fix relay_client always-connect bug**
-
-In `crates/server/src/live/relay_client.rs`, remove the early return when no paired devices exist. Instead, connect to relay always (to receive `pair_complete` messages), but only send session data when paired devices exist.
+In `crates/server/src/live/relay_client.rs`, lines 66-71 have an early return when no paired devices exist. This prevents receiving `pair_complete` messages. Fix:
 
 ```rust
-// BEFORE (chicken-and-egg):
-let paired = load_paired_devices()?;
-if paired.is_empty() {
+// BEFORE (lines 66-71):
+let paired_devices = load_paired_devices();
+if paired_devices.is_empty() {
     tokio::time::sleep(Duration::from_secs(10)).await;
     continue;
 }
 
 // AFTER:
-// Always connect. Check paired devices only when sending data.
-let paired = load_paired_devices().unwrap_or_default();
-// ... connect to relay ...
-// Only send session snapshots if paired_devices is non-empty
-if !paired.is_empty() {
-    send_snapshot(&ws_tx, &live_sessions, &paired, &identity).await;
-}
+let paired_devices = load_paired_devices();
+// Always connect even with no paired devices — we need to receive pair_complete.
+// Only SEND session data when there are paired devices.
 ```
 
-**Step 5: Implement pair_complete handler**
-
-In `crates/server/src/live/relay_client.rs`, replace the TODO stub in the incoming message handler:
+Then in `connect_and_stream`, guard the session-sending code:
 
 ```rust
-if msg_type == "pair_complete" {
-    let device_id = json["device_id"].as_str().unwrap_or_default();
-    let x25519_pubkey = json["x25519_pubkey"].as_str().unwrap_or_default();
-    let name = format!("Phone ({})", &device_id[..8.min(device_id.len())]);
-
-    if let Err(e) = add_paired_device(device_id, x25519_pubkey, &name) {
-        tracing::error!("Failed to store paired device: {e}");
-    } else {
-        tracing::info!("Paired with device: {device_id}");
-        // Reload paired devices to start streaming
-        paired_devices = load_paired_devices().unwrap_or_default();
+// Only send session snapshots if we have paired devices
+if !paired_devices.is_empty() {
+    let sessions_map = sessions.read().await;
+    for session in sessions_map.values() {
+        // ... existing send logic
     }
 }
 ```
 
-**Step 6: Run all relay tests**
+**Step 3: Implement pair_complete handler**
+
+In `crates/server/src/live/relay_client.rs`, replace the TODO at line 231:
+
+```rust
+Some(Ok(Message::Text(text))) => {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+        if val.get("type").and_then(|t| t.as_str()) == Some("pair_complete") {
+            info!("received pair_complete from relay");
+            let device_id = val["device_id"].as_str().unwrap_or_default().to_string();
+
+            // Decrypt phone's X25519 pubkey from the encrypted blob
+            if let Some(blob) = val["pubkey_encrypted_blob"].as_str() {
+                // The blob is encrypted with Mac's X25519 pubkey — decrypt it
+                if let Ok(decrypted) = decrypt_phone_pubkey(blob, &box_secret) {
+                    let x25519_pubkey = STANDARD.encode(&decrypted);
+                    let name = format!("Phone ({})", &device_id[..device_id.len().min(8)]);
+                    let device = PairedDevice {
+                        device_id: device_id.clone(),
+                        x25519_pubkey,
+                        name,
+                        paired_at: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    };
+                    if let Err(e) = add_paired_device(device) {
+                        error!("Failed to store paired device: {e}");
+                    } else {
+                        info!("Paired with device: {device_id}");
+                    }
+                }
+            } else if let Some(x25519_b64) = val["x25519_pubkey"].as_str() {
+                // Fallback: unencrypted X25519 pubkey (for dev/testing)
+                let name = format!("Phone ({})", &device_id[..device_id.len().min(8)]);
+                let device = PairedDevice {
+                    device_id: device_id.clone(),
+                    x25519_pubkey: x25519_b64.to_string(),
+                    name,
+                    paired_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                };
+                if let Err(e) = add_paired_device(device) {
+                    error!("Failed to store paired device: {e}");
+                } else {
+                    info!("Paired with device: {device_id}");
+                }
+            }
+        }
+    }
+}
+```
+
+Helper function at the bottom of the file:
+
+```rust
+fn decrypt_phone_pubkey(blob_b64: &str, box_secret: &BoxSecretKey) -> Result<Vec<u8>, String> {
+    let wire = STANDARD.decode(blob_b64).map_err(|e| format!("bad base64: {e}"))?;
+    if wire.len() < 24 {
+        return Err("blob too short".into());
+    }
+    let nonce = &wire[..24];
+    let ciphertext = &wire[24..];
+    // The phone encrypted its pubkey using OUR public key and ITS secret key.
+    // We don't know the phone's pubkey yet — that's what we're decrypting.
+    // This means the encrypted blob should actually be decryptable differently.
+    // For M1, use the x25519_pubkey field directly (sent in plaintext as fallback).
+    // Full encrypted exchange is M2 work.
+    Err("encrypted blob decryption requires phone pubkey — use x25519_pubkey field".into())
+}
+```
+
+> **Note:** For M1, the `x25519_pubkey` field sent in plaintext is sufficient since the relay uses TLS. Full NaCl-box-encrypted key exchange is M2 hardening work.
+
+**Step 4: Run all relay tests**
 
 ```bash
 cargo test -p claude-view-relay -- --nocapture
 cargo test -p claude-view-server relay -- --nocapture
 ```
 
-**Step 7: Commit**
+**Step 5: Commit**
 
 ```bash
-git add -A
+git add crates/relay/ crates/server/src/live/relay_client.rs crates/server/src/crypto.rs
 git commit -m "fix: relay pairing bugs — x25519_pubkey forwarding, always-connect, pair_complete handler"
 ```
 
 ---
 
-## Phase 3: Expo App
+## Phase 3: Expo App Screens
 
-### Task 6: Scaffold Expo app
+### Task 4: Install missing Expo dependencies
+
+The scaffold exists but is missing dependencies for QR scanning, push notifications, haptics, and bottom sheet.
 
 **Files:**
-- Create: `apps/mobile/` (entire Expo project)
+- Modify: `apps/mobile/package.json`
 
-**Step 1: Create Expo project**
-
-```bash
-cd apps
-npx create-expo-app mobile --template blank-typescript
-cd mobile
-```
-
-**Step 2: Install dependencies**
+**Step 1: Install missing Expo packages**
 
 ```bash
-npx expo install expo-router expo-camera expo-secure-store expo-notifications expo-haptics
-npx expo install nativewind tailwindcss react-native-reanimated @gorhom/bottom-sheet
-npx expo install react-native-gesture-handler react-native-safe-area-context
-npx expo install tweetnacl tweetnacl-util
-bun add -D @storybook/react-native
+cd apps/mobile
+npx expo install expo-camera expo-notifications expo-haptics
+bun add tweetnacl tweetnacl-util
 ```
 
-**Step 3: Create `app.config.ts` with 3 build variants**
+**Step 2: Update `app.config.ts` plugins**
+
+In `apps/mobile/app.config.ts`, add camera permission and notifications to the plugins array:
 
 ```ts
-import { ExpoConfig, ConfigContext } from 'expo/config';
-
-const IS_DEV = process.env.APP_VARIANT === 'development';
-const IS_PREVIEW = process.env.APP_VARIANT === 'preview';
-
-const getBundleId = () => {
-  if (IS_DEV) return 'com.clawmini.dev';
-  if (IS_PREVIEW) return 'com.clawmini.preview';
-  return 'com.clawmini.app';
-};
-
-const getAppName = () => {
-  if (IS_DEV) return 'clawmini (dev)';
-  if (IS_PREVIEW) return 'clawmini (preview)';
-  return 'clawmini';
-};
-
-export default ({ config }: ConfigContext): ExpoConfig => ({
-  ...config,
-  name: getAppName(),
-  slug: 'clawmini',
-  version: '0.1.0',
-  scheme: 'claude-view',
-  orientation: 'portrait',
-  icon: './assets/icon.png',
-  splash: { image: './assets/splash.png', resizeMode: 'contain', backgroundColor: '#0F172A' },
-  ios: {
-    bundleIdentifier: getBundleId(),
-    supportsTablet: false,
-    associatedDomains: IS_DEV || IS_PREVIEW ? [] : ['applinks:m.claudeview.ai'],
-  },
-  android: {
-    package: getBundleId(),
-    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#0F172A' },
-    intentFilters: IS_DEV || IS_PREVIEW ? [] : [{
-      action: 'VIEW',
-      autoVerify: true,
-      data: [{ scheme: 'https', host: 'm.claudeview.ai', pathPrefix: '/' }],
-      category: ['BROWSABLE', 'DEFAULT'],
-    }],
-  },
-  plugins: [
-    'expo-router',
-    ['expo-camera', { cameraPermission: 'Allow clawmini to scan QR codes for pairing.' }],
-    'expo-secure-store',
-    'expo-notifications',
-  ],
-});
+plugins: [
+  'expo-router',
+  'expo-secure-store',
+  ['expo-camera', { cameraPermission: 'Allow Claude View to scan QR codes for pairing.' }],
+  'expo-notifications',
+],
 ```
 
-**Step 4: Set up NativeWind**
-
-Create `apps/mobile/tailwind.config.ts`:
-
-```ts
-import type { Config } from 'tailwindcss';
-
-export default {
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
-  presets: [require('nativewind/preset')],
-  theme: {
-    extend: {
-      colors: {
-        base: '#0F172A',
-        surface: '#1E293B',
-        border: '#334155',
-        muted: '#94A3B8',
-        'status-green': '#22C55E',
-        'status-amber': '#F59E0B',
-        'status-red': '#EF4444',
-        accent: '#6366F1',
-      },
-      fontFamily: {
-        mono: ['FiraCode'],
-        sans: ['FiraSans'],
-      },
-    },
-  },
-  plugins: [],
-} satisfies Config;
-```
-
-Create `apps/mobile/global.css`:
-
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-```
-
-**Step 5: Set up Expo Router file structure**
-
-```bash
-mkdir -p apps/mobile/app
-mkdir -p apps/mobile/components
-mkdir -p apps/mobile/hooks
-mkdir -p apps/mobile/lib
-mkdir -p apps/mobile/assets
-```
-
-Create `apps/mobile/app/_layout.tsx`:
-
-```tsx
-import '../global.css';
-import { Stack } from 'expo-router';
-
-export default function RootLayout() {
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="dashboard" />
-    </Stack>
-  );
-}
-```
-
-Create `apps/mobile/app/index.tsx` (entry — routes to pair or dashboard):
-
-```tsx
-import { Redirect } from 'expo-router';
-import { usePairingStatus } from '../hooks/use-pairing-status';
-
-export default function Index() {
-  const { isPaired } = usePairingStatus();
-  return <Redirect href={isPaired ? '/dashboard' : '/pair'} />;
-}
-```
-
-**Step 6: Add workspace dependency on shared package**
-
-In `apps/mobile/package.json`:
-
-```json
-{
-  "dependencies": {
-    "@clawmini/shared": "workspace:*"
-  }
-}
-```
-
-**Step 7: Verify Expo starts**
+**Step 3: Verify Expo starts**
 
 ```bash
 cd apps/mobile && npx expo start
 ```
 
-**Step 8: Commit**
+**Step 4: Commit**
 
 ```bash
-git add -A
-git commit -m "feat: scaffold Expo app with NativeWind, Expo Router, 3 build variants"
+git add apps/mobile/
+git commit -m "feat: install expo-camera, expo-notifications, expo-haptics, tweetnacl"
 ```
 
 ---
 
-### Task 7: Pair screen
+### Task 5: Pair screen (QR scan)
 
 **Files:**
 - Create: `apps/mobile/app/pair.tsx`
 - Create: `apps/mobile/hooks/use-pairing-status.ts`
 - Create: `apps/mobile/lib/secure-store-adapter.ts`
+- Modify: `apps/mobile/app/_layout.tsx` (add pair route)
+- Modify: `apps/mobile/app/(tabs)/index.tsx` (redirect to pair if unpaired)
 
 **Step 1: Create SecureStore adapter implementing KeyStorage interface**
 
 ```ts
 // apps/mobile/lib/secure-store-adapter.ts
 import * as SecureStore from 'expo-secure-store';
-import type { KeyStorage } from '@clawmini/shared';
+import type { KeyStorage } from '@claude-view/shared';
 
 export const secureStoreAdapter: KeyStorage = {
   async getItem(key: string) {
@@ -724,99 +756,169 @@ export const secureStoreAdapter: KeyStorage = {
 
 ```ts
 // apps/mobile/hooks/use-pairing-status.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { secureStoreAdapter } from '../lib/secure-store-adapter';
 
 export function usePairingStatus() {
   const [isPaired, setIsPaired] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    secureStoreAdapter.getItem('relay_url').then((url) => {
-      setIsPaired(url !== null);
-    });
+  const check = useCallback(async () => {
+    const url = await secureStoreAdapter.getItem('relay_url');
+    setIsPaired(url !== null);
   }, []);
 
-  return { isPaired, refresh: () => { /* re-check */ } };
+  useEffect(() => {
+    check();
+  }, [check]);
+
+  return { isPaired, refresh: check };
 }
 ```
 
-**Step 3: Build Pair screen**
+**Step 3: Build Pair screen with Tamagui**
 
 ```tsx
 // apps/mobile/app/pair.tsx
 import { useState } from 'react';
-import { View, Text } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { generatePhoneKeys, claimPairing } from '@clawmini/shared';
+import { Button, Text, YStack } from 'tamagui';
+import { generatePhoneKeys, claimPairing } from '@claude-view/shared';
 import { secureStoreAdapter } from '../lib/secure-store-adapter';
 
 export default function PairScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
     setScanned(true);
+    setError(null);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
-      // Parse QR payload (URL with k, t, r params)
+      // QR payload is a URL with k (Mac X25519 pubkey), t (token), r (relay URL)
       const url = new URL(data);
-      const macPubkey = url.searchParams.get('k');
+      const macPubkeyB64 = url.searchParams.get('k');
       const token = url.searchParams.get('t');
       const relayUrl = url.searchParams.get('r');
 
-      if (!macPubkey || !token || !relayUrl) throw new Error('Invalid QR');
+      if (!macPubkeyB64 || !token || !relayUrl) throw new Error('Invalid QR code');
 
-      // Generate phone keypair
-      const keys = await generatePhoneKeys();
+      const keys = await generatePhoneKeys(secureStoreAdapter);
 
-      // Claim pairing via relay
-      await claimPairing({ macPubkey, token, relayUrl, keys, storage: secureStoreAdapter });
+      await claimPairing({
+        macPubkeyB64,
+        token,
+        relayUrl,
+        keys,
+        storage: secureStoreAdapter,
+      });
 
-      router.replace('/dashboard');
+      router.replace('/(tabs)');
     } catch (e) {
       setScanned(false);
-      // Show error toast
+      setError(e instanceof Error ? e.message : 'Pairing failed');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
 
   if (!permission?.granted) {
     return (
-      <View className="flex-1 bg-base items-center justify-center px-8">
-        <Text className="text-white text-lg text-center mb-6">
+      <YStack flex={1} backgroundColor="$gray900" alignItems="center" justifyContent="center" padding="$8">
+        <Text color="$gray50" fontSize="$lg" textAlign="center" marginBottom="$6">
           Camera access needed to scan QR code
         </Text>
-        <Text className="text-accent text-lg" onPress={requestPermission}>
-          Grant Access
-        </Text>
-      </View>
+        <Button onPress={requestPermission} backgroundColor="$primary600" color="$gray50" size="$5">
+          Grant Camera Access
+        </Button>
+      </YStack>
     );
   }
 
   return (
-    <View className="flex-1 bg-base">
+    <YStack flex={1} backgroundColor="$gray900">
       <CameraView
-        className="flex-1"
+        style={{ flex: 1 }}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       />
-      <View className="absolute bottom-0 left-0 right-0 p-8 items-center">
-        <Text className="text-white text-lg text-center">
-          Scan the QR code from your Mac's claude-view
+      <YStack
+        position="absolute"
+        bottom={0}
+        left={0}
+        right={0}
+        padding="$8"
+        alignItems="center"
+      >
+        <Text color="$gray50" fontSize="$lg" textAlign="center">
+          Scan the QR code from your Mac's Claude View
         </Text>
-        <Text className="text-muted text-sm mt-2 text-center">
+        <Text color="$gray400" fontSize="$sm" marginTop="$2" textAlign="center">
           One scan. No account. No password. Ever.
         </Text>
-      </View>
-    </View>
+        {error && (
+          <Text color="#ef4444" fontSize="$sm" marginTop="$4" textAlign="center">
+            {error}
+          </Text>
+        )}
+      </YStack>
+    </YStack>
   );
 }
 ```
 
-**Step 4: Test on iOS simulator**
+**Step 4: Update root layout to include pair route**
+
+In `apps/mobile/app/_layout.tsx`, update the Stack to include the pair screen:
+
+```tsx
+<Stack>
+  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+  <Stack.Screen name="pair" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+</Stack>
+```
+
+**Step 5: Update tab index to redirect if unpaired**
+
+```tsx
+// apps/mobile/app/(tabs)/index.tsx
+import { Redirect } from 'expo-router';
+import { H1, Spinner, Text, YStack } from 'tamagui';
+import { usePairingStatus } from '../../hooks/use-pairing-status';
+
+export default function SessionsScreen() {
+  const { isPaired } = usePairingStatus();
+
+  // Loading state
+  if (isPaired === null) {
+    return (
+      <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$background">
+        <Spinner size="large" />
+      </YStack>
+    );
+  }
+
+  // Not paired — redirect to pair screen
+  if (!isPaired) {
+    return <Redirect href="/pair" />;
+  }
+
+  // Paired — show dashboard (next task)
+  return (
+    <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$background">
+      <H1>Claude View Mobile</H1>
+      <Text color="$colorSubtle" marginTop="$2">
+        Session monitoring coming soon
+      </Text>
+    </YStack>
+  );
+}
+```
+
+**Step 6: Test on iOS simulator**
 
 ```bash
 cd apps/mobile && npx expo run:ios
@@ -824,198 +926,239 @@ cd apps/mobile && npx expo run:ios
 
 Verify: camera opens, can scan a QR code (use a test QR from Mac).
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 ```bash
-git add -A
+git add apps/mobile/
 git commit -m "feat: pair screen — QR scan with expo-camera, SecureStore keypair storage"
 ```
 
 ---
 
-### Task 8: Dashboard screen
+### Task 6: Dashboard screen
 
 **Files:**
-- Create: `apps/mobile/app/dashboard.tsx`
+- Modify: `apps/mobile/app/(tabs)/index.tsx` (replace placeholder with dashboard)
 - Create: `apps/mobile/components/SessionCard.tsx`
 - Create: `apps/mobile/components/SummaryBar.tsx`
-- Create: `apps/mobile/components/ConnectionStatus.tsx`
+- Create: `apps/mobile/components/ConnectionDot.tsx`
 - Create: `apps/mobile/hooks/use-relay-sessions.ts`
 
-**Step 1: Create relay sessions hook**
-
-Wraps `@clawmini/shared`'s `useMobileRelay` with `secureStoreAdapter`:
+**Step 1: Create relay sessions hook (thin wrapper)**
 
 ```ts
 // apps/mobile/hooks/use-relay-sessions.ts
-import { useMobileRelay } from '@clawmini/shared';
+import { useRelayConnection } from '@claude-view/shared';
 import { secureStoreAdapter } from '../lib/secure-store-adapter';
 
 export function useRelaySessions() {
-  return useMobileRelay({ storage: secureStoreAdapter });
+  return useRelayConnection({ storage: secureStoreAdapter });
 }
 ```
 
-Returns: `{ sessions, connectionState, disconnect }`
+**Step 2: Create ConnectionDot component**
 
-**Step 2: Create SessionCard component**
+```tsx
+// apps/mobile/components/ConnectionDot.tsx
+import { XStack, Text, Circle } from 'tamagui';
+import type { ConnectionState } from '@claude-view/shared';
+
+const STATE_CONFIG: Record<ConnectionState, { color: string; label: string }> = {
+  connected: { color: '#22c55e', label: 'Connected' },
+  connecting: { color: '#f59e0b', label: 'Connecting' },
+  disconnected: { color: '#ef4444', label: 'Mac offline' },
+};
+
+export function ConnectionDot({ state }: { state: ConnectionState }) {
+  const { color, label } = STATE_CONFIG[state];
+  return (
+    <XStack alignItems="center" gap="$2">
+      <Circle size={8} backgroundColor={color} />
+      <Text color="$gray400" fontSize="$sm">{label}</Text>
+    </XStack>
+  );
+}
+```
+
+**Step 3: Create SessionCard component**
 
 ```tsx
 // apps/mobile/components/SessionCard.tsx
-import { View, Text, Pressable } from 'react-native';
-import { formatUsd, type LiveSession } from '@clawmini/shared';
+import { Text, XStack, YStack } from 'tamagui';
+import { Pressable } from 'react-native';
+import { formatUsd, type RelaySession } from '@claude-view/shared';
+
+const STATUS_COLORS: Record<string, string> = {
+  active: '#22c55e',
+  waiting: '#f59e0b',
+  idle: '#3b82f6',
+  done: '#6b7280',
+};
 
 interface Props {
-  session: LiveSession;
+  session: RelaySession;
   onPress: () => void;
 }
 
 export function SessionCard({ session, onPress }: Props) {
-  const contextPct = session.contextWindowTokens > 0
-    ? Math.round((session.contextWindowTokens / 200000) * 100)
-    : 0;
+  const statusColor = STATUS_COLORS[session.status] ?? '#6b7280';
 
   return (
-    <Pressable
-      className="bg-surface rounded-lg p-4 mb-2 active:opacity-80"
-      onPress={onPress}
-    >
-      <Text className="text-white font-sans font-semibold text-base">
-        {session.projectDisplayName}
-      </Text>
-      <Text className="text-muted text-sm mt-1">
-        {session.agentState?.label ?? session.status}
-      </Text>
-      <View className="flex-row justify-between items-center mt-3">
-        <Text className="text-muted font-mono text-sm">
-          {formatUsd(session.cost?.totalUsd ?? 0)}
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+      <YStack
+        backgroundColor="$gray800"
+        borderRadius="$4"
+        padding="$4"
+        marginBottom="$2"
+      >
+        <Text color="$gray50" fontWeight="600" fontSize="$base">
+          {session.project}
         </Text>
-        <View className="flex-row items-center">
-          <View className="w-24 h-2 bg-border rounded-full overflow-hidden">
-            <View
-              className="h-full bg-accent rounded-full"
-              style={{ width: `${contextPct}%` }}
-            />
-          </View>
-          <Text className="text-muted font-mono text-xs ml-2">{contextPct}%</Text>
-        </View>
-      </View>
+        <XStack alignItems="center" gap="$2" marginTop="$1">
+          <Circle size={6} backgroundColor={statusColor} />
+          <Text color="$gray400" fontSize="$sm">{session.status}</Text>
+          <Text color="$gray500" fontSize="$sm">·</Text>
+          <Text color="$gray400" fontSize="$sm" fontFamily="$mono">
+            {session.model}
+          </Text>
+        </XStack>
+        <XStack justifyContent="space-between" alignItems="center" marginTop="$3">
+          <Text color="$gray400" fontFamily="$mono" fontSize="$sm">
+            {formatUsd(session.cost_usd)}
+          </Text>
+          <Text color="$gray500" fontSize="$xs">
+            {session.tokens.input + session.tokens.output} tokens
+          </Text>
+        </XStack>
+      </YStack>
     </Pressable>
   );
 }
+
+// Re-export Circle since Tamagui doesn't have it by default
+function Circle({ size, backgroundColor }: { size: number; backgroundColor: string }) {
+  return (
+    <YStack
+      width={size}
+      height={size}
+      borderRadius={size / 2}
+      backgroundColor={backgroundColor}
+    />
+  );
+}
 ```
 
-**Step 3: Create SummaryBar component**
+**Step 4: Create SummaryBar component**
 
 ```tsx
 // apps/mobile/components/SummaryBar.tsx
-import { View, Text } from 'react-native';
-import { formatUsd, type LiveSession } from '@clawmini/shared';
+import { Text, XStack } from 'tamagui';
+import { formatUsd, groupByStatus, type RelaySession } from '@claude-view/shared';
 
-export function SummaryBar({ sessions }: { sessions: LiveSession[] }) {
-  const needsYou = sessions.filter(s => s.agentState?.group === 'needs_you').length;
-  const autonomous = sessions.filter(s => s.agentState?.group === 'autonomous').length;
-  const totalCost = sessions.reduce((sum, s) => sum + (s.cost?.totalUsd ?? 0), 0);
+export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
+  const { needsYou, autonomous } = groupByStatus(sessions);
+  const totalCost = sessions.reduce((sum, s) => sum + s.cost_usd, 0);
 
   return (
-    <View className="bg-surface border-t border-border px-4 py-3 flex-row justify-between">
-      <Text className="text-status-amber font-sans text-sm">{needsYou} needs you</Text>
-      <Text className="text-status-green font-sans text-sm">{autonomous} auto</Text>
-      <Text className="text-muted font-mono text-sm">{formatUsd(totalCost)}</Text>
-    </View>
+    <XStack
+      backgroundColor="$gray800"
+      borderTopWidth={1}
+      borderTopColor="$gray700"
+      paddingHorizontal="$4"
+      paddingVertical="$3"
+      justifyContent="space-between"
+    >
+      <Text color="#f59e0b" fontSize="$sm">{needsYou.length} needs you</Text>
+      <Text color="#22c55e" fontSize="$sm">{autonomous.length} auto</Text>
+      <Text color="$gray400" fontFamily="$mono" fontSize="$sm">{formatUsd(totalCost)}</Text>
+    </XStack>
   );
 }
 ```
 
-**Step 4: Create ConnectionStatus component**
+**Step 5: Build Dashboard in tabs/index.tsx**
+
+Replace the placeholder in `apps/mobile/app/(tabs)/index.tsx`:
 
 ```tsx
-// apps/mobile/components/ConnectionStatus.tsx
-import { View, Text } from 'react-native';
-
-type State = 'connected' | 'connecting' | 'disconnected';
-
-export function ConnectionStatus({ state }: { state: State }) {
-  const color = state === 'connected' ? 'bg-status-green'
-    : state === 'connecting' ? 'bg-status-amber'
-    : 'bg-status-red';
-
-  const label = state === 'connected' ? 'Connected'
-    : state === 'connecting' ? 'Connecting'
-    : 'Mac offline';
-
-  return (
-    <View className="flex-row items-center">
-      <View className={`w-2 h-2 rounded-full ${color} mr-2`} />
-      <Text className="text-muted text-sm">{label}</Text>
-    </View>
-  );
-}
-```
-
-**Step 5: Build Dashboard screen**
-
-```tsx
-// apps/mobile/app/dashboard.tsx
-import { View, Text, ScrollView, RefreshControl } from 'react-native';
+// apps/mobile/app/(tabs)/index.tsx
+import { useMemo, useState } from 'react';
+import { ScrollView } from 'react-native';
+import { Redirect } from 'expo-router';
+import { H4, Spinner, Text, XStack, YStack } from 'tamagui';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useCallback } from 'react';
-import { groupByAgentState } from '@clawmini/shared';
-import { useRelaySessions } from '../hooks/use-relay-sessions';
-import { SessionCard } from '../components/SessionCard';
-import { SummaryBar } from '../components/SummaryBar';
-import { ConnectionStatus } from '../components/ConnectionStatus';
+import { groupByStatus } from '@claude-view/shared';
+import { usePairingStatus } from '../../hooks/use-pairing-status';
+import { useRelaySessions } from '../../hooks/use-relay-sessions';
+import { SessionCard } from '../../components/SessionCard';
+import { SummaryBar } from '../../components/SummaryBar';
+import { ConnectionDot } from '../../components/ConnectionDot';
 
-export default function DashboardScreen() {
+export default function SessionsScreen() {
+  const { isPaired } = usePairingStatus();
   const { sessions, connectionState } = useRelaySessions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { needsYou, autonomous } = groupByAgentState(Object.values(sessions));
+
+  if (isPaired === null) {
+    return (
+      <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$gray900">
+        <Spinner size="large" />
+      </YStack>
+    );
+  }
+
+  if (!isPaired) {
+    return <Redirect href="/pair" />;
+  }
+
+  const sessionList = useMemo(() => Object.values(sessions), [sessions]);
+  const { needsYou, autonomous } = useMemo(() => groupByStatus(sessionList), [sessionList]);
 
   return (
-    <SafeAreaView className="flex-1 bg-base" edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }} edges={['top']}>
       {/* Header */}
-      <View className="flex-row justify-between items-center px-4 py-3">
-        <Text className="text-white font-sans font-bold text-xl">clawmini</Text>
-        <ConnectionStatus state={connectionState} />
-      </View>
+      <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$4" paddingVertical="$3">
+        <Text color="$gray50" fontWeight="bold" fontSize="$xl">Claude View</Text>
+        <ConnectionDot state={connectionState} />
+      </XStack>
 
       {/* Session list */}
-      <ScrollView className="flex-1 px-4">
+      <ScrollView style={{ flex: 1, paddingHorizontal: 16 }}>
         {needsYou.length > 0 && (
-          <View className="mb-4">
-            <Text className="text-status-amber font-sans font-semibold text-sm mb-2 uppercase tracking-wider">
+          <YStack marginBottom="$4">
+            <H4 color="#f59e0b" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
               Needs You
-            </Text>
+            </H4>
             {needsYou.map(s => (
               <SessionCard key={s.id} session={s} onPress={() => setSelectedId(s.id)} />
             ))}
-          </View>
+          </YStack>
         )}
 
         {autonomous.length > 0 && (
-          <View className="mb-4">
-            <Text className="text-status-green font-sans font-semibold text-sm mb-2 uppercase tracking-wider">
+          <YStack marginBottom="$4">
+            <H4 color="#22c55e" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
               Autonomous
-            </Text>
+            </H4>
             {autonomous.map(s => (
               <SessionCard key={s.id} session={s} onPress={() => setSelectedId(s.id)} />
             ))}
-          </View>
+          </YStack>
         )}
 
-        {needsYou.length === 0 && autonomous.length === 0 && (
-          <View className="flex-1 items-center justify-center py-20">
-            <Text className="text-muted text-lg">
+        {sessionList.length === 0 && (
+          <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical="$16">
+            <Text color="$gray400" fontSize="$lg">
               {connectionState === 'disconnected' ? 'Mac offline' : 'No active sessions'}
             </Text>
-          </View>
+          </YStack>
         )}
       </ScrollView>
 
       {/* Summary bar */}
-      <SummaryBar sessions={Object.values(sessions)} />
+      <SummaryBar sessions={sessionList} />
 
-      {/* Bottom sheet will be added in Task 9 */}
+      {/* Bottom sheet (Task 7) */}
     </SafeAreaView>
   );
 }
@@ -1023,233 +1166,229 @@ export default function DashboardScreen() {
 
 **Step 6: Test with live Mac data**
 
-Start Mac dev server with `RELAY_URL` set, scan QR from Expo Go, verify sessions appear.
+Start Mac dev server with `RELAY_URL` set, pair via QR from Expo Go, verify sessions appear.
 
 **Step 7: Commit**
 
 ```bash
-git add -A
-git commit -m "feat: dashboard screen — session cards grouped by agent state, summary bar"
+git add apps/mobile/
+git commit -m "feat: dashboard screen — session cards grouped by status, summary bar, connection indicator"
 ```
 
 ---
 
-### Task 9: Session detail bottom sheet
+### Task 7: Session detail sheet
 
 **Files:**
 - Create: `apps/mobile/components/SessionDetailSheet.tsx`
-- Modify: `apps/mobile/app/dashboard.tsx` (add bottom sheet)
+- Modify: `apps/mobile/app/(tabs)/index.tsx` (add sheet)
+
+**Approach:** Use Tamagui's built-in `Sheet` component instead of adding `@gorhom/bottom-sheet` as an extra dependency. Tamagui's Sheet is already available since we have Tamagui installed.
 
 **Step 1: Create SessionDetailSheet**
 
 ```tsx
 // apps/mobile/components/SessionDetailSheet.tsx
-import { View, Text, ScrollView } from 'react-native';
-import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import { forwardRef, useMemo } from 'react';
-import { formatUsd, formatDuration, type LiveSession } from '@clawmini/shared';
+import { ScrollView } from 'react-native';
+import { Sheet, Text, XStack, YStack, Separator } from 'tamagui';
+import { formatUsd, formatDuration, type RelaySession } from '@claude-view/shared';
 
 interface Props {
-  session: LiveSession | null;
+  session: RelaySession | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export const SessionDetailSheet = forwardRef<BottomSheet, Props>(({ session }, ref) => {
-  const snapPoints = useMemo(() => ['50%', '90%'], []);
-
+export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
   if (!session) return null;
 
-  const contextPct = session.contextWindowTokens > 0
-    ? Math.round((session.contextWindowTokens / 200000) * 100)
-    : 0;
-
   return (
-    <BottomSheet
-      ref={ref}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: '#1E293B' }}
-      handleIndicatorStyle={{ backgroundColor: '#94A3B8' }}
+    <Sheet
+      modal
+      open={open}
+      onOpenChange={onOpenChange}
+      snapPoints={[85, 50]}
+      dismissOnSnapToBottom
     >
-      <BottomSheetScrollView className="px-4 pb-8">
-        {/* Header */}
-        <Text className="text-white font-sans font-bold text-xl">
-          {session.projectDisplayName}
-        </Text>
-        <Text className="text-muted text-sm mt-1">{session.projectPath}</Text>
-        {session.gitBranch && (
-          <Text className="text-accent text-sm mt-1">branch: {session.gitBranch}</Text>
-        )}
-
-        {/* Status row */}
-        <View className="flex-row flex-wrap mt-4 gap-4">
-          <InfoItem label="Status" value={session.agentState?.label ?? session.status} />
-          <InfoItem label="Model" value={session.model ?? 'unknown'} />
-          <InfoItem label="Turns" value={String(session.turnCount)} />
-          {session.startedAt && session.startedAt > 0 && (
-            <InfoItem
-              label="Time"
-              value={formatDuration(Math.floor(Date.now() / 1000) - session.startedAt)}
-            />
-          )}
-        </View>
-
-        {/* Cost breakdown */}
-        <SectionHeader title="Cost" />
-        <View className="bg-base rounded-lg p-3">
-          <CostRow label="Input" value={session.cost?.inputUsd ?? 0} />
-          <CostRow label="Output" value={session.cost?.outputUsd ?? 0} />
-          <CostRow label="Total" value={session.cost?.totalUsd ?? 0} bold />
-        </View>
-
-        {/* Context */}
-        <SectionHeader title="Context" />
-        <View className="bg-base rounded-lg p-3">
-          <View className="w-full h-3 bg-border rounded-full overflow-hidden">
-            <View className="h-full bg-accent rounded-full" style={{ width: `${contextPct}%` }} />
-          </View>
-          <Text className="text-muted font-mono text-xs mt-2">
-            {Math.round(session.contextWindowTokens / 1000)}k / 200k tokens ({contextPct}%)
+      <Sheet.Overlay backgroundColor="rgba(0,0,0,0.5)" />
+      <Sheet.Handle backgroundColor="$gray500" />
+      <Sheet.Frame backgroundColor="$gray800" borderTopLeftRadius="$4" borderTopRightRadius="$4">
+        <ScrollView style={{ padding: 16 }}>
+          {/* Header */}
+          <Text color="$gray50" fontWeight="bold" fontSize="$xl">
+            {session.project}
           </Text>
-        </View>
+          <Text color="$gray400" fontSize="$sm" marginTop="$1">
+            {session.model}
+          </Text>
 
-        {/* Activity */}
-        {session.currentActivity && (
-          <>
-            <SectionHeader title="Activity" />
-            <Text className="text-white text-sm">{session.currentActivity}</Text>
-          </>
-        )}
+          {/* Status */}
+          <XStack flexWrap="wrap" marginTop="$4" gap="$4">
+            <InfoItem label="Status" value={session.status} />
+            <InfoItem label="Model" value={session.model} />
+            <InfoItem
+              label="Tokens"
+              value={`${Math.round((session.tokens.input + session.tokens.output) / 1000)}k`}
+            />
+          </XStack>
 
-        {/* Sub-agents */}
-        {session.subAgents && session.subAgents.length > 0 && (
-          <>
-            <SectionHeader title={`Sub-agents (${session.subAgents.length})`} />
-            {session.subAgents.map((a, i) => (
-              <View key={i} className="flex-row items-center py-1">
-                <Text className="text-status-green text-sm mr-2">
-                  {a.status === 'done' ? '✓' : '⚡'}
-                </Text>
-                <Text className="text-white text-sm">{a.name}</Text>
-                <Text className="text-muted text-sm ml-2">{a.status}</Text>
-              </View>
-            ))}
-          </>
-        )}
+          <Separator marginVertical="$4" borderColor="$gray700" />
 
-        {/* Progress items */}
-        {session.progressItems && session.progressItems.length > 0 && (
-          <>
-            <SectionHeader title="Progress" />
-            {session.progressItems.map((item, i) => (
-              <View key={i} className="flex-row items-center py-1">
-                <Text className="text-sm mr-2">
-                  {item.status === 'completed' ? '✓' : '○'}
-                </Text>
-                <Text className={`text-sm ${item.status === 'completed' ? 'text-muted' : 'text-white'}`}>
-                  {item.subject}
-                </Text>
-              </View>
-            ))}
-          </>
-        )}
+          {/* Cost */}
+          <SectionLabel>Cost</SectionLabel>
+          <YStack backgroundColor="$gray900" borderRadius="$3" padding="$3">
+            <CostRow label="Total" value={session.cost_usd} bold />
+          </YStack>
 
-        {/* M1.5 teaser */}
-        <View className="mt-6 bg-base rounded-lg p-4 items-center opacity-50">
-          <Text className="text-muted text-sm">Approve / Deny — coming in M1.5</Text>
-        </View>
-      </BottomSheetScrollView>
-    </BottomSheet>
+          <Separator marginVertical="$4" borderColor="$gray700" />
+
+          {/* Last activity */}
+          {session.last_message && (
+            <>
+              <SectionLabel>Last Activity</SectionLabel>
+              <Text color="$gray200" fontSize="$sm" numberOfLines={4}>
+                {session.last_message}
+              </Text>
+            </>
+          )}
+
+          {/* M2 teaser */}
+          <YStack
+            marginTop="$6"
+            backgroundColor="$gray900"
+            borderRadius="$4"
+            padding="$4"
+            alignItems="center"
+            opacity={0.5}
+          >
+            <Text color="$gray400" fontSize="$sm">Approve / Deny — coming in M2</Text>
+          </YStack>
+        </ScrollView>
+      </Sheet.Frame>
+    </Sheet>
   );
-});
+}
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text className="text-muted font-sans text-xs uppercase tracking-wider mt-4 mb-2">{title}</Text>;
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <Text color="$gray400" fontSize="$xs" textTransform="uppercase" letterSpacing={1} marginBottom="$2">
+      {children}
+    </Text>
+  );
 }
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <View>
-      <Text className="text-muted text-xs">{label}</Text>
-      <Text className="text-white text-sm font-sans">{value}</Text>
-    </View>
+    <YStack>
+      <Text color="$gray400" fontSize="$xs">{label}</Text>
+      <Text color="$gray50" fontSize="$sm">{value}</Text>
+    </YStack>
   );
 }
 
 function CostRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
   return (
-    <View className="flex-row justify-between py-1">
-      <Text className={`text-sm ${bold ? 'text-white font-semibold' : 'text-muted'}`}>{label}</Text>
-      <Text className={`font-mono text-sm ${bold ? 'text-white font-semibold' : 'text-muted'}`}>
+    <XStack justifyContent="space-between" paddingVertical="$1">
+      <Text color={bold ? '$gray50' : '$gray400'} fontSize="$sm" fontWeight={bold ? '600' : '400'}>
+        {label}
+      </Text>
+      <Text
+        color={bold ? '$gray50' : '$gray400'}
+        fontFamily="$mono"
+        fontSize="$sm"
+        fontWeight={bold ? '600' : '400'}
+      >
         {formatUsd(value)}
       </Text>
-    </View>
+    </XStack>
   );
 }
 ```
 
-**Step 2: Wire bottom sheet into dashboard**
+**Step 2: Wire sheet into dashboard**
 
-Add to `apps/mobile/app/dashboard.tsx`:
+Add to `apps/mobile/app/(tabs)/index.tsx`:
 
 ```tsx
-import { useRef } from 'react';
-import BottomSheet from '@gorhom/bottom-sheet';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SessionDetailSheet } from '../components/SessionDetailSheet';
+import { SessionDetailSheet } from '../../components/SessionDetailSheet';
 
-// Inside DashboardScreen:
-const bottomSheetRef = useRef<BottomSheet>(null);
-const selectedSession = selectedId ? sessions[selectedId] : null;
+// Inside component:
+const selectedSession = selectedId ? sessions[selectedId] ?? null : null;
 
-// On card press:
-onPress={() => {
-  setSelectedId(s.id);
-  bottomSheetRef.current?.snapToIndex(0);
-}}
-
-// Wrap entire return in GestureHandlerRootView, add sheet at bottom:
-<SessionDetailSheet ref={bottomSheetRef} session={selectedSession} />
+// At the bottom of the return, after SummaryBar:
+<SessionDetailSheet
+  session={selectedSession}
+  open={selectedId !== null}
+  onOpenChange={(open) => { if (!open) setSelectedId(null); }}
+/>
 ```
 
 **Step 3: Test interaction**
 
-Verify: tap card → sheet slides up half screen → drag up for full → drag down to dismiss.
+Verify: tap card → sheet slides up → shows session details → drag down to dismiss.
 
 **Step 4: Commit**
 
 ```bash
-git add -A
-git commit -m "feat: session detail bottom sheet with cost, context, sub-agents, progress"
+git add apps/mobile/
+git commit -m "feat: session detail sheet with cost breakdown and activity preview"
 ```
 
 ---
 
-### Task 10: Push notifications
+## Phase 4: Push & Ship
+
+### Task 8: Push notifications
 
 **Files:**
 - Create: `apps/mobile/hooks/use-push-notifications.ts`
-- Modify: `crates/relay/src/lib.rs` (add push token route)
+- Modify: `crates/relay/src/state.rs` (add push_tokens field)
 - Create: `crates/relay/src/push.rs`
+- Modify: `crates/relay/src/lib.rs` (add push token route)
 - Modify: `apps/mobile/app/_layout.tsx` (register on startup)
 
-**Step 1: Create push token registration on relay**
+**Step 1: Add push_tokens to RelayState**
+
+In `crates/relay/src/state.rs`, add field:
+
+```rust
+#[derive(Clone, Default)]
+pub struct RelayState {
+    pub connections: Arc<DashMap<String, DeviceConnection>>,
+    pub pairing_offers: Arc<DashMap<String, PairingOffer>>,
+    pub devices: Arc<DashMap<String, RegisteredDevice>>,
+    pub push_tokens: Arc<DashMap<String, String>>,  // ADD: device_id → Expo push token
+}
+
+impl RelayState {
+    pub fn new() -> Self {
+        Self {
+            connections: Arc::new(DashMap::new()),
+            pairing_offers: Arc::new(DashMap::new()),
+            devices: Arc::new(DashMap::new()),
+            push_tokens: Arc::new(DashMap::new()),
+        }
+    }
+}
+```
+
+**Step 2: Create push token endpoint**
 
 ```rust
 // crates/relay/src/push.rs
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
-use std::sync::Arc;
-use crate::state::AppState;
+
+use crate::state::RelayState;
 
 #[derive(Deserialize)]
 pub struct RegisterToken {
     pub device_id: String,
-    pub token: String, // Expo push token
+    pub token: String,
 }
 
 pub async fn register_push_token(
-    State(state): State<Arc<AppState>>,
+    State(state): State<RelayState>,
     Json(body): Json<RegisterToken>,
 ) -> StatusCode {
     state.push_tokens.insert(body.device_id, body.token);
@@ -1257,16 +1396,23 @@ pub async fn register_push_token(
 }
 ```
 
-Add to `AppState`: `pub push_tokens: DashMap<String, String>`
-Add route: `POST /push-tokens`
+**Step 3: Add route to relay router**
 
-**Step 2: Create push notification hook in Expo app**
+In `crates/relay/src/lib.rs`:
+
+```rust
+mod push;
+
+// In router():
+.route("/push-tokens", post(push::register_push_token))
+```
+
+**Step 4: Create push notification hook**
 
 ```ts
 // apps/mobile/hooks/use-push-notifications.ts
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 import { secureStoreAdapter } from '../lib/secure-store-adapter';
 
 Notifications.setNotificationHandler({
@@ -1278,49 +1424,45 @@ Notifications.setNotificationHandler({
 });
 
 export function usePushNotifications() {
-  const notificationListener = useRef<Notifications.EventSubscription>();
+  const listenerRef = useRef<Notifications.EventSubscription>();
 
   useEffect(() => {
-    registerForPushNotifications();
+    registerPushToken();
 
-    notificationListener.current = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const sessionId = response.notification.request.content.data?.sessionId;
-        // Navigate to session detail
-      }
+    listenerRef.current = Notifications.addNotificationResponseReceivedListener(
+      (_response) => {
+        // TODO: Navigate to session detail when notification tapped
+      },
     );
 
     return () => {
-      notificationListener.current?.remove();
+      listenerRef.current?.remove();
     };
   }, []);
 }
 
-async function registerForPushNotifications() {
+async function registerPushToken() {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') return;
 
-  const token = (await Notifications.getExpoPushTokenAsync()).data;
+  const tokenData = await Notifications.getExpoPushTokenAsync();
   const deviceId = await secureStoreAdapter.getItem('device_id');
   const relayUrl = await secureStoreAdapter.getItem('relay_url');
 
   if (!deviceId || !relayUrl) return;
 
-  // Register token with relay
   const httpUrl = relayUrl.replace('wss://', 'https://').replace('/ws', '');
   await fetch(`${httpUrl}/push-tokens`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_id: deviceId, token }),
+    body: JSON.stringify({ device_id: deviceId, token: tokenData.data }),
+  }).catch(() => {
+    // Silently fail — push is optional, will retry on next app launch
   });
 }
 ```
 
-**Step 3: Add push sending logic to relay**
-
-When relay forwards a session update where `agentState.group` transitions to `"needs_you"`, also send an Expo push notification to the registered token.
-
-**Step 4: Register in app layout**
+**Step 5: Register in root layout**
 
 Add to `apps/mobile/app/_layout.tsx`:
 
@@ -1329,110 +1471,52 @@ import { usePushNotifications } from '../hooks/use-push-notifications';
 
 export default function RootLayout() {
   usePushNotifications();
-  // ... rest
+  // ... rest of layout
 }
 ```
 
-**Step 5: Test push notification**
+**Step 6: Test**
 
 Trigger a session state change on Mac → verify notification appears on phone.
 
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
-git add -A
-git commit -m "feat: push notifications for agent state changes via expo-notifications"
+git add apps/mobile/ crates/relay/
+git commit -m "feat: push notifications for session state changes via Expo Notifications"
 ```
 
 ---
 
-## Phase 4: Polish & Ship
+### Task 9: Landing page polish
 
-### Task 11: Landing page
+**Status:** Mostly done — `apps/landing/` already deployed to Cloudflare Pages.
 
 **Files:**
-- Create: `apps/landing/index.html`
-- Create: `apps/landing/.well-known/apple-app-site-association`
-- Create: `apps/landing/_redirects`
-- Create: `apps/landing/package.json`
+- Modify: `apps/landing/src/index.html` (verify branding says "Claude View", not "clawmini")
+- Verify: `apps/landing/.well-known/apple-app-site-association` exists (or add to PROGRESS.md deferred list)
 
-**Step 1: Create landing page**
+**Step 1: Check and update branding**
 
-```html
-<!-- apps/landing/index.html -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>clawmini — Your AI agents, in your pocket</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0F172A; color: #F8FAFC; font-family: -apple-system, sans-serif; }
-    .container { max-width: 600px; margin: 0 auto; padding: 80px 24px; text-align: center; }
-    h1 { font-size: 32px; font-weight: 700; margin-bottom: 16px; }
-    p { color: #94A3B8; font-size: 18px; margin-bottom: 48px; }
-    .badges { display: flex; gap: 16px; justify-content: center; }
-    .badges img { height: 48px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>clawmini</h1>
-    <p>Your AI agents, in your pocket. Monitor and control your AI coding sessions from your phone.</p>
-    <div class="badges">
-      <a href="https://apps.apple.com/app/clawmini/idXXXXXXXXX">
-        <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on App Store">
-      </a>
-      <a href="https://play.google.com/store/apps/details?id=com.clawmini.app">
-        <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height:48px;">
-      </a>
-    </div>
-  </div>
-</body>
-</html>
-```
+Read `apps/landing/src/index.html` and ensure:
+- Title says "Claude View" not "clawmini"
+- Description matches current product positioning
+- App Store / Play Store links have placeholder IDs
 
-**Step 2: Create Apple App Site Association**
+**Step 2: Verify AASA file status**
 
-```json
-{
-  "applinks": {
-    "details": [
-      {
-        "appIDs": ["TEAMID.com.clawmini.app"],
-        "components": [{ "/": "*" }]
-      }
-    ]
-  }
-}
-```
+The `apple-app-site-association` file needs a real Apple Team ID. Confirm this is on the deferred list in `docs/plans/PROGRESS.md` (it is — see "Deferred / Pre-Launch Checklist").
 
-**Step 3: Create Cloudflare Pages config**
-
-```
-# apps/landing/_redirects
-/pair/* /index.html 200
-```
-
-**Step 4: Deploy to Cloudflare Pages**
+**Step 3: Commit if changes made**
 
 ```bash
-cd apps/landing && npx wrangler pages deploy . --project-name=clawmini-landing
-```
-
-Configure DNS: `m.claudeview.ai` CNAME → Cloudflare Pages.
-
-**Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: landing page with App Store badges and universal link handler"
+git add apps/landing/
+git commit -m "chore: update landing page branding to Claude View"
 ```
 
 ---
 
-### Task 12: TestFlight build + submission
+### Task 10: TestFlight build + submission
 
 **Step 1: Configure EAS Build**
 
@@ -1460,7 +1544,10 @@ Create `apps/mobile/eas.json`:
   },
   "submit": {
     "production": {
-      "ios": { "appleId": "YOUR_APPLE_ID", "ascAppId": "YOUR_ASC_APP_ID" }
+      "ios": {
+        "appleId": "YOUR_APPLE_ID",
+        "ascAppId": "YOUR_ASC_APP_ID"
+      }
     }
   }
 }
@@ -1478,14 +1565,14 @@ cd apps/mobile && eas build --platform ios --profile production
 cd apps/mobile && eas submit --platform ios --profile production
 ```
 
-**Step 4: Verify on device**
+**Step 4: E2E verification on device**
 
-Install from TestFlight. Full E2E: scan QR → sessions appear → push notification fires.
+Install from TestFlight. Full flow: scan QR → sessions appear → tap card → sheet opens → push notification fires.
 
-**Step 5: Commit (any config changes)**
+**Step 5: Commit**
 
 ```bash
-git add -A
+git add apps/mobile/eas.json
 git commit -m "chore: EAS build configuration for TestFlight submission"
 ```
 
@@ -1494,27 +1581,27 @@ git commit -m "chore: EAS build configuration for TestFlight submission"
 ## Task Dependency Graph
 
 ```
-Task 1 (move web) → Task 2 (workspaces) → Task 3 (shared pkg) → Task 4 (ts-rs)
-                                                                      ↓
-Task 5 (relay fixes) ──────────────────────────────────────→ Task 7 (pair screen)
-                                                                      ↓
-                                               Task 6 (scaffold) → Task 8 (dashboard)
-                                                                      ↓
-                                                                Task 9 (detail sheet)
-                                                                      ↓
-                                                                Task 10 (push)
-                                                                      ↓
-                                               Task 11 (landing) + Task 12 (TestFlight)
+Task 1 (shared pkg) → Task 2 (ts-rs) ────────────────┐
+                                                       ↓
+Task 3 (relay fixes) ──────────────────→ Task 5 (pair screen)
+                                                       ↓
+                                   Task 4 (deps) → Task 6 (dashboard)
+                                                       ↓
+                                                  Task 7 (detail sheet)
+                                                       ↓
+                                                  Task 8 (push)
+                                                       ↓
+                                   Task 9 (landing) + Task 10 (TestFlight)
 ```
 
-Tasks 5 and 6 can run in parallel after Task 4 completes.
-Tasks 11 can run in parallel with Tasks 8-10.
+Tasks 1 and 3 can run in parallel.
+Tasks 4 can run in parallel with Tasks 1-3.
+Task 9 can run in parallel with Tasks 6-8.
 
 ## Success Criteria
 
-Same as design doc:
 1. Scan QR on Mac → phone shows all active sessions within 2 seconds
 2. Session state changes on Mac → phone updates within 1 second
-3. Push notification fires when agent state → needs_you
+3. Push notification fires when agent needs user attention
 4. "Mac offline" shows correctly when Mac sleeps
 5. App is on TestFlight (iOS)
