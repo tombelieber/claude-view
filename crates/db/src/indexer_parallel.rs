@@ -3212,8 +3212,14 @@ where
             Ok(Ok((None, id))) => {
                 on_file_done(&id);
             }
-            Ok(Err(e)) => tracing::warn!("scan_and_index_all parse error: {}", e),
-            Err(e) => tracing::warn!("scan_and_index_all join error: {}", e),
+            Ok(Err(e)) => {
+                on_file_done("_error");
+                tracing::warn!("scan_and_index_all parse error: {}", e);
+            }
+            Err(e) => {
+                on_file_done("_error");
+                tracing::warn!("scan_and_index_all join error: {}", e);
+            }
         }
     }
 
