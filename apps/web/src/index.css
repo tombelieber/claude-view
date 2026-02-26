@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import 'dockview-react/dist/styles/dockview.css';
+@import './styles/dockview-dark.css';
 @plugin "@tailwindcss/typography";
 
 /* Dark mode: class-based (not media query) */

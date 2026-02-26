@@ -1,0 +1,43 @@
+/* Override dockview defaults for our dark theme.
+   Colors match the existing GitHub-style palette used in MonitorPane.tsx
+   and design-tokens/src/colors.ts (status.active = #22c55e). */
+.dockview-theme-dark {
+  /* Background layers — matches MonitorPane dark:bg-[#161B22] and dark:bg-[#0D1117] */
+  --dv-paneview-header-border-color: #30363D;
+  --dv-tabs-and-actions-container-background-color: #161B22;
+  --dv-activegroup-visiblepanel-tab-background-color: #0D1117;
+  --dv-activegroup-hiddenpanel-tab-background-color: #161B22;
+  --dv-inactivegroup-visiblepanel-tab-background-color: #0D1117;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: #161B22;
+  --dv-tab-divider-color: #30363D;
+  --dv-activegroup-visiblepanel-tab-color: #F0F6FC;
+  --dv-activegroup-hiddenpanel-tab-color: #8B949E;
+  --dv-inactivegroup-visiblepanel-tab-color: #C9D1D9;
+  --dv-inactivegroup-hiddenpanel-tab-color: #8B949E;
+
+  /* Active tab underline — green accent matching design-tokens status.active */
+  --dv-active-tab-border-bottom-color: #22c55e;
+
+  /* Panel body — matches MonitorPane dark:bg-[#0D1117] */
+  --dv-group-view-background-color: #0D1117;
+
+  /* Separator (split bar) — matches dark:border-[#21262D] */
+  --dv-separator-border: #21262D;
+  --dv-separator-handle-color: #30363D;
+
+  /* Drag preview — green accent at low opacity */
+  --dv-drag-over-background-color: rgba(34, 197, 94, 0.06);
+  --dv-drag-over-border-color: #22c55e;
+
+  /* Floating / popout */
+  --dv-floating-box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Custom split bar hover */
+.dockview-theme-dark .dv-split-view-container > .dv-sash:hover {
+  background: #30363D;
+}
+
+.dockview-theme-dark .dv-split-view-container > .dv-sash:active {
+  background: #22c55e;
+}
