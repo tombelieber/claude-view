@@ -2,9 +2,11 @@ import fs from 'node:fs'
 import { createAdaptorServer } from '@hono/node-server'
 // sidecar/src/index.ts — updated
 import { Hono } from 'hono'
+import { WebSocketServer } from 'ws'
 import { controlRouter } from './control.js'
 import { healthRouter } from './health.js'
 import { SessionManager } from './session-manager.js'
+import { handleWebSocket } from './ws-handler.js'
 
 const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
 
@@ -29,6 +31,23 @@ const server = createAdaptorServer(app)
 server.listen(SOCKET_PATH, () => {
   console.log(`[sidecar] Listening on ${SOCKET_PATH}`)
   console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+})
+
+// WS upgrade handler on the HTTP server (not a separate net.Server)
+const wss = new WebSocketServer({ noServer: true })
+
+server.on('upgrade', (request, socket, head) => {
+  // Extract controlId from URL: /control/sessions/:controlId/stream
+  const match = request.url?.match(/\/control\/sessions\/([^/]+)\/stream/)
+  if (!match?.[1]) {
+    socket.destroy()
+    return
+  }
+
+  const controlId = match[1]
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    handleWebSocket(ws, controlId, sessionManager)
+  })
 })
 
 const parentCheck = setInterval(() => {
