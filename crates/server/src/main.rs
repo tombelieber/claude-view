@@ -280,6 +280,8 @@ async fn main() -> Result<()> {
 
     // Step 4: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
+    let sidecar = Arc::new(claude_view_server::SidecarManager::new());
+    let sidecar_for_shutdown = sidecar.clone();
     let app = create_app_full(
         db.clone(),
         indexing.clone(),
@@ -287,6 +289,7 @@ async fn main() -> Result<()> {
         search_index_holder.clone(),
         shutdown_rx,
         static_dir,
+        sidecar,
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
@@ -675,6 +678,9 @@ async fn main() -> Result<()> {
 
             // Clean up hooks from ~/.claude/settings.json
             claude_view_server::live::hook_registrar::cleanup(shutdown_port);
+
+            // Shut down Node.js sidecar if running
+            sidecar_for_shutdown.shutdown();
 
             // Give SSE streams a moment to see the shutdown signal and break.
             // Second Ctrl+C skips the wait for impatient users.
