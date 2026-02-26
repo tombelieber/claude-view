@@ -233,7 +233,7 @@ export function DockLayout({
   }, [sessions, verboseMode])
 
   return (
-    <div className="h-full w-full">
+    <div className="absolute inset-0">
       <DockviewReact
         className="dockview-theme-dark"
         components={components}
