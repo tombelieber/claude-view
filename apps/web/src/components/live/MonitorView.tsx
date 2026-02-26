@@ -1,6 +1,12 @@
+import type { DockviewApi } from 'dockview-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useLayoutMode } from '../../hooks/use-layout-mode'
+import { useLayoutPresets } from '../../hooks/use-layout-presets'
 import { useMonitorStore } from '../../store/monitor-store'
+import { DockLayout } from './DockLayout'
 import { GridControls } from './GridControls'
+import { LayoutModeToggle } from './LayoutModeToggle'
+import { LayoutPresets } from './LayoutPresets'
 import { MonitorGrid } from './MonitorGrid'
 import { MonitorPane } from './MonitorPane'
 import { PaneContextMenu } from './PaneContextMenu'
@@ -39,6 +45,12 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
   const unpinPane = useMonitorStore((s) => s.unpinPane)
   const hidePane = useMonitorStore((s) => s.hidePane)
   const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
+
+  // Phase E: layout mode + presets
+  const { mode, setMode, toggleMode, savedLayout, setSavedLayout, activePreset, setActivePreset } =
+    useLayoutMode()
+  const { customPresets, savePreset, deletePreset } = useLayoutPresets()
+  const dockviewApiRef = useRef<DockviewApi | null>(null)
 
   // Visibility tracking from MonitorGrid's IntersectionObserver
   const [visiblePanes, setVisiblePanes] = useState<Set<string>>(new Set())
@@ -103,7 +115,13 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
   useAutoFill({ sessions, enabled: true })
 
   // Keyboard shortcuts — active when monitor view is showing
-  useMonitorKeyboardShortcuts({ enabled: true, sessions: visibleSessions })
+  useMonitorKeyboardShortcuts({
+    enabled: true,
+    sessions: visibleSessions,
+    onLayoutModeChange: setMode,
+    layoutMode: mode,
+    dockviewApi: dockviewApiRef.current,
+  })
 
   // Handlers
   const handleSelect = useCallback(
@@ -144,6 +162,35 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
     setContextMenu(null)
   }, [])
 
+  // Phase E handlers
+  const handleSelectPreset = useCallback(
+    (presetName: string) => {
+      setActivePreset(presetName)
+    },
+    [setActivePreset],
+  )
+
+  const handleSavePreset = useCallback(
+    (name: string) => {
+      if (dockviewApiRef.current) {
+        savePreset(name, dockviewApiRef.current.toJSON())
+      }
+    },
+    [savePreset],
+  )
+
+  const handleDeletePreset = useCallback(
+    (name: string) => {
+      deletePreset(name)
+    },
+    [deletePreset],
+  )
+
+  const handleResetLayout = useCallback(() => {
+    setSavedLayout(null)
+    setMode('auto-grid')
+  }, [setSavedLayout, setMode])
+
   // Context menu session
   const contextMenuSession = contextMenu
     ? (sessions.find((s) => s.id === contextMenu.sessionId) ?? null)
@@ -151,7 +198,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
 
   return (
     <div className="flex flex-col h-full gap-2">
-      {/* Grid controls toolbar */}
+      {/* Grid controls toolbar — existing Phase C (shown in both modes) */}
       <GridControls
         gridOverride={gridOverride}
         compactHeaders={compactHeaders}
@@ -163,45 +210,85 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
         onVerboseModeChange={toggleVerbose}
       />
 
-      {/* Monitor grid */}
-      <div className="flex-1 min-h-0">
-        <MonitorGrid
-          sessions={visibleSessions}
-          gridOverride={gridOverride}
-          compactHeaders={compactHeaders}
-          onVisibilityChange={setVisiblePanes}
-        >
-          {visibleSessions.map((session) => {
-            const isPinned = pinnedPaneIds.has(session.id)
-            // Default to visible when observer hasn't fired yet (size === 0) since we've
-            // already limited the number of panes to gridCapacity above.
-            const isPaneVisible = visiblePanes.size === 0 || visiblePanes.has(session.id)
+      {/* Layout mode toggle + preset controls (Phase E) */}
+      <div className="flex items-center gap-3 px-3">
+        <LayoutModeToggle mode={mode} onToggle={toggleMode} />
 
-            return (
-              <div key={session.id} data-pane-id={session.id}>
-                <MonitorPane
-                  session={session}
-                  isSelected={selectedPaneId === session.id}
-                  isExpanded={false}
-                  isPinned={isPinned}
-                  compactHeader={compactHeaders}
-                  isVisible={isPaneVisible}
-                  onSelect={() => handleSelect(session.id)}
-                  onExpand={() => handleExpand(session.id)}
-                  onPin={() => handlePin(session.id)}
-                  onHide={() => hidePane(session.id)}
-                  onContextMenu={(e) => handleContextMenu(e, session.id)}
-                >
-                  <RichTerminalPane
-                    sessionId={session.id}
+        {mode === 'custom' && (
+          <>
+            <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+            <LayoutPresets
+              sessions={visibleSessions}
+              dockviewApi={dockviewApiRef.current}
+              activePreset={activePreset}
+              onSelectPreset={handleSelectPreset}
+              onSavePreset={handleSavePreset}
+              onDeletePreset={handleDeletePreset}
+              customPresets={customPresets}
+              verboseMode={verboseMode}
+            />
+            <button
+              type="button"
+              onClick={handleResetLayout}
+              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 px-2 py-1 rounded border border-transparent hover:border-gray-300 dark:hover:border-gray-700 transition-colors"
+            >
+              Reset
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Content area — conditional render */}
+      <div className="flex-1 min-h-0">
+        {mode === 'auto-grid' ? (
+          <MonitorGrid
+            sessions={visibleSessions}
+            gridOverride={gridOverride}
+            compactHeaders={compactHeaders}
+            onVisibilityChange={setVisiblePanes}
+          >
+            {visibleSessions.map((session) => {
+              const isPinned = pinnedPaneIds.has(session.id)
+              const isPaneVisible = visiblePanes.size === 0 || visiblePanes.has(session.id)
+
+              return (
+                <div key={session.id} data-pane-id={session.id}>
+                  <MonitorPane
+                    session={session}
+                    isSelected={selectedPaneId === session.id}
+                    isExpanded={false}
+                    isPinned={isPinned}
+                    compactHeader={compactHeaders}
                     isVisible={isPaneVisible}
-                    verboseMode={verboseMode}
-                  />
-                </MonitorPane>
-              </div>
-            )
-          })}
-        </MonitorGrid>
+                    onSelect={() => handleSelect(session.id)}
+                    onExpand={() => handleExpand(session.id)}
+                    onPin={() => handlePin(session.id)}
+                    onHide={() => hidePane(session.id)}
+                    onContextMenu={(e) => handleContextMenu(e, session.id)}
+                  >
+                    <RichTerminalPane
+                      sessionId={session.id}
+                      isVisible={isPaneVisible}
+                      verboseMode={verboseMode}
+                    />
+                  </MonitorPane>
+                </div>
+              )
+            })}
+          </MonitorGrid>
+        ) : (
+          <DockLayout
+            sessions={visibleSessions}
+            initialLayout={savedLayout}
+            onLayoutChange={setSavedLayout}
+            onApiReady={(api) => {
+              dockviewApiRef.current = api
+            }}
+            compactHeaders={compactHeaders}
+            verboseMode={verboseMode}
+            onSelectSession={onSelectSession}
+          />
+        )}
       </div>
 
       {/* Context menu */}
