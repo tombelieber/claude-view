@@ -18,6 +18,7 @@
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace -- -D warnings",
     "lint:all": "turbo lint && cargo clippy --workspace -- -D warnings",
+    "ci:check": "turbo run lint typecheck test --affected",
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "fmt": "cargo fmt --all",
