@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
-import { RichPane, parseRichMessage, type RichMessage } from './RichPane'
-import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
+import { useCallback, useState } from 'react'
+import { type ConnectionState, useTerminalSocket } from '../../hooks/use-terminal-socket'
+import { type RichMessage, RichPane, parseRichMessage } from './RichPane'
 
 interface RichTerminalPaneProps {
   sessionId: string
@@ -37,5 +37,12 @@ export function RichTerminalPane({ sessionId, isVisible, verboseMode }: RichTerm
     onConnectionChange: handleConnectionChange,
   })
 
-  return <RichPane messages={messages} isVisible={isVisible} verboseMode={verboseMode} bufferDone={bufferDone} />
+  return (
+    <RichPane
+      messages={messages}
+      isVisible={isVisible}
+      verboseMode={verboseMode}
+      bufferDone={bufferDone}
+    />
+  )
 }

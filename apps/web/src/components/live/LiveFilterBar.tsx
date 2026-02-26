@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Search, X, ChevronDown, Filter } from 'lucide-react'
+import { ChevronDown, Filter, Search, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { LiveSessionFilters } from './live-filter'
 
 interface LiveFilterBarProps {
@@ -68,11 +68,7 @@ export function LiveFilterBar({
     setOpenDropdown((prev) => (prev === type ? null : type))
   }
 
-  function toggleItem(
-    current: string[],
-    item: string,
-    onChange: (items: string[]) => void
-  ) {
+  function toggleItem(current: string[], item: string, onChange: (items: string[]) => void) {
     if (current.includes(item)) {
       onChange(current.filter((i) => i !== item))
     } else {
@@ -130,9 +126,7 @@ export function LiveFilterBar({
           onToggle={() => toggleDropdown('status')}
           options={availableStatuses}
           selected={filters.statuses}
-          onItemToggle={(item) =>
-            toggleItem(filters.statuses, item, onStatusChange)
-          }
+          onItemToggle={(item) => toggleItem(filters.statuses, item, onStatusChange)}
         />
 
         <FilterDropdownButton
@@ -142,9 +136,7 @@ export function LiveFilterBar({
           onToggle={() => toggleDropdown('project')}
           options={availableProjects}
           selected={filters.projects}
-          onItemToggle={(item) =>
-            toggleItem(filters.projects, item, onProjectChange)
-          }
+          onItemToggle={(item) => toggleItem(filters.projects, item, onProjectChange)}
         />
 
         <FilterDropdownButton
@@ -154,9 +146,7 @@ export function LiveFilterBar({
           onToggle={() => toggleDropdown('branch')}
           options={availableBranches}
           selected={filters.branches}
-          onItemToggle={(item) =>
-            toggleItem(filters.branches, item, onBranchChange)
-          }
+          onItemToggle={(item) => toggleItem(filters.branches, item, onBranchChange)}
         />
 
         {/* Clear all */}
@@ -245,9 +235,7 @@ function FilterDropdownButton({
             {count}
           </span>
         )}
-        <ChevronDown
-          className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
+        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
@@ -286,10 +274,7 @@ function FilterPill({
   return (
     <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
       {label}
-      <button
-        onClick={onRemove}
-        className="ml-1 hover:text-red-400 cursor-pointer"
-      >
+      <button onClick={onRemove} className="ml-1 hover:text-red-400 cursor-pointer">
         <X className="h-3 w-3" />
       </button>
     </span>

@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { TimeRangeSelector } from './TimeRangeSelector'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BREAKPOINTS } from '../../hooks/use-media-query'
+import { TimeRangeSelector } from './TimeRangeSelector'
 
 type TimeRange = '7d' | '30d' | '90d' | 'all'
 
@@ -48,13 +48,7 @@ describe('TimeRangeSelector', () => {
     })
 
     it('renders segmented control on desktop', () => {
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={() => {}} options={defaultOptions} />)
 
       // Should render radiogroup (SegmentedControl)
       expect(screen.getByRole('radiogroup')).toBeInTheDocument()
@@ -66,13 +60,7 @@ describe('TimeRangeSelector', () => {
       const user = userEvent.setup()
       const onChange = vi.fn()
 
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={onChange}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={onChange} options={defaultOptions} />)
 
       await user.click(screen.getByRole('radio', { name: '7 days' }))
       expect(onChange).toHaveBeenCalledWith('7d')
@@ -85,13 +73,7 @@ describe('TimeRangeSelector', () => {
     })
 
     it('renders dropdown select on mobile', () => {
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={() => {}} options={defaultOptions} />)
 
       // Should render combobox (native select)
       const select = screen.getByRole('combobox')
@@ -100,13 +82,7 @@ describe('TimeRangeSelector', () => {
     })
 
     it('renders all options in dropdown', () => {
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={() => {}} options={defaultOptions} />)
 
       const options = screen.getAllByRole('option')
       expect(options).toHaveLength(4)
@@ -120,26 +96,14 @@ describe('TimeRangeSelector', () => {
       const user = userEvent.setup()
       const onChange = vi.fn()
 
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={onChange}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={onChange} options={defaultOptions} />)
 
       await user.selectOptions(screen.getByRole('combobox'), '7d')
       expect(onChange).toHaveBeenCalledWith('7d')
     })
 
     it('has minimum 44px touch target on mobile', () => {
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={() => {}} options={defaultOptions} />)
 
       const select = screen.getByRole('combobox')
       // Check for min-h-[44px] and min-w-[44px] classes
@@ -157,13 +121,10 @@ describe('TimeRangeSelector', () => {
           onChange={() => {}}
           options={defaultOptions}
           ariaLabel="Select period"
-        />
+        />,
       )
 
-      expect(screen.getByRole('radiogroup')).toHaveAttribute(
-        'aria-label',
-        'Select period'
-      )
+      expect(screen.getByRole('radiogroup')).toHaveAttribute('aria-label', 'Select period')
     })
 
     it('has aria-label on mobile', () => {
@@ -174,29 +135,17 @@ describe('TimeRangeSelector', () => {
           onChange={() => {}}
           options={defaultOptions}
           ariaLabel="Select period"
-        />
+        />,
       )
 
-      expect(screen.getByRole('combobox')).toHaveAttribute(
-        'aria-label',
-        'Select period'
-      )
+      expect(screen.getByRole('combobox')).toHaveAttribute('aria-label', 'Select period')
     })
 
     it('uses default aria-label when not provided', () => {
       setMobileViewport()
-      render(
-        <TimeRangeSelector
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<TimeRangeSelector value="30d" onChange={() => {}} options={defaultOptions} />)
 
-      expect(screen.getByRole('combobox')).toHaveAttribute(
-        'aria-label',
-        'Time range selector'
-      )
+      expect(screen.getByRole('combobox')).toHaveAttribute('aria-label', 'Time range selector')
     })
   })
 })

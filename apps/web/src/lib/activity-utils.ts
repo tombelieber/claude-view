@@ -117,7 +117,7 @@ export function aggregateByProject(sessions: SessionInfo[]): ProjectActivity[] {
 export function computeSummary(sessions: SessionInfo[], days: DayActivity[]): ActivitySummary {
   // Count ALL sessions for the headline number (matches footer/status bar).
   // Only filter to duration>0 for time-based calculations (avg, longest, etc.).
-  const timedSessions = sessions.filter(s => s.durationSeconds > 0)
+  const timedSessions = sessions.filter((s) => s.durationSeconds > 0)
   const totalSeconds = timedSessions.reduce((sum, s) => sum + s.durationSeconds, 0)
   const sessionCount = sessions.length
 
@@ -162,7 +162,8 @@ export function computeSummary(sessions: SessionInfo[], days: DayActivity[]): Ac
   return {
     totalSeconds,
     sessionCount,
-    avgSessionSeconds: timedSessions.length > 0 ? Math.round(totalSeconds / timedSessions.length) : 0,
+    avgSessionSeconds:
+      timedSessions.length > 0 ? Math.round(totalSeconds / timedSessions.length) : 0,
     longestSession,
     busiestDay,
     totalToolCalls,

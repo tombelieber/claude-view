@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
 
 interface TableProps {
@@ -19,11 +19,7 @@ function formatDuration(seconds: number): string {
   return remaining > 0 ? `${hours}h ${remaining}m` : `${hours}h`
 }
 
-export function CategoryTable({
-  data,
-  onCategoryClick,
-  selectedCategory,
-}: TableProps) {
+export function CategoryTable({ data, onCategoryClick, selectedCategory }: TableProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [sortField, setSortField] = useState<SortField>('count')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -93,9 +89,7 @@ export function CategoryTable({
       <span className="inline-flex items-center gap-1">
         {label}
         {sortField === field && (
-          <span className="text-blue-500">
-            {sortDir === 'asc' ? '\u2191' : '\u2193'}
-          </span>
+          <span className="text-blue-500">{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>
         )}
       </span>
     </th>
@@ -164,10 +158,7 @@ function CategoryRows({
         onClick={() => onCategoryClick(node.id)}
       >
         <td className="px-3 py-2.5">
-          <div
-            className="flex items-center gap-1"
-            style={{ paddingLeft: `${depth * 20}px` }}
-          >
+          <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 20}px` }}>
             {hasChildren ? (
               <button
                 onClick={(e) => {
@@ -186,14 +177,10 @@ function CategoryRows({
             ) : (
               <span className="w-5" />
             )}
-            <span className="font-medium text-gray-900 dark:text-gray-100">
-              {node.name}
-            </span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{node.name}</span>
           </div>
         </td>
-        <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 tabular-nums">
-          {node.count}
-        </td>
+        <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 tabular-nums">{node.count}</td>
         <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 tabular-nums">
           {node.percentage.toFixed(1)}%
         </td>
@@ -207,9 +194,7 @@ function CategoryRows({
           {node.commitRate.toFixed(0)}%
         </td>
         <td className="px-3 py-2.5">
-          {hasChildren && (
-            <ChevronRight className="w-4 h-4 text-gray-400" />
-          )}
+          {hasChildren && <ChevronRight className="w-4 h-4 text-gray-400" />}
         </td>
       </tr>
       {isExpanded &&

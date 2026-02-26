@@ -10,7 +10,7 @@ async function fetchMessages(
   limit: number,
 ): Promise<PaginatedMessages> {
   const response = await fetch(
-    `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}`
+    `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}&offset=${offset}`,
   )
   if (!response.ok) throw new HttpError('Failed to fetch messages', response.status)
   return response.json()

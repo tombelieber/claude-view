@@ -1,7 +1,7 @@
-// src/lib/message-to-rich.ts
-import type { Message } from '../types/generated'
 import type { RichMessage } from '../components/live/RichPane'
 import type { ActionCategory } from '../components/live/action-log/types'
+// src/lib/message-to-rich.ts
+import type { Message } from '../types/generated'
 
 /** Strip Claude Code internal command tags from content (same logic as RichPane). */
 function stripCommandTags(content: string): string {
@@ -136,9 +136,10 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       case 'progress': {
         const content = stripCommandTags(msg.content)
         // hook_progress gets its own category (Rust maps it to "hook", we split them)
-        const progressCategory = msg.metadata?.type === 'hook_progress'
-          ? 'hook_progress' as ActionCategory
-          : (msg.category as ActionCategory) ?? undefined
+        const progressCategory =
+          msg.metadata?.type === 'hook_progress'
+            ? ('hook_progress' as ActionCategory)
+            : ((msg.category as ActionCategory) ?? undefined)
         result.push({
           type: 'progress',
           content: content || '',

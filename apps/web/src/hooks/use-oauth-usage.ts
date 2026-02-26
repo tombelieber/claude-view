@@ -33,7 +33,7 @@ async function fetchOAuthUsage(): Promise<OAuthUsage> {
  * Returns `refetch` so consumers can trigger a fresh fetch on demand
  * (e.g. when a hover popover opens).
  */
-export function useOAuthUsage(refetchInterval: number = 300_000) {
+export function useOAuthUsage(refetchInterval = 300_000) {
   return useQuery({
     queryKey: ['oauth-usage'],
     queryFn: fetchOAuthUsage,

@@ -1,17 +1,17 @@
-import { useState } from 'react'
 import {
+  AlertCircle,
+  CheckCircle2,
+  FlaskConical,
+  Key,
+  Loader2,
+  Server,
   Settings2,
   Terminal,
-  Key,
-  Server,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  FlaskConical,
 } from 'lucide-react'
+import { useState } from 'react'
+import { useAppSettings } from '../hooks/use-app-settings'
 import { cn } from '../lib/utils'
 import type { ClaudeCliStatus } from '../types/generated'
-import { useAppSettings } from '../hooks/use-app-settings'
 
 type ProviderType = 'claude-cli' | 'anthropic-api' | 'openai-compatible'
 
@@ -73,7 +73,9 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
   const { settings, updateSettings } = useAppSettings()
   const model = settings?.llmModel ?? 'haiku'
   const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<'idle' | 'success' | 'error' | 'not-installed' | 'not-authenticated'>('idle')
+  const [testResult, setTestResult] = useState<
+    'idle' | 'success' | 'error' | 'not-installed' | 'not-authenticated'
+  >('idle')
 
   const handleModelChange = async (newModel: string) => {
     await updateSettings({ llmModel: newModel })
@@ -129,7 +131,8 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
       {/* Body */}
       <div className="p-4">
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Choose the LLM model for AI features (classification, report generation). Applies to all features.
+          Choose the LLM model for AI features (classification, report generation). Applies to all
+          features.
         </p>
 
         {/* Provider selection */}
@@ -142,7 +145,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
                 selectedProvider === provider.id
                   ? 'border-blue-300 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-900/10'
                   : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
-                !provider.available && 'opacity-50 cursor-not-allowed'
+                !provider.available && 'opacity-50 cursor-not-allowed',
               )}
             >
               <input
@@ -156,9 +159,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 dark:text-gray-400">
-                    {provider.icon}
-                  </span>
+                  <span className="text-gray-500 dark:text-gray-400">{provider.icon}</span>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                     {provider.label}
                   </span>
@@ -196,7 +197,8 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
               <option value="opus">Claude Opus (most capable)</option>
             </select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-              Haiku is recommended for classification. It provides excellent accuracy at the lowest cost.
+              Haiku is recommended for classification. It provides excellent accuracy at the lowest
+              cost.
             </p>
           </div>
         )}
@@ -212,7 +214,12 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
               )}
               <span className="text-xs text-gray-600 dark:text-gray-400">
                 {cliStatus.path ? (
-                  <>Installed: <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">{cliStatus.path}</code></>
+                  <>
+                    Installed:{' '}
+                    <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                      {cliStatus.path}
+                    </code>
+                  </>
                 ) : (
                   'CLI not installed'
                 )}
@@ -230,13 +237,21 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
                     <>
                       Authenticated
                       {cliStatus.subscriptionType && cliStatus.subscriptionType !== 'unknown' && (
-                        <> ({cliStatus.subscriptionType.charAt(0).toUpperCase() + cliStatus.subscriptionType.slice(1)})</>
+                        <>
+                          {' '}
+                          (
+                          {cliStatus.subscriptionType.charAt(0).toUpperCase() +
+                            cliStatus.subscriptionType.slice(1)}
+                          )
+                        </>
                       )}
                     </>
                   ) : (
                     <>
-                      Not authenticated —{' '}
-                      run <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">claude auth login</code>
+                      Not authenticated — run{' '}
+                      <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                        claude auth login
+                      </code>
                     </>
                   )}
                 </span>
@@ -256,7 +271,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
               'border border-gray-300 dark:border-gray-600',
               'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              'transition-colors duration-150'
+              'transition-colors duration-150',
             )}
           >
             {isTesting ? (
@@ -282,7 +297,12 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
           {testResult === 'not-authenticated' && (
             <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
               <AlertCircle className="w-3.5 h-3.5" />
-              <span className="text-xs">CLI not authenticated — run <code className="font-mono bg-amber-50 dark:bg-amber-900/30 px-1 rounded">claude auth login</code></span>
+              <span className="text-xs">
+                CLI not authenticated — run{' '}
+                <code className="font-mono bg-amber-50 dark:bg-amber-900/30 px-1 rounded">
+                  claude auth login
+                </code>
+              </span>
             </div>
           )}
           {testResult === 'error' && (

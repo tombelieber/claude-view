@@ -1,15 +1,40 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import {
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
+  CalendarDays,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  Cpu,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderTree,
+  GitBranch,
+  List,
+  Monitor,
+  PanelLeft,
+  PanelLeftClose,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Folder, FolderOpen, Clock, GitBranch, AlertCircle, List, FolderTree, ChevronsUpDown, ChevronsDownUp, BarChart3, X, ArrowRight, Monitor, PanelLeftClose, PanelLeft, Cpu, FileText, CalendarDays } from 'lucide-react'
-import type { ProjectSummary } from '../hooks/use-projects'
 import { useProjectBranches } from '../hooks/use-branches'
-import { cn } from '../lib/utils'
-import { NO_BRANCH } from '../lib/constants'
-import { buildFlatList, buildProjectTree, collectGroupNames, type ProjectTreeNode } from '../utils/build-project-tree'
+import type { ProjectSummary } from '../hooks/use-projects'
 import { useRecentSessions } from '../hooks/use-recent-sessions'
+import { NO_BRANCH } from '../lib/constants'
 import { buildSessionUrl } from '../lib/url-utils'
-import { getSessionTitle } from '../utils/get-session-title'
+import { cn } from '../lib/utils'
 import { useAppStore } from '../store/app-store'
+import {
+  type ProjectTreeNode,
+  buildFlatList,
+  buildProjectTree,
+  collectGroupNames,
+} from '../utils/build-project-tree'
+import { getSessionTitle } from '../utils/get-session-title'
 
 interface SidebarProps {
   projects: ProjectSummary[]
@@ -27,7 +52,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const widthRef = useRef(sidebarWidth)
 
   const [searchParams, setSearchParams] = useSearchParams()
-  const selectedProjectId = searchParams.get("project")
+  const selectedProjectId = searchParams.get('project')
 
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
@@ -105,29 +130,35 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
     })
   }, [])
 
-  const handleProjectClick = useCallback((node: ProjectTreeNode) => {
-    if (node.type !== 'project') return
+  const handleProjectClick = useCallback(
+    (node: ProjectTreeNode) => {
+      if (node.type !== 'project') return
 
-    const currentProject = searchParams.get("project")
+      const currentProject = searchParams.get('project')
 
-    // Toggle project filter via URL query params (expand is handled separately by chevron)
-    const newParams = new URLSearchParams(searchParams)
-    if (currentProject === node.name) {
-      // Deselect: clear project and branch
-      newParams.delete("project")
-      newParams.delete("branch")
-    } else {
-      // Select: set project, clear branch
-      newParams.set("project", node.name)
-      newParams.delete("branch")
-    }
-    setSearchParams(newParams)
-  }, [searchParams, setSearchParams])
+      // Toggle project filter via URL query params (expand is handled separately by chevron)
+      const newParams = new URLSearchParams(searchParams)
+      if (currentProject === node.name) {
+        // Deselect: clear project and branch
+        newParams.delete('project')
+        newParams.delete('branch')
+      } else {
+        // Select: set project, clear branch
+        newParams.set('project', node.name)
+        newParams.delete('branch')
+      }
+      setSearchParams(newParams)
+    },
+    [searchParams, setSearchParams],
+  )
 
-  const handleGroupClick = useCallback((node: ProjectTreeNode) => {
-    if (node.type !== 'group') return
-    toggleExpandGroup(node.name)
-  }, [toggleExpandGroup])
+  const handleGroupClick = useCallback(
+    (node: ProjectTreeNode) => {
+      if (node.type !== 'group') return
+      toggleExpandGroup(node.name)
+    },
+    [toggleExpandGroup],
+  )
 
   const handleExpandAll = useCallback(() => {
     setExpandedGroups(new Set(collectGroupNames(treeNodes)))
@@ -139,248 +170,272 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
     setExpandedProjects(new Set())
   }, [])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (flattenedNodes.length === 0) return
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (flattenedNodes.length === 0) return
 
-    const currentNode = flattenedNodes[focusedIndex]
+      const currentNode = flattenedNodes[focusedIndex]
 
-    switch (e.key) {
-      case 'ArrowDown': {
-        e.preventDefault()
-        const next = focusedIndex < flattenedNodes.length - 1 ? focusedIndex + 1 : 0
-        setFocusedIndex(next)
-        itemRefs.current[next]?.focus()
-        break
-      }
-      case 'ArrowUp': {
-        e.preventDefault()
-        const prev = focusedIndex > 0 ? focusedIndex - 1 : flattenedNodes.length - 1
-        setFocusedIndex(prev)
-        itemRefs.current[prev]?.focus()
-        break
-      }
-      case 'Enter': {
-        e.preventDefault()
-        if (focusedIndex >= 0 && focusedIndex < flattenedNodes.length) {
-          const node = flattenedNodes[focusedIndex]
-          if (node.type === 'project') {
-            handleProjectClick(node)
-          } else {
-            handleGroupClick(node)
-          }
+      switch (e.key) {
+        case 'ArrowDown': {
+          e.preventDefault()
+          const next = focusedIndex < flattenedNodes.length - 1 ? focusedIndex + 1 : 0
+          setFocusedIndex(next)
+          itemRefs.current[next]?.focus()
+          break
         }
-        break
-      }
-      case 'ArrowRight': {
-        e.preventDefault()
-        if (currentNode) {
-          if (currentNode.type === 'project') {
-            if (!expandedProjects.has(currentNode.name)) {
-              setExpandedProjects((prev) => new Set(prev).add(currentNode.name))
-            }
-          } else if (currentNode.type === 'group') {
-            if (!expandedGroups.has(currentNode.name)) {
-              setExpandedGroups((prev) => new Set(prev).add(currentNode.name))
+        case 'ArrowUp': {
+          e.preventDefault()
+          const prev = focusedIndex > 0 ? focusedIndex - 1 : flattenedNodes.length - 1
+          setFocusedIndex(prev)
+          itemRefs.current[prev]?.focus()
+          break
+        }
+        case 'Enter': {
+          e.preventDefault()
+          if (focusedIndex >= 0 && focusedIndex < flattenedNodes.length) {
+            const node = flattenedNodes[focusedIndex]
+            if (node.type === 'project') {
+              handleProjectClick(node)
+            } else {
+              handleGroupClick(node)
             }
           }
+          break
         }
-        break
-      }
-      case 'ArrowLeft': {
-        e.preventDefault()
-        if (currentNode) {
-          if (currentNode.type === 'project') {
-            if (expandedProjects.has(currentNode.name)) {
-              setExpandedProjects((prev) => {
-                const next = new Set(prev)
-                next.delete(currentNode.name)
-                return next
-              })
-            }
-          } else if (currentNode.type === 'group') {
-            if (expandedGroups.has(currentNode.name)) {
-              setExpandedGroups((prev) => {
-                const next = new Set(prev)
-                next.delete(currentNode.name)
-                return next
-              })
+        case 'ArrowRight': {
+          e.preventDefault()
+          if (currentNode) {
+            if (currentNode.type === 'project') {
+              if (!expandedProjects.has(currentNode.name)) {
+                setExpandedProjects((prev) => new Set(prev).add(currentNode.name))
+              }
+            } else if (currentNode.type === 'group') {
+              if (!expandedGroups.has(currentNode.name)) {
+                setExpandedGroups((prev) => new Set(prev).add(currentNode.name))
+              }
             }
           }
+          break
         }
-        break
+        case 'ArrowLeft': {
+          e.preventDefault()
+          if (currentNode) {
+            if (currentNode.type === 'project') {
+              if (expandedProjects.has(currentNode.name)) {
+                setExpandedProjects((prev) => {
+                  const next = new Set(prev)
+                  next.delete(currentNode.name)
+                  return next
+                })
+              }
+            } else if (currentNode.type === 'group') {
+              if (expandedGroups.has(currentNode.name)) {
+                setExpandedGroups((prev) => {
+                  const next = new Set(prev)
+                  next.delete(currentNode.name)
+                  return next
+                })
+              }
+            }
+          }
+          break
+        }
       }
-    }
-  }, [focusedIndex, flattenedNodes, expandedProjects, expandedGroups, handleProjectClick, handleGroupClick])
+    },
+    [
+      focusedIndex,
+      flattenedNodes,
+      expandedProjects,
+      expandedGroups,
+      handleProjectClick,
+      handleGroupClick,
+    ],
+  )
 
   // Render tree node recursively
-  const renderTreeNode = useCallback((node: ProjectTreeNode, index: number) => {
-    if (node.type === 'group') {
-      const isExpanded = expandedGroups.has(node.name)
-      const paddingLeft = node.depth * 12 + 8
+  const renderTreeNode = useCallback(
+    (node: ProjectTreeNode, index: number) => {
+      if (node.type === 'group') {
+        const isExpanded = expandedGroups.has(node.name)
+        const paddingLeft = node.depth * 12 + 8
 
-      return (
-        <div key={`group-${node.name}`}>
-          <div
-            ref={(el) => { itemRefs.current[index] = el }}
-            role="treeitem"
-            aria-expanded={isExpanded}
-            tabIndex={focusedIndex === index ? 0 : -1}
-            onClick={() => handleGroupClick(node)}
-            onFocus={() => setFocusedIndex(index)}
-            style={{ paddingLeft: `${paddingLeft}px` }}
-            className={cn(
-              'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
-              'transition-colors duration-150',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
-              'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-            )}
-          >
-            {/* Chevron toggle */}
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              onClick={(e) => toggleExpandGroup(node.name, e)}
+        return (
+          <div key={`group-${node.name}`}>
+            <div
+              ref={(el) => {
+                itemRefs.current[index] = el
+              }}
+              role="treeitem"
+              aria-expanded={isExpanded}
+              tabIndex={focusedIndex === index ? 0 : -1}
+              onClick={() => handleGroupClick(node)}
+              onFocus={() => setFocusedIndex(index)}
+              style={{ paddingLeft: `${paddingLeft}px` }}
               className={cn(
-                'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
-                isExpanded && 'rotate-90'
+                'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
+                'transition-colors duration-150',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
+                'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
               )}
             >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+              {/* Chevron toggle */}
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                onClick={(e) => toggleExpandGroup(node.name, e)}
+                className={cn(
+                  'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
+                  isExpanded && 'rotate-90',
+                )}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
 
-            {/* Folder icon */}
-            {isExpanded ? (
-              <FolderOpen className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-            ) : (
-              <Folder className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-            )}
+              {/* Folder icon */}
+              {isExpanded ? (
+                <FolderOpen className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+              ) : (
+                <Folder className="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+              )}
 
-            {/* Group name */}
-            <span className="flex-1 truncate font-medium text-[13px] ml-1 text-gray-600 dark:text-gray-400">
-              {node.displayName}
-            </span>
+              {/* Group name */}
+              <span className="flex-1 truncate font-medium text-[13px] ml-1 text-gray-600 dark:text-gray-400">
+                {node.displayName}
+              </span>
 
-            {/* Session count */}
-            <span className="text-[11px] tabular-nums flex-shrink-0 text-gray-400 dark:text-gray-500">
-              {node.sessionCount}
-            </span>
+              {/* Session count */}
+              <span className="text-[11px] tabular-nums flex-shrink-0 text-gray-400 dark:text-gray-500">
+                {node.sessionCount}
+              </span>
+            </div>
           </div>
-        </div>
-      )
-    } else {
-      // Project node
-      const isSelected = selectedProjectId === node.name
-      const isExpanded = expandedProjects.has(node.name)
-      const paddingLeft = node.depth * 12 + 8
+        )
+      } else {
+        // Project node
+        const isSelected = selectedProjectId === node.name
+        const isExpanded = expandedProjects.has(node.name)
+        const paddingLeft = node.depth * 12 + 8
 
-      return (
-        <div key={`project-${node.name}`}>
-          <div
-            ref={(el) => { itemRefs.current[index] = el }}
-            role="treeitem"
-            aria-selected={isSelected}
-            aria-expanded={isExpanded}
-            aria-current={isSelected ? 'page' : undefined}
-            tabIndex={focusedIndex === index ? 0 : -1}
-            onClick={() => handleProjectClick(node)}
-            onFocus={() => setFocusedIndex(index)}
-            style={{ paddingLeft: `${paddingLeft}px` }}
-            className={cn(
-              'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
-              'transition-colors duration-150',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
-              isSelected
-                ? 'bg-blue-500 text-white'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
-            )}
-          >
-            {/* Chevron toggle */}
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              onClick={(e) => toggleExpandProject(node.name, e)}
+        return (
+          <div key={`project-${node.name}`}>
+            <div
+              ref={(el) => {
+                itemRefs.current[index] = el
+              }}
+              role="treeitem"
+              aria-selected={isSelected}
+              aria-expanded={isExpanded}
+              aria-current={isSelected ? 'page' : undefined}
+              tabIndex={focusedIndex === index ? 0 : -1}
+              onClick={() => handleProjectClick(node)}
+              onFocus={() => setFocusedIndex(index)}
+              style={{ paddingLeft: `${paddingLeft}px` }}
               className={cn(
-                'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
-                isExpanded && 'rotate-90'
+                'w-full flex items-center gap-1 py-1 pr-2 h-7 cursor-pointer select-none',
+                'transition-colors duration-150',
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
+                isSelected
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
               )}
             >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+              {/* Chevron toggle */}
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                onClick={(e) => toggleExpandProject(node.name, e)}
+                className={cn(
+                  'flex-shrink-0 p-0.5 rounded hover:bg-black/10 transition-transform',
+                  isExpanded && 'rotate-90',
+                )}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
 
-            {/* Folder icon */}
-            {isExpanded ? (
-              <FolderOpen className={cn(
-                'w-4 h-4 flex-shrink-0',
-                isSelected ? 'text-white' : 'text-blue-400'
-              )} />
-            ) : (
-              <Folder className={cn(
-                'w-4 h-4 flex-shrink-0',
-                isSelected ? 'text-white' : 'text-blue-400'
-              )} />
-            )}
+              {/* Folder icon */}
+              {isExpanded ? (
+                <FolderOpen
+                  className={cn(
+                    'w-4 h-4 flex-shrink-0',
+                    isSelected ? 'text-white' : 'text-blue-400',
+                  )}
+                />
+              ) : (
+                <Folder
+                  className={cn(
+                    'w-4 h-4 flex-shrink-0',
+                    isSelected ? 'text-white' : 'text-blue-400',
+                  )}
+                />
+              )}
 
-            {/* Project name */}
-            <span className="flex-1 truncate font-medium text-[13px] ml-1">
-              {node.displayName}
-            </span>
+              {/* Project name */}
+              <span className="flex-1 truncate font-medium text-[13px] ml-1">
+                {node.displayName}
+              </span>
 
-            {/* Session count */}
-            <span className={cn(
-              'text-[11px] tabular-nums flex-shrink-0',
-              isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'
-            )}>
-              {node.sessionCount}
-            </span>
+              {/* Session count */}
+              <span
+                className={cn(
+                  'text-[11px] tabular-nums flex-shrink-0',
+                  isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500',
+                )}
+              >
+                {node.sessionCount}
+              </span>
+            </div>
+
+            {/* Expanded content - Branch list */}
+            {isExpanded && <BranchList projectName={node.name} />}
           </div>
-
-          {/* Expanded content - Branch list */}
-          {isExpanded && (
-            <BranchList
-              projectName={node.name}
-            />
-          )}
-        </div>
-      )
-    }
-  }, [
-    selectedProjectId,
-    expandedProjects,
-    expandedGroups,
-    focusedIndex,
-    toggleExpandProject,
-    toggleExpandGroup,
-    handleProjectClick,
-    handleGroupClick,
-  ])
+        )
+      }
+    },
+    [
+      selectedProjectId,
+      expandedProjects,
+      expandedGroups,
+      focusedIndex,
+      toggleExpandProject,
+      toggleExpandGroup,
+      handleProjectClick,
+      handleGroupClick,
+    ],
+  )
 
   // Keep ref in sync with store
-  useEffect(() => { widthRef.current = sidebarWidth }, [sidebarWidth])
+  useEffect(() => {
+    widthRef.current = sidebarWidth
+  }, [sidebarWidth])
 
-  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsResizing(true)
-    const startX = e.clientX
-    const startW = widthRef.current
+  const handleResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      setIsResizing(true)
+      const startX = e.clientX
+      const startW = widthRef.current
 
-    const onMove = (ev: PointerEvent) => {
-      const delta = ev.clientX - startX
-      const newWidth = Math.round(Math.max(200, Math.min(600, startW + delta)))
-      widthRef.current = newWidth
-      setSidebarWidth(newWidth)
-    }
+      const onMove = (ev: PointerEvent) => {
+        const delta = ev.clientX - startX
+        const newWidth = Math.round(Math.max(200, Math.min(600, startW + delta)))
+        widthRef.current = newWidth
+        setSidebarWidth(newWidth)
+      }
 
-    const onUp = () => {
-      setIsResizing(false)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
+      const onUp = () => {
+        setIsResizing(false)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+      }
 
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }, [setSidebarWidth])
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [setSidebarWidth],
+  )
 
   if (collapsed) {
     return (
@@ -392,7 +447,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname === '/'
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Live Monitor"
         >
@@ -405,7 +460,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname.startsWith('/sessions')
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Sessions"
         >
@@ -418,7 +473,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname === '/analytics'
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Analytics"
         >
@@ -431,7 +486,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname === '/activity'
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Activity"
         >
@@ -444,7 +499,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
             location.pathname === '/reports'
               ? 'bg-blue-500 text-white'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Reports"
         >
@@ -459,7 +514,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           className={cn(
             'p-2 rounded-md transition-colors',
             'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1'
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
           )}
           title="Expand sidebar (⌘B)"
         >
@@ -485,71 +540,75 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
         <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
       </div>
       {/* ─── Zone 1: Navigation Tabs ─── */}
-      <nav className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1" aria-label="Main navigation">
+      <nav
+        className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1"
+        aria-label="Main navigation"
+      >
         {(() => {
           // Build preserved params string for nav links
           const preservedParams = new URLSearchParams()
-          if (searchParams.get("project")) preservedParams.set("project", searchParams.get("project")!)
-          if (searchParams.get("branch")) preservedParams.set("branch", searchParams.get("branch")!)
+          if (searchParams.get('project'))
+            preservedParams.set('project', searchParams.get('project')!)
+          if (searchParams.get('branch')) preservedParams.set('branch', searchParams.get('branch')!)
           const paramString = preservedParams.toString()
 
           return (
             <>
               <Link
-                to={`/${paramString ? `?${paramString}` : ""}`}
+                to={`/${paramString ? `?${paramString}` : ''}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   location.pathname === '/'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                 )}
               >
                 <Monitor className="w-4 h-4" />
                 <span className="font-medium">Live Monitor</span>
               </Link>
               <Link
-                to={`/sessions${paramString ? `?${paramString}` : ""}`}
+                to={`/sessions${paramString ? `?${paramString}` : ''}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   location.pathname.startsWith('/sessions')
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                 )}
               >
                 <Clock className="w-4 h-4" />
                 <span className="font-medium">Sessions</span>
               </Link>
               <Link
-                to={`/analytics${paramString ? `?${paramString}` : ""}`}
+                to={`/analytics${paramString ? `?${paramString}` : ''}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   location.pathname === '/analytics'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                 )}
               >
                 <BarChart3 className="w-4 h-4" />
                 <span className="font-medium">Analytics</span>
               </Link>
               <Link
-                to={`/activity${paramString ? `?${paramString}` : ""}`}
+                to={`/activity${paramString ? `?${paramString}` : ''}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   location.pathname === '/activity'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                 )}
               >
                 <CalendarDays className="w-4 h-4" />
                 <span className="font-medium">Activity</span>
               </Link>
               <Link
-                to={`/reports${paramString ? `?${paramString}` : ""}`}
+                to={`/reports${paramString ? `?${paramString}` : ''}`}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   location.pathname === '/reports'
                     ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                 )}
               >
                 <FileText className="w-4 h-4" />
@@ -558,7 +617,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               <span
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
-                  'text-gray-600 dark:text-gray-400'
+                  'text-gray-600 dark:text-gray-400',
                 )}
               >
                 <Cpu className="w-4 h-4" />
@@ -609,7 +668,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   viewMode === 'list'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
                 )}
                 aria-label="List view"
                 aria-pressed={viewMode === 'list'}
@@ -624,7 +683,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
                   viewMode === 'tree'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
                 )}
                 aria-label="Tree view"
                 aria-pressed={viewMode === 'tree'}
@@ -641,7 +700,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                   'p-1 rounded transition-colors',
                   'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
                   'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
                 )}
               >
                 <PanelLeftClose className="w-3.5 h-3.5" />
@@ -654,7 +713,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                   'p-1 rounded transition-colors',
                   'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
                   'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
                 )}
               >
                 <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -667,7 +726,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                   'p-1 rounded transition-colors',
                   'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
                   'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
                 )}
               >
                 <ChevronsDownUp className="w-3.5 h-3.5" />
@@ -703,30 +762,30 @@ function BranchList({ projectName }: BranchListProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const branchParam = searchParams.get('branch') || ''
   const selectedProject = searchParams.get('project')
-  const activeBranches = useMemo(
-    () => {
-      // Only show active branches if this project is the selected one
-      if (selectedProject !== projectName) return new Set<string>()
-      return new Set(branchParam ? [branchParam] : [])
-    },
-    [branchParam, selectedProject, projectName]
-  )
+  const activeBranches = useMemo(() => {
+    // Only show active branches if this project is the selected one
+    if (selectedProject !== projectName) return new Set<string>()
+    return new Set(branchParam ? [branchParam] : [])
+  }, [branchParam, selectedProject, projectName])
   const { data, isLoading, error, refetch } = useProjectBranches(projectName)
 
-  const handleBranchClick = useCallback((branch: string | null) => {
-    const newParams = new URLSearchParams(searchParams)
-    const branchKey = branch ?? NO_BRANCH // Encode null → ~ (git-invalid sentinel)
+  const handleBranchClick = useCallback(
+    (branch: string | null) => {
+      const newParams = new URLSearchParams(searchParams)
+      const branchKey = branch ?? NO_BRANCH // Encode null → ~ (git-invalid sentinel)
 
-    if (!activeBranches.has(branchKey)) {
-      // Select branch — also ensure parent project is set
-      newParams.set('branch', branchKey)
-      newParams.set('project', projectName)
-    } else {
-      // Deselect branch (toggle off)
-      newParams.delete('branch')
-    }
-    setSearchParams(newParams)
-  }, [searchParams, setSearchParams, activeBranches, projectName])
+      if (!activeBranches.has(branchKey)) {
+        // Select branch — also ensure parent project is set
+        newParams.set('branch', branchKey)
+        newParams.set('project', projectName)
+      } else {
+        // Deselect branch (toggle off)
+        newParams.delete('branch')
+      }
+      setSearchParams(newParams)
+    },
+    [searchParams, setSearchParams, activeBranches, projectName],
+  )
 
   if (isLoading) {
     return (
@@ -763,9 +822,7 @@ function BranchList({ projectName }: BranchListProps) {
   if (!data || data.branches.length === 0) {
     return (
       <div className="pl-10 pr-3 py-1">
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">
-          No branches
-        </span>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">No branches</span>
       </div>
     )
   }
@@ -790,28 +847,32 @@ function BranchList({ projectName }: BranchListProps) {
               'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
               isActive
                 ? 'bg-blue-100 dark:bg-blue-900/40'
-                : 'hover:bg-gray-200/70 dark:hover:bg-gray-800/70'
+                : 'hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
             )}
           >
-            <GitBranch className={cn(
-              'w-3 h-3 flex-shrink-0',
-              isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
-            )} />
+            <GitBranch
+              className={cn(
+                'w-3 h-3 flex-shrink-0',
+                isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500',
+              )}
+            />
             <span
               className={cn(
                 'flex-1 truncate text-[11px] text-left',
                 isNoBranch && 'italic',
                 isActive
                   ? 'text-blue-700 dark:text-blue-300 font-medium'
-                  : 'text-gray-600 dark:text-gray-400'
+                  : 'text-gray-600 dark:text-gray-400',
               )}
             >
               {displayName}
             </span>
-            <span className={cn(
-              'text-[10px] tabular-nums flex-shrink-0',
-              isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
-            )}>
+            <span
+              className={cn(
+                'text-[10px] tabular-nums flex-shrink-0',
+                isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500',
+              )}
+            >
               {branchItem.count}
             </span>
           </button>
@@ -829,8 +890,12 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
     return (
       <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
         <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" style={{ width: `${60 + i * 10}%` }} />
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5"
+            style={{ width: `${60 + i * 10}%` }}
+          />
         ))}
       </div>
     )
@@ -839,7 +904,10 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
   if (!sessions || sessions.length === 0) return null
 
   return (
-    <nav aria-label="Recent sessions" className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
+    <nav
+      aria-label="Recent sessions"
+      className="border-t border-gray-200 dark:border-gray-700 px-3 py-2"
+    >
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
           Recent
@@ -852,19 +920,21 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
         </Link>
       </div>
       <div className="space-y-0.5">
-        {sessions.map(session => (
+        {sessions.map((session) => (
           <Link
             key={session.id}
             to={buildSessionUrl(session.id, searchParams)}
             className={cn(
               'flex items-center gap-2 px-2 py-1 h-6 rounded text-[11px] transition-colors',
               'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none'
+              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
             )}
             title={session.preview}
           >
             <Clock className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-            <span className="truncate flex-1">{getSessionTitle(session.preview, session.summary)}</span>
+            <span className="truncate flex-1">
+              {getSessionTitle(session.preview, session.summary)}
+            </span>
             <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
               {formatRelativeTimeShort(session.modifiedAt)}
             </span>

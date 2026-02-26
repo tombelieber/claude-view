@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { SegmentedControl } from './SegmentedControl'
 
 type TimeRange = '7d' | '30d' | '90d' | 'all'
@@ -15,13 +15,7 @@ const defaultOptions = [
 describe('SegmentedControl', () => {
   describe('rendering', () => {
     it('renders all options', () => {
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={() => {}} options={defaultOptions} />)
 
       expect(screen.getByRole('radio', { name: '7 days' })).toBeInTheDocument()
       expect(screen.getByRole('radio', { name: '30 days' })).toBeInTheDocument()
@@ -30,22 +24,10 @@ describe('SegmentedControl', () => {
     })
 
     it('marks the selected option as checked', () => {
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={() => {}} options={defaultOptions} />)
 
-      expect(screen.getByRole('radio', { name: '30 days' })).toHaveAttribute(
-        'aria-checked',
-        'true'
-      )
-      expect(screen.getByRole('radio', { name: '7 days' })).toHaveAttribute(
-        'aria-checked',
-        'false'
-      )
+      expect(screen.getByRole('radio', { name: '30 days' })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('radio', { name: '7 days' })).toHaveAttribute('aria-checked', 'false')
     })
 
     it('renders with custom aria label', () => {
@@ -55,12 +37,10 @@ describe('SegmentedControl', () => {
           onChange={() => {}}
           options={defaultOptions}
           ariaLabel="Select time period"
-        />
+        />,
       )
 
-      expect(
-        screen.getByRole('radiogroup', { name: 'Select time period' })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('radiogroup', { name: 'Select time period' })).toBeInTheDocument()
     })
   })
 
@@ -69,13 +49,7 @@ describe('SegmentedControl', () => {
       const user = userEvent.setup()
       const onChange = vi.fn()
 
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={onChange}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={onChange} options={defaultOptions} />)
 
       await user.click(screen.getByRole('radio', { name: '7 days' }))
       expect(onChange).toHaveBeenCalledWith('7d')
@@ -85,13 +59,7 @@ describe('SegmentedControl', () => {
       const user = userEvent.setup()
       const onChange = vi.fn()
 
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={onChange}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={onChange} options={defaultOptions} />)
 
       await user.click(screen.getByRole('radio', { name: '90 days' }))
       expect(onChange).toHaveBeenCalledWith('90d')
@@ -103,38 +71,20 @@ describe('SegmentedControl', () => {
 
   describe('accessibility', () => {
     it('has radiogroup role on container', () => {
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={() => {}} options={defaultOptions} />)
 
       expect(screen.getByRole('radiogroup')).toBeInTheDocument()
     })
 
     it('each option has radio role', () => {
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={() => {}} options={defaultOptions} />)
 
       const radios = screen.getAllByRole('radio')
       expect(radios).toHaveLength(4)
     })
 
     it('selected option is visually distinct', () => {
-      render(
-        <SegmentedControl
-          value="30d"
-          onChange={() => {}}
-          options={defaultOptions}
-        />
-      )
+      render(<SegmentedControl value="30d" onChange={() => {}} options={defaultOptions} />)
 
       const selected = screen.getByRole('radio', { name: '30 days' })
       const unselected = screen.getByRole('radio', { name: '7 days' })

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { StructuredDataCard } from './StructuredDataCard'
 
 describe('StructuredDataCard', () => {
@@ -99,7 +99,8 @@ describe('StructuredDataCard', () => {
 
   describe('Nesting depth protection', () => {
     it('should handle normal nesting depth (10 levels)', () => {
-      const xml = '<div><div><div><div><div><div><div><div><div><div>Content</div></div></div></div></div></div></div></div></div></div>'
+      const xml =
+        '<div><div><div><div><div><div><div><div><div><div>Content</div></div></div></div></div></div></div></div></div></div>'
       render(<StructuredDataCard xml={xml} />)
       expect(screen.getByText(/Content/)).toBeInTheDocument()
     })
@@ -143,9 +144,7 @@ describe('StructuredDataCard', () => {
 
   describe('Large XML performance', () => {
     it('should sanitize large XML efficiently without crashing', () => {
-      const largeContent = Array(10000)
-        .fill('<div><p>Safe content line</p></div>')
-        .join('')
+      const largeContent = Array(10000).fill('<div><p>Safe content line</p></div>').join('')
 
       const startTime = performance.now()
       render(<StructuredDataCard xml={largeContent} />)
@@ -162,7 +161,7 @@ describe('StructuredDataCard', () => {
         .map((_, i) =>
           i % 2 === 0
             ? '<div><p>Safe content</p><script>alert("XSS")</script></div>'
-            : '<div><p>Another safe line</p></div>'
+            : '<div><p>Another safe line</p></div>',
         )
         .join('')
 

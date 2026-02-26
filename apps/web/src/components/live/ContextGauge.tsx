@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { Minimize2 } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { AgentStateGroup } from './types'
 
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
@@ -60,7 +60,16 @@ const SEGMENT_COLORS = {
 /** Approximate context percentage at which Claude Code triggers auto-compaction. */
 const AUTOCOMPACT_THRESHOLD_PCT = 80
 
-export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCount, expanded = false, agentLabel, agentStateKey }: ContextGaugeProps) {
+export function ContextGauge({
+  contextWindowTokens,
+  model,
+  group,
+  tokens,
+  turnCount,
+  expanded = false,
+  agentLabel,
+  agentStateKey,
+}: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
@@ -96,14 +105,17 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceRight = window.innerWidth - rect.left
 
-    const above = spaceBelow >= tipH + MARGIN ? false
-      : spaceAbove >= tipH + MARGIN ? true
-      : spaceBelow >= spaceAbove ? false : true
+    const above =
+      spaceBelow >= tipH + MARGIN
+        ? false
+        : spaceAbove >= tipH + MARGIN
+          ? true
+          : spaceBelow >= spaceAbove
+            ? false
+            : true
 
     const top = above ? rect.top - tipH - MARGIN : rect.bottom + MARGIN
-    const left = spaceRight >= TOOLTIP_W + MARGIN
-      ? rect.left
-      : rect.right - TOOLTIP_W
+    const left = spaceRight >= TOOLTIP_W + MARGIN ? rect.left : rect.right - TOOLTIP_W
 
     setTooltipStyle({
       position: 'fixed',
@@ -150,9 +162,10 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
   const bufferPct = (autocompactBuffer / contextLimit) * 100
 
   // Cache efficiency percentage
-  const cacheEfficiency = tokens && tokens.totalTokens > 0
-    ? Math.round((tokens.cacheReadTokens / tokens.totalTokens) * 100)
-    : 0
+  const cacheEfficiency =
+    tokens && tokens.totalTokens > 0
+      ? Math.round((tokens.cacheReadTokens / tokens.totalTokens) * 100)
+      : 0
 
   // ---- Expanded mode: inline breakdown ----
   if (expanded) {
@@ -161,9 +174,15 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         {/* Model + usage header */}
         <div className="flex items-center justify-between text-xs">
           <span className="text-gray-500 dark:text-gray-400 font-mono">{model ?? 'unknown'}</span>
-          <span className={`font-mono tabular-nums font-medium ${
-            usedPct > 90 ? 'text-red-500' : usedPct > 75 ? 'text-amber-500' : 'text-gray-900 dark:text-gray-100'
-          }`}>
+          <span
+            className={`font-mono tabular-nums font-medium ${
+              usedPct > 90
+                ? 'text-red-500'
+                : usedPct > 75
+                  ? 'text-amber-500'
+                  : 'text-gray-900 dark:text-gray-100'
+            }`}
+          >
             {usedPct.toFixed(1)}% used
           </span>
         </div>
@@ -182,16 +201,27 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         )}
 
         {/* Stacked segmented bar */}
-        <div className={`relative h-2.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
+        <div
+          className={`relative h-2.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}
+        >
           <div className="h-full rounded-full overflow-hidden flex">
             {systemPct > 0 && (
-              <div className={`${SEGMENT_COLORS.system} h-full`} style={{ width: `${systemPct}%` }} />
+              <div
+                className={`${SEGMENT_COLORS.system} h-full`}
+                style={{ width: `${systemPct}%` }}
+              />
             )}
             {msgPct > 0 && (
-              <div className={`${SEGMENT_COLORS.conversation} h-full`} style={{ width: `${msgPct}%` }} />
+              <div
+                className={`${SEGMENT_COLORS.conversation} h-full`}
+                style={{ width: `${msgPct}%` }}
+              />
             )}
             {bufferPct > 0 && (
-              <div className={`${SEGMENT_COLORS.buffer} h-full opacity-50`} style={{ width: `${bufferPct}%` }} />
+              <div
+                className={`${SEGMENT_COLORS.buffer} h-full opacity-50`}
+                style={{ width: `${bufferPct}%` }}
+              />
             )}
           </div>
           {/* Threshold marker */}
@@ -219,7 +249,9 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
             Conversation
           </span>
           <span className="flex items-center gap-1">
-            <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.buffer} opacity-50`} />
+            <span
+              className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.buffer} opacity-50`}
+            />
             Buffer
           </span>
           <span className="flex items-center gap-1">
@@ -230,9 +262,17 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
 
         {/* Breakdown rows */}
         <div className="space-y-1 text-[11px]">
-          <BreakdownRow label="System (prompt + tools)" tokens={systemEstimate} limit={contextLimit} />
+          <BreakdownRow
+            label="System (prompt + tools)"
+            tokens={systemEstimate}
+            limit={contextLimit}
+          />
           <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
-          <BreakdownRow label="Autocompact buffer" tokens={autocompactBuffer} limit={contextLimit} />
+          <BreakdownRow
+            label="Autocompact buffer"
+            tokens={autocompactBuffer}
+            limit={contextLimit}
+          />
           <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
             <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100 text-[11px]">
               <span>Free space</span>
@@ -244,7 +284,9 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
         {/* Session totals */}
         {tokens && (
           <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1 text-[11px]">
-            <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">Session totals</div>
+            <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+              Session totals
+            </div>
             <div className="flex justify-between text-gray-500 dark:text-gray-400">
               <span>Total tokens</span>
               <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
@@ -252,13 +294,17 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
             {tokens.cacheReadTokens > 0 && (
               <div className="flex justify-between text-green-600 dark:text-green-400">
                 <span>Cache read</span>
-                <span className="tabular-nums font-mono">{formatTokens(tokens.cacheReadTokens)} ({cacheEfficiency}%)</span>
+                <span className="tabular-nums font-mono">
+                  {formatTokens(tokens.cacheReadTokens)} ({cacheEfficiency}%)
+                </span>
               </div>
             )}
             {tokens.cacheCreationTokens > 0 && (
               <div className="flex justify-between text-gray-500 dark:text-gray-400">
                 <span>Cache written</span>
-                <span className="tabular-nums font-mono">{formatTokens(tokens.cacheCreationTokens)}</span>
+                <span className="tabular-nums font-mono">
+                  {formatTokens(tokens.cacheCreationTokens)}
+                </span>
               </div>
             )}
             <div className="flex justify-between text-gray-500 dark:text-gray-400">
@@ -276,7 +322,9 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
 
         {/* Hint */}
         <div className="text-[10px] text-gray-400 dark:text-gray-500 italic">
-          Run <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">/context</span> in session for full breakdown
+          Run{' '}
+          <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">/context</span> in
+          session for full breakdown
         </div>
       </div>
     )
@@ -284,8 +332,15 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
 
   // ---- Compact mode: bar + hover tooltip (unchanged for session cards) ----
   return (
-    <div ref={containerRef} className="relative space-y-1" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      <div className={`relative h-1.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}>
+    <div
+      ref={containerRef}
+      className="relative space-y-1"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div
+        className={`relative h-1.5 rounded-full bg-gray-200 dark:bg-gray-800${isCompacting ? ' motion-safe:animate-pulse' : ''}`}
+      >
         <div className="h-full rounded-full overflow-hidden">
           {usedPct > 0 && (
             <div
@@ -317,96 +372,127 @@ export function ContextGauge({ contextWindowTokens, model, group, tokens, turnCo
             </>
           )}
           {!isCompacting && justCompacted && (
-            <span className="text-green-500 dark:text-green-400 animate-pulse">
-              compacted
-            </span>
+            <span className="text-green-500 dark:text-green-400 animate-pulse">compacted</span>
           )}
         </span>
         {usedPct > 75 && (
-          <span className={usedPct > 90 ? 'text-red-500' : 'text-amber-500'} title="Context is filling up. Auto-compaction may occur soon.">
+          <span
+            className={usedPct > 90 ? 'text-red-500' : 'text-amber-500'}
+            title="Context is filling up. Auto-compaction may occur soon."
+          >
             {usedPct.toFixed(0)}% used
           </span>
         )}
       </div>
 
       {/* Tooltip — portaled to body to escape overflow clipping */}
-      {isOpen && createPortal(
-        <div ref={tooltipRef} style={tooltipStyle} className="w-64 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs">
-          <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">
-            Context Window
-          </div>
+      {isOpen &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            style={tooltipStyle}
+            className="w-64 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs"
+          >
+            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Context Window</div>
 
-          {/* Model + usage */}
-          <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 mb-2">
-            <span>{model ?? 'unknown'}</span>
-            <span className="tabular-nums font-mono">{usedPct.toFixed(1)}% used</span>
-          </div>
+            {/* Model + usage */}
+            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 mb-2">
+              <span>{model ?? 'unknown'}</span>
+              <span className="tabular-nums font-mono">{usedPct.toFixed(1)}% used</span>
+            </div>
 
-          {/* Estimated context breakdown */}
-          <div className="space-y-0.5 text-[11px]">
-            <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">Estimated breakdown</div>
-            <BreakdownRow label="System (prompt + tools)" tokens={systemEstimate} limit={contextLimit} />
-            <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
-            <BreakdownRow label="Autocompact buffer" tokens={autocompactBuffer} limit={contextLimit} />
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
-              <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
-                <span>Free space</span>
-                <span className="tabular-nums font-mono">{formatTokens(freeSpace)}</span>
+            {/* Estimated context breakdown */}
+            <div className="space-y-0.5 text-[11px]">
+              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+                Estimated breakdown
+              </div>
+              <BreakdownRow
+                label="System (prompt + tools)"
+                tokens={systemEstimate}
+                limit={contextLimit}
+              />
+              <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
+              <BreakdownRow
+                label="Autocompact buffer"
+                tokens={autocompactBuffer}
+                limit={contextLimit}
+              />
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
+                  <span>Free space</span>
+                  <span className="tabular-nums font-mono">{formatTokens(freeSpace)}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Cumulative session tokens */}
-          {tokens && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-0.5 text-[11px]">
-              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">Session totals</div>
-              <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                <span>Total tokens</span>
-                <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
-              </div>
-              {tokens.cacheReadTokens > 0 && (
-                <div className="flex justify-between text-green-600 dark:text-green-400">
-                  <span>Cache read</span>
-                  <span className="tabular-nums font-mono">{formatTokens(tokens.cacheReadTokens)}</span>
+            {/* Cumulative session tokens */}
+            {tokens && (
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-0.5 text-[11px]">
+                <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+                  Session totals
                 </div>
-              )}
-              {tokens.cacheCreationTokens > 0 && (
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Cache written</span>
-                  <span className="tabular-nums font-mono">{formatTokens(tokens.cacheCreationTokens)}</span>
+                  <span>Total tokens</span>
+                  <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
                 </div>
-              )}
-              <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                <span>Output</span>
-                <span className="tabular-nums font-mono">{formatTokens(tokens.outputTokens)}</span>
-              </div>
-              {turnCount != null && turnCount > 0 && (
+                {tokens.cacheReadTokens > 0 && (
+                  <div className="flex justify-between text-green-600 dark:text-green-400">
+                    <span>Cache read</span>
+                    <span className="tabular-nums font-mono">
+                      {formatTokens(tokens.cacheReadTokens)}
+                    </span>
+                  </div>
+                )}
+                {tokens.cacheCreationTokens > 0 && (
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                    <span>Cache written</span>
+                    <span className="tabular-nums font-mono">
+                      {formatTokens(tokens.cacheCreationTokens)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Turns</span>
-                  <span className="tabular-nums font-mono">{turnCount}</span>
+                  <span>Output</span>
+                  <span className="tabular-nums font-mono">
+                    {formatTokens(tokens.outputTokens)}
+                  </span>
                 </div>
-              )}
+                {turnCount != null && turnCount > 0 && (
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                    <span>Turns</span>
+                    <span className="tabular-nums font-mono">{turnCount}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Hint */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-[10px] text-gray-400 dark:text-gray-500 italic">
+              Run{' '}
+              <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">
+                /context
+              </span>{' '}
+              in session for full breakdown
             </div>
-          )}
-
-          {/* Hint */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-[10px] text-gray-400 dark:text-gray-500 italic">
-            Run <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">/context</span> in session for full breakdown
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
 
-function BreakdownRow({ label, tokens: count, limit }: { label: string; tokens: number; limit: number }) {
+function BreakdownRow({
+  label,
+  tokens: count,
+  limit,
+}: { label: string; tokens: number; limit: number }) {
   const pct = (count / limit) * 100
   return (
     <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
       <span>{label}</span>
       <span className="tabular-nums font-mono">
-        {formatTokens(count)} <span className="text-gray-400 dark:text-gray-600">({pct.toFixed(1)}%)</span>
+        {formatTokens(count)}{' '}
+        <span className="text-gray-400 dark:text-gray-600">({pct.toFixed(1)}%)</span>
       </span>
     </div>
   )

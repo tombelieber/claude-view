@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
 import DOMPurify from 'dompurify'
+import { useMemo } from 'react'
 
 interface StructuredDataCardProps {
   xml: string | null | undefined
@@ -12,23 +12,18 @@ interface StructuredDataCardProps {
  * Security: Strips ALL tags and attributes via DOMPurify, then renders
  * the text content through React (auto-escaped). No dangerouslySetInnerHTML.
  */
-export function StructuredDataCard({
-  xml,
-}: StructuredDataCardProps) {
+export function StructuredDataCard({ xml }: StructuredDataCardProps) {
   // Strip all HTML/XML tags, keep only text content
-  const plainText = useMemo(
-    () => {
-      if (!xml || !xml.trim()) {
-        return ''
-      }
-      return DOMPurify.sanitize(xml, {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: [],
-        KEEP_CONTENT: true,
-      })
-    },
-    [xml]
-  )
+  const plainText = useMemo(() => {
+    if (!xml || !xml.trim()) {
+      return ''
+    }
+    return DOMPurify.sanitize(xml, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+      KEEP_CONTENT: true,
+    })
+  }, [xml])
 
   // Handle empty/null/undefined content
   if (!plainText.trim()) {

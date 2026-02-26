@@ -1,6 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useMediaQuery, useIsMobile, useIsTablet, useIsDesktop, useBreakpoint, BREAKPOINTS } from './use-media-query'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  BREAKPOINTS,
+  useBreakpoint,
+  useIsDesktop,
+  useIsMobile,
+  useIsTablet,
+  useMediaQuery,
+} from './use-media-query'
 
 // Mock matchMedia
 interface MockMediaQueryList {
@@ -63,7 +70,7 @@ describe('useMediaQuery', () => {
       renderHook(() => useMediaQuery('(max-width: 640px)'))
       expect(mockMediaQueryList.addEventListener).toHaveBeenCalledWith(
         'change',
-        expect.any(Function)
+        expect.any(Function),
       )
     })
 
@@ -72,7 +79,7 @@ describe('useMediaQuery', () => {
       unmount()
       expect(mockMediaQueryList.removeEventListener).toHaveBeenCalledWith(
         'change',
-        expect.any(Function)
+        expect.any(Function),
       )
     })
   })
@@ -95,10 +102,9 @@ describe('useMediaQuery', () => {
 
     it('updates when query prop changes', () => {
       mockMediaQueryList.matches = false
-      const { result, rerender } = renderHook(
-        ({ query }) => useMediaQuery(query),
-        { initialProps: { query: '(max-width: 640px)' } }
-      )
+      const { result, rerender } = renderHook(({ query }) => useMediaQuery(query), {
+        initialProps: { query: '(max-width: 640px)' },
+      })
 
       expect(result.current).toBe(false)
 
@@ -114,7 +120,7 @@ describe('useMediaQuery', () => {
 describe('useIsMobile', () => {
   beforeEach(() => {
     window.matchMedia = vi.fn((query) =>
-      createMockMediaQueryList(query === `(max-width: ${BREAKPOINTS.sm - 1}px)`)
+      createMockMediaQueryList(query === `(max-width: ${BREAKPOINTS.sm - 1}px)`),
     )
   })
 
@@ -144,7 +150,7 @@ describe('useIsTablet', () => {
     window.matchMedia = mockMatchMedia
     renderHook(() => useIsTablet())
     expect(mockMatchMedia).toHaveBeenCalledWith(
-      `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`
+      `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`,
     )
   })
 

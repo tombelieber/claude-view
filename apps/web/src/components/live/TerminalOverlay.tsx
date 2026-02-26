@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { Check, Copy, GitBranch, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, GitBranch, Copy, Check } from 'lucide-react'
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
-import { RichTerminalPane } from './RichTerminalPane'
-import { ContextBar } from './ContextBar'
-import { StatusDot } from './StatusDot'
-import { StateBadge } from './SessionCard'
-import { ViewModeControls } from './ViewModeControls'
-import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
+import { ContextBar } from './ContextBar'
+import { RichTerminalPane } from './RichTerminalPane'
+import { StateBadge } from './SessionCard'
+import { StatusDot } from './StatusDot'
+import { ViewModeControls } from './ViewModeControls'
+import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 interface TerminalOverlayProps {
   session: LiveSession
@@ -52,12 +52,14 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
     })
   }, [session.id])
 
-  const contextPercent = Math.min(
-    100,
-    Math.round((session.contextWindowTokens / 200_000) * 100)
-  )
+  const contextPercent = Math.min(100, Math.round((session.contextWindowTokens / 200_000) * 100))
   const totalCost = sessionTotalCost(session)
-  const formattedCost = totalCost === 0 ? '$0.00' : totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`
+  const formattedCost =
+    totalCost === 0
+      ? '$0.00'
+      : totalCost < 0.01
+        ? `$${totalCost.toFixed(4)}`
+        : `$${totalCost.toFixed(2)}`
   const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
   return createPortal(
@@ -130,7 +132,8 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {/* Metrics */}
           <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums">
-            {estimatedPrefix}{formattedCost}
+            {estimatedPrefix}
+            {formattedCost}
           </span>
           <span className="text-xs text-gray-400 dark:text-[#6E7681] tabular-nums">
             Turn {session.turnCount}
@@ -154,11 +157,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
         {/* Terminal — takes up all remaining space (always dark) */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <RichTerminalPane
-            sessionId={session.id}
-            isVisible={true}
-            verboseMode={verboseMode}
-          />
+          <RichTerminalPane sessionId={session.id} isVisible={true} verboseMode={verboseMode} />
         </div>
 
         {/* Footer hint */}

@@ -6,7 +6,11 @@ interface CoachInsight {
   detail: string
 }
 
-function generateInsight(score: { achievementRate: number; frictionRate: number; sessionsAnalyzed: number }): CoachInsight {
+function generateInsight(score: {
+  achievementRate: number
+  frictionRate: number
+  sessionsAnalyzed: number
+}): CoachInsight {
   if (score.frictionRate > 0.4) {
     return {
       text: `${Math.round(score.frictionRate * 100)}% of your sessions hit friction.`,
@@ -16,7 +20,7 @@ function generateInsight(score: { achievementRate: number; frictionRate: number;
   if (score.achievementRate > 0.8) {
     return {
       text: `${Math.round(score.achievementRate * 100)}% of your sessions fully achieve the goal.`,
-      detail: 'You\'re in the top tier. Keep writing detailed specs upfront.',
+      detail: "You're in the top tier. Keep writing detailed specs upfront.",
     }
   }
   if (score.achievementRate < 0.5) {
@@ -44,7 +48,8 @@ export function CoachCard() {
       <div className="rounded-lg border border-border bg-card p-4">
         <p className="text-sm font-medium text-muted-foreground">Weekly Insight</p>
         <p className="text-sm mt-2">
-          Run <code className="bg-muted px-1 rounded">/insights</code> in Claude Code to unlock your AI coaching.
+          Run <code className="bg-muted px-1 rounded">/insights</code> in Claude Code to unlock your
+          AI coaching.
         </p>
       </div>
     )

@@ -1,22 +1,14 @@
-import { useMemo } from 'react'
 import {
   ArrowLeft,
-  TrendingUp,
-  TrendingDown,
   Clock,
-  MessageSquare,
   GitCommit,
+  MessageSquare,
   RefreshCw,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts'
+import { useMemo } from 'react'
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
 import type { OverallAverages } from '../../types/generated/OverallAverages'
 
@@ -82,11 +74,7 @@ export function CategoryDrillDown({
   }, [category.children])
 
   // Compare metric to overall average
-  const compareToAverage = (
-    value: number,
-    average: number,
-    lowerIsBetter = false,
-  ) => {
+  const compareToAverage = (value: number, average: number, lowerIsBetter = false) => {
     const diff = value - average
     const percentDiff = average > 0 ? (diff / average) * 100 : 0
     const isGood = lowerIsBetter ? diff < 0 : diff > 0
@@ -116,9 +104,7 @@ export function CategoryDrillDown({
               <span key={crumb.id} className="flex items-center gap-2">
                 <span>/</span>
                 {index === breadcrumbs.length - 1 ? (
-                  <span className="text-gray-900 dark:text-white font-medium">
-                    {crumb.name}
-                  </span>
+                  <span className="text-gray-900 dark:text-white font-medium">{crumb.name}</span>
                 ) : (
                   <button
                     onClick={() => onDrillDown(crumb.id)}
@@ -150,12 +136,7 @@ export function CategoryDrillDown({
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={subcategoryData} layout="vertical">
                 <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={120}
-                  tick={{ fontSize: 12 }}
-                />
+                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
                 <Tooltip
                   content={({ payload }) => {
                     if (!payload?.[0]) return null
@@ -210,30 +191,23 @@ export function CategoryDrillDown({
             icon={Clock}
             label="Avg Session Length"
             value={formatDuration(category.avgDuration)}
-            comparison={compareToAverage(
-              category.avgDuration,
-              overallAverages.avgDuration,
-            )}
+            comparison={compareToAverage(category.avgDuration, overallAverages.avgDuration)}
             compareLabel="vs overall"
           />
           <MetricCard
             icon={MessageSquare}
             label="Avg Prompts"
             value={category.avgPrompts.toFixed(1)}
-            comparison={compareToAverage(
-              category.avgPrompts,
-              overallAverages.avgPrompts,
-            )}
+            comparison={compareToAverage(category.avgPrompts, overallAverages.avgPrompts)}
             compareLabel="vs overall"
           />
           <MetricCard
             icon={GitCommit}
             label="Commit Rate"
-            value={formatPercentage(category.commitRate > 1 ? category.commitRate : category.commitRate * 100)}
-            comparison={compareToAverage(
-              category.commitRate,
-              overallAverages.commitRate,
+            value={formatPercentage(
+              category.commitRate > 1 ? category.commitRate : category.commitRate * 100,
             )}
+            comparison={compareToAverage(category.commitRate, overallAverages.commitRate)}
             compareLabel="vs overall"
           />
         </div>
@@ -263,13 +237,7 @@ interface MetricCardProps {
   compareLabel: string
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  comparison,
-  compareLabel,
-}: MetricCardProps) {
+function MetricCard({ icon: Icon, label, value, comparison, compareLabel }: MetricCardProps) {
   const TrendIcon = comparison.isGood ? TrendingUp : TrendingDown
   const trendColor = comparison.isGood
     ? 'text-green-600 dark:text-green-400'
@@ -281,9 +249,7 @@ function MetricCard({
         <Icon className="w-4 h-4" />
         <span className="text-xs">{label}</span>
       </div>
-      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-        {value}
-      </div>
+      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{value}</div>
       {Math.abs(comparison.percentDiff) > 0.5 && (
         <div className={`flex items-center gap-1 text-xs ${trendColor}`}>
           <TrendIcon className="w-3 h-3" />

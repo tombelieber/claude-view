@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import type { LiveSession } from './use-live-sessions'
 import { useMonitorStore } from '../../store/monitor-store'
+import type { LiveSession } from './use-live-sessions'
 
 interface UseMonitorKeyboardShortcutsOptions {
   enabled: boolean
@@ -17,10 +17,7 @@ function isInputFocused(): boolean {
   if (!el) return false
   const tag = el.tagName.toLowerCase()
   return (
-    tag === 'input' ||
-    tag === 'textarea' ||
-    tag === 'select' ||
-    el.hasAttribute('contenteditable')
+    tag === 'input' || tag === 'textarea' || tag === 'select' || el.hasAttribute('contenteditable')
   )
 }
 
@@ -71,11 +68,9 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
 
       // Number keys 1-9: select pane by position
       if (key >= '1' && key <= '9') {
-        const index = parseInt(key, 10) - 1
+        const index = Number.parseInt(key, 10) - 1
         // Filter to visible (non-hidden) sessions to match what the grid shows
-        const visibleSessions = opts.sessions.filter(
-          (s) => !store.hiddenPaneIds.has(s.id)
-        )
+        const visibleSessions = opts.sessions.filter((s) => !store.hiddenPaneIds.has(s.id))
         if (index < visibleSessions.length) {
           store.selectPane(visibleSessions[index].id)
           e.preventDefault()

@@ -30,7 +30,7 @@ export function StatCard({ label, value, icon: Icon, className }: StatCardProps)
       className={cn(
         'bg-gray-50 dark:bg-white/[0.05] rounded-lg p-4 text-center',
         'ring-1 ring-gray-950/[0.05] dark:ring-white/[0.06]',
-        className
+        className,
       )}
       role="group"
       aria-label={`${label}: ${value}`}

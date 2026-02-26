@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { FlaskConical, X } from 'lucide-react'
+import { useState } from 'react'
 
 const DISMISSED_KEY = 'experimental-insights-banner-dismissed'
 
@@ -13,9 +13,7 @@ interface ExperimentalBannerProps {
  * Warns users that AI-powered insights are early-stage and may be inaccurate.
  */
 export function ExperimentalBanner({ storageKey = DISMISSED_KEY }: ExperimentalBannerProps) {
-  const [dismissed, setDismissed] = useState(() =>
-    localStorage.getItem(storageKey) === 'true'
-  )
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === 'true')
 
   if (dismissed) return null
 
@@ -32,7 +30,8 @@ export function ExperimentalBanner({ storageKey = DISMISSED_KEY }: ExperimentalB
           Experimental Feature
         </p>
         <p className="text-xs text-amber-700/80 dark:text-amber-400/70 mt-0.5">
-          AI-powered insights and session classification are early-stage. Results may be inaccurate, incomplete, or change as the feature matures. Use as a rough guide, not ground truth.
+          AI-powered insights and session classification are early-stage. Results may be inaccurate,
+          incomplete, or change as the feature matures. Use as a rough guide, not ground truth.
         </p>
       </div>
       <button

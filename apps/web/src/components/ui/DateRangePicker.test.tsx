@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
-import { DateRangePicker, type DateRangePickerProps } from './DateRangePicker'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { DateRange } from 'react-day-picker'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DateRangePicker, type DateRangePickerProps } from './DateRangePicker'
 
 // Capture onSelect callback so tests can simulate range picks
 let rangeOnSelect: ((range: DateRange | undefined) => void) | null = null
@@ -37,7 +37,11 @@ vi.mock('@radix-ui/react-popover', () => {
   // Shared state between Root, Trigger, Content, Close
   const ctx = { open: false, onOpenChange: (_b: boolean) => {} }
 
-  const Root = ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode }) => {
+  const Root = ({
+    open,
+    onOpenChange,
+    children,
+  }: { open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode }) => {
     ctx.open = open
     ctx.onOpenChange = onOpenChange
     return <>{children}</>
@@ -52,7 +56,11 @@ vi.mock('@radix-ui/react-popover', () => {
     if (asChild && React.isValidElement(children)) {
       return React.cloneElement(children, { ...props, ref, onClick: handleClick })
     }
-    return <button ref={ref} {...props} onClick={handleClick}>{children}</button>
+    return (
+      <button ref={ref} {...props} onClick={handleClick}>
+        {children}
+      </button>
+    )
   })
   Trigger.displayName = 'Trigger'
 
@@ -60,7 +68,11 @@ vi.mock('@radix-ui/react-popover', () => {
 
   const Content = React.forwardRef(({ children, ...props }: any, ref: any) => {
     if (!ctx.open) return null
-    return <div ref={ref} {...props}>{children}</div>
+    return (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    )
   })
   Content.displayName = 'Content'
 
@@ -73,7 +85,11 @@ vi.mock('@radix-ui/react-popover', () => {
     if (asChild && React.isValidElement(children)) {
       return React.cloneElement(children, { ...props, ref, onClick: handleClick })
     }
-    return <button ref={ref} {...props} onClick={handleClick}>{children}</button>
+    return (
+      <button ref={ref} {...props} onClick={handleClick}>
+        {children}
+      </button>
+    )
   })
   Close.displayName = 'Close'
 
@@ -103,7 +119,9 @@ function renderPicker(overrides: Partial<DateRangePickerProps> = {}) {
 
 /** Click the trigger button to toggle the popover */
 function clickTrigger() {
-  const trigger = screen.getByRole('button', { name: /custom|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\.\.\./i })
+  const trigger = screen.getByRole('button', {
+    name: /custom|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\.\.\./i,
+  })
   fireEvent.click(trigger)
   return trigger
 }
@@ -347,7 +365,7 @@ describe('DateRangePicker', () => {
         <DateRangePicker
           value={{ from: new Date(2024, 2, 1), to: new Date(2024, 2, 15) }}
           onChange={onChange}
-        />
+        />,
       )
 
       // Draft should still reflect user's in-progress selection
@@ -368,12 +386,7 @@ describe('DateRangePicker', () => {
       clickTrigger() // close
 
       // Parent updates value
-      rerender(
-        <DateRangePicker
-          value={{ from: newFrom, to: newTo }}
-          onChange={onChange}
-        />
-      )
+      rerender(<DateRangePicker value={{ from: newFrom, to: newTo }} onChange={onChange} />)
 
       // Re-open -- draft should reflect the NEW prop value
       clickTrigger()
@@ -391,12 +404,7 @@ describe('DateRangePicker', () => {
 
       // Simulate multiple parent re-renders with same value
       for (let i = 0; i < 5; i++) {
-        rerender(
-          <DateRangePicker
-            value={{ from: jan1, to: jan15 }}
-            onChange={onChange}
-          />
-        )
+        rerender(<DateRangePicker value={{ from: jan1, to: jan15 }} onChange={onChange} />)
       }
 
       // Draft should still show user's modification

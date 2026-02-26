@@ -1,11 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react'
-import {
-  Pin,
-  PinOff,
-  EyeOff,
-  ArrowUpToLine,
-  Maximize2,
-} from 'lucide-react'
+import { ArrowUpToLine, EyeOff, Maximize2, Pin, PinOff } from 'lucide-react'
+import { useCallback, useEffect, useRef } from 'react'
 import { cn } from '../../lib/utils'
 
 export interface PaneContextMenuProps {
@@ -67,7 +61,7 @@ export function PaneContextMenu({
       action()
       onClose()
     },
-    [onClose]
+    [onClose],
   )
 
   // Close on click outside, ESC, or scroll
@@ -108,7 +102,7 @@ export function PaneContextMenu({
       className={cn(
         'fixed z-50 py-1 min-w-[180px]',
         'bg-gray-800 border border-gray-700 rounded-lg shadow-xl',
-        'animate-in fade-in-0 zoom-in-95 duration-100'
+        'animate-in fade-in-0 zoom-in-95 duration-100',
       )}
       style={{
         left: Math.max(0, adjustedX),

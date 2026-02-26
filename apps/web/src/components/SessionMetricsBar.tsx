@@ -1,6 +1,6 @@
-import { MessageSquare, Coins, FileText, RefreshCw, GitCommit } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { Coins, FileText, GitCommit, MessageSquare, RefreshCw } from 'lucide-react'
 import { formatNumber, formatPercent } from '../lib/format-utils'
+import { cn } from '../lib/utils'
 
 export interface SessionMetricsBarProps {
   /** Number of user prompts */
@@ -38,11 +38,17 @@ function MetricItem({ icon, label, value, title, vertical }: MetricItemProps) {
         role="group"
         aria-label={`${label}: ${value}`}
       >
-        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400" aria-hidden="true">
+        <div
+          className="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+          aria-hidden="true"
+        >
           {icon}
           <span className="text-sm">{label}</span>
         </div>
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums" aria-hidden="true">
+        <span
+          className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums"
+          aria-hidden="true"
+        >
           {value}
         </span>
         <span className="sr-only">{title}</span>
@@ -56,11 +62,17 @@ function MetricItem({ icon, label, value, title, vertical }: MetricItemProps) {
       role="group"
       aria-label={`${label}: ${value}`}
     >
-      <div className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500" aria-hidden="true">
+      <div
+        className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500"
+        aria-hidden="true"
+      >
         {icon}
         <span className="text-xs font-metric-label">{label}</span>
       </div>
-      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums" aria-hidden="true">
+      <span
+        className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-metric-value tabular-nums"
+        aria-hidden="true"
+      >
         {value}
       </span>
       <span className="sr-only">{title}</span>
@@ -99,7 +111,7 @@ export function SessionMetricsBar({
       <div
         className={cn(
           'px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800',
-          className
+          className,
         )}
         aria-label="Session metrics"
       >
@@ -153,7 +165,7 @@ export function SessionMetricsBar({
     <div
       className={cn(
         'flex items-center justify-between gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700',
-        className
+        className,
       )}
     >
       <MetricItem

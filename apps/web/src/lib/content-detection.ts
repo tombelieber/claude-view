@@ -20,7 +20,8 @@ export function isJsonContent(content: string): boolean {
  *  Checks for diff headers or a high density of +/- prefixed lines. */
 export function isDiffContent(content: string): boolean {
   // Quick checks for diff headers
-  if (content.startsWith('diff --git') || content.startsWith('---') || content.startsWith('Index:')) return true
+  if (content.startsWith('diff --git') || content.startsWith('---') || content.startsWith('Index:'))
+    return true
   const lines = content.split('\n')
   if (lines.length < 3) return false
   const nonEmpty = lines.filter((l) => l.length > 0)
@@ -54,23 +55,53 @@ export function detectCodeLanguage(content: string): string {
   if (isDiffContent(content)) return 'diff'
   const raw = stripLineNumbers(content)
   // Rust
-  if (/\b(use\s+(std|crate|super|self)::|fn\s+\w+\s*[<(]|impl\s+(<.*>)?\s*\w+|pub\s+(fn|struct|enum|mod|type|trait|const|static)\b|let\s+mut\b|#\[derive)/.test(raw)) return 'rust'
+  if (
+    /\b(use\s+(std|crate|super|self)::|fn\s+\w+\s*[<(]|impl\s+(<.*>)?\s*\w+|pub\s+(fn|struct|enum|mod|type|trait|const|static)\b|let\s+mut\b|#\[derive)/.test(
+      raw,
+    )
+  )
+    return 'rust'
   // TypeScript / TSX / JS
-  if (/\bimport\s+.*\bfrom\s+['"]/.test(raw) || /\bexport\s+(default\s+)?(function|const|class|interface|type)\b/.test(raw) || (/\bconst\s+\w+\s*[:=]/.test(raw) && /\b(string|number|boolean|Promise|async|await)\b/.test(raw))) {
-    return /\bReact\b|['"]react['"]|<\w+[A-Z]|className=|useState|useEffect/.test(raw) ? 'tsx' : 'typescript'
+  if (
+    /\bimport\s+.*\bfrom\s+['"]/.test(raw) ||
+    /\bexport\s+(default\s+)?(function|const|class|interface|type)\b/.test(raw) ||
+    (/\bconst\s+\w+\s*[:=]/.test(raw) &&
+      /\b(string|number|boolean|Promise|async|await)\b/.test(raw))
+  ) {
+    return /\bReact\b|['"]react['"]|<\w+[A-Z]|className=|useState|useEffect/.test(raw)
+      ? 'tsx'
+      : 'typescript'
   }
   // Python
-  if (/\b(def\s+\w+\s*\(|class\s+\w+[\s:(]|from\s+\w+\s+import|import\s+\w+|self\.\w+|__\w+__|@\w+)/.test(raw)) return 'python'
+  if (
+    /\b(def\s+\w+\s*\(|class\s+\w+[\s:(]|from\s+\w+\s+import|import\s+\w+|self\.\w+|__\w+__|@\w+)/.test(
+      raw,
+    )
+  )
+    return 'python'
   // Go
   if (/\bpackage\s+\w+/.test(raw) && /\bfunc\s+/.test(raw)) return 'go'
   // SQL
-  if (/\b(SELECT|INSERT INTO|CREATE TABLE|ALTER TABLE|UPDATE\s+\w+\s+SET|DELETE FROM)\b/i.test(raw)) return 'sql'
+  if (/\b(SELECT|INSERT INTO|CREATE TABLE|ALTER TABLE|UPDATE\s+\w+\s+SET|DELETE FROM)\b/i.test(raw))
+    return 'sql'
   // HTML / JSX (angle brackets with component names)
-  if (/<\/?[A-Z]\w+[\s/>]/.test(raw) || /<(div|span|section|header|footer|main|form|button|input)\b/i.test(raw)) return 'tsx'
+  if (
+    /<\/?[A-Z]\w+[\s/>]/.test(raw) ||
+    /<(div|span|section|header|footer|main|form|button|input)\b/i.test(raw)
+  )
+    return 'tsx'
   // CSS
-  if (/[.#]\w+\s*\{[\s\S]*?[;}]/.test(raw) && /\b(color|background|margin|padding|display|flex|grid)\s*:/.test(raw)) return 'css'
+  if (
+    /[.#]\w+\s*\{[\s\S]*?[;}]/.test(raw) &&
+    /\b(color|background|margin|padding|display|flex|grid)\s*:/.test(raw)
+  )
+    return 'css'
   // Bash / shell
-  if (/^#!\//.test(raw) || /\b(echo|export|source|chmod|mkdir|cd|ls|grep|sed|awk|curl|wget)\b/.test(raw)) return 'bash'
+  if (
+    /^#!\//.test(raw) ||
+    /\b(echo|export|source|chmod|mkdir|cd|ls|grep|sed|awk|curl|wget)\b/.test(raw)
+  )
+    return 'bash'
   // JSON (didn't pass isJsonContent but has JSON-like structure)
   if (/^\s*["{\[]/.test(raw.trim())) return 'json'
   // YAML / TOML
@@ -102,14 +133,19 @@ export function shortenToolName(name: string): { short: string; server?: string 
 /** Pick a distinct color class based on tool category. */
 export function toolChipColor(name: string): string {
   // MCP tools
-  if (name.startsWith('mcp__')) return 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
+  if (name.startsWith('mcp__'))
+    return 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300'
   // Task / sub-agent
-  if (name === 'Task') return 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+  if (name === 'Task')
+    return 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
   // Skill
-  if (name === 'Skill') return 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300'
+  if (name === 'Skill')
+    return 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300'
   // Common built-in tools
-  if (name === 'Read' || name === 'Glob' || name === 'Grep') return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-  if (name === 'Write' || name === 'Edit') return 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
+  if (name === 'Read' || name === 'Glob' || name === 'Grep')
+    return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+  if (name === 'Write' || name === 'Edit')
+    return 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
   if (name === 'Bash') return 'bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300'
   // Default (orange for other tools)
   return 'bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300'

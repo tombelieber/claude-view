@@ -38,7 +38,10 @@
         "useSemanticElements": "warn",
         "useKeyWithClickEvents": "warn",
         "noLabelWithoutControl": "warn",
-        "useFocusableInteractive": "warn"
+        "useFocusableInteractive": "warn",
+        "noRedundantRoles": "warn",
+        "noAriaHiddenOnFocusable": "warn",
+        "noSvgWithoutTitle": "warn"
       },
       "correctness": {
         "useExhaustiveDependencies": "warn",
@@ -48,7 +51,12 @@
       },
       "complexity": {
         "noForEach": "off",
-        "useOptionalChain": "warn"
+        "useOptionalChain": "warn",
+        "useLiteralKeys": "warn",
+        "noUselessTernary": "warn"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn"
       },
       "style": {
         "noNonNullAssertion": "warn",
@@ -57,13 +65,24 @@
         "useNumberNamespace": "warn",
         "useNodeAssertStrict": "off",
         "noUnusedTemplateLiteral": "warn",
-        "useDefaultParameterLast": "warn"
+        "useDefaultParameterLast": "warn",
+        "useExponentiationOperator": "warn",
+        "noCommaOperator": "warn",
+        "useSelfClosingElements": "warn",
+        "useNodejsImportProtocol": "warn",
+        "noUselessElse": "warn",
+        "useSingleVarDeclarator": "warn"
       },
       "suspicious": {
         "noExplicitAny": "warn",
         "noConsoleLog": "warn",
         "noThenProperty": "off",
-        "noImplicitAnyLet": "warn"
+        "noImplicitAnyLet": "warn",
+        "noGlobalIsNan": "warn",
+        "noGlobalIsFinite": "warn",
+        "noShadowRestrictedNames": "warn",
+        "noAssignInExpressions": "warn",
+        "noArrayIndexKey": "warn"
       }
     }
   },

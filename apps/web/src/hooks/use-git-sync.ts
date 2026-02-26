@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { SyncAcceptedResponse, ErrorResponse } from '../types/generated'
+import { useCallback, useState } from 'react'
+import type { ErrorResponse, SyncAcceptedResponse } from '../types/generated'
 
 export type SyncStatus = 'idle' | 'running' | 'success' | 'conflict' | 'error'
 
@@ -71,7 +71,8 @@ export function useGitSync(): UseGitSyncResult {
           error: 'Unknown error',
           details: null,
         }))
-        const message = errorData.details || errorData.error || `Request failed with status ${res.status}`
+        const message =
+          errorData.details || errorData.error || `Request failed with status ${res.status}`
         setError(message)
         setStatus('error')
         return false

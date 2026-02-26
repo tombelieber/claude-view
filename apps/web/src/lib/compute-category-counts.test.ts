@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { computeCategoryCounts } from './compute-category-counts'
+import { describe, expect, it } from 'vitest'
 import type { RichMessage } from '../components/live/RichPane'
+import { computeCategoryCounts } from './compute-category-counts'
 
 describe('computeCategoryCounts', () => {
   it('returns zero counts for empty array', () => {

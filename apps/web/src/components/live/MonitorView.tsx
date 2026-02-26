@@ -1,13 +1,13 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
-import type { LiveSession } from './use-live-sessions'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useMonitorStore } from '../../store/monitor-store'
-import { MonitorGrid } from './MonitorGrid'
 import { GridControls } from './GridControls'
+import { MonitorGrid } from './MonitorGrid'
 import { MonitorPane } from './MonitorPane'
-import { RichTerminalPane } from './RichTerminalPane'
 import { PaneContextMenu } from './PaneContextMenu'
-import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
+import { RichTerminalPane } from './RichTerminalPane'
+import type { LiveSession } from './use-live-sessions'
 import { useAutoFill } from './useAutoFill'
+import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 
 interface MonitorViewProps {
   sessions: LiveSession[]
@@ -110,7 +110,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
     (id: string) => {
       selectPane(selectedPaneId === id ? null : id)
     },
-    [selectPane, selectedPaneId]
+    [selectPane, selectedPaneId],
   )
 
   const handleExpand = useCallback(
@@ -121,7 +121,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
         expandPane(expandedPaneId === id ? null : id)
       }
     },
-    [onSelectSession, expandPane, expandedPaneId]
+    [onSelectSession, expandPane, expandedPaneId],
   )
 
   const handlePin = useCallback(
@@ -132,16 +132,13 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
         pinPane(id)
       }
     },
-    [pinnedPaneIds, pinPane, unpinPane]
+    [pinnedPaneIds, pinPane, unpinPane],
   )
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, sessionId: string) => {
-      e.preventDefault()
-      setContextMenu({ x: e.clientX, y: e.clientY, sessionId })
-    },
-    []
-  )
+  const handleContextMenu = useCallback((e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, sessionId })
+  }, [])
 
   const handleCloseContextMenu = useCallback(() => {
     setContextMenu(null)
@@ -149,7 +146,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
 
   // Context menu session
   const contextMenuSession = contextMenu
-    ? sessions.find((s) => s.id === contextMenu.sessionId) ?? null
+    ? (sessions.find((s) => s.id === contextMenu.sessionId) ?? null)
     : null
 
   return (
@@ -178,14 +175,10 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
             const isPinned = pinnedPaneIds.has(session.id)
             // Default to visible when observer hasn't fired yet (size === 0) since we've
             // already limited the number of panes to gridCapacity above.
-            const isPaneVisible =
-              (visiblePanes.size === 0 || visiblePanes.has(session.id))
+            const isPaneVisible = visiblePanes.size === 0 || visiblePanes.has(session.id)
 
             return (
-              <div
-                key={session.id}
-                data-pane-id={session.id}
-              >
+              <div key={session.id} data-pane-id={session.id}>
                 <MonitorPane
                   session={session}
                   isSelected={selectedPaneId === session.id}

@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 export interface MetricCardProps {
@@ -35,14 +35,7 @@ export interface MetricCardProps {
  * - Uses role="group" with aria-label combining all visible information
  * - Trend direction is conveyed through icon and text
  */
-export function MetricCard({
-  label,
-  value,
-  subValue,
-  footer,
-  trend,
-  className,
-}: MetricCardProps) {
+export function MetricCard({ label, value, subValue, footer, trend, className }: MetricCardProps) {
   const hasTrend = trend && trend.deltaPercent !== null
   const isPositive = hasTrend && trend.delta > 0
   const isNegative = hasTrend && trend.delta < 0
@@ -57,20 +50,13 @@ export function MetricCard({
         : 'no change'
     : ''
 
-  const ariaLabel = [
-    `${label}: ${value}`,
-    subValue,
-    footer,
-    trendText,
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const ariaLabel = [`${label}: ${value}`, subValue, footer, trendText].filter(Boolean).join(', ')
 
   return (
     <div
       className={cn(
         'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4',
-        className
+        className,
       )}
       role="group"
       aria-label={ariaLabel}
@@ -98,7 +84,7 @@ export function MetricCard({
               'flex items-center gap-1 text-sm',
               isPositive && 'text-green-600 dark:text-green-400',
               isNegative && 'text-red-600 dark:text-red-400',
-              isNeutral && 'text-gray-500 dark:text-gray-400'
+              isNeutral && 'text-gray-500 dark:text-gray-400',
             )}
             aria-hidden="true"
           >
@@ -116,10 +102,7 @@ export function MetricCard({
 
       {/* Sub-value */}
       {subValue && (
-        <p
-          className="text-sm text-gray-500 dark:text-gray-400 mt-1"
-          aria-hidden="true"
-        >
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1" aria-hidden="true">
           {subValue}
         </p>
       )}

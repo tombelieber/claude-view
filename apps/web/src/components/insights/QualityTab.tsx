@@ -1,4 +1,4 @@
-import { RefreshCw, AlertTriangle } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useFacetStats } from '../../hooks/use-facet-stats'
 
 // ============================================================================
@@ -65,11 +65,7 @@ function StatCard({
         </span>
       </div>
       <p className={`text-2xl font-bold ${colorMap[color]}`}>{value}</p>
-      {detail && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          {detail}
-        </p>
-      )}
+      {detail && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{detail}</p>}
     </div>
   )
 }
@@ -146,17 +142,11 @@ export function QualityTab() {
 
   const total = data.totalWithFacets + data.totalWithoutFacets
   const frictionRate =
-    data.totalWithFacets > 0
-      ? (data.frictionSessionCount / data.totalWithFacets) * 100
-      : 0
+    data.totalWithFacets > 0 ? (data.frictionSessionCount / data.totalWithFacets) * 100 : 0
 
   // Choose color for achievement rate
   const achievementColor: 'green' | 'amber' | 'red' =
-    data.achievementRate >= 70
-      ? 'green'
-      : data.achievementRate >= 40
-        ? 'amber'
-        : 'red'
+    data.achievementRate >= 70 ? 'green' : data.achievementRate >= 40 ? 'amber' : 'red'
 
   // Choose color for friction rate
   const frictionColor: 'green' | 'amber' | 'red' =
@@ -165,10 +155,7 @@ export function QualityTab() {
   return (
     <div className="space-y-6">
       {/* Coverage */}
-      <CoverageBar
-        withFacets={data.totalWithFacets}
-        withoutFacets={data.totalWithoutFacets}
-      />
+      <CoverageBar withFacets={data.totalWithFacets} withoutFacets={data.totalWithoutFacets} />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

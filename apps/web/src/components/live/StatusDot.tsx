@@ -27,16 +27,12 @@ export function StatusDot({ group, size = 'sm', pulse = false }: StatusDotProps)
           className={cn(
             'absolute inline-flex rounded-full opacity-75 animate-ping',
             SIZE_CLASSES[size],
-            GROUP_COLORS[group]
+            GROUP_COLORS[group],
           )}
         />
       )}
       <span
-        className={cn(
-          'relative inline-flex rounded-full',
-          SIZE_CLASSES[size],
-          GROUP_COLORS[group]
-        )}
+        className={cn('relative inline-flex rounded-full', SIZE_CLASSES[size], GROUP_COLORS[group])}
       />
     </span>
   )

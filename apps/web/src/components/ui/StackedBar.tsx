@@ -48,7 +48,10 @@ export function StackedBar({ segments, className }: StackedBarProps) {
           const pct = (seg.value / total) * 100
           if (pct === 0) return null
           return (
-            <div key={seg.label} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <div
+              key={seg.label}
+              className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+            >
               <span className={cn('w-2 h-2 rounded-full', seg.color, seg.darkColor)} />
               <span>{seg.label}</span>
               <span className="tabular-nums font-medium">{pct.toFixed(1)}%</span>

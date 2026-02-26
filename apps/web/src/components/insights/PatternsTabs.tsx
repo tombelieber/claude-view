@@ -1,5 +1,5 @@
-import { cn } from '../../lib/utils'
 import type { TabId } from '../../hooks/use-insights'
+import { cn } from '../../lib/utils'
 
 interface PatternsTabsProps {
   activeTab: TabId
@@ -15,11 +15,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'quality', label: 'Quality' },
 ]
 
-export function PatternsTabs({
-  activeTab,
-  onTabChange,
-  disabledTabs = [],
-}: PatternsTabsProps) {
+export function PatternsTabs({ activeTab, onTabChange, disabledTabs = [] }: PatternsTabsProps) {
   return (
     <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
       {TABS.map((tab) => {
@@ -34,14 +30,12 @@ export function PatternsTabs({
               activeTab === tab.id
                 ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
                 : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300',
-              isDisabled && 'opacity-50 cursor-not-allowed'
+              isDisabled && 'opacity-50 cursor-not-allowed',
             )}
           >
             {tab.label}
             {isDisabled && (
-              <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500">
-                Soon
-              </span>
+              <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500">Soon</span>
             )}
           </button>
         )

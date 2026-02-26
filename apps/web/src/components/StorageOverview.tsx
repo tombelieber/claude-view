@@ -1,25 +1,37 @@
-import { useState, useCallback, useEffect } from 'react'
-import { RefreshCw, Loader2, AlertCircle, CheckCircle2, Trash2, MessageSquare, FolderOpen, GitCommit, Calendar, Database, GitBranch } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from 'recharts'
 import {
-  useStorageStats,
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  Database,
+  FolderOpen,
+  GitBranch,
+  GitCommit,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from 'recharts'
+import { toast } from 'sonner'
+import { useIndexingProgress } from '../hooks/use-indexing-progress'
+import {
   formatBytes,
-  formatTimestamp,
   formatDurationMs,
+  formatTimestamp,
+  useStorageStats,
 } from '../hooks/use-storage-stats'
 import { useClearCache } from '../hooks/use-system'
-import { useIndexingProgress } from '../hooks/use-indexing-progress'
-import { StatCard } from './ui'
-import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { cn } from '../lib/utils'
+import { StatCard } from './ui'
 
 /** Colors for each storage category — soft, distinct, calming */
 const STORAGE_COLORS = [
-  { fill: '#D97757', label: 'JSONL Sessions' },   // Claude Code terracotta — their data
-  { fill: '#6366f1', label: 'SQLite Database' },   // indigo — this app's DB
-  { fill: '#10b981', label: 'Search Index' },       // emerald — this app's index
+  { fill: '#D97757', label: 'JSONL Sessions' }, // Claude Code terracotta — their data
+  { fill: '#6366f1', label: 'SQLite Database' }, // indigo — this app's DB
+  { fill: '#10b981', label: 'Search Index' }, // emerald — this app's index
 ] as const
 
 /**
@@ -28,23 +40,34 @@ const STORAGE_COLORS = [
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function renderActiveShape(props: any) {
-  const {
-    cx, cy, innerRadius, outerRadius, startAngle, endAngle,
-    fill, payload, percent,
-  } = props
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent } = props
 
   return (
     <g>
       {/* Center label */}
-      <text x={cx} y={cy - 8} textAnchor="middle" className="fill-gray-800 dark:fill-gray-200" fontSize={14} fontWeight={600}>
+      <text
+        x={cx}
+        y={cy - 8}
+        textAnchor="middle"
+        className="fill-gray-800 dark:fill-gray-200"
+        fontSize={14}
+        fontWeight={600}
+      >
         {payload.label}
       </text>
-      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-gray-500 dark:fill-gray-400" fontSize={12}>
+      <text
+        x={cx}
+        y={cy + 12}
+        textAnchor="middle"
+        className="fill-gray-500 dark:fill-gray-400"
+        fontSize={12}
+      >
         {payload.formattedBytes} ({(percent * 100).toFixed(1)}%)
       </text>
       {/* Expanded slice */}
       <Sector
-        cx={cx} cy={cy}
+        cx={cx}
+        cy={cy}
         innerRadius={innerRadius - 2}
         outerRadius={outerRadius + 6}
         startAngle={startAngle}
@@ -54,7 +77,8 @@ function renderActiveShape(props: any) {
       />
       {/* Inner ring highlight */}
       <Sector
-        cx={cx} cy={cy}
+        cx={cx}
+        cy={cy}
         innerRadius={innerRadius - 4}
         outerRadius={innerRadius - 2}
         startAngle={startAngle}
@@ -123,21 +147,43 @@ export function StorageOverview() {
     : 0
 
   // App-only footprint (SQLite + Search Index — data this app created)
-  const appBytes = stats
-    ? Number(stats.sqliteBytes) + Number(stats.indexBytes)
-    : 0
+  const appBytes = stats ? Number(stats.sqliteBytes) + Number(stats.indexBytes) : 0
 
   // Build donut chart data with source attribution and paths
-  const chartData = stats ? [
-    { label: 'JSONL Sessions', source: 'Claude Code', bytes: Number(stats.jsonlBytes), formattedBytes: formatBytes(stats.jsonlBytes), path: stats.jsonlPath },
-    { label: 'SQLite Database', source: 'This app', bytes: Number(stats.sqliteBytes), formattedBytes: formatBytes(stats.sqliteBytes), path: stats.sqlitePath },
-    { label: 'Search Index', source: 'This app', bytes: Number(stats.indexBytes), formattedBytes: formatBytes(stats.indexBytes), path: stats.indexPath },
-  ] : []
+  const chartData = stats
+    ? [
+        {
+          label: 'JSONL Sessions',
+          source: 'Claude Code',
+          bytes: Number(stats.jsonlBytes),
+          formattedBytes: formatBytes(stats.jsonlBytes),
+          path: stats.jsonlPath,
+        },
+        {
+          label: 'SQLite Database',
+          source: 'This app',
+          bytes: Number(stats.sqliteBytes),
+          formattedBytes: formatBytes(stats.sqliteBytes),
+          path: stats.sqlitePath,
+        },
+        {
+          label: 'Search Index',
+          source: 'This app',
+          bytes: Number(stats.indexBytes),
+          formattedBytes: formatBytes(stats.indexBytes),
+          path: stats.indexPath,
+        },
+      ]
+    : []
 
   // Calculate throughput for index performance
   const indexThroughput =
     stats?.lastIndexDurationMs && Number(stats.lastIndexDurationMs) > 0
-      ? (Number(stats.jsonlBytes) / (Number(stats.lastIndexDurationMs) / 1000) / (1024 * 1024)).toFixed(1)
+      ? (
+          Number(stats.jsonlBytes) /
+          (Number(stats.lastIndexDurationMs) / 1000) /
+          (1024 * 1024)
+        ).toFixed(1)
       : null
 
   const handleClearCache = async () => {
@@ -287,12 +333,14 @@ export function StorageOverview() {
                     <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
                       {item.label}
                     </span>
-                    <span className={cn(
-                      'text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none',
-                      item.source === 'Claude Code'
-                        ? 'text-[#D97757] bg-[#D97757]/10 dark:bg-[#D97757]/20'
-                        : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    )}>
+                    <span
+                      className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none',
+                        item.source === 'Claude Code'
+                          ? 'text-[#D97757] bg-[#D97757]/10 dark:bg-[#D97757]/20'
+                          : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+                      )}
+                    >
                       {item.source}
                     </span>
                   </div>
@@ -312,12 +360,19 @@ export function StorageOverview() {
           {/* App footprint callout */}
           <div className="mt-1 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              App footprint: <span className="font-medium text-gray-700 dark:text-gray-300">{formatBytes(appBytes)}</span>
-              <span className="text-gray-400 dark:text-gray-500"> — JSONL data is read-only from <code className="text-[11px]">~/.claude/</code></span>
+              App footprint:{' '}
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                {formatBytes(appBytes)}
+              </span>
+              <span className="text-gray-400 dark:text-gray-500">
+                {' '}
+                — JSONL data is read-only from <code className="text-[11px]">~/.claude/</code>
+              </span>
             </p>
             {stats?.appDataPath && (
               <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                App data: <code className="font-mono">{stats.appDataPath}</code> — safe to delete, rebuilt on next launch
+                App data: <code className="font-mono">{stats.appDataPath}</code> — safe to delete,
+                rebuilt on next launch
               </p>
             )}
           </div>
@@ -326,8 +381,16 @@ export function StorageOverview() {
 
       {/* Primary Metrics — count cards */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Sessions" value={formatNumber(stats?.sessionCount ?? 0)} icon={MessageSquare} />
-        <StatCard label="Projects" value={formatNumber(stats?.projectCount ?? 0)} icon={FolderOpen} />
+        <StatCard
+          label="Sessions"
+          value={formatNumber(stats?.sessionCount ?? 0)}
+          icon={MessageSquare}
+        />
+        <StatCard
+          label="Projects"
+          value={formatNumber(stats?.projectCount ?? 0)}
+          icon={FolderOpen}
+        />
         <StatCard label="Commits" value={formatNumber(stats?.commitCount ?? 0)} icon={GitCommit} />
       </div>
 
@@ -340,7 +403,9 @@ export function StorageOverview() {
             {formatTimestamp(stats?.oldestSessionDate ?? null)}
           </span>
         </span>
-        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">
+          ·
+        </span>
         <span className="inline-flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
           <span>Index Built</span>
@@ -348,7 +413,9 @@ export function StorageOverview() {
             {formatTimestamp(stats?.lastIndexAt ?? null)}
           </span>
         </span>
-        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+        <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">
+          ·
+        </span>
         <span className="inline-flex items-center gap-1.5">
           <GitBranch className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
           <span>Last Git Sync</span>
@@ -376,7 +443,7 @@ export function StorageOverview() {
                 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
                 'hover:bg-gray-200 dark:hover:bg-gray-700',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
               )}
             >
               {isRebuilding ? (
@@ -401,7 +468,7 @@ export function StorageOverview() {
                 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
                 'hover:bg-gray-200 dark:hover:bg-gray-700',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2'
+                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
               )}
             >
               {clearCache.isPending ? (
@@ -427,7 +494,8 @@ export function StorageOverview() {
             <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 animate-in fade-in duration-200">
               <CheckCircle2 className="w-4 h-4" />
               <span>
-                Rebuilt {formatNumber(progress.indexed)} session{progress.indexed !== 1 ? 's' : ''} successfully
+                Rebuilt {formatNumber(progress.indexed)} session{progress.indexed !== 1 ? 's' : ''}{' '}
+                successfully
               </span>
             </div>
           )}
@@ -449,8 +517,8 @@ export function StorageOverview() {
               {indexThroughput && (
                 <span className="text-gray-500 dark:text-gray-500">
                   {' '}
-                  ({formatNumber(stats?.lastIndexSessionCount ?? 0)} sessions{' '}
-                  {indexThroughput} MB/s)
+                  ({formatNumber(stats?.lastIndexSessionCount ?? 0)} sessions {indexThroughput}{' '}
+                  MB/s)
                 </span>
               )}
             </p>

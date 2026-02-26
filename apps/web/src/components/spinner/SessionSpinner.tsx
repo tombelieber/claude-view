@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
-import * as Tooltip from '@radix-ui/react-tooltip'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import * as Tooltip from '@radix-ui/react-tooltip'
+import { useEffect, useState } from 'react'
 import {
   SPINNER_FRAMES,
-  formatTokensCompact,
-  formatModelShort,
   formatDurationCompact,
+  formatModelShort,
+  formatTokensCompact,
 } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -57,11 +57,12 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   const [frame, setFrame] = useState<string>(SPINNER_FRAMES[0])
 
   // Determine live-mode specifics via discriminant narrowing (no `as` casts)
-  const agentStateGroup = props.mode === 'live' ? props.agentStateGroup ?? 'autonomous' : 'autonomous'
+  const agentStateGroup =
+    props.mode === 'live' ? (props.agentStateGroup ?? 'autonomous') : 'autonomous'
   const agentStateLabel = props.mode === 'live' ? props.agentStateLabel : undefined
   const agentStateKey = props.mode === 'live' ? props.agentStateKey : undefined
-  const isStalled = props.mode === 'live' ? props.isStalled ?? false : false
-  const lastCacheHitAt = props.mode === 'live' ? props.lastCacheHitAt ?? null : null
+  const isStalled = props.mode === 'live' ? (props.isStalled ?? false) : false
+  const lastCacheHitAt = props.mode === 'live' ? (props.lastCacheHitAt ?? null) : null
 
   const isCompacting = agentStateKey === 'compacting'
 
@@ -93,7 +94,7 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   const [, setTick] = useState(0)
   useEffect(() => {
     if (agentStateGroup !== 'needs_you') return
-    const interval = setInterval(() => setTick(t => t + 1), 1000)
+    const interval = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(interval)
   }, [agentStateGroup])
 
@@ -111,12 +112,16 @@ export function SessionSpinner(props: SessionSpinnerProps) {
         <span className="w-3 text-center inline-block text-gray-500 dark:text-gray-400">·</span>
         <span className="text-gray-500 dark:text-gray-400">{verb}</span>
         {formattedTaskTime && (
-          <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">{formattedTaskTime}</span>
+          <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+            {formattedTaskTime}
+          </span>
         )}
         {shortModel && (
           <>
             <span className="text-gray-500 dark:text-gray-400"> · </span>
-            <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">{shortModel}</span>
+            <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+              {shortModel}
+            </span>
           </>
         )}
       </span>
@@ -126,12 +131,7 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // ---------------------------------------------------------------------------
   // Live mode
   // ---------------------------------------------------------------------------
-  const {
-    durationSeconds,
-    inputTokens,
-    outputTokens,
-    spinnerVerb,
-  } = props
+  const { durationSeconds, inputTokens, outputTokens, spinnerVerb } = props
 
   const shortModel = formatModelShort(model)
 
@@ -150,24 +150,28 @@ export function SessionSpinner(props: SessionSpinnerProps) {
 
     const showCountdown = hasCacheHit
 
-    const countdownText = remaining > 0
-      ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
-      : 'cache cold'
+    const countdownText =
+      remaining > 0
+        ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+        : 'cache cold'
 
-    const countdownColor = remaining <= 0
-      ? 'text-gray-400'
-      : remaining < 60
-        ? 'text-red-500'
-        : remaining < 180
-          ? 'text-amber-500'
-          : 'text-green-500'
+    const countdownColor =
+      remaining <= 0
+        ? 'text-gray-400'
+        : remaining < 60
+          ? 'text-red-500'
+          : remaining < 180
+            ? 'text-amber-500'
+            : 'text-green-500'
 
     return (
       <span className="flex items-center gap-1.5 text-xs">
         {hasBakedTime ? (
           <>
             <span className="w-3 text-center inline-block text-amber-500">✻</span>
-            <span className="text-gray-500 dark:text-gray-400">Baked {formatDurationCompact(lastTurnTaskSeconds)}</span>
+            <span className="text-gray-500 dark:text-gray-400">
+              Baked {formatDurationCompact(lastTurnTaskSeconds)}
+            </span>
           </>
         ) : (
           <>
@@ -185,7 +189,10 @@ export function SessionSpinner(props: SessionSpinnerProps) {
             </span>
           </CacheCountdownTooltip>
         ) : (
-          <span className="font-mono tabular-nums cursor-default text-gray-400" title="No cache activity yet">
+          <span
+            className="font-mono tabular-nums cursor-default text-gray-400"
+            title="No cache activity yet"
+          >
             · –
           </span>
         )}
@@ -196,23 +203,19 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   // autonomous (default) -> animated spinner + metrics
   const verb = isCompacting ? 'Compacting' : (spinnerVerb ?? 'Working')
   const tokenCount = inputTokens + outputTokens
-  const arrow = isCompacting ? '↓' : (inputTokens >= outputTokens ? '↑' : '↓')
+  const arrow = isCompacting ? '↓' : inputTokens >= outputTokens ? '↑' : '↓'
   const formattedTokens = formatTokensCompact(tokenCount)
   const formattedDuration = formatDurationCompact(durationSeconds)
 
-  const spinnerChar = prefersReducedMotion 
-    ? (isCompacting ? '◈' : '·') 
-    : (isCompacting ? '◈' : frame)
+  const spinnerChar = prefersReducedMotion ? (isCompacting ? '◈' : '·') : isCompacting ? '◈' : frame
 
-  const spinnerColorClass = isStalled 
-    ? 'text-red-500' 
-    : isCompacting 
-      ? 'text-amber-500' 
+  const spinnerColorClass = isStalled
+    ? 'text-red-500'
+    : isCompacting
+      ? 'text-amber-500'
       : 'text-emerald-500'
 
-  const animationClass = isCompacting && !prefersReducedMotion
-    ? 'animate-pulse'
-    : ''
+  const animationClass = isCompacting && !prefersReducedMotion ? 'animate-pulse' : ''
 
   return (
     <span className="flex items-center gap-1.5 text-xs">
@@ -225,7 +228,8 @@ export function SessionSpinner(props: SessionSpinnerProps) {
       <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
         {formattedDuration}
         {' · '}
-        {arrow}{formattedTokens}
+        {arrow}
+        {formattedTokens}
         {shortModel && (
           <>
             {' · '}
@@ -264,16 +268,12 @@ function CacheCountdownTooltip({
 
   const minutes = Math.floor(remaining / 60)
   const seconds = remaining % 60
-  const timeDisplay = isWarm
-    ? `${minutes}:${String(seconds).padStart(2, '0')}`
-    : 'Expired'
+  const timeDisplay = isWarm ? `${minutes}:${String(seconds).padStart(2, '0')}` : 'Expired'
 
   return (
     <Tooltip.Provider delayDuration={200}>
       <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          {children}
-        </Tooltip.Trigger>
+        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Content
             side="bottom"
@@ -282,13 +282,15 @@ function CacheCountdownTooltip({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">
-              Prompt Cache
-            </div>
+            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Prompt Cache</div>
 
             {/* Status + countdown */}
             <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 mb-2">
-              <span className={isWarm ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}>
+              <span
+                className={
+                  isWarm ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'
+                }
+              >
                 {isWarm ? 'Warm' : 'Cold'}
               </span>
               <span className="tabular-nums font-mono">{timeDisplay}</span>
@@ -306,7 +308,9 @@ function CacheCountdownTooltip({
 
             {/* Breakdown */}
             <div className="space-y-0.5 text-[11px]">
-              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">How it works</div>
+              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+                How it works
+              </div>
               <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
                 <span>TTL</span>
                 <span className="tabular-nums font-mono">5 min</span>

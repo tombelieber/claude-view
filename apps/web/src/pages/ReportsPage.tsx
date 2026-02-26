@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useSmartDefaults } from '../hooks/use-smart-defaults'
-import { useReports } from '../hooks/use-reports'
 import { ReportCard } from '../components/reports/ReportCard'
 import { ReportContent } from '../components/reports/ReportContent'
 import { ReportHistory } from '../components/reports/ReportHistory'
+import { useReports } from '../hooks/use-reports'
+import { useSmartDefaults } from '../hooks/use-smart-defaults'
 import type { ReportRow } from '../types/generated/ReportRow'
 
 export function ReportsPage() {
@@ -12,7 +12,7 @@ export function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState<ReportRow | null>(null)
 
   const findExisting = (dateStart: string, dateEnd: string) =>
-    reports?.find(r => r.dateStart === dateStart && r.dateEnd === dateEnd)
+    reports?.find((r) => r.dateStart === dateStart && r.dateEnd === dateEnd)
 
   return (
     <div className="max-w-3xl mx-auto py-6 px-4 space-y-6">

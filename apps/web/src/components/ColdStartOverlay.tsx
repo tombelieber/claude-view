@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Loader2, HardDrive, CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, HardDrive, Loader2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 
 /**
@@ -40,11 +40,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
 
   // Record when the banner first becomes meaningful
   useEffect(() => {
-    if (
-      firstShownAt.current === null &&
-      progress.phase !== 'idle' &&
-      progress.phase !== 'done'
-    ) {
+    if (firstShownAt.current === null && progress.phase !== 'idle' && progress.phase !== 'done') {
       firstShownAt.current = Date.now()
     }
   }, [progress.phase])
@@ -65,9 +61,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
     if (progress.phase !== 'done') return
 
     // Ensure we've been visible for at least MIN_DISPLAY_MS
-    const shownFor = firstShownAt.current
-      ? Date.now() - firstShownAt.current
-      : MIN_DISPLAY_MS
+    const shownFor = firstShownAt.current ? Date.now() - firstShownAt.current : MIN_DISPLAY_MS
     const remainingMin = Math.max(0, MIN_DISPLAY_MS - shownFor)
     const delay = remainingMin + DONE_LINGER_MS
 
@@ -90,9 +84,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
         : 0
 
   const canDismiss =
-    progress.phase === 'ready' ||
-    progress.phase === 'deep-indexing' ||
-    progress.phase === 'done'
+    progress.phase === 'ready' || progress.phase === 'deep-indexing' || progress.phase === 'done'
 
   const isDone = progress.phase === 'done'
 
@@ -102,11 +94,8 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
         // Smooth collapse + fade
         'overflow-hidden transition-all ease-out',
         'motion-reduce:transition-none',
-        visible
-          ? 'max-h-40 opacity-100'
-          : 'max-h-0 opacity-0',
-      ]
-        .join(' ')}
+        visible ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0',
+      ].join(' ')}
       style={{ transitionDuration: `${ANIMATE_OUT_MS}ms` }}
     >
       <div
@@ -130,10 +119,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
               />
             )}
             {(progress.phase === 'ready' || progress.phase === 'deep-indexing') && (
-              <HardDrive
-                className="w-4 h-4 text-blue-500 dark:text-blue-400"
-                aria-hidden="true"
-              />
+              <HardDrive className="w-4 h-4 text-blue-500 dark:text-blue-400" aria-hidden="true" />
             )}
             {isDone && (
               <CheckCircle2
@@ -201,7 +187,8 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
 
                 {/* Helper text */}
                 <p className="text-xs text-blue-500 dark:text-blue-500">
-                  You can browse sessions while we finish. Analytics will appear as indexing completes.
+                  You can browse sessions while we finish. Analytics will appear as indexing
+                  completes.
                 </p>
               </div>
             )}

@@ -1,5 +1,5 @@
+import { Archive, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { Archive, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface FileSnapshotCardProps {
   fileCount: number
@@ -22,10 +22,7 @@ export function FileSnapshotCard({
 
   if (isEmpty) {
     return (
-      <div
-        className="py-0.5 border-l-2 border-l-blue-400 pl-1 my-1"
-        aria-label="File snapshot"
-      >
+      <div className="py-0.5 border-l-2 border-l-blue-400 pl-1 my-1" aria-label="File snapshot">
         <div className="flex items-center gap-1.5">
           <Archive className="w-3 h-3 text-blue-500 flex-shrink-0" aria-hidden="true" />
           <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
@@ -39,10 +36,7 @@ export function FileSnapshotCard({
   const headerText = `${fileCount} file${fileCount !== 1 ? 's' : ''} backed up at ${timestamp}`
 
   return (
-    <div
-      className="py-0.5 border-l-2 border-l-blue-400 pl-1 my-1"
-      aria-label="File snapshot"
-    >
+    <div className="py-0.5 border-l-2 border-l-blue-400 pl-1 my-1" aria-label="File snapshot">
       {/* Status line — clickable to expand */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -52,9 +46,7 @@ export function FileSnapshotCard({
         <Archive className="w-3 h-3 text-blue-500 flex-shrink-0" aria-hidden="true" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
           {headerText}
-          {isIncremental && (
-            <span className="ml-1 text-[9px] text-blue-500">(incremental)</span>
-          )}
+          {isIncremental && <span className="ml-1 text-[9px] text-blue-500">(incremental)</span>}
         </span>
         {expanded ? (
           <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />

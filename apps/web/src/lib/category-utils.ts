@@ -26,17 +26,17 @@ const NEUTRAL = {
 
 export const CATEGORY_L2_CONFIG: Record<string, CategoryConfig> = {
   // code_work children
-  feature:      { label: 'Feature',      ...NEUTRAL, icon: 'Plus' },
-  bugfix:       { label: 'Bug Fix',      ...NEUTRAL, icon: 'Bug' },
-  refactor:     { label: 'Refactor',     ...NEUTRAL, icon: 'RefreshCw' },
-  testing:      { label: 'Testing',      ...NEUTRAL, icon: 'FlaskConical' },
+  feature: { label: 'Feature', ...NEUTRAL, icon: 'Plus' },
+  bugfix: { label: 'Bug Fix', ...NEUTRAL, icon: 'Bug' },
+  refactor: { label: 'Refactor', ...NEUTRAL, icon: 'RefreshCw' },
+  testing: { label: 'Testing', ...NEUTRAL, icon: 'FlaskConical' },
   // support_work children
-  docs:         { label: 'Docs',         ...NEUTRAL, icon: 'FileText' },
-  config:       { label: 'Config',       ...NEUTRAL, icon: 'Settings' },
-  ops:          { label: 'Ops',          ...NEUTRAL, icon: 'Server' },
+  docs: { label: 'Docs', ...NEUTRAL, icon: 'FileText' },
+  config: { label: 'Config', ...NEUTRAL, icon: 'Settings' },
+  ops: { label: 'Ops', ...NEUTRAL, icon: 'Server' },
   // thinking_work children
-  planning:     { label: 'Planning',     ...NEUTRAL, icon: 'ClipboardList' },
-  explanation:  { label: 'Learning',     ...NEUTRAL, icon: 'Lightbulb' },
+  planning: { label: 'Planning', ...NEUTRAL, icon: 'ClipboardList' },
+  explanation: { label: 'Learning', ...NEUTRAL, icon: 'Lightbulb' },
   architecture: { label: 'Architecture', ...NEUTRAL, icon: 'Blocks' },
 }
 

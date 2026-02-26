@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { LiveViewMode } from './types'
 import type { LiveSession } from './use-live-sessions'
 
@@ -19,10 +19,7 @@ function isInputFocused(): boolean {
   if (!el) return false
   const tag = el.tagName.toLowerCase()
   return (
-    tag === 'input' ||
-    tag === 'textarea' ||
-    tag === 'select' ||
-    el.hasAttribute('contenteditable')
+    tag === 'input' || tag === 'textarea' || tag === 'select' || el.hasAttribute('contenteditable')
   )
 }
 

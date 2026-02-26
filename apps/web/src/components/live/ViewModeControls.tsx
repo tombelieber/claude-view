@@ -1,5 +1,5 @@
-import { useMonitorStore } from '../../store/monitor-store'
 import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
 
 interface ViewModeControlsProps {
   className?: string

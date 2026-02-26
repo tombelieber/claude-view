@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StatsDashboard } from './StatsDashboard'
 
 // Mock hooks
@@ -42,7 +42,7 @@ function makeStats(overrides = {}) {
     totalSessions: 42,
     totalProjects: 5,
     periodStart: 1706745600, // Feb 1 2024
-    periodEnd: 1707350400,   // Feb 8 2024
+    periodEnd: 1707350400, // Feb 8 2024
     comparisonPeriodStart: null,
     comparisonPeriodEnd: null,
     dataStartDate: 1704067200, // Jan 1 2024
@@ -67,7 +67,12 @@ function makeStats(overrides = {}) {
     ],
     toolTotals: { edit: 100, read: 200, bash: 50, write: 30 },
     longestSessions: [
-      { id: 'sess-1', preview: 'Long session', projectDisplayName: 'My App', durationSeconds: 3600 },
+      {
+        id: 'sess-1',
+        preview: 'Long session',
+        projectDisplayName: 'My App',
+        durationSeconds: 3600,
+      },
     ],
     ...overrides,
   }
@@ -233,11 +238,10 @@ describe('StatsDashboard', () => {
 
     it('should pass time range to useDashboardStats', () => {
       renderDashboard()
-      expect(mockUseDashboardStats).toHaveBeenCalledWith(
-        undefined,
-        undefined,
-        { from: 1706745600, to: 1707350400 },
-      )
+      expect(mockUseDashboardStats).toHaveBeenCalledWith(undefined, undefined, {
+        from: 1706745600,
+        to: 1707350400,
+      })
     })
   })
 
@@ -258,6 +262,5 @@ describe('StatsDashboard', () => {
       renderDashboard()
       expect(screen.getByText('Showing all-time stats')).toBeInTheDocument()
     })
-
   })
 })

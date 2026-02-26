@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSubAgentStream } from './use-subagent-stream'
 
 // Mock useTerminalSocket since it creates real WebSockets
@@ -27,7 +27,7 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage,
-      })
+      }),
     )
 
     expect(mockUseTerminalSocket).toHaveBeenCalledWith(
@@ -35,7 +35,7 @@ describe('useSubAgentStream', () => {
         sessionId: 'abc123/subagents/a951849',
         mode: 'rich',
         enabled: true,
-      })
+      }),
     )
   })
 
@@ -46,13 +46,13 @@ describe('useSubAgentStream', () => {
         agentId: null,
         enabled: true,
         onMessage: vi.fn(),
-      })
+      }),
     )
 
     expect(mockUseTerminalSocket).toHaveBeenCalledWith(
       expect.objectContaining({
         enabled: false,
-      })
+      }),
     )
   })
 
@@ -63,13 +63,13 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: false,
         onMessage: vi.fn(),
-      })
+      }),
     )
 
     expect(mockUseTerminalSocket).toHaveBeenCalledWith(
       expect.objectContaining({
         enabled: false,
-      })
+      }),
     )
   })
 
@@ -80,7 +80,7 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage: vi.fn(),
-      })
+      }),
     )
 
     expect(result.current.connectionState).toBe('disconnected')
@@ -107,16 +107,18 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage,
-      })
+      }),
     )
 
     // Simulate an assistant message arriving
     act(() => {
-      capturedOnMessage?.(JSON.stringify({
-        type: 'message',
-        role: 'assistant',
-        content: 'Hello from sub-agent',
-      }))
+      capturedOnMessage?.(
+        JSON.stringify({
+          type: 'message',
+          role: 'assistant',
+          content: 'Hello from sub-agent',
+        }),
+      )
     })
 
     expect(result.current.messages).toHaveLength(1)
@@ -143,7 +145,7 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage,
-      })
+      }),
     )
 
     expect(result.current.bufferDone).toBe(false)
@@ -175,7 +177,7 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage,
-      })
+      }),
     )
 
     // Send something that parseRichMessage returns null for
@@ -196,13 +198,13 @@ describe('useSubAgentStream', () => {
         agentId: 'a951849',
         enabled: true,
         onMessage: vi.fn(),
-      })
+      }),
     )
 
     expect(mockUseTerminalSocket).toHaveBeenCalledWith(
       expect.objectContaining({
         scrollback: 100_000,
-      })
+      }),
     )
   })
 })

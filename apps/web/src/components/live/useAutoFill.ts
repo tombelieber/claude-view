@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import type { LiveSession } from './use-live-sessions'
 import { useMonitorStore } from '../../store/monitor-store'
+import type { LiveSession } from './use-live-sessions'
 
 interface UseAutoFillOptions {
   sessions: LiveSession[]
@@ -109,9 +109,7 @@ export function useAutoFill(options: UseAutoFillOptions): Set<string> {
 
       // Find sessions waiting for a slot (hidden but active)
       const waitingSessions = sessions.filter(
-        (s) =>
-          store.hiddenPaneIds.has(s.id) &&
-          s.agentState.group === 'autonomous'
+        (s) => store.hiddenPaneIds.has(s.id) && s.agentState.group === 'autonomous',
       )
 
       if (waitingSessions.length === 0) return

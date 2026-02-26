@@ -40,7 +40,8 @@ function buildSearchParams(params: SessionsQueryParams, offset: number): URLSear
   if (params.filters.hasSkills === 'yes') sp.set('has_skills', 'true')
   if (params.filters.hasSkills === 'no') sp.set('has_skills', 'false')
 
-  if (params.filters.minDuration !== null) sp.set('min_duration', String(params.filters.minDuration))
+  if (params.filters.minDuration !== null)
+    sp.set('min_duration', String(params.filters.minDuration))
   if (params.filters.minFiles !== null) sp.set('min_files', String(params.filters.minFiles))
   if (params.filters.minTokens !== null) sp.set('min_tokens', String(params.filters.minTokens))
   if (params.filters.highReedit === true) sp.set('high_reedit', 'true')
@@ -68,13 +69,13 @@ export function useSessionsInfinite(params: SessionsQueryParams) {
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       // Use server hasMore if available, otherwise compute from total
-      const hasMore = lastPage.hasMore ?? (lastPageParam + PAGE_SIZE < lastPage.total)
+      const hasMore = lastPage.hasMore ?? lastPageParam + PAGE_SIZE < lastPage.total
       if (!hasMore) return undefined
       return lastPageParam + PAGE_SIZE
     },
     // Flatten all pages into a single sessions array for convenience
     select: (data) => ({
-      sessions: data.pages.flatMap(p => p.sessions),
+      sessions: data.pages.flatMap((p) => p.sessions),
       total: data.pages[0]?.total ?? 0,
     }),
   })

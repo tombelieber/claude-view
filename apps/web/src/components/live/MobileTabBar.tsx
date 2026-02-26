@@ -1,4 +1,4 @@
-import { LayoutGrid, Columns3, List } from 'lucide-react'
+import { Columns3, LayoutGrid, List } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { LiveViewMode } from './types'
 
@@ -26,7 +26,7 @@ export function MobileTabBar({ activeTab, onTabChange }: MobileTabBarProps) {
           onClick={() => onTabChange(mode)}
           className={cn(
             'flex-1 flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-2',
-            resolvedTab === mode ? 'text-indigo-400' : 'text-gray-400 dark:text-gray-500'
+            resolvedTab === mode ? 'text-indigo-400' : 'text-gray-400 dark:text-gray-500',
           )}
         >
           <Icon className="w-5 h-5" />

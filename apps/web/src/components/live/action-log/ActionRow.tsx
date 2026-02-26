@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { cn } from '../../../lib/utils'
 import type { ActionItem } from './types'
 
@@ -30,9 +30,12 @@ const BADGE_LABELS: Record<string, string> = {
 
 function statusDotColor(status: ActionItem['status']): string {
   switch (status) {
-    case 'success': return 'bg-green-500'
-    case 'error': return 'bg-red-500'
-    case 'pending': return 'bg-amber-400 animate-pulse'
+    case 'success':
+      return 'bg-green-500'
+    case 'error':
+      return 'bg-red-500'
+    case 'pending':
+      return 'bg-amber-400 animate-pulse'
   }
 }
 
@@ -40,7 +43,8 @@ function formatDuration(ms: number | undefined): { text: string; color: string }
   if (ms == null) return null
   const secs = ms / 1000
   const text = secs >= 60 ? `${(secs / 60).toFixed(1)}m` : `${secs.toFixed(1)}s`
-  const color = secs > 30 ? 'text-red-400' : secs > 5 ? 'text-amber-400' : 'text-gray-500 dark:text-gray-500'
+  const color =
+    secs > 30 ? 'text-red-400' : secs > 5 ? 'text-amber-400' : 'text-gray-500 dark:text-gray-500'
   return { text, color }
 }
 
@@ -81,24 +85,27 @@ export function ActionRow({ action }: ActionRowProps) {
   const duration = formatDuration(action.duration)
   const badgeClass = CATEGORY_BADGE[action.category] || CATEGORY_BADGE.builtin
 
-  const badgeLabel = action.category === 'builtin'
-    ? action.toolName
-    : (BADGE_LABELS[action.category] ?? action.category)
+  const badgeLabel =
+    action.category === 'builtin'
+      ? action.toolName
+      : (BADGE_LABELS[action.category] ?? action.category)
 
   return (
-    <div
-      className={cn(
-        'border-b border-gray-800/50',
-        action.status === 'error' && 'bg-red-500/5',
-      )}
-    >
+    <div className={cn('border-b border-gray-800/50', action.status === 'error' && 'bg-red-500/5')}>
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-800/30 transition-colors cursor-pointer"
       >
-        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDotColor(action.status))} />
+        <span
+          className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDotColor(action.status))}
+        />
 
-        <span className={cn('text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 min-w-[40px] text-center', badgeClass)}>
+        <span
+          className={cn(
+            'text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 min-w-[40px] text-center',
+            badgeClass,
+          )}
+        >
           {badgeLabel}
         </span>
 
@@ -115,11 +122,12 @@ export function ActionRow({ action }: ActionRowProps) {
           <span className="text-[10px] text-amber-400 font-mono flex-shrink-0">...</span>
         )}
 
-        {(action.input || action.output) && (
-          expanded
-            ? <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
-            : <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
-        )}
+        {(action.input || action.output) &&
+          (expanded ? (
+            <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
+          ))}
       </button>
 
       {expanded && (
@@ -132,7 +140,9 @@ export function ActionRow({ action }: ActionRowProps) {
           {action.input && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">Input</span>
+                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">
+                  Input
+                </span>
                 <CopyButton text={action.input} />
               </div>
               <pre className="text-[10px] font-mono text-gray-300 bg-gray-900 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
@@ -143,11 +153,15 @@ export function ActionRow({ action }: ActionRowProps) {
           {action.output && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">Output</span>
+                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">
+                  Output
+                </span>
                 <CopyButton text={action.output} />
               </div>
               <pre className="text-[10px] font-mono text-gray-300 bg-gray-900 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
-                {action.output.length > 2000 ? action.output.slice(0, 2000) + '\n... (truncated)' : action.output}
+                {action.output.length > 2000
+                  ? action.output.slice(0, 2000) + '\n... (truncated)'
+                  : action.output}
               </pre>
             </div>
           )}

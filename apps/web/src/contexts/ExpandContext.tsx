@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { type ReactNode, createContext, useCallback, useContext, useState } from 'react'
 
 interface ExpandContextType {
   expandedBlocks: Set<string>
@@ -18,7 +18,7 @@ export function ExpandProvider({ children }: { children: ReactNode }) {
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set())
 
   const toggleBlock = useCallback((id: string) => {
-    setExpandedBlocks(prev => {
+    setExpandedBlocks((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
         next.delete(id)

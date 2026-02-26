@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { XmlCard } from './XmlCard'
 
 describe('XmlCard - UntrustedData XSS Hardening', () => {
@@ -131,7 +131,9 @@ Line 4</untrusted-data-abc123>`
       })
 
       // Verify no actual event handlers in DOM
-      const elementsWithHandlers = container.querySelectorAll('[onload], [onfocus], [onstart], [onerror]')
+      const elementsWithHandlers = container.querySelectorAll(
+        '[onload], [onfocus], [onstart], [onerror]',
+      )
       expect(elementsWithHandlers.length).toBe(0)
     })
   })
@@ -232,7 +234,10 @@ Line 5: More content
       // Verify dangerous markup appears as plaintext (not as executable HTML)
       // With KEEP_CONTENT: true, DOMPurify keeps tags as text but strips attributes
       // This is safe because <pre> renders it as literal text, not as HTML
-      const hasTagsAsText = preContent.includes('<script>') || preContent.includes('onclick=') || preContent.includes('<div')
+      const hasTagsAsText =
+        preContent.includes('<script>') ||
+        preContent.includes('onclick=') ||
+        preContent.includes('<div')
       // Whether tags appear as text or are removed, they cannot execute
       // What matters is that actual script elements and onclick handlers don't exist in DOM
       expect(container.querySelectorAll('script').length).toBe(0)

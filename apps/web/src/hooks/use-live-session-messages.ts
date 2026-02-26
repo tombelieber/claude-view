@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from 'react'
-import { parseRichMessage, type RichMessage } from '../components/live/RichPane'
-import { useTerminalSocket, type ConnectionState } from './use-terminal-socket'
+import { useCallback, useRef, useState } from 'react'
+import { type RichMessage, parseRichMessage } from '../components/live/RichPane'
 import type { ActionCategory, HookEventItem } from '../components/live/action-log/types'
+import { type ConnectionState, useTerminalSocket } from './use-terminal-socket'
 
 export interface UseLiveSessionMessagesResult {
   messages: RichMessage[]
@@ -19,7 +19,10 @@ export interface UseLiveSessionMessagesResult {
  * Terminal tab and the (future) Log tab can share the same WebSocket
  * connection and message array.
  */
-export function useLiveSessionMessages(sessionId: string, enabled: boolean): UseLiveSessionMessagesResult {
+export function useLiveSessionMessages(
+  sessionId: string,
+  enabled: boolean,
+): UseLiveSessionMessagesResult {
   const [messages, setMessages] = useState<RichMessage[]>([])
   const [hookEvents, setHookEvents] = useState<HookEventItem[]>([])
   const [bufferDone, setBufferDone] = useState(false)
@@ -30,16 +33,19 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
     try {
       const json = JSON.parse(data)
       if (json.type === 'hook_event') {
-        setHookEvents((prev) => [...prev, {
-          id: `hook-${prev.length}`,
-          type: 'hook_event' as const,
-          timestamp: json.timestamp,
-          eventName: json.eventName,
-          toolName: json.toolName,
-          label: json.label,
-          group: json.group,
-          context: json.context,
-        }])
+        setHookEvents((prev) => [
+          ...prev,
+          {
+            id: `hook-${prev.length}`,
+            type: 'hook_event' as const,
+            timestamp: json.timestamp,
+            eventName: json.eventName,
+            toolName: json.toolName,
+            label: json.label,
+            group: json.group,
+            context: json.context,
+          },
+        ])
         // Insert hook event at correct chronological position
         // (scrollback replay sends hook events after all regular messages,
         //  so append-only would place them at the end instead of inline)
@@ -70,7 +76,8 @@ export function useLiveSessionMessages(sessionId: string, enabled: boolean): Use
           const lastTs = prev[prev.length - 1].ts ?? 0
           if (ts >= lastTs) return [...prev, newMsg]
           // Slow path: binary search for correct insertion point
-          let lo = 0, hi = prev.length
+          let lo = 0,
+            hi = prev.length
           while (lo < hi) {
             const mid = (lo + hi) >>> 1
             if ((prev[mid].ts ?? 0) <= ts) lo = mid + 1

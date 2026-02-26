@@ -1,8 +1,8 @@
 import { GitBranch, X } from 'lucide-react'
-import { NO_BRANCH } from '../../lib/constants'
-import type { TimeRangePreset, CustomDateRange } from '../../hooks/use-time-range'
-import { TimeRangeSelector, DateRangePicker } from '../ui'
 import { useIsMobile } from '../../hooks/use-media-query'
+import type { CustomDateRange, TimeRangePreset } from '../../hooks/use-time-range'
+import { NO_BRANCH } from '../../lib/constants'
+import { DateRangePicker, TimeRangeSelector } from '../ui'
 
 interface ContributionsHeaderProps {
   preset: TimeRangePreset
@@ -45,19 +45,24 @@ export function ContributionsHeader({
               AI Contributions
               {projectFilter ? (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
-                  {' '}&mdash; {projectFilter}{branchFilter ? ` / ${branchFilter === NO_BRANCH ? '(no branch)' : branchFilter}` : ''}
+                  {' '}
+                  &mdash; {projectFilter}
+                  {branchFilter
+                    ? ` / ${branchFilter === NO_BRANCH ? '(no branch)' : branchFilter}`
+                    : ''}
                 </span>
               ) : (
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400">
-                  {' '}&mdash; All Projects
+                  {' '}
+                  &mdash; All Projects
                 </span>
               )}
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Tracking your AI-assisted development across{' '}
-                <span className="font-medium tabular-nums">{sessionCount}</span>{' '}
-                session{sessionCount !== 1 ? 's' : ''}
+                <span className="font-medium tabular-nums">{sessionCount}</span> session
+                {sessionCount !== 1 ? 's' : ''}
               </p>
               {projectFilter && onClearProjectFilter && (
                 <button
@@ -102,10 +107,7 @@ export function ContributionsHeader({
             ]}
           />
           {preset === 'custom' && (
-            <DateRangePicker
-              value={customRange}
-              onChange={onCustomRangeChange}
-            />
+            <DateRangePicker value={customRange} onChange={onCustomRangeChange} />
           )}
         </div>
       </div>

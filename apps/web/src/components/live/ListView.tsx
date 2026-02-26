@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { GROUP_ORDER } from './types'
-import { cleanPreviewText } from '../../utils/get-session-title'
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
+import { useMemo, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
-import { StatusDot } from './StatusDot'
-import { StateBadge } from './SessionCard'
+import { cn } from '../../lib/utils'
+import { cleanPreviewText } from '../../utils/get-session-title'
 import { ContextBar } from './ContextBar'
+import { StateBadge } from './SessionCard'
+import { StatusDot } from './StatusDot'
+import { GROUP_ORDER } from './types'
+import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 interface ListViewProps {
   sessions: LiveSession[]
@@ -43,16 +43,17 @@ function formatCost(session: LiveSession): string {
   return `${session.cost?.isEstimated ? '~' : ''}${formatCostUsd(usd)}`
 }
 
-const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] = [
-  { key: 'status', label: 'Status', width: 'w-[40px]', sortable: true },
-  { key: 'project', label: 'Project', width: 'w-[140px]', sortable: true },
-  { key: 'branch', label: 'Branch', width: 'w-[120px]', sortable: true },
-  { key: 'activity', label: 'Activity', width: 'flex-1', sortable: false },
-  { key: 'turns', label: 'Turns', width: 'w-[60px]', sortable: true },
-  { key: 'cost', label: 'Cost', width: 'w-[70px]', sortable: true },
-  { key: 'context', label: 'Context%', width: 'w-[65px]', sortable: true },
-  { key: 'lastActive', label: 'Last Active', width: 'w-[90px]', sortable: true },
-]
+const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] =
+  [
+    { key: 'status', label: 'Status', width: 'w-[40px]', sortable: true },
+    { key: 'project', label: 'Project', width: 'w-[140px]', sortable: true },
+    { key: 'branch', label: 'Branch', width: 'w-[120px]', sortable: true },
+    { key: 'activity', label: 'Activity', width: 'flex-1', sortable: false },
+    { key: 'turns', label: 'Turns', width: 'w-[60px]', sortable: true },
+    { key: 'cost', label: 'Cost', width: 'w-[70px]', sortable: true },
+    { key: 'context', label: 'Context%', width: 'w-[65px]', sortable: true },
+    { key: 'lastActive', label: 'Last Active', width: 'w-[90px]', sortable: true },
+  ]
 
 export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
   const [sortColumn, setSortColumn] = useState<SortColumn>('status')
@@ -70,9 +71,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
           break
         }
         case 'project':
-          cmp = (a.projectDisplayName || a.project).localeCompare(
-            b.projectDisplayName || b.project
-          )
+          cmp = (a.projectDisplayName || a.project).localeCompare(b.projectDisplayName || b.project)
           break
         case 'branch':
           cmp = (a.gitBranch ?? '').localeCompare(b.gitBranch ?? '')
@@ -123,20 +122,21 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 className={cn(
                   'px-2 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500',
                   col.width === 'flex-1' ? '' : col.width,
-                  col.sortable && 'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300 transition-colors'
+                  col.sortable &&
+                    'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300 transition-colors',
                 )}
                 style={col.width === 'flex-1' ? {} : undefined}
                 onClick={col.sortable ? () => handleHeaderClick(col.key as SortColumn) : undefined}
               >
                 <span className="inline-flex items-center gap-1">
                   {col.label}
-                  {col.sortable && sortColumn === col.key && (
-                    sortDir === 'asc' ? (
+                  {col.sortable &&
+                    sortColumn === col.key &&
+                    (sortDir === 'asc' ? (
                       <ArrowUp className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                     ) : (
                       <ArrowDown className="h-3 w-3 text-gray-500 dark:text-gray-400" />
-                    )
-                  )}
+                    ))}
                 </span>
               </th>
             ))}
@@ -147,7 +147,8 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
             const group = session.agentState.group
             const isSelected = session.id === selectedId
             const contextPercent = getContextPercent(session)
-            const activityText = session.currentActivity || cleanPreviewText(session.lastUserMessage) || '--'
+            const activityText =
+              session.currentActivity || cleanPreviewText(session.lastUserMessage) || '--'
 
             return (
               <tr
@@ -158,7 +159,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                   'border-b border-gray-200/50 dark:border-gray-800/50 transition-colors cursor-pointer',
                   isSelected
                     ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500'
-                    : 'border-l-2 border-l-transparent hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
+                    : 'border-l-2 border-l-transparent hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
                 )}
               >
                 {/* Status */}

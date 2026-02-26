@@ -1,11 +1,11 @@
-import { Loader2, Sparkles, RefreshCw } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { formatCostUsd } from '../../lib/format-utils'
-import { useReportPreview } from '../../hooks/use-report-preview'
+import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { useReportGenerate } from '../../hooks/use-report-generate'
+import { useReportPreview } from '../../hooks/use-report-preview'
+import { formatCostUsd } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
+import type { ReportRow } from '../../types/generated/ReportRow'
 import { ReportContent } from './ReportContent'
 import { ReportDetails } from './ReportDetails'
-import type { ReportRow } from '../../types/generated/ReportRow'
 
 interface ReportCardProps {
   label: string
@@ -29,9 +29,26 @@ function formatCost(cents: number): string {
   return formatCostUsd(cents / 100)
 }
 
-export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, suggested, existingReport }: ReportCardProps) {
+export function ReportCard({
+  label,
+  dateStart,
+  dateEnd,
+  type,
+  startTs,
+  endTs,
+  suggested,
+  existingReport,
+}: ReportCardProps) {
   const { data: preview, isLoading: previewLoading } = useReportPreview(startTs, endTs)
-  const { generate, isGenerating, streamedText, contextDigest: completedContextDigest, generationModel, error, reset } = useReportGenerate()
+  const {
+    generate,
+    isGenerating,
+    streamedText,
+    contextDigest: completedContextDigest,
+    generationModel,
+    error,
+    reset,
+  } = useReportGenerate()
   const handleGenerate = () => {
     generate({ reportType: type, dateStart, dateEnd, startTs, endTs })
   }
@@ -41,9 +58,7 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
     handleGenerate()
   }
 
-  const dateLabel = dateStart === dateEnd
-    ? dateStart
-    : `${dateStart} \u2014 ${dateEnd}`
+  const dateLabel = dateStart === dateEnd ? dateStart : `${dateStart} \u2014 ${dateEnd}`
 
   // STREAMING state
   if (isGenerating && streamedText) {
@@ -155,10 +170,12 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
   const isEmpty = preview && preview.sessionCount === 0
 
   return (
-    <div className={cn(
-      'rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5',
-      suggested && 'border-l-2 border-l-blue-500 dark:border-l-blue-400'
-    )}>
+    <div
+      className={cn(
+        'rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5',
+        suggested && 'border-l-2 border-l-blue-500 dark:border-l-blue-400',
+      )}
+    >
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400">{dateLabel}</p>
@@ -170,10 +187,13 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
         <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">No sessions in this range</p>
       ) : preview ? (
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          {preview.sessionCount} sessions &middot; {preview.projectCount} projects &middot; {formatDuration(preview.totalDurationSecs)}
+          {preview.sessionCount} sessions &middot; {preview.projectCount} projects &middot;{' '}
+          {formatDuration(preview.totalDurationSecs)}
           {preview.totalCostCents > 0 && (
             <span title="Estimated API cost for sessions in this period">
-              {' \u00B7 ~'}{formatCost(preview.totalCostCents)}{' API usage'}
+              {' \u00B7 ~'}
+              {formatCost(preview.totalCostCents)}
+              {' API usage'}
             </span>
           )}
         </p>
@@ -187,7 +207,7 @@ export function ReportCard({ label, dateStart, dateEnd, type, startTs, endTs, su
           'w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors',
           isGenerating || isEmpty || previewLoading
             ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-            : 'bg-blue-500 text-white hover:bg-blue-600'
+            : 'bg-blue-500 text-white hover:bg-blue-600',
         )}
       >
         {isGenerating ? (

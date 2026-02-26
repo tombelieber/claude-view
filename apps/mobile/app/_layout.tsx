@@ -1,28 +1,28 @@
-import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { TamaguiProvider } from 'tamagui';
-import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
-import config from '../tamagui.config';
+import { useFonts } from 'expo-font'
+import { Stack } from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
+import { StatusBar } from 'expo-status-bar'
+import { useEffect } from 'react'
+import { useColorScheme } from 'react-native'
+import { TamaguiProvider } from 'tamagui'
+import config from '../tamagui.config'
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync()
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = useColorScheme()
   const [fontsLoaded] = useFonts({
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
     InterBold: require('@tamagui/font-inter/otf/Inter-Bold.otf'),
-  });
+  })
 
   useEffect(() => {
     if (fontsLoaded) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync()
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded])
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded) return null
 
   return (
     <TamaguiProvider config={config} defaultTheme={colorScheme === 'dark' ? 'dark' : 'light'}>
@@ -31,5 +31,5 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
     </TamaguiProvider>
-  );
+  )
 }

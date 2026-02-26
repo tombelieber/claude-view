@@ -1,5 +1,5 @@
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type { HookEventItem } from './types'
 
@@ -41,10 +41,9 @@ export function HookEventRow({ event }: HookEventRowProps) {
   const hasContext = !!event.context
 
   return (
-    <div className={cn(
-      'border-b border-gray-800/50',
-      event.group === 'needs_you' && 'bg-amber-500/5',
-    )}>
+    <div
+      className={cn('border-b border-gray-800/50', event.group === 'needs_you' && 'bg-amber-500/5')}
+    >
       <button
         onClick={() => hasContext && setExpanded((v) => !v)}
         className={cn(
@@ -74,11 +73,12 @@ export function HookEventRow({ event }: HookEventRowProps) {
           </span>
         )}
 
-        {hasContext && (
-          expanded
-            ? <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
-            : <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
-        )}
+        {hasContext &&
+          (expanded ? (
+            <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
+          ))}
       </button>
 
       {expanded && event.context && (

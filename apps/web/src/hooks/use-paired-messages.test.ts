@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { pairMessages } from './use-paired-messages'
+import { describe, expect, it } from 'vitest'
 import type { RichMessage } from '../components/live/RichPane'
+import { pairMessages } from './use-paired-messages'
 
 function msg(type: RichMessage['type'], overrides: Partial<RichMessage> = {}): RichMessage {
   return { type, content: '', ts: Date.now() / 1000, ...overrides }

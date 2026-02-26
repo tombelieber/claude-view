@@ -1,11 +1,11 @@
+import { ChevronRight, HelpCircle, Home, Monitor, Moon, Search, Settings, Sun } from 'lucide-react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { Home, Search, HelpCircle, Settings, ChevronRight, Sun, Moon, Monitor } from 'lucide-react'
-import { useAppStore } from '../store/app-store'
-import { useTheme } from '../hooks/use-theme'
-import { HealthIndicator } from './HealthIndicator'
-import { AuthPill } from './AuthPill'
-import { NotificationSoundPopover } from './live/NotificationSoundPopover'
 import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
+import { useTheme } from '../hooks/use-theme'
+import { useAppStore } from '../store/app-store'
+import { AuthPill } from './AuthPill'
+import { HealthIndicator } from './HealthIndicator'
+import { NotificationSoundPopover } from './live/NotificationSoundPopover'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
@@ -17,7 +17,12 @@ interface HeaderProps {
   audioUnlocked: boolean
 }
 
-export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, audioUnlocked }: HeaderProps) {
+export function Header({
+  soundSettings,
+  onSoundSettingsChange,
+  onSoundPreview,
+  audioUnlocked,
+}: HeaderProps) {
   const location = useLocation()
   const params = useParams()
   const [searchParams] = useSearchParams()
@@ -31,25 +36,24 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
 
     if (location.pathname === '/analytics') {
       const tab = searchParams.get('tab')
-      const tabLabel = tab === 'contributions' ? 'Contributions'
-        : tab === 'insights' ? 'Insights'
-        : 'Overview'
+      const tabLabel =
+        tab === 'contributions' ? 'Contributions' : tab === 'insights' ? 'Insights' : 'Overview'
       crumbs.push({
         label: `Analytics — ${tabLabel}`,
-        path: location.pathname + location.search
+        path: location.pathname + location.search,
       })
     } else if (location.pathname.match(/^\/sessions\/[^/]+$/)) {
       // Session detail page: /sessions/:sessionId
       crumbs.push({
         label: 'Session',
-        path: location.pathname
+        path: location.pathname,
       })
     } else if (location.pathname.startsWith('/project/')) {
       // Legacy project routes (still supported via router redirects)
       const projectName = decodeURIComponent(params.projectId || '')
       crumbs.push({
         label: projectName.split('/').pop() || 'Project',
-        path: `/?project=${encodeURIComponent(projectName)}`
+        path: `/?project=${encodeURIComponent(projectName)}`,
       })
     }
 
@@ -74,10 +78,7 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
     <header className="h-12 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
       {/* Left: Logo + Breadcrumbs */}
       <div className="flex items-center gap-2">
-        <Link
-          to="/"
-          className="flex items-center gap-2 hover:opacity-70 transition-opacity"
-        >
+        <Link to="/" className="flex items-center gap-2 hover:opacity-70 transition-opacity">
           <Home className="w-4 h-4 text-gray-400" />
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Claude View</h1>
           <HealthIndicator />
@@ -90,7 +91,10 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
               <div key={crumb.path} className="flex items-center gap-2">
                 <ChevronRight className="w-4 h-4 text-gray-300" aria-hidden="true" />
                 {i === breadcrumbs.length - 1 ? (
-                  <span className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[200px]" aria-current="page">
+                  <span
+                    className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[200px]"
+                    aria-current="page"
+                  >
                     {crumb.label}
                   </span>
                 ) : (
@@ -112,7 +116,10 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
         {/* Search bar - clicking opens CommandPalette */}
         <div className="relative flex-1 max-w-md mx-4">
           <div className="flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden="true" />
+            <Search
+              className="absolute left-3 w-4 h-4 text-gray-400 pointer-events-none"
+              aria-hidden="true"
+            />
             <input
               type="text"
               placeholder="Search sessions..."
@@ -121,7 +128,10 @@ export function Header({ soundSettings, onSoundSettingsChange, onSoundPreview, a
               readOnly
               aria-label="Search sessions (Command K)"
             />
-            <kbd className="absolute right-3 text-xs text-gray-400 bg-white dark:bg-gray-900 dark:border-gray-600 px-1.5 py-0.5 rounded border border-gray-200 pointer-events-none" aria-hidden="true">
+            <kbd
+              className="absolute right-3 text-xs text-gray-400 bg-white dark:bg-gray-900 dark:border-gray-600 px-1.5 py-0.5 rounded border border-gray-200 pointer-events-none"
+              aria-hidden="true"
+            >
               &#8984;K
             </kbd>
           </div>

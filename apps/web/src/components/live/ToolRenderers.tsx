@@ -1,10 +1,10 @@
-import React from 'react'
-import { CompactCodeBlock } from './CompactCodeBlock'
-import { cn } from '../../lib/utils'
-import { FileText, Search, Terminal, Link } from 'lucide-react'
+import { FileText, Link, Search, Terminal } from 'lucide-react'
+import type React from 'react'
 import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import remarkGfm from 'remark-gfm'
+import { cn } from '../../lib/utils'
+import { CompactCodeBlock } from './CompactCodeBlock'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,12 +22,30 @@ export interface ToolRendererProps {
 // ---------------------------------------------------------------------------
 
 const EXT_LANG: Record<string, string> = {
-  rs: 'rust', ts: 'typescript', tsx: 'tsx', js: 'javascript',
-  jsx: 'jsx', py: 'python', go: 'go', sql: 'sql',
-  css: 'css', html: 'html', json: 'json', yaml: 'yaml',
-  yml: 'yaml', toml: 'toml', md: 'markdown', sh: 'bash',
-  bash: 'bash', zsh: 'bash', c: 'c', cpp: 'cpp',
-  java: 'java', rb: 'ruby', swift: 'swift', kt: 'kotlin',
+  rs: 'rust',
+  ts: 'typescript',
+  tsx: 'tsx',
+  js: 'javascript',
+  jsx: 'jsx',
+  py: 'python',
+  go: 'go',
+  sql: 'sql',
+  css: 'css',
+  html: 'html',
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yaml',
+  toml: 'toml',
+  md: 'markdown',
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'bash',
+  c: 'c',
+  cpp: 'cpp',
+  java: 'java',
+  rb: 'ruby',
+  swift: 'swift',
+  kt: 'kotlin',
 }
 
 function langFromPath(filePath: string): string {
@@ -52,12 +70,18 @@ function generateInlineDiff(oldStr: string, newStr: string): string {
 // Helpers: Chip
 // ---------------------------------------------------------------------------
 
-export function Chip({ label, value, className }: { label: string; value: string | number; className?: string }) {
+export function Chip({
+  label,
+  value,
+  className,
+}: { label: string; value: string | number; className?: string }) {
   return (
-    <span className={cn(
-      'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
-      className,
-    )}>
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+        className,
+      )}
+    >
       <span className="text-gray-400 dark:text-gray-600">{label}:</span>
       {value}
     </span>
@@ -73,7 +97,9 @@ export function FilePathHeader({ path }: { path: string }) {
   return (
     <div className="flex items-center gap-1.5 mb-1">
       <FileText className="w-3 h-3 text-gray-400 dark:text-gray-600 flex-shrink-0" />
-      <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300 truncate">{path}</span>
+      <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300 truncate">
+        {path}
+      </span>
       {ext && (
         <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500 flex-shrink-0">
           .{ext}
@@ -90,7 +116,9 @@ export function FilePathHeader({ path }: { path: string }) {
 export function InlineMarkdown({ text }: { text: string }) {
   return (
     <div className="text-[11px] text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_p]:leading-snug [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
-      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{text}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+        {text}
+      </Markdown>
     </div>
   )
 }
@@ -122,7 +150,11 @@ function EditRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProps) {
         <CompactCodeBlock code={diffCode} language="diff" blockId={`${p}edit-diff-${filePath}`} />
       )}
       {!hasDiff && oldString && (
-        <CompactCodeBlock code={oldString} language={langFromPath(filePath)} blockId={`${p}edit-old-${filePath}`} />
+        <CompactCodeBlock
+          code={oldString}
+          language={langFromPath(filePath)}
+          blockId={`${p}edit-old-${filePath}`}
+        />
       )}
     </div>
   )
@@ -219,9 +251,7 @@ function GlobRenderer({ inputData }: ToolRendererProps) {
       {pattern && (
         <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300">{pattern}</span>
       )}
-      {path && (
-        <div className="text-[10px] font-mono text-gray-500 dark:text-gray-500">{path}</div>
-      )}
+      {path && <div className="text-[10px] font-mono text-gray-500 dark:text-gray-500">{path}</div>}
     </div>
   )
 }
@@ -244,7 +274,11 @@ function BashRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProps) {
         </div>
       )}
       {command && (
-        <CompactCodeBlock code={command} language="bash" blockId={`${p}bash-${command.slice(0, 40)}`} />
+        <CompactCodeBlock
+          code={command}
+          language="bash"
+          blockId={`${p}bash-${command.slice(0, 40)}`}
+        />
       )}
       {timeout != null && (
         <div className="flex items-center gap-1.5">
@@ -367,10 +401,12 @@ function TaskUpdateRenderer({ inputData }: ToolRendererProps) {
           </span>
         )}
         {status && (
-          <span className={cn(
-            'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono',
-            STATUS_COLORS[status] || STATUS_COLORS.pending,
-          )}>
+          <span
+            className={cn(
+              'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono',
+              STATUS_COLORS[status] || STATUS_COLORS.pending,
+            )}
+          >
             {status}
           </span>
         )}
@@ -426,10 +462,20 @@ function WebSearchRenderer({ inputData }: ToolRendererProps) {
       )}
       <div className="flex items-center gap-1.5 flex-wrap">
         {allowedDomains?.map((d) => (
-          <Chip key={d} label="allow" value={d} className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" />
+          <Chip
+            key={d}
+            label="allow"
+            value={d}
+            className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400"
+          />
         ))}
         {blockedDomains?.map((d) => (
-          <Chip key={d} label="block" value={d} className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400" />
+          <Chip
+            key={d}
+            label="block"
+            value={d}
+            className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
+          />
         ))}
       </div>
     </div>
@@ -468,7 +514,11 @@ function NotebookEditRenderer({ inputData, blockIdPrefix: p = '' }: ToolRenderer
         {cellType && <Chip label="type" value={cellType} />}
       </div>
       {newSource && (
-        <CompactCodeBlock code={newSource} language={lang} blockId={`${p}notebook-${notebookPath}-${cellId ?? cellNumber ?? ''}`} />
+        <CompactCodeBlock
+          code={newSource}
+          language={lang}
+          blockId={`${p}notebook-${notebookPath}-${cellId ?? cellNumber ?? ''}`}
+        />
       )}
     </div>
   )
@@ -507,7 +557,11 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
 
         // File path detection (starts with / or ./ or ~/ or contains path separators + extension)
         if (typeof value === 'string' && /^[~./]/.test(value) && /[/\\]/.test(value)) {
-          return <div key={key}><FilePathHeader path={value} /></div>
+          return (
+            <div key={key}>
+              <FilePathHeader path={value} />
+            </div>
+          )
         }
 
         // Selector keys (uid, selector, xpath, css) — amber highlighted monospace chip
@@ -539,9 +593,11 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
               key={key}
               label={key}
               value={value ? 'true' : 'false'}
-              className={value
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'}
+              className={
+                value
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+              }
             />
           )
         }
@@ -556,7 +612,11 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
           return (
             <div key={key} className="space-y-0.5">
               <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{key}:</span>
-              <CompactCodeBlock code={JSON.stringify(value, null, 2)} language="json" blockId={`${p}mcp-${key}`} />
+              <CompactCodeBlock
+                code={JSON.stringify(value, null, 2)}
+                language="json"
+                blockId={`${p}mcp-${key}`}
+              />
             </div>
           )
         }
@@ -595,4 +655,3 @@ export function getToolRenderer(name: string): React.ComponentType<ToolRendererP
   if (name.startsWith('mcp__')) return SmartMcpRenderer
   return null
 }
-

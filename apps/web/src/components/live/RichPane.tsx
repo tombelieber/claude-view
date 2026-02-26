@@ -1,57 +1,62 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { AlertTriangle, ArrowDown, BookOpen, Bot, Brain, User, Zap } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import rehypeRaw from 'rehype-raw'
-import {
-  User,
-  Bot,
-  Brain,
-  AlertTriangle,
-  ArrowDown,
-  Zap,
-  BookOpen,
-} from 'lucide-react'
+import remarkGfm from 'remark-gfm'
 import { ExpandProvider } from '../../contexts/ExpandContext'
-import { CompactCodeBlock } from './CompactCodeBlock'
-import { JsonTree } from './JsonTree'
-import { isAskUserQuestionInput } from './AskUserQuestionDisplay'
-import { useMonitorStore } from '../../store/monitor-store'
-import type { ActionCategory } from './action-log/types'
-import { ActionFilterChips } from './action-log/ActionFilterChips'
-import { cn } from '../../lib/utils'
+import { type DisplayItem, usePairedMessages } from '../../hooks/use-paired-messages'
 import {
-  tryParseJson, isJsonContent, isDiffContent, isCodeLikeContent,
-  stripLineNumbers, detectCodeLanguage,
+  detectCodeLanguage,
+  isCodeLikeContent,
+  isDiffContent,
+  isJsonContent,
+  stripLineNumbers,
+  tryParseJson,
 } from '../../lib/content-detection'
 import { markdownComponents } from '../../lib/markdown-components'
-import { usePairedMessages, type DisplayItem } from '../../hooks/use-paired-messages'
-import { PairedToolCard } from './PairedToolCard'
-// System event cards (reused from MessageTyped)
-import { TurnDurationCard } from '../TurnDurationCard'
-import { ApiErrorCard } from '../ApiErrorCard'
-import { CompactBoundaryCard } from '../CompactBoundaryCard'
-import { HookSummaryCard } from '../HookSummaryCard'
-import { LocalCommandEventCard } from '../LocalCommandEventCard'
-import { MessageQueueEventCard } from '../MessageQueueEventCard'
-import { FileSnapshotCard } from '../FileSnapshotCard'
-import { SavedHookContextCard } from '../SavedHookContextCard'
-import { SessionResultCard } from '../SessionResultCard'
+import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
 // Progress event cards
 import { AgentProgressCard } from '../AgentProgressCard'
+import { ApiErrorCard } from '../ApiErrorCard'
 import { BashProgressCard } from '../BashProgressCard'
+import { CompactBoundaryCard } from '../CompactBoundaryCard'
+import { FileSnapshotCard } from '../FileSnapshotCard'
 import { HookProgressCard } from '../HookProgressCard'
-import { HookEventRow } from './action-log/HookEventRow'
+import { HookSummaryCard } from '../HookSummaryCard'
+import { LocalCommandEventCard } from '../LocalCommandEventCard'
 import { McpProgressCard } from '../McpProgressCard'
-import { TaskQueueCard } from '../TaskQueueCard'
+import { MessageQueueEventCard } from '../MessageQueueEventCard'
+import { SavedHookContextCard } from '../SavedHookContextCard'
+import { SessionResultCard } from '../SessionResultCard'
 // Summary card
 import { SessionSummaryCard } from '../SessionSummaryCard'
+import { TaskQueueCard } from '../TaskQueueCard'
+// System event cards (reused from MessageTyped)
+import { TurnDurationCard } from '../TurnDurationCard'
+import { isAskUserQuestionInput } from './AskUserQuestionDisplay'
+import { CompactCodeBlock } from './CompactCodeBlock'
+import { JsonTree } from './JsonTree'
+import { PairedToolCard } from './PairedToolCard'
+import { ActionFilterChips } from './action-log/ActionFilterChips'
+import { HookEventRow } from './action-log/HookEventRow'
+import type { ActionCategory } from './action-log/types'
 
 // --- Types ---
 
 export interface RichMessage {
-  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | 'error' | 'hook'
-      | 'system' | 'progress' | 'summary'
+  type:
+    | 'user'
+    | 'assistant'
+    | 'tool_use'
+    | 'tool_result'
+    | 'thinking'
+    | 'error'
+    | 'hook'
+    | 'system'
+    | 'progress'
+    | 'summary'
   content: string
   name?: string // tool name for tool_use
   input?: string // tool input summary for tool_use
@@ -111,7 +116,9 @@ export function parseRichMessage(raw: string): RichMessage | null {
   try {
     const msg = JSON.parse(raw)
     if (msg.type === 'message') {
-      const content = stripCommandTags(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2))
+      const content = stripCommandTags(
+        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2),
+      )
       if (!content.trim()) return null
       return {
         type: msg.role === 'user' ? 'user' : 'assistant',
@@ -131,7 +138,9 @@ export function parseRichMessage(raw: string): RichMessage | null {
       }
     }
     if (msg.type === 'tool_result') {
-      const content = stripCommandTags(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '', null, 2))
+      const content = stripCommandTags(
+        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '', null, 2),
+      )
       if (!content.trim()) return null
       return {
         type: 'tool_result',
@@ -166,9 +175,10 @@ export function parseRichMessage(raw: string): RichMessage | null {
     }
     if (msg.type === 'progress') {
       // Match messagesToRichMessages: hook_progress gets its own category
-      const progressCategory = msg.metadata?.type === 'hook_progress'
-        ? 'hook_progress' as ActionCategory
-        : (msg.category as ActionCategory) ?? undefined
+      const progressCategory =
+        msg.metadata?.type === 'hook_progress'
+          ? ('hook_progress' as ActionCategory)
+          : ((msg.category as ActionCategory) ?? undefined)
       return {
         type: 'progress',
         content: typeof msg.content === 'string' ? msg.content : '',
@@ -237,7 +247,10 @@ function formatTimestamp(ts: number | undefined): string | null {
 
 // --- Message Card Components ---
 
-function UserMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
+function UserMessage({
+  message,
+  verboseMode = false,
+}: { message: RichMessage; index?: number; verboseMode?: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
@@ -250,11 +263,21 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
             verboseMode && richRenderMode === 'rich' ? (
               <JsonTree data={parsedJson} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`user-json-${message.ts ?? 0}`} />
+              <CompactCodeBlock
+                code={JSON.stringify(parsedJson, null, 2)}
+                language="json"
+                blockId={`user-json-${message.ts ?? 0}`}
+              />
             )
           ) : (
             <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={markdownComponents}
+              >
+                {message.content}
+              </Markdown>
             </div>
           )}
         </div>
@@ -264,7 +287,10 @@ function UserMessage({ message, verboseMode = false }: { message: RichMessage; i
   )
 }
 
-function AssistantMessage({ message, verboseMode = false }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
+function AssistantMessage({
+  message,
+  verboseMode = false,
+}: { message: RichMessage; index?: number; verboseMode?: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
@@ -277,11 +303,21 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
             verboseMode && richRenderMode === 'rich' ? (
               <JsonTree data={parsedJson} />
             ) : (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`asst-json-${message.ts ?? 0}`} />
+              <CompactCodeBlock
+                code={JSON.stringify(parsedJson, null, 2)}
+                language="json"
+                blockId={`asst-json-${message.ts ?? 0}`}
+              />
             )
           ) : (
             <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={markdownComponents}
+              >
+                {message.content}
+              </Markdown>
             </div>
           )}
         </div>
@@ -291,7 +327,11 @@ function AssistantMessage({ message, verboseMode = false }: { message: RichMessa
   )
 }
 
-function ToolResultMessage({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
+function ToolResultMessage({
+  message,
+  index,
+  verboseMode = false,
+}: { message: RichMessage; index: number; verboseMode?: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const hasContent = message.content.length > 0
   const jsonDetected = hasContent && isJsonContent(message.content)
@@ -312,11 +352,15 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
         <div className="flex-1" />
         <Timestamp ts={message.ts} />
       </div>
-      {hasContent && (
-        jsonDetected && parsedJson !== null ? (
+      {hasContent &&
+        (jsonDetected && parsedJson !== null ? (
           <div className="mt-0.5 pl-4">
             {richRenderMode === 'json' ? (
-              <CompactCodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" blockId={`result-${index}`} />
+              <CompactCodeBlock
+                code={JSON.stringify(parsedJson, null, 2)}
+                language="json"
+                blockId={`result-${index}`}
+              />
             ) : (
               <JsonTree data={parsedJson} />
             )}
@@ -331,15 +375,23 @@ function ToolResultMessage({ message, index, verboseMode = false }: { message: R
           </div>
         ) : (
           <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 pl-4 font-mono leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={markdownComponents}
+            >
+              {message.content}
+            </Markdown>
           </div>
-        )
-      )}
+        ))}
     </div>
   )
 }
 
-function ThinkingMessage({ message, verboseMode = false }: { message: RichMessage; verboseMode?: boolean }) {
+function ThinkingMessage({
+  message,
+  verboseMode = false,
+}: { message: RichMessage; verboseMode?: boolean }) {
   const [manualExpanded, setManualExpanded] = useState(false)
   const expanded = verboseMode || manualExpanded
   // Show a preview: first line or first ~120 chars
@@ -363,7 +415,13 @@ function ThinkingMessage({ message, verboseMode = false }: { message: RichMessag
       </button>
       {expanded && (
         <div className="text-[10px] text-gray-500 dark:text-gray-600 italic mt-0.5 pl-5 leading-relaxed prose dark:prose-invert prose-sm max-w-none border-l border-purple-500/20 ml-1.5">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>{message.content}</Markdown>
+          <Markdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={markdownComponents}
+          >
+            {message.content}
+          </Markdown>
         </div>
       )}
     </div>
@@ -414,7 +472,13 @@ function HookMessage({ message }: { message: RichMessage }) {
       </button>
       {expanded && message.input && (
         <pre className="text-[10px] font-mono text-amber-300/80 bg-gray-900 rounded p-2 mt-1 ml-5 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
-          {(() => { try { return JSON.stringify(JSON.parse(message.input!), null, 2) } catch { return message.input } })()}
+          {(() => {
+            try {
+              return JSON.stringify(JSON.parse(message.input!), null, 2)
+            } catch {
+              return message.input
+            }
+          })()}
         </pre>
       )}
     </div>
@@ -433,7 +497,10 @@ function Timestamp({ ts }: { ts?: number }) {
 
 // --- System / Progress / Summary card dispatchers ---
 
-function SystemMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+function SystemMessageCard({
+  message,
+  verboseMode,
+}: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const subtype = m?.type ?? m?.subtype
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
@@ -443,28 +510,76 @@ function SystemMessageCard({ message, verboseMode }: { message: RichMessage; ver
   const card = (() => {
     switch (subtype) {
       case 'turn_duration':
-        return <TurnDurationCard durationMs={m.durationMs} startTime={m.startTime} endTime={m.endTime} />
+        return (
+          <TurnDurationCard durationMs={m.durationMs} startTime={m.startTime} endTime={m.endTime} />
+        )
       case 'api_error':
-        return <ApiErrorCard error={m.error} retryAttempt={m.retryAttempt} maxRetries={m.maxRetries} retryInMs={m.retryInMs} verboseMode={verboseMode} />
+        return (
+          <ApiErrorCard
+            error={m.error}
+            retryAttempt={m.retryAttempt}
+            maxRetries={m.maxRetries}
+            retryInMs={m.retryInMs}
+            verboseMode={verboseMode}
+          />
+        )
       case 'compact_boundary':
-        return <CompactBoundaryCard trigger={m.trigger} preTokens={m.preTokens} postTokens={m.postTokens} />
+        return (
+          <CompactBoundaryCard
+            trigger={m.trigger}
+            preTokens={m.preTokens}
+            postTokens={m.postTokens}
+          />
+        )
       case 'hook_summary':
-        return <HookSummaryCard hookCount={m.hookCount} hookInfos={m.hookInfos} hookErrors={m.hookErrors} durationMs={m.durationMs} preventedContinuation={m.preventedContinuation} verboseMode={verboseMode} />
+        return (
+          <HookSummaryCard
+            hookCount={m.hookCount}
+            hookInfos={m.hookInfos}
+            hookErrors={m.hookErrors}
+            durationMs={m.durationMs}
+            preventedContinuation={m.preventedContinuation}
+            verboseMode={verboseMode}
+          />
+        )
       case 'local_command':
         return <LocalCommandEventCard content={m.content ?? message.content} />
       case 'queue-operation':
-        return <MessageQueueEventCard operation={m.operation} timestamp={m.timestamp || ''} content={m.content} />
+        return (
+          <MessageQueueEventCard
+            operation={m.operation}
+            timestamp={m.timestamp || ''}
+            content={m.content}
+          />
+        )
       case 'file-history-snapshot': {
         const snapshot = m.snapshot || {}
         const files = Object.keys(snapshot.trackedFileBackups || {})
-        return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={m.isSnapshotUpdate || false} verboseMode={verboseMode} />
+        return (
+          <FileSnapshotCard
+            fileCount={files.length}
+            timestamp={snapshot.timestamp || ''}
+            files={files}
+            isIncremental={m.isSnapshotUpdate || false}
+            verboseMode={verboseMode}
+          />
+        )
       }
       case 'saved_hook_context': {
         const contentArr = Array.isArray(m.content) ? m.content : []
         return <SavedHookContextCard content={contentArr} verboseMode={verboseMode} />
       }
       case 'result':
-        return <SessionResultCard subtype={m.subtype} durationMs={m.duration_ms} durationApiMs={m.duration_api_ms} numTurns={m.num_turns} isError={m.is_error} sessionId={m.session_id} />
+        return (
+          <SessionResultCard
+            subtype={m.subtype}
+            durationMs={m.duration_ms}
+            durationApiMs={m.duration_api_ms}
+            numTurns={m.num_turns}
+            isError={m.is_error}
+            sessionId={m.session_id}
+          />
+        )
       default:
         return null
     }
@@ -504,15 +619,22 @@ function SystemMessageCard({ message, verboseMode }: { message: RichMessage; ver
           <div className="mt-0.5 ml-5">{card}</div>
         )
       ) : message.content ? (
-        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">
+          {message.content}
+        </div>
       ) : m ? (
-        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">
+          {JSON.stringify(m, null, 2)}
+        </pre>
       ) : null}
     </div>
   )
 }
 
-function ProgressMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+function ProgressMessageCard({
+  message,
+  verboseMode,
+}: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const subtype = m?.type
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
@@ -522,19 +644,57 @@ function ProgressMessageCard({ message, verboseMode }: { message: RichMessage; v
   const card = (() => {
     switch (subtype) {
       case 'agent_progress':
-        return <AgentProgressCard agentId={m.agentId} prompt={m.prompt} model={m.model} tokens={m.tokens} normalizedMessages={m.normalizedMessages} indent={m.indent} verboseMode={verboseMode} />
+        return (
+          <AgentProgressCard
+            agentId={m.agentId}
+            prompt={m.prompt}
+            model={m.model}
+            tokens={m.tokens}
+            normalizedMessages={m.normalizedMessages}
+            indent={m.indent}
+            verboseMode={verboseMode}
+          />
+        )
       case 'bash_progress':
-        return <BashProgressCard command={m.command} output={m.output} exitCode={m.exitCode} duration={m.duration} blockId={`bash-${message.ts ?? 0}`} />
+        return (
+          <BashProgressCard
+            command={m.command}
+            output={m.output}
+            exitCode={m.exitCode}
+            duration={m.duration}
+            blockId={`bash-${message.ts ?? 0}`}
+          />
+        )
       case 'hook_progress':
-        return <HookProgressCard hookEvent={m.hookEvent} hookName={m.hookName} command={m.command} output={m.output} verboseMode={verboseMode} />
+        return (
+          <HookProgressCard
+            hookEvent={m.hookEvent}
+            hookName={m.hookName}
+            command={m.command}
+            output={m.output}
+            verboseMode={verboseMode}
+          />
+        )
       case 'mcp_progress':
-        return <McpProgressCard server={m.server} method={m.method} params={m.params} result={m.result} verboseMode={verboseMode} />
+        return (
+          <McpProgressCard
+            server={m.server}
+            method={m.method}
+            params={m.params}
+            result={m.result}
+            verboseMode={verboseMode}
+          />
+        )
       case 'waiting_for_task':
-        return <TaskQueueCard waitDuration={m.waitDuration} position={m.position} queueLength={m.queueLength} />
+        return (
+          <TaskQueueCard
+            waitDuration={m.waitDuration}
+            position={m.position}
+            queueLength={m.queueLength}
+          />
+        )
       case 'hook_event':
-        return m._hookEvent
-          ? <HookEventRow event={m._hookEvent} />
-          : null
+        return m._hookEvent ? <HookEventRow event={m._hookEvent} /> : null
       default:
         return null
     }
@@ -574,15 +734,22 @@ function ProgressMessageCard({ message, verboseMode }: { message: RichMessage; v
           <div className="mt-0.5 ml-5">{card}</div>
         )
       ) : message.content ? (
-        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">{message.content}</div>
+        <div className="text-[10px] text-gray-600 dark:text-gray-500 mt-0.5 ml-5 font-mono">
+          {message.content}
+        </div>
       ) : m ? (
-        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">{JSON.stringify(m, null, 2)}</pre>
+        <pre className="text-[10px] text-gray-500 dark:text-gray-600 mt-0.5 ml-5 font-mono whitespace-pre-wrap">
+          {JSON.stringify(m, null, 2)}
+        </pre>
       ) : null}
     </div>
   )
 }
 
-function SummaryMessageCard({ message, verboseMode }: { message: RichMessage; verboseMode?: boolean }) {
+function SummaryMessageCard({
+  message,
+  verboseMode,
+}: { message: RichMessage; verboseMode?: boolean }) {
   const m = message.metadata
   const summary = m?.summary || message.content
   const leafUuid = m?.leafUuid || ''
@@ -613,11 +780,19 @@ function SummaryMessageCard({ message, verboseMode }: { message: RichMessage; ve
       </div>
       {effectiveMode === 'json' ? (
         <div className="mt-0.5 ml-5">
-          <CompactCodeBlock code={JSON.stringify(m || { summary, leafUuid, wordCount }, null, 2)} language="json" />
+          <CompactCodeBlock
+            code={JSON.stringify(m || { summary, leafUuid, wordCount }, null, 2)}
+            language="json"
+          />
         </div>
       ) : (
         <div className="mt-0.5 ml-5">
-          <SessionSummaryCard summary={summary} leafUuid={leafUuid} wordCount={wordCount} verboseMode={verboseMode} />
+          <SessionSummaryCard
+            summary={summary}
+            leafUuid={leafUuid}
+            wordCount={wordCount}
+            verboseMode={verboseMode}
+          />
         </div>
       )}
     </div>
@@ -626,7 +801,11 @@ function SummaryMessageCard({ message, verboseMode }: { message: RichMessage; ve
 
 // --- Message renderer dispatch ---
 
-function MessageCard({ message, index, verboseMode = false }: { message: RichMessage; index: number; verboseMode?: boolean }) {
+function MessageCard({
+  message,
+  index,
+  verboseMode = false,
+}: { message: RichMessage; index: number; verboseMode?: boolean }) {
   switch (message.type) {
     case 'user':
       return <UserMessage message={message} index={index} verboseMode={verboseMode} />
@@ -651,9 +830,20 @@ function MessageCard({ message, index, verboseMode = false }: { message: RichMes
   }
 }
 
-function DisplayItemCard({ item, index, verboseMode = false }: { item: DisplayItem; index: number; verboseMode?: boolean }) {
+function DisplayItemCard({
+  item,
+  index,
+  verboseMode = false,
+}: { item: DisplayItem; index: number; verboseMode?: boolean }) {
   if (item.kind === 'tool_pair') {
-    return <PairedToolCard toolUse={item.toolUse} toolResult={item.toolResult} index={index} verboseMode={verboseMode} />
+    return (
+      <PairedToolCard
+        toolUse={item.toolUse}
+        toolResult={item.toolResult}
+        index={index}
+        verboseMode={verboseMode}
+      />
+    )
   }
   // item.kind === 'message'
   return <MessageCard message={item.message} index={index} verboseMode={verboseMode} />
@@ -661,14 +851,34 @@ function DisplayItemCard({ item, index, verboseMode = false }: { item: DisplayIt
 
 // --- Main Component ---
 
-export function RichPane({ messages, isVisible, verboseMode = false, bufferDone = false, categoryCounts: countsProp }: RichPaneProps) {
+export function RichPane({
+  messages,
+  isVisible,
+  verboseMode = false,
+  bufferDone = false,
+  categoryCounts: countsProp,
+}: RichPaneProps) {
   const verboseFilter = useMonitorStore((s) => s.verboseFilter)
   const setVerboseFilter = useMonitorStore((s) => s.setVerboseFilter)
 
   // Use prop if provided, otherwise compute internally (backward compat)
   const categoryCounts = useMemo(() => {
     if (countsProp) return countsProp
-    const counts: Record<ActionCategory, number> = { skill: 0, mcp: 0, builtin: 0, agent: 0, hook: 0, hook_progress: 0, error: 0, system: 0, snapshot: 0, queue: 0, context: 0, result: 0, summary: 0 }
+    const counts: Record<ActionCategory, number> = {
+      skill: 0,
+      mcp: 0,
+      builtin: 0,
+      agent: 0,
+      hook: 0,
+      hook_progress: 0,
+      error: 0,
+      system: 0,
+      snapshot: 0,
+      queue: 0,
+      context: 0,
+      result: 0,
+      summary: 0,
+    }
     if (!verboseMode) return counts
     for (const m of messages) {
       if (m.category) {
@@ -685,11 +895,17 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
         if (m.type === 'assistant') {
           // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
           const t = m.content.trim()
-          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) return false
+          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"'))
+            return false
           return true
         }
         // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
-        if (m.type === 'tool_use' && m.name === 'AskUserQuestion' && isAskUserQuestionInput(m.inputData)) return true
+        if (
+          m.type === 'tool_use' &&
+          m.name === 'AskUserQuestion' &&
+          isAskUserQuestionInput(m.inputData)
+        )
+          return true
         return false
       })
     }
@@ -709,11 +925,14 @@ export function RichPane({ messages, isVisible, verboseMode = false, bufferDone 
 
   const displayItems = usePairedMessages(displayMessages)
 
-  const renderItem = useCallback((index: number, item: DisplayItem) => (
-    <div className="px-2 py-0.5">
-      <DisplayItemCard item={item} index={index} verboseMode={verboseMode} />
-    </div>
-  ), [verboseMode])
+  const renderItem = useCallback(
+    (index: number, item: DisplayItem) => (
+      <div className="px-2 py-0.5">
+        <DisplayItemCard item={item} index={index} verboseMode={verboseMode} />
+      </div>
+    ),
+    [verboseMode],
+  )
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)

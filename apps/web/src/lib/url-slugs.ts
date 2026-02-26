@@ -3,16 +3,17 @@
  * Strips non-alphanumeric chars, lowercases, truncates to maxWords.
  */
 export function slugify(text: string, maxWords = 6): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .split(/\s+/)
-    .slice(0, maxWords)
-    .join('-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    || 'session'
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, maxWords)
+      .join('-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'session'
+  )
 }
 
 /**

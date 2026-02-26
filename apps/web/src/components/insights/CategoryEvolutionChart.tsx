@@ -1,14 +1,14 @@
+import { Layers } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
-  AreaChart,
   Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
 } from 'recharts'
-import { Link } from 'react-router-dom'
-import { Layers } from 'lucide-react'
 import type { CategoryDataPoint } from '../../types/generated/CategoryDataPoint'
 
 // ============================================================================
@@ -93,8 +93,8 @@ export function CategoryEvolutionChart({
             Classification Required
           </h4>
           <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-4 max-w-sm">
-            Category breakdown requires session classification. Go to System to
-            classify your sessions and enable this chart.
+            Category breakdown requires session classification. Go to System to classify your
+            sessions and enable this chart.
           </p>
           <Link
             to="/system?tab=classification"
@@ -132,10 +132,7 @@ export function CategoryEvolutionChart({
       </h3>
 
       <ResponsiveContainer width="100%" height={300}>
-        <AreaChart
-          data={data}
-          margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-        >
+        <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
           <XAxis
             dataKey="date"
@@ -153,10 +150,12 @@ export function CategoryEvolutionChart({
           />
           <Tooltip
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter={((value: number, name: string) => [
-              `${(value * 100).toFixed(1)}%`,
-              CATEGORY_LABELS[name] || name,
-            ]) as any}
+            formatter={
+              ((value: number, name: string) => [
+                `${(value * 100).toFixed(1)}%`,
+                CATEGORY_LABELS[name] || name,
+              ]) as any
+            }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             labelFormatter={formatDateTooltip as any}
             contentStyle={{
@@ -217,9 +216,7 @@ export function CategoryEvolutionChart({
             className="w-3 h-3 rounded-sm"
             style={{ backgroundColor: CATEGORY_COLORS.thinkingWork }}
           />
-          <span>
-            Thinking Work ({(latest.thinkingWork * 100).toFixed(0)}%)
-          </span>
+          <span>Thinking Work ({(latest.thinkingWork * 100).toFixed(0)}%)</span>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import type { LiveSession } from './use-live-sessions'
-import type { AgentStateGroup } from './types'
 import { KanbanColumn } from './KanbanColumn'
+import type { AgentStateGroup } from './types'
+import type { LiveSession } from './use-live-sessions'
 
 interface KanbanViewProps {
   sessions: LiveSession[]
@@ -35,17 +35,31 @@ const COLUMNS: {
 /** Sort key for needs_you sessions: urgency ordering */
 export function needsYouSortKey(session: LiveSession): number {
   switch (session.agentState.state) {
-    case 'needs_permission': return 0
-    case 'awaiting_input': return 1
-    case 'interrupted': return 2
-    case 'error': return 3
-    case 'awaiting_approval': return 4
-    case 'idle': return 5
-    default: return 6
+    case 'needs_permission':
+      return 0
+    case 'awaiting_input':
+      return 1
+    case 'interrupted':
+      return 2
+    case 'error':
+      return 3
+    case 'awaiting_approval':
+      return 4
+    case 'idle':
+      return 5
+    default:
+      return 6
   }
 }
 
-export function KanbanView({ sessions, selectedId, onSelect, stalledSessions, currentTime, onCardClick }: KanbanViewProps) {
+export function KanbanView({
+  sessions,
+  selectedId,
+  onSelect,
+  stalledSessions,
+  currentTime,
+  onCardClick,
+}: KanbanViewProps) {
   const grouped = useMemo(() => {
     const groups: Record<AgentStateGroup, LiveSession[]> = {
       needs_you: [],

@@ -1,6 +1,6 @@
+import { AlertCircle, Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Copy, Check } from 'lucide-react'
 import { useSystem } from '../hooks/use-system'
 
 const COMMAND = 'claude auth login'
@@ -22,12 +22,8 @@ export function AuthBanner() {
   const bgClass = isRed
     ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'
     : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
-  const textClass = isRed
-    ? 'text-red-700 dark:text-red-300'
-    : 'text-amber-700 dark:text-amber-300'
-  const iconClass = isRed
-    ? 'text-red-500 dark:text-red-400'
-    : 'text-amber-500 dark:text-amber-400'
+  const textClass = isRed ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'
+  const iconClass = isRed ? 'text-red-500 dark:text-red-400' : 'text-amber-500 dark:text-amber-400'
   const codeClass = isRed
     ? 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200'
     : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200'
@@ -60,15 +56,11 @@ export function AuthBanner() {
       <div className="max-w-5xl mx-auto flex items-center gap-3 flex-wrap">
         <AlertCircle className={`w-4 h-4 flex-shrink-0 ${iconClass}`} aria-hidden="true" />
 
-        <p className={`text-sm flex-1 min-w-0 ${textClass}`}>
-          {message}
-        </p>
+        <p className={`text-sm flex-1 min-w-0 ${textClass}`}>{message}</p>
 
         {!notInstalled && (
           <div className="flex items-center gap-2">
-            <code className={`text-xs font-mono px-2 py-1 rounded ${codeClass}`}>
-              {COMMAND}
-            </code>
+            <code className={`text-xs font-mono px-2 py-1 rounded ${codeClass}`}>{COMMAND}</code>
             <button
               type="button"
               onClick={handleCopy}
