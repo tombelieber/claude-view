@@ -113,8 +113,10 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 
 | Command | What it does |
 |---------|-------------|
-| `bun run dev` | `bunx turbo dev` — starts all apps |
-| `bun run dev:full` | Concurrent Rust server + web frontend |
+| `bun dev` | Full-stack dev — Rust server (cargo-watch) + Web frontend (Vite HMR) |
+| `bun run dev:web` | Web frontend only (assumes Rust server running) |
+| `bun run dev:server` | Rust backend only (with cargo-watch) |
+| `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
 | `bun run build` | `bunx turbo build` — builds all apps |
 | `bun run test` | `bunx turbo test` — runs all test suites |
 | `cd apps/web && bunx vitest run` | Run web frontend tests only |
