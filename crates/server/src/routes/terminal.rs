@@ -1090,14 +1090,21 @@ fn start_file_watcher(
     tx: mpsc::Sender<WatchEvent>,
     #[allow(clippy::ptr_arg)] file_path: &PathBuf,
 ) -> notify::Result<RecommendedWatcher> {
-    let target_path = file_path.clone();
+    // Canonicalize the target path so that the comparison against event paths
+    // works on macOS where symlinks like /var -> /private/var cause mismatches
+    // (e.g. NamedTempFile returns /var/folders/... but FSEvents reports
+    // /private/var/folders/...).
+    let canonical_path = file_path
+        .canonicalize()
+        .unwrap_or_else(|_| file_path.clone());
+    let target_for_closure = canonical_path.clone();
 
     let mut watcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
             match res {
                 Ok(event) => {
                     // Filter to only events for our target file
-                    let is_target = event.paths.iter().any(|p| p == &target_path);
+                    let is_target = event.paths.iter().any(|p| p == &target_for_closure);
                     if !is_target {
                         return;
                     }
@@ -1118,8 +1125,10 @@ fn start_file_watcher(
         })?;
 
     // Watch the parent directory since notify may not support watching
-    // individual files on all platforms (e.g., macOS FSEvents)
-    let watch_dir = file_path
+    // individual files on all platforms (e.g., macOS FSEvents).
+    // Use the canonical path's parent so the watched directory
+    // matches the resolved event paths.
+    let watch_dir = canonical_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
 
@@ -1503,20 +1512,23 @@ mod tests {
             }
         });
 
-        // Wait for the live line to arrive (file watcher + debounce delay)
-        let live_msg = tokio::time::timeout(Duration::from_secs(10), async {
+        // Wait for the live line to arrive (file watcher + debounce delay).
+        // Use a generous outer timeout and keep looping even when individual
+        // recv_text calls time out — on macOS the FSEvents watcher may take
+        // several seconds to coalesce and fire.
+        let live_msg = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 if let Some(text) = recv_text(&mut ws).await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                         if v["type"] == "line"
                             && v["data"].as_str().unwrap_or("").contains("live response")
                         {
-                            return Some(v);
+                            return v;
                         }
                     }
-                } else {
-                    return None;
                 }
+                // recv_text returned None (per-message timeout) — keep waiting
+                // for the outer timeout to expire rather than giving up early.
             }
         })
         .await;
@@ -1524,7 +1536,7 @@ mod tests {
         write_handle.abort();
 
         assert!(
-            live_msg.is_ok() && live_msg.unwrap().is_some(),
+            live_msg.is_ok(),
             "Expected live streamed line containing 'live response'"
         );
 
@@ -1667,19 +1679,21 @@ mod tests {
             }
         });
 
-        // Wait for the rich-mode message
-        let rich_msg = tokio::time::timeout(Duration::from_secs(10), async {
+        // Wait for the rich-mode message.
+        // Keep looping even when individual recv_text calls time out — on
+        // macOS the FSEvents watcher may take several seconds to fire.
+        let rich_msg = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 if let Some(text) = recv_text(&mut ws).await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                         // In rich mode, the type should be "message" (not "line")
                         if v["type"] == "message" {
-                            return Some(v);
+                            return v;
                         }
                     }
-                } else {
-                    return None;
                 }
+                // recv_text returned None (per-message timeout) — keep waiting
+                // for the outer timeout to expire rather than giving up early.
             }
         })
         .await;
@@ -1687,8 +1701,6 @@ mod tests {
         write_handle.abort();
 
         assert!(rich_msg.is_ok(), "Timed out waiting for rich mode message");
-        let rich_msg = rich_msg.unwrap();
-        assert!(rich_msg.is_some(), "Expected rich mode message");
 
         let msg = rich_msg.unwrap();
         assert_eq!(msg["type"], "message");

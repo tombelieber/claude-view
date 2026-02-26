@@ -104,6 +104,7 @@ async fn claim_consumes_token() {
             "device_id": "phone-test-001",
             "pubkey": STANDARD.encode(phone_key.verifying_key().to_bytes()),
             "pubkey_encrypted_blob": "encrypted-x25519-pubkey-placeholder",
+            "x25519_pubkey": "dGVzdC14MjU1MTktcHVia2V5LXBsYWNlaG9sZGVy",
         })),
     )
     .await;
@@ -156,6 +157,7 @@ async fn claim_expired_token_returns_gone() {
             "device_id": "phone-late",
             "pubkey": STANDARD.encode(phone_key.verifying_key().to_bytes()),
             "pubkey_encrypted_blob": "doesnt-matter",
+            "x25519_pubkey": "dGVzdC14MjU1MTktcHVia2V5LXBsYWNlaG9sZGVy",
         })),
     )
     .await;
@@ -181,6 +183,7 @@ async fn claim_nonexistent_token_returns_404() {
             "device_id": "phone-lost",
             "pubkey": STANDARD.encode(phone_key.verifying_key().to_bytes()),
             "pubkey_encrypted_blob": "doesnt-matter",
+            "x25519_pubkey": "dGVzdC14MjU1MTktcHVia2V5LXBsYWNlaG9sZGVy",
         })),
     )
     .await;
