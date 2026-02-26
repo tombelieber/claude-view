@@ -12,7 +12,7 @@ use claude_view_db::DbError;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ErrorResponse {
     pub error: String,

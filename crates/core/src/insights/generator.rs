@@ -10,7 +10,7 @@ use super::templates::{get_template, render_template};
 
 /// A generated insight with human-readable text and scoring.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedInsight {
     pub pattern_id: String,
@@ -25,7 +25,7 @@ pub struct GeneratedInsight {
 
 /// Evidence backing an insight.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightEvidence {
     pub sample_size: u32,

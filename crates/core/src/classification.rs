@@ -13,7 +13,7 @@ use ts_rs::TS;
 
 /// Top-level category (L1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum CategoryL1 {
     Code,
@@ -42,7 +42,7 @@ impl CategoryL1 {
 
 /// Second-level category (L2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum CategoryL2 {
     Feature,
@@ -101,7 +101,7 @@ impl CategoryL2 {
 
 /// Third-level category (L3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "kebab-case")]
 pub enum CategoryL3 {
     // Feature

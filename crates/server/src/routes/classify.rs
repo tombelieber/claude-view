@@ -42,7 +42,7 @@ pub struct ClassifyRequest {
 
 /// Response for POST /api/classify (202 Accepted).
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyResponse {
     #[ts(type = "number")]
@@ -58,7 +58,7 @@ pub struct ClassifyResponse {
 
 /// Response for POST /api/classify/cancel.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelResponse {
     #[ts(type = "number")]
@@ -70,7 +70,7 @@ pub struct CancelResponse {
 
 /// Response for GET /api/classify/status.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyStatusResponse {
     pub status: String,
@@ -93,7 +93,7 @@ pub struct ClassifyStatusResponse {
 
 /// Progress information for a running classification.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyProgressInfo {
     #[ts(type = "number")]
@@ -108,7 +108,7 @@ pub struct ClassifyProgressInfo {
 
 /// Information about the last completed classification run.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyLastRun {
     #[ts(type = "number")]
@@ -127,7 +127,7 @@ pub struct ClassifyLastRun {
 
 /// Error information for failed classification.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyErrorInfo {
     pub message: String,
@@ -136,7 +136,7 @@ pub struct ClassifyErrorInfo {
 
 /// Response for POST /api/classify/single/:session_id.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifySingleResponse {
     pub session_id: String,
