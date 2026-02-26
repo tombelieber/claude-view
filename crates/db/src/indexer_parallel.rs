@@ -2855,16 +2855,26 @@ struct IndexedSession {
 /// Phase 3: Write search index to Tantivy (after SQLite success).
 ///
 /// Returns (indexed_count, skipped_count).
-pub async fn scan_and_index_all<F>(
+///
+/// `on_file_done` fires for **every** `.jsonl` file (parsed or skipped) so
+/// callers can drive a progress counter that reaches 100%.
+///
+/// `on_total_known` fires once with the actual `.jsonl` file count right
+/// after the filesystem walk, before any parsing begins. This is the single
+/// source of truth for "total sessions to process" — callers should use it
+/// to set their progress total instead of guessing from external sources.
+pub async fn scan_and_index_all<F, T>(
     claude_dir: &Path,
     db: &Database,
     hints: &HashMap<String, IndexHints>,
     search_index: Option<Arc<claude_view_search::SearchIndex>>,
     registry: Option<Arc<Registry>>,
     on_file_done: F,
+    on_total_known: T,
 ) -> Result<(usize, usize), String>
 where
     F: Fn(&str) + Send + Sync + 'static,
+    T: FnOnce(usize),
 {
     let projects_dir = claude_dir.join("projects");
     if !projects_dir.exists() {
@@ -2919,6 +2929,9 @@ where
         }
     }
 
+    // Report actual file count — single source of truth for progress total.
+    on_total_known(files.len());
+
     // Pre-load all existing session staleness info from DB in one query.
     let existing_sessions = db
         .get_sessions_needing_deep_index()
@@ -2962,7 +2975,9 @@ where
             // 1. stat() the file for current size + mtime
             let metadata = match std::fs::metadata(&path) {
                 Ok(m) => m,
-                Err(_) => return Ok::<Option<IndexedSession>, String>(None),
+                Err(_) => {
+                    return Ok::<(Option<IndexedSession>, String), String>((None, session_id))
+                }
             };
             let current_size = metadata.len() as i64;
             let current_mtime = metadata
@@ -2982,7 +2997,7 @@ where
                         && *pv >= CURRENT_PARSE_VERSION
                     {
                         skipped.fetch_add(1, Ordering::Relaxed);
-                        return Ok(None);
+                        return Ok((None, session_id));
                     }
                 }
             }
@@ -3000,7 +3015,7 @@ where
             if meta.last_timestamp.is_none() {
                 tracing::debug!(path = %path.display(), "Skipping file with no timestamps");
                 skipped.fetch_add(1, Ordering::Relaxed);
-                return Ok(None);
+                return Ok((None, session_id));
             }
 
             // 4. Resolve project info from cwd (authoritative) or hints
@@ -3100,6 +3115,7 @@ where
                 .map(|s| s.to_string());
 
             // Build ParsedSession
+            let sid = session_id.clone();
             let parsed = ParsedSession {
                 id: session_id,
                 project_id: effective_encoded.clone(),
@@ -3165,27 +3181,37 @@ where
                 total_cost_usd: meta.total_cost_usd,
             };
 
-            Ok(Some(IndexedSession {
-                parsed,
-                turns: parse_result.turns,
-                models_seen: parse_result.models_seen,
-                classified_invocations: classified,
-                search_messages: parse_result.search_messages,
-                cwd: cwd_owned,
-                git_root,
-                project_for_search: effective_encoded,
-            }))
+            Ok((
+                Some(IndexedSession {
+                    parsed,
+                    turns: parse_result.turns,
+                    models_seen: parse_result.models_seen,
+                    classified_invocations: classified,
+                    search_messages: parse_result.search_messages,
+                    cwd: cwd_owned,
+                    git_root,
+                    project_for_search: effective_encoded,
+                }),
+                sid,
+            ))
         });
 
         handles.push(handle);
     }
 
-    // Collect all parse results
+    // Collect all parse results — fire on_file_done for every file (parsed or skipped)
+    // so the progress counter reaches 100%.
+    let on_file_done = Arc::new(on_file_done);
     let mut indexed_sessions: Vec<IndexedSession> = Vec::with_capacity(handles.len());
     for h in handles {
         match h.await {
-            Ok(Ok(Some(session))) => indexed_sessions.push(session),
-            Ok(Ok(None)) => {} // skipped or empty
+            Ok(Ok((Some(session), _id))) => {
+                on_file_done(&session.parsed.id);
+                indexed_sessions.push(session);
+            }
+            Ok(Ok((None, id))) => {
+                on_file_done(&id);
+            }
             Ok(Err(e)) => tracing::warn!("scan_and_index_all parse error: {}", e),
             Err(e) => tracing::warn!("scan_and_index_all join error: {}", e),
         }
@@ -3213,7 +3239,6 @@ where
     // ══════════════════════════════════════════════════════════════════════
     // Phase 2: SQLITE WRITE (sequential, chunked, single writer)
     // ══════════════════════════════════════════════════════════════════════
-    let on_file_done = Arc::new(on_file_done);
     let seen_at = chrono::Utc::now().timestamp();
     let mut indexed_count: usize = 0;
 
@@ -3309,10 +3334,6 @@ where
             .await
             .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
 
-        // Fire progress callbacks AFTER commit (data is durable)
-        for session in chunk {
-            on_file_done(&session.parsed.id);
-        }
         indexed_count += chunk.len();
 
         // Yield between chunks so live manager writes can slip through
@@ -5412,7 +5433,7 @@ mod scan_and_index_tests {
 
         // First scan: should parse and insert
         let (indexed, skipped) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed, 1, "first scan should index 1 file");
@@ -5420,7 +5441,7 @@ mod scan_and_index_tests {
 
         // Second scan without file changes: should skip
         let (indexed2, skipped2) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed2, 0, "second scan should index 0 files");

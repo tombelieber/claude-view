@@ -37,7 +37,7 @@ async fn no_ghost_sessions_after_restart() {
 
     // First scan (build_index_hints is sync — no .await)
     let hints = build_index_hints(tmp.path());
-    let (indexed, _) = scan_and_index_all(tmp.path(), &db, &hints, None, None, |_| {})
+    let (indexed, _) = scan_and_index_all(tmp.path(), &db, &hints, None, None, |_| {}, |_| {})
         .await
         .unwrap();
     assert_eq!(indexed, 10);
@@ -51,9 +51,10 @@ async fn no_ghost_sessions_after_restart() {
 
     // Simulate restart: scan again without file changes
     let hints2 = build_index_hints(tmp.path());
-    let (indexed2, skipped2) = scan_and_index_all(tmp.path(), &db, &hints2, None, None, |_| {})
-        .await
-        .unwrap();
+    let (indexed2, skipped2) =
+        scan_and_index_all(tmp.path(), &db, &hints2, None, None, |_| {}, |_| {})
+            .await
+            .unwrap();
     assert_eq!(indexed2, 0); // nothing changed
     assert_eq!(skipped2, 10); // all skipped
 

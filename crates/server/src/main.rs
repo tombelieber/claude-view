@@ -374,9 +374,9 @@ async fn main() -> Result<()> {
         let search_for_scan = idx_search.read().unwrap().clone();
 
         // 3. Single-pass scan: parse + upsert for each changed file
-        idx_state.set_total(hint_count);
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
+        let state_for_total = idx_state.clone();
         match scan_and_index_all(
             &claude_dir,
             &idx_db,
@@ -385,6 +385,9 @@ async fn main() -> Result<()> {
             Some(registry_arc.clone()),
             move |_session_id| {
                 state_for_progress.increment_indexed();
+            },
+            move |total| {
+                state_for_total.set_total(total);
             },
         )
         .await
@@ -445,6 +448,7 @@ async fn main() -> Result<()> {
                         &hints,
                         search_rescan,
                         Some(registry_arc.clone()),
+                        |_| {},
                         |_| {},
                     )
                     .await
