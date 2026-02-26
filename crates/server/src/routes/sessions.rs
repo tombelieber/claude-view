@@ -66,7 +66,7 @@ pub struct SessionsListQuery {
 
 /// Response for GET /api/sessions with pagination
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
@@ -93,7 +93,7 @@ pub struct SessionActivityResponse {
 
 /// Extended session detail with commits (for GET /api/sessions/:id)
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDetail {
     /// Base session info
@@ -107,7 +107,7 @@ pub struct SessionDetail {
 
 /// A commit linked to a session with its confidence tier
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitWithTier {
     pub hash: String,
@@ -137,7 +137,7 @@ impl From<(GitCommit, i32, String)> for CommitWithTier {
 
 /// Derived metrics calculated from atomic units
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DerivedMetrics {
     /// Tokens per prompt: (total_input + total_output) / user_prompt_count

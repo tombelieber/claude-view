@@ -45,7 +45,7 @@ fn default_sort() -> String { "recent".to_string() }
 
 /// Response from GET /api/projects/:id/branches
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 pub struct BranchesResponse {
     pub branches: Vec<BranchCount>,
 }

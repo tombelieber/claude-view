@@ -25,7 +25,7 @@ use ts_rs::TS;
 
 /// A single insight with optional severity/type.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Insight {
     /// The insight text (plain English).
@@ -37,7 +37,7 @@ pub struct Insight {
 
 /// Insight severity/type for UI styling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum InsightKind {
     /// Neutral informational insight
