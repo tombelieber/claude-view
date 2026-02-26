@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "version": "0.9.0",
-  "description": "Mission Control for Claude Code — live monitor, full-text search, cost tracking, AI reports, sub-agent drill-down, context gauge, activity heatmap, fluency score. One dashboard for all sessions.",
+  "description": "Mission Control for Claude Code — live monitor, full-text search, cost tracking, AI reports, sub-agent visibility, context gauge, cache countdown, activity heatmap, fluency score. One dashboard for all sessions.",
   "type": "module",
   "files": [
     "dist"
