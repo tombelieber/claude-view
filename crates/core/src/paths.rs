@@ -44,18 +44,14 @@ pub fn remove_cache_data() -> Vec<String> {
 
     for name in &["claude-view.db", "claude-view.db-wal", "claude-view.db-shm"] {
         let p = dir.join(name);
-        if p.exists() {
-            if std::fs::remove_file(&p).is_ok() {
-                removed.push(format!("Removed {}", p.display()));
-            }
+        if p.exists() && std::fs::remove_file(&p).is_ok() {
+            removed.push(format!("Removed {}", p.display()));
         }
     }
 
     let idx = dir.join("search-index");
-    if idx.exists() {
-        if std::fs::remove_dir_all(&idx).is_ok() {
-            removed.push(format!("Removed {}", idx.display()));
-        }
+    if idx.exists() && std::fs::remove_dir_all(&idx).is_ok() {
+        removed.push(format!("Removed {}", idx.display()));
     }
 
     removed
@@ -68,10 +64,10 @@ pub fn remove_lock_files() -> Vec<String> {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map(|e| e == "lock").unwrap_or(false) {
-                    if std::fs::remove_file(&path).is_ok() {
-                        removed.push(format!("Removed {}", path.display()));
-                    }
+                if path.extension().map(|e| e == "lock").unwrap_or(false)
+                    && std::fs::remove_file(&path).is_ok()
+                {
+                    removed.push(format!("Removed {}", path.display()));
                 }
             }
         }
@@ -82,10 +78,11 @@ pub fn remove_lock_files() -> Vec<String> {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str.starts_with("claude-view-") && name_str.ends_with(".lock") {
-                if std::fs::remove_file(entry.path()).is_ok() {
-                    removed.push(format!("Removed legacy {}", entry.path().display()));
-                }
+            if name_str.starts_with("claude-view-")
+                && name_str.ends_with(".lock")
+                && std::fs::remove_file(entry.path()).is_ok()
+            {
+                removed.push(format!("Removed legacy {}", entry.path().display()));
             }
         }
     }
