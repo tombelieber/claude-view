@@ -39,7 +39,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     output: 'static',
     favicon: './assets/images/favicon.png',
   },
-  plugins: ['expo-router', 'expo-secure-store'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    ['expo-camera', { cameraPermission: 'Allow Claude View to scan QR codes for pairing.' }],
+    'expo-notifications',
+  ],
+  extra: {
+    eas: {
+      projectId: 'YOUR_EAS_PROJECT_ID', // Replace after `eas init`
+    },
+  },
   experiments: {
     typedRoutes: true,
   },
