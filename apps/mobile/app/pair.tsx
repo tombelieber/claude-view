@@ -28,7 +28,7 @@ export default function PairScreen() {
       // Falls back to origin-based derivation for backwards compat with older QR codes.
       const rParam = url.searchParams.get('r')
       const relayUrl =
-        rParam ?? url.origin.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws'
+        rParam ?? `${url.origin.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`
 
       // Read verification secret from QR `s` param for HMAC anti-MITM binding
       const verificationSecret = url.searchParams.get('s')
