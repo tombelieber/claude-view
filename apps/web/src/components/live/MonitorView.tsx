@@ -239,7 +239,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
       </div>
 
       {/* Content area — conditional render */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         {mode === 'auto-grid' ? (
           <MonitorGrid
             sessions={visibleSessions}
