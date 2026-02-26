@@ -1,16 +1,33 @@
+<div align="center">
+
 # claude-view
 
 **You have 10 Claude sessions running right now. What are they doing?**
 
-Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it. You Cmd-Tab through 15 terminals trying to remember which session was doing what. A cache expired while you weren't looking. A session finished 10 minutes ago and you didn't notice.
+<p>
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
+</p>
+
+</div>
+
+Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it.
 
 **You're paying $200/mo for Claude Code. You deserve a dashboard.**
+
+<div align="center">
 
 ```bash
 npx claude-view
 ```
 
-One command. Every session visible. Real-time.
+**One command. Every session visible. Real-time.**
+
+</div>
+
+---
 
 ## What You Get
 
@@ -24,26 +41,32 @@ One command. Every session visible. Real-time.
 - **Analytics** — activity heatmap, cost ROI, model comparison, AI Fluency Score
 - **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
 
+---
+
 ## How It Works
 
 On first run, `npx claude-view` downloads a platform-specific Rust binary (~10 MB) from GitHub Releases. The binary is cached at `~/.cache/claude-view/` so subsequent runs start instantly.
 
 Everything stays on your machine. Zero telemetry, zero cloud, zero network requests.
 
+---
+
 ## Configuration
 
 | Env Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `CLAUDE_VIEW_PORT` | `47892` | Port for the local server |
 | `PORT` | `47892` | Alternative port override |
 
 ## Supported Platforms
 
 | OS | Architecture |
-|---|---|
+| --- | --- |
 | macOS | Apple Silicon (arm64), Intel (x64) |
 | Linux | x64 |
 | Windows | x64 |
+
+---
 
 ## Links
 
@@ -52,6 +75,10 @@ Everything stays on your machine. Zero telemetry, zero cloud, zero network reque
 - [Report an Issue](https://github.com/tombelieber/claude-view/issues)
 - [Discord](https://discord.gg/G7wdZTpRfu)
 
-## License
+---
+
+<div align="center">
 
 MIT
+
+</div>
