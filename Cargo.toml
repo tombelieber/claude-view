@@ -78,6 +78,12 @@ pretty_assertions = "1"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 
+# Phase F: Unix socket HTTP client (sidecar proxy)
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+
 # Internal crates
 claude-view-core = { path = "crates/core" }
 claude-view-db = { path = "crates/db" }
