@@ -9,12 +9,12 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use claude_view_core::pricing::{self as pricing_engine};
+use claude_view_core::{claude_projects_dir, DashboardStats};
+use claude_view_db::trends::{TrendMetric, WeekTrends};
+use claude_view_db::{AIGenerationStats, AggregateCostBreakdown};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use claude_view_core::{claude_projects_dir, DashboardStats};
-use claude_view_core::pricing::{self as pricing_engine};
-use claude_view_db::trends::{TrendMetric, WeekTrends};
-use claude_view_db::{AggregateCostBreakdown, AIGenerationStats};
 
 use crate::error::ApiResult;
 use crate::metrics::record_request;
@@ -204,7 +204,11 @@ pub async fn dashboard_stats(
     }
 
     // Get earliest session date for "since [date]" display
-    let data_start_date = match state.db.get_oldest_session_date(query.project.as_deref(), query.branch.as_deref()).await {
+    let data_start_date = match state
+        .db
+        .get_oldest_session_date(query.project.as_deref(), query.branch.as_deref())
+        .await
+    {
         Ok(date) => date,
         Err(e) => {
             tracing::warn!(endpoint = "dashboard_stats", error = %e, "Failed to fetch oldest session date");
@@ -217,9 +221,20 @@ pub async fn dashboard_stats(
 
     // Get base dashboard stats (always includes heatmap which is fixed at 90 days)
     let base = match if has_time_range {
-        state.db.get_dashboard_stats_with_range(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await
+        state
+            .db
+            .get_dashboard_stats_with_range(
+                query.from,
+                query.to,
+                query.project.as_deref(),
+                query.branch.as_deref(),
+            )
+            .await
     } else {
-        state.db.get_dashboard_stats(query.project.as_deref(), query.branch.as_deref()).await
+        state
+            .db
+            .get_dashboard_stats(query.project.as_deref(), query.branch.as_deref())
+            .await
     } {
         Ok(stats) => stats,
         Err(e) => {
@@ -234,20 +249,25 @@ pub async fn dashboard_stats(
     };
 
     // Calculate period bounds and comparison period
-    let (period_start, period_end, comparison_start, comparison_end) = if let (Some(from), Some(to)) = (query.from, query.to) {
-        let duration = to - from;
-        // Previous period is the same duration immediately before
-        let comp_end = from - 1;
-        let comp_start = comp_end - duration;
-        (Some(from), Some(to), Some(comp_start), Some(comp_end))
-    } else {
-        (None, None, None, None)
-    };
+    let (period_start, period_end, comparison_start, comparison_end) =
+        if let (Some(from), Some(to)) = (query.from, query.to) {
+            let duration = to - from;
+            // Previous period is the same duration immediately before
+            let comp_end = from - 1;
+            let comp_start = comp_end - duration;
+            (Some(from), Some(to), Some(comp_start), Some(comp_end))
+        } else {
+            (None, None, None, None)
+        };
 
     // Get trends (either for custom period or default week-over-week)
     let (current_week, trends) = if let (Some(from), Some(to)) = (query.from, query.to) {
         // Get trends for the specified period
-        match state.db.get_trends_with_range(from, to, query.project.as_deref(), query.branch.as_deref()).await {
+        match state
+            .db
+            .get_trends_with_range(from, to, query.project.as_deref(), query.branch.as_deref())
+            .await
+        {
             Ok(period_trends) => {
                 let current = CurrentPeriodMetrics {
                     session_count: period_trends.session_count.current as u64,
@@ -270,7 +290,11 @@ pub async fn dashboard_stats(
         }
     } else {
         // All-time view: show aggregate stats but no trends
-        match state.db.get_all_time_metrics(query.project.as_deref(), query.branch.as_deref()).await {
+        match state
+            .db
+            .get_all_time_metrics(query.project.as_deref(), query.branch.as_deref())
+            .await
+        {
             Ok((session_count, total_tokens, total_files_edited, commit_count)) => {
                 let current = CurrentPeriodMetrics {
                     session_count,
@@ -314,9 +338,7 @@ pub async fn dashboard_stats(
 /// - Storage sizes: JSONL files, SQLite database, search index
 /// - Counts: sessions, projects, commits
 /// - Timing: oldest session, last index, last git sync
-pub async fn storage_stats(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<StorageStats>> {
+pub async fn storage_stats(State(state): State<Arc<AppState>>) -> ApiResult<Json<StorageStats>> {
     let start = Instant::now();
 
     // Get index metadata for timing info
@@ -334,15 +356,18 @@ pub async fn storage_stats(
     };
 
     // Get all counts in a single query (replaces 4 separate queries)
-    let (session_count, project_count, commit_count, oldest_session_date) =
-        match state.db.get_storage_counts().await {
-            Ok(counts) => counts,
-            Err(e) => {
-                tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get storage counts");
-                record_request("storage_stats", "500", start.elapsed());
-                return Err(e.into());
-            }
-        };
+    let (session_count, project_count, commit_count, oldest_session_date) = match state
+        .db
+        .get_storage_counts()
+        .await
+    {
+        Ok(counts) => counts,
+        Err(e) => {
+            tracing::error!(endpoint = "storage_stats", error = %e, "Failed to get storage counts");
+            record_request("storage_stats", "500", start.elapsed());
+            return Err(e.into());
+        }
+    };
 
     // Calculate JSONL storage size
     let jsonl_bytes = calculate_jsonl_size().await;
@@ -521,7 +546,16 @@ pub async fn ai_generation_stats(
         }
     }
 
-    let mut stats = match state.db.get_ai_generation_stats(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
+    let mut stats = match state
+        .db
+        .get_ai_generation_stats(
+            query.from,
+            query.to,
+            query.project.as_deref(),
+            query.branch.as_deref(),
+        )
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(endpoint = "ai_generation_stats", error = %e, "Failed to fetch AI generation stats");
@@ -531,7 +565,16 @@ pub async fn ai_generation_stats(
     };
 
     // Compute aggregate cost breakdown from per-model token data + pricing engine
-    if let Ok(model_tokens) = state.db.get_per_model_token_breakdown(query.from, query.to, query.project.as_deref(), query.branch.as_deref()).await {
+    if let Ok(model_tokens) = state
+        .db
+        .get_per_model_token_breakdown(
+            query.from,
+            query.to,
+            query.project.as_deref(),
+            query.branch.as_deref(),
+        )
+        .await
+    {
         let pricing = state.pricing.read().unwrap_or_else(|e| e.into_inner());
         let mut cost = AggregateCostBreakdown::default();
 
@@ -546,21 +589,30 @@ pub async fn ai_generation_stats(
                 cost.output_cost_usd += *output as f64 * mp.output_cost_per_token;
                 let cr_cost = *cache_read as f64 * mp.cache_read_cost_per_token;
                 cost.cache_read_cost_usd += cr_cost;
-                cost.cache_creation_cost_usd += *cache_create as f64 * mp.cache_creation_cost_per_token;
+                cost.cache_creation_cost_usd +=
+                    *cache_create as f64 * mp.cache_creation_cost_per_token;
                 cost.cache_savings_usd += *cache_read as f64 * mp.input_cost_per_token - cr_cost;
             } else {
-                cost.input_cost_usd += *input as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN;
-                cost.output_cost_usd += *output as f64 * pricing_engine::FALLBACK_OUTPUT_COST_PER_TOKEN;
-                cost.cache_read_cost_usd += *cache_read as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
-                cost.cache_creation_cost_usd += *cache_create as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
+                cost.input_cost_usd +=
+                    *input as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN;
+                cost.output_cost_usd +=
+                    *output as f64 * pricing_engine::FALLBACK_OUTPUT_COST_PER_TOKEN;
+                cost.cache_read_cost_usd +=
+                    *cache_read as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
+                cost.cache_creation_cost_usd +=
+                    *cache_create as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
             }
         }
 
         // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc.
         // Filter out 0.0 — sessions re-indexed without costUSD in JSONL produce SUM = 0.0,
         // which would hide the cost card. Fall back to token-based in that case.
-        let token_based_total = cost.input_cost_usd + cost.output_cost_usd + cost.cache_read_cost_usd + cost.cache_creation_cost_usd;
-        cost.total_cost_usd = stats.total_cost_usd_from_jsonl
+        let token_based_total = cost.input_cost_usd
+            + cost.output_cost_usd
+            + cost.cache_read_cost_usd
+            + cost.cache_creation_cost_usd;
+        cost.total_cost_usd = stats
+            .total_cost_usd_from_jsonl
             .filter(|&v| v > 0.0)
             .unwrap_or(token_based_total);
         stats.cost = cost;
@@ -585,9 +637,9 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_core::{SessionInfo, ToolCounts};
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -704,7 +756,9 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session, "project-a", "Project A").await.unwrap();
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
 
@@ -752,7 +806,12 @@ mod tests {
             last_message: "Test msg".to_string(),
             files_touched: vec!["src/main.rs".to_string()],
             skills_used: vec!["/commit".to_string()],
-            tool_counts: ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            tool_counts: ToolCounts {
+                edit: 5,
+                read: 10,
+                bash: 3,
+                write: 2,
+            },
             message_count: 20,
             turn_count: 8,
             summary: None,
@@ -803,7 +862,9 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session, "project-a", "Project A").await.unwrap();
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/stats/dashboard").await;
@@ -997,7 +1058,12 @@ mod tests {
             last_message: "Test msg".to_string(),
             files_touched: vec!["src/main.rs".to_string()],
             skills_used: vec![],
-            tool_counts: ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            tool_counts: ToolCounts {
+                edit: 5,
+                read: 10,
+                bash: 3,
+                write: 2,
+            },
             message_count: 20,
             turn_count: 8,
             summary: None,
@@ -1048,62 +1114,69 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session, "project-ai", "Project AI").await.unwrap();
+        db.insert_session(&session, "project-ai", "Project AI")
+            .await
+            .unwrap();
 
         // Update with token data and first_message_at
         db.update_session_deep_fields(
             "sess-ai-1",
             "Test msg",
-            8,   // turn_count
-            5,   // tool_edit
-            10,  // tool_read
-            3,   // tool_bash
-            2,   // tool_write
-            r#"["src/main.rs"]"#,  // files_touched
-            "[]",                   // skills_used
-            10,  // user_prompt_count
-            20,  // api_call_count
-            50,  // tool_call_count
-            "[]",                   // files_read
-            r#"["src/main.rs"]"#,  // files_edited
-            15,  // files_read_count
-            5,   // files_edited_count
-            2,   // reedited_files_count
-            600, // duration_seconds
-            3,   // commit_count
-            Some(now - 86400),      // first_message_at
-            150000,  // total_input_tokens
-            250000,  // total_output_tokens
-            10000,   // cache_read_tokens
-            5000,    // cache_creation_tokens
-            2,       // thinking_block_count
-            Some(500),  // turn_duration_avg_ms
-            Some(2000), // turn_duration_max_ms
-            Some(4000), // turn_duration_total_ms
-            0,       // api_error_count
-            0,       // api_retry_count
-            0,       // compaction_count
-            0,       // hook_blocked_count
-            0,       // agent_spawn_count
-            0,       // bash_progress_count
-            0,       // hook_progress_count
-            0,       // mcp_progress_count
-            None,    // summary_text
-            1,       // parse_version
-            2048,    // file_size
-            now - 86400,  // file_mtime
-            0, 0, 0, // lines_added, lines_removed, loc_source
-            0, 0,    // ai_lines_added, ai_lines_removed
-            None,    // work_type
-            None,    // git_branch
-            None,    // primary_model
-            None,    // last_message_at
-            None,    // first_user_prompt
-            0, // total_task_time_seconds
+            8,                    // turn_count
+            5,                    // tool_edit
+            10,                   // tool_read
+            3,                    // tool_bash
+            2,                    // tool_write
+            r#"["src/main.rs"]"#, // files_touched
+            "[]",                 // skills_used
+            10,                   // user_prompt_count
+            20,                   // api_call_count
+            50,                   // tool_call_count
+            "[]",                 // files_read
+            r#"["src/main.rs"]"#, // files_edited
+            15,                   // files_read_count
+            5,                    // files_edited_count
+            2,                    // reedited_files_count
+            600,                  // duration_seconds
+            3,                    // commit_count
+            Some(now - 86400),    // first_message_at
+            150000,               // total_input_tokens
+            250000,               // total_output_tokens
+            10000,                // cache_read_tokens
+            5000,                 // cache_creation_tokens
+            2,                    // thinking_block_count
+            Some(500),            // turn_duration_avg_ms
+            Some(2000),           // turn_duration_max_ms
+            Some(4000),           // turn_duration_total_ms
+            0,                    // api_error_count
+            0,                    // api_retry_count
+            0,                    // compaction_count
+            0,                    // hook_blocked_count
+            0,                    // agent_spawn_count
+            0,                    // bash_progress_count
+            0,                    // hook_progress_count
+            0,                    // mcp_progress_count
+            None,                 // summary_text
+            1,                    // parse_version
+            2048,                 // file_size
+            now - 86400,          // file_mtime
+            0,
+            0,
+            0, // lines_added, lines_removed, loc_source
+            0,
+            0,    // ai_lines_added, ai_lines_removed
+            None, // work_type
+            None, // git_branch
+            None, // primary_model
+            None, // last_message_at
+            None, // first_user_prompt
+            0,    // total_task_time_seconds
             None, // longest_task_seconds
             None, // longest_task_preview
-            0.0,     // total_cost_usd
-        ).await.unwrap();
+            0.0,  // total_cost_usd
+        )
+        .await
+        .unwrap();
 
         // Update the primary_model column using the db pool directly
         db.set_session_primary_model("sess-ai-1", "claude-3-5-sonnet-20241022")
@@ -1214,40 +1287,78 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session, "project-range", "Project Range").await.unwrap();
+        db.insert_session(&session, "project-range", "Project Range")
+            .await
+            .unwrap();
 
         // Update with token data and first_message_at
         db.update_session_deep_fields(
             "sess-range",
             "Test msg",
-            5, 0, 0, 0, 0,
-            "[]", "[]",
-            5, 10, 20,
-            "[]", "[]",
-            10, 3, 1, 300, 1,
-            Some(now - 86400),  // first_message_at: 1 day ago
-            100000, 200000, 0, 0,
-            0, None, None, None,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            None, 1, 2048, now - 86400,
-            0, 0, 0, // lines_added, lines_removed, loc_source
-            0, 0,    // ai_lines_added, ai_lines_removed
-            None,    // work_type
-            None,    // git_branch
+            5,
+            0,
+            0,
+            0,
+            0,
+            "[]",
+            "[]",
+            5,
+            10,
+            20,
+            "[]",
+            "[]",
+            10,
+            3,
+            1,
+            300,
+            1,
+            Some(now - 86400), // first_message_at: 1 day ago
+            100000,
+            200000,
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            None,
+            1,
+            2048,
+            now - 86400,
+            0,
+            0,
+            0, // lines_added, lines_removed, loc_source
+            0,
+            0,    // ai_lines_added, ai_lines_removed
+            None, // work_type
+            None, // git_branch
             None, // primary_model
             None, // last_message_at
             None, // first_user_prompt
-            0, // total_task_time_seconds
+            0,    // total_task_time_seconds
             None, // longest_task_seconds
             None, // longest_task_preview
             0.0,  // total_cost_usd
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         let app = build_app(db);
 
         // Query with time range that includes the session
         let seven_days_ago = now - (7 * 86400);
-        let uri = format!("/api/stats/ai-generation?from={}&to={}", seven_days_ago, now);
+        let uri = format!(
+            "/api/stats/ai-generation?from={}&to={}",
+            seven_days_ago, now
+        );
         let (status, body) = do_get(app.clone(), &uri).await;
 
         assert_eq!(status, StatusCode::OK);
@@ -1256,7 +1367,11 @@ mod tests {
         assert_eq!(json["totalOutputTokens"], 200000);
 
         // Query with time range that excludes the session (future)
-        let uri = format!("/api/stats/ai-generation?from={}&to={}", now + 86400, now + 172800);
+        let uri = format!(
+            "/api/stats/ai-generation?from={}&to={}",
+            now + 86400,
+            now + 172800
+        );
         let (status, body) = do_get(app, &uri).await;
 
         assert_eq!(status, StatusCode::OK);
@@ -1285,7 +1400,12 @@ mod tests {
             last_message: "Test msg A".to_string(),
             files_touched: vec![],
             skills_used: vec![],
-            tool_counts: ToolCounts { edit: 5, read: 10, bash: 3, write: 2 },
+            tool_counts: ToolCounts {
+                edit: 5,
+                read: 10,
+                bash: 3,
+                write: 2,
+            },
             message_count: 20,
             turn_count: 8,
             summary: None,
@@ -1336,7 +1456,9 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
+        db.insert_session(&session_a, "project-alpha", "Project Alpha")
+            .await
+            .unwrap();
 
         let mut session_b = session_a.clone();
         session_b.id = "sess-proj-b".to_string();
@@ -1345,25 +1467,39 @@ mod tests {
         session_b.file_path = "/path/sess-proj-b.jsonl".to_string();
         session_b.preview = "Beta session".to_string();
         session_b.git_branch = Some("develop".to_string());
-        db.insert_session(&session_b, "project-beta", "Project Beta").await.unwrap();
+        db.insert_session(&session_b, "project-beta", "Project Beta")
+            .await
+            .unwrap();
 
         let app = build_app(db);
 
         // Filter by project
-        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha").await;
+        let (status, body) =
+            do_get(app.clone(), "/api/stats/dashboard?project=project-alpha").await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(json["totalSessions"], 1, "should only count project-alpha sessions");
+        assert_eq!(
+            json["totalSessions"], 1,
+            "should only count project-alpha sessions"
+        );
         assert_eq!(json["totalProjects"], 1);
 
         // Filter by project + branch
-        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha&branch=main").await;
+        let (status, body) = do_get(
+            app.clone(),
+            "/api/stats/dashboard?project=project-alpha&branch=main",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["totalSessions"], 1);
 
         // Filter by project + wrong branch = 0 sessions
-        let (status, body) = do_get(app.clone(), "/api/stats/dashboard?project=project-alpha&branch=develop").await;
+        let (status, body) = do_get(
+            app.clone(),
+            "/api/stats/dashboard?project=project-alpha&branch=develop",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["totalSessions"], 0);
@@ -1446,12 +1582,18 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
         };
-        db.insert_session(&session_a, "project-alpha", "Project Alpha").await.unwrap();
+        db.insert_session(&session_a, "project-alpha", "Project Alpha")
+            .await
+            .unwrap();
 
         let app = build_app(db);
 
         // Filter by project
-        let (status, body) = do_get(app.clone(), "/api/stats/ai-generation?project=project-alpha").await;
+        let (status, body) = do_get(
+            app.clone(),
+            "/api/stats/ai-generation?project=project-alpha",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["filesCreated"], 3);

@@ -89,10 +89,25 @@ pub fn sort_by_impact(insights: &mut [GeneratedInsight]) {
 }
 
 /// Group insights by impact tier.
-pub fn group_by_tier(insights: &[GeneratedInsight]) -> (Vec<&GeneratedInsight>, Vec<&GeneratedInsight>, Vec<&GeneratedInsight>) {
-    let high: Vec<_> = insights.iter().filter(|i| i.impact_tier == "high").collect();
-    let medium: Vec<_> = insights.iter().filter(|i| i.impact_tier == "medium").collect();
-    let observations: Vec<_> = insights.iter().filter(|i| i.impact_tier == "observation").collect();
+pub fn group_by_tier(
+    insights: &[GeneratedInsight],
+) -> (
+    Vec<&GeneratedInsight>,
+    Vec<&GeneratedInsight>,
+    Vec<&GeneratedInsight>,
+) {
+    let high: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "high")
+        .collect();
+    let medium: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "medium")
+        .collect();
+    let observations: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "observation")
+        .collect();
     (high, medium, observations)
 }
 

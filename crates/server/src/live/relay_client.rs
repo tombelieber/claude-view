@@ -70,13 +70,25 @@ pub fn spawn_relay_client(
                 continue;
             }
 
-            match connect_and_stream(&identity, &paired_devices, &tx, &sessions, &relay_url, &config).await {
+            match connect_and_stream(
+                &identity,
+                &paired_devices,
+                &tx,
+                &sessions,
+                &relay_url,
+                &config,
+            )
+            .await
+            {
                 Ok(()) => {
                     info!("relay connection closed cleanly");
                     backoff = Duration::from_secs(1);
                 }
                 Err(e) => {
-                    warn!(backoff_secs = backoff.as_secs(), "relay connection failed: {e}");
+                    warn!(
+                        backoff_secs = backoff.as_secs(),
+                        "relay connection failed: {e}"
+                    );
                 }
             }
 
@@ -133,8 +145,7 @@ async fn connect_and_stream(
         for session in sessions_map.values() {
             let json = serde_json::to_vec(session).unwrap_or_default();
             for device in paired_devices {
-                if let Ok(encrypted) =
-                    encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
+                if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
                 {
                     let envelope = serde_json::json!({
                         "to": device.device_id,

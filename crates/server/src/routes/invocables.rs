@@ -24,17 +24,13 @@ pub async fn list_invocables(
 ///
 /// Returns total sessions, total invocations, unique invocables used,
 /// and the top 10 invocables by usage count.
-pub async fn stats_overview(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<StatsOverview>> {
+pub async fn stats_overview(State(state): State<Arc<AppState>>) -> ApiResult<Json<StatsOverview>> {
     let stats = state.db.get_stats_overview().await?;
     Ok(Json(stats))
 }
 
 /// GET /api/stats/tokens - Aggregate token usage statistics.
-pub async fn stats_tokens(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<TokenStats>> {
+pub async fn stats_tokens(State(state): State<Arc<AppState>>) -> ApiResult<Json<TokenStats>> {
     let stats = state.db.get_token_stats().await?;
     Ok(Json(stats))
 }
@@ -53,8 +49,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     /// Helper: create an in-memory database for tests.
     async fn test_db() -> Database {

@@ -20,10 +20,7 @@ async fn request(
         Body::empty()
     };
 
-    let response = app
-        .oneshot(builder.body(body).unwrap())
-        .await
-        .unwrap();
+    let response = app.oneshot(builder.body(body).unwrap()).await.unwrap();
 
     let status = response.status();
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)

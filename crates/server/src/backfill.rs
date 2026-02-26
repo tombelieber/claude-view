@@ -3,11 +3,11 @@
 //!
 //! These populate fields that were added after sessions were first indexed.
 
+use claude_view_core::{infer_git_root_from_worktree_path, resolve_git_root};
+use claude_view_db::Database;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::info;
-use claude_view_core::{resolve_git_root, infer_git_root_from_worktree_path};
-use claude_view_db::Database;
 
 /// Backfill git_root for sessions that have session_cwd but no git_root.
 /// Runs once at server startup. Bounded by available_parallelism.
@@ -70,9 +70,7 @@ pub async fn backfill_git_roots(db: Arc<Database>) {
     }
 
     if resolved > 0 || unresolved > 0 {
-        info!(
-            "git_root backfill complete: {resolved} resolved, {unresolved} unresolvable"
-        );
+        info!("git_root backfill complete: {resolved} resolved, {unresolved} unresolvable");
     } else {
         info!("git_root backfill: nothing to do");
     }
@@ -109,6 +107,9 @@ mod tests {
     #[test]
     fn test_no_match() {
         assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo"), None);
-        assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo-cold-start"), None);
+        assert_eq!(
+            infer_git_root_from_worktree_path("/Users/u/dev/repo-cold-start"),
+            None
+        );
     }
 }

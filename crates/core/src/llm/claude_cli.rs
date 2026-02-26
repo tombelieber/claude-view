@@ -5,7 +5,9 @@ use async_trait::async_trait;
 use tokio::process::Command as TokioCommand;
 
 use super::provider::LlmProvider;
-use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError};
+use super::types::{
+    ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError,
+};
 
 /// LLM provider that uses the Claude CLI binary.
 ///
@@ -72,8 +74,7 @@ impl ClaudeCliProvider {
             "claude CLI stream_completion(): spawning"
         );
 
-        let mut cmd =
-            tokio::process::Command::new(crate::resolved_cli_path().unwrap_or("claude"));
+        let mut cmd = tokio::process::Command::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
             "-p",
             "--output-format",
@@ -94,9 +95,10 @@ impl ClaudeCliProvider {
             LlmError::SpawnFailed(e.to_string())
         })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            LlmError::SpawnFailed("failed to capture stdout".to_string())
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| LlmError::SpawnFailed("failed to capture stdout".to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
 
@@ -186,7 +188,11 @@ impl ClaudeCliProvider {
         // future CLAUDE-prefixed vars discovered at runtime. Previous approach
         // relied solely on std::env::vars() iteration, which can miss vars with
         // unusual values on macOS.
-        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let known_vars = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_SSE_PORT",
+            "CLAUDE_CODE_ENTRYPOINT",
+        ];
         let extra_vars: Vec<String> = std::env::vars()
             .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
             .map(|(k, _)| k)
@@ -205,15 +211,15 @@ impl ClaudeCliProvider {
 
         let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
-                "-p",
-                "--output-format",
-                "json",
-                "--model",
-                &self.model,
-                prompt,
-            ])
-            // Null stdin so the child never blocks waiting for input
-            .stdin(std::process::Stdio::null());
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            &self.model,
+            prompt,
+        ])
+        // Null stdin so the child never blocks waiting for input
+        .stdin(std::process::Stdio::null());
         // Strip ALL Claude-prefixed env vars to prevent nested session detection
         for var in &all_stripped {
             cmd.env_remove(var);
@@ -223,7 +229,10 @@ impl ClaudeCliProvider {
         let output = timeout(timeout_duration, future)
             .await
             .map_err(|_| {
-                tracing::error!(elapsed_ms = t0.elapsed().as_millis() as u64, "claude CLI: timed out");
+                tracing::error!(
+                    elapsed_ms = t0.elapsed().as_millis() as u64,
+                    "claude CLI: timed out"
+                );
                 LlmError::Timeout(self.timeout_secs)
             })?
             .map_err(|e| {
@@ -240,7 +249,11 @@ impl ClaudeCliProvider {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        tracing::info!(elapsed_ms, stdout_len = stdout.len(), "claude CLI: response received");
+        tracing::info!(
+            elapsed_ms,
+            stdout_len = stdout.len(),
+            "claude CLI: response received"
+        );
 
         serde_json::from_str(&stdout).map_err(|e| {
             tracing::warn!(stdout = %&stdout[..stdout.len().min(500)], "claude CLI: returned non-JSON");
@@ -274,7 +287,11 @@ impl LlmProvider for ClaudeCliProvider {
         };
 
         // Strip ALL Claude Code env vars to prevent nested session detection.
-        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let known_vars = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_SSE_PORT",
+            "CLAUDE_CODE_ENTRYPOINT",
+        ];
         let extra_vars: Vec<String> = std::env::vars()
             .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
             .map(|(k, _)| k)
@@ -294,14 +311,14 @@ impl LlmProvider for ClaudeCliProvider {
 
         let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
-                "-p",
-                "--output-format",
-                "json",
-                "--model",
-                &self.model,
-                &prompt,
-            ])
-            .stdin(std::process::Stdio::null());
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            &self.model,
+            &prompt,
+        ])
+        .stdin(std::process::Stdio::null());
         for var in &all_stripped {
             cmd.env_remove(var);
         }
@@ -310,7 +327,10 @@ impl LlmProvider for ClaudeCliProvider {
         let output = timeout(timeout_duration, future)
             .await
             .map_err(|_| {
-                tracing::error!(elapsed_ms = start.elapsed().as_millis() as u64, "claude CLI complete(): timed out");
+                tracing::error!(
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "claude CLI complete(): timed out"
+                );
                 LlmError::Timeout(self.timeout_secs)
             })?
             .map_err(|e| {
@@ -422,9 +442,8 @@ pub fn parse_classification_response(
         json
     };
 
-    serde_json::from_value(inner).map_err(|e| {
-        LlmError::InvalidFormat(format!("response missing required fields: {}", e))
-    })
+    serde_json::from_value(inner)
+        .map_err(|e| LlmError::InvalidFormat(format!("response missing required fields: {}", e)))
 }
 
 /// Extract the first JSON object `{...}` from a text string.
@@ -562,10 +581,7 @@ mod tests {
             "total_cost_usd": 0.006163
         });
 
-        let content = cli_json["result"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let content = cli_json["result"].as_str().unwrap_or("").to_string();
         assert_eq!(content, "Here is the report content...");
 
         let model = cli_json["modelUsage"]

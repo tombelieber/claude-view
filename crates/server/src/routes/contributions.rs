@@ -23,13 +23,13 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use claude_view_db::{
     calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
     DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
     TokenBreakdown, UncommittedWork, FALLBACK_INPUT_COST_PER_TOKEN, FALLBACK_OUTPUT_COST_PER_TOKEN,
 };
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
 use crate::insights::{
@@ -763,8 +763,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

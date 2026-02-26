@@ -229,7 +229,9 @@ impl CategoryL3 {
             Self::EnvSetup | Self::BuildTooling | Self::Dependencies => CategoryL2::Config,
             Self::CiCd | Self::Deployment | Self::Monitoring => CategoryL2::Ops,
             Self::Brainstorming | Self::DesignDoc | Self::TaskBreakdown => CategoryL2::Planning,
-            Self::CodeUnderstanding | Self::ConceptLearning | Self::DebugInvestigation => CategoryL2::Explanation,
+            Self::CodeUnderstanding | Self::ConceptLearning | Self::DebugInvestigation => {
+                CategoryL2::Explanation
+            }
             Self::SystemDesign | Self::DataModeling | Self::ApiDesign => CategoryL2::Architecture,
         }
     }
@@ -376,7 +378,12 @@ pub fn build_batch_prompt(inputs: &[ClassificationInput]) -> String {
             "(none)".to_string()
         } else {
             // Limit to 10 skills
-            let limited: Vec<&str> = input.skills_used.iter().take(10).map(|s| s.as_str()).collect();
+            let limited: Vec<&str> = input
+                .skills_used
+                .iter()
+                .take(10)
+                .map(|s| s.as_str())
+                .collect();
             limited.join(", ")
         };
 
@@ -387,7 +394,10 @@ pub fn build_batch_prompt(inputs: &[ClassificationInput]) -> String {
         prompt.push_str("---\n\n");
     }
 
-    prompt.push_str(&format!("Return JSON with classifications for all {} sessions.", inputs.len()));
+    prompt.push_str(&format!(
+        "Return JSON with classifications for all {} sessions.",
+        inputs.len()
+    ));
     prompt
 }
 
@@ -410,8 +420,8 @@ pub fn parse_batch_response(raw: &str) -> Result<Vec<ValidatedClassification>, S
     let response: BatchClassificationResponse = serde_json::from_str(&cleaned)
         .or_else(|_| {
             // Try Claude CLI wrapper format: { "result": "..." }
-            let wrapper: serde_json::Value = serde_json::from_str(&cleaned)
-                .map_err(|e| format!("JSON parse failed: {}", e))?;
+            let wrapper: serde_json::Value =
+                serde_json::from_str(&cleaned).map_err(|e| format!("JSON parse failed: {}", e))?;
             if let Some(result_str) = wrapper.get("result").and_then(|v| v.as_str()) {
                 let inner_cleaned = strip_markdown_json(result_str);
                 serde_json::from_str(&inner_cleaned)
@@ -549,7 +559,10 @@ mod tests {
         // New canonical form
         assert_eq!(CategoryL1::parse("code_work"), Some(CategoryL1::Code));
         assert_eq!(CategoryL1::parse("support_work"), Some(CategoryL1::Support));
-        assert_eq!(CategoryL1::parse("thinking_work"), Some(CategoryL1::Thinking));
+        assert_eq!(
+            CategoryL1::parse("thinking_work"),
+            Some(CategoryL1::Thinking)
+        );
         // Backwards compat: old form still accepted
         assert_eq!(CategoryL1::parse("code"), Some(CategoryL1::Code));
         assert_eq!(CategoryL1::parse("support"), Some(CategoryL1::Support));
@@ -574,7 +587,10 @@ mod tests {
         assert_eq!(CategoryL3::NewComponent.parent_l2(), CategoryL2::Feature);
         assert_eq!(CategoryL3::ErrorFix.parent_l2(), CategoryL2::Bugfix);
         assert_eq!(CategoryL3::ReadmeGuides.parent_l2(), CategoryL2::Docs);
-        assert_eq!(CategoryL3::SystemDesign.parent_l2(), CategoryL2::Architecture);
+        assert_eq!(
+            CategoryL3::SystemDesign.parent_l2(),
+            CategoryL2::Architecture
+        );
     }
 
     #[test]

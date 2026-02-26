@@ -193,11 +193,7 @@ impl Database {
     }
 
     /// Get activity heatmap data: session count and avg re-edit rate by day-of-week and hour.
-    pub async fn get_activity_heatmap(
-        &self,
-        from: i64,
-        to: i64,
-    ) -> DbResult<Vec<HeatmapCell>> {
+    pub async fn get_activity_heatmap(&self, from: i64, to: i64) -> DbResult<Vec<HeatmapCell>> {
         let rows: Vec<(i64, i64, i64, f64)> = sqlx::query_as(
             r#"
             SELECT
@@ -236,11 +232,7 @@ impl Database {
     }
 
     /// Get total session count within a time range.
-    pub async fn get_session_count_in_range(
-        &self,
-        from: i64,
-        to: i64,
-    ) -> DbResult<i64> {
+    pub async fn get_session_count_in_range(&self, from: i64, to: i64) -> DbResult<i64> {
         let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM valid_sessions WHERE last_message_at >= ?1 AND last_message_at <= ?2",
         )
@@ -377,7 +369,8 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
     }
 
     let min_sessions: i64 = 5;
-    let best_slots: Vec<&HeatmapCell> = data.iter().filter(|c| c.sessions >= min_sessions).collect();
+    let best_slots: Vec<&HeatmapCell> =
+        data.iter().filter(|c| c.sessions >= min_sessions).collect();
 
     if best_slots.is_empty() {
         return "Build more history to see your peak productivity times".to_string();

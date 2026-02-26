@@ -13,7 +13,9 @@ async fn test_indexer_state_roundtrip() {
     assert!(state.is_none(), "Should have no state initially");
 
     // Set state
-    db.update_indexer_state(path, 4096, 1234567890).await.unwrap();
+    db.update_indexer_state(path, 4096, 1234567890)
+        .await
+        .unwrap();
 
     // Read back
     let state = db.get_indexer_state(path).await.unwrap();
@@ -25,7 +27,9 @@ async fn test_indexer_state_roundtrip() {
     assert!(entry.indexed_at > 0, "indexed_at should be set");
 
     // Update state (upsert)
-    db.update_indexer_state(path, 8192, 1234567999).await.unwrap();
+    db.update_indexer_state(path, 8192, 1234567999)
+        .await
+        .unwrap();
     let entry = db.get_indexer_state(path).await.unwrap().unwrap();
     assert_eq!(entry.file_size, 8192);
     assert_eq!(entry.modified_at, 1234567999);

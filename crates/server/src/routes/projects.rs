@@ -7,10 +7,10 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use claude_view_core::{BranchFilter, ProjectSummary, SessionsPage};
 use claude_view_db::BranchCount;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -40,8 +40,12 @@ pub struct SessionsQuery {
     pub include_sidechains: bool,
 }
 
-fn default_limit() -> i64 { 50 }
-fn default_sort() -> String { "recent".to_string() }
+fn default_limit() -> i64 {
+    50
+}
+fn default_sort() -> String {
+    "recent".to_string()
+}
 
 /// Response from GET /api/projects/:id/branches
 #[derive(Debug, Clone, Serialize, TS)]
@@ -97,9 +101,9 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_core::{SessionInfo, ToolCounts};
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -111,10 +115,7 @@ mod tests {
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
             git_root: None,
-            file_path: format!(
-                "/home/user/.claude/projects/{}/{}.jsonl",
-                project, id
-            ),
+            file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
             modified_at,
             size_bytes: 2048,
             preview: format!("Preview for {}", id),
@@ -204,9 +205,15 @@ mod tests {
         let s2 = make_session("sess-2", "project-a", 2000);
         let s3 = make_session("sess-3", "project-b", 3000);
 
-        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s3, "project-b", "Project B").await.unwrap();
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s3, "project-b", "Project B")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/projects").await;
@@ -218,9 +225,15 @@ mod tests {
         assert_eq!(projects.len(), 2);
 
         // No sessions key
-        assert!(projects[0].get("sessions").is_none(), "Should NOT have sessions array");
+        assert!(
+            projects[0].get("sessions").is_none(),
+            "Should NOT have sessions array"
+        );
         // Has sessionCount
-        assert!(projects[0].get("sessionCount").is_some(), "Should have sessionCount");
+        assert!(
+            projects[0].get("sessionCount").is_some(),
+            "Should have sessionCount"
+        );
         assert!(projects[0].get("activeCount").is_some());
         assert!(projects[0].get("lastActivityAt").is_some());
     }
@@ -242,7 +255,9 @@ mod tests {
 
         for i in 1..=5 {
             let s = make_session(&format!("sess-{}", i), "project-a", i as i64 * 1000);
-            db.insert_session(&s, "project-a", "Project A").await.unwrap();
+            db.insert_session(&s, "project-a", "Project A")
+                .await
+                .unwrap();
         }
 
         let app = build_app(db);
@@ -261,8 +276,12 @@ mod tests {
         let s1 = make_session("sess-1", "project-a", 1000);
         let s2 = make_session("sess-2", "project-a", 3000);
 
-        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
 
@@ -277,10 +296,17 @@ mod tests {
         let db = test_db().await;
 
         let s1 = make_session("sess-1", "project-a", 1000);
-        let s2 = SessionInfo { is_sidechain: true, ..make_session("sess-2", "project-a", 2000) };
+        let s2 = SessionInfo {
+            is_sidechain: true,
+            ..make_session("sess-2", "project-a", 2000)
+        };
 
-        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
 
@@ -290,7 +316,11 @@ mod tests {
         assert_eq!(json["total"], 1);
 
         // Include sidechains
-        let (_, body) = do_get(app, "/api/projects/project-a/sessions?includeSidechains=true").await;
+        let (_, body) = do_get(
+            app,
+            "/api/projects/project-a/sessions?includeSidechains=true",
+        )
+        .await;
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["total"], 2);
     }
@@ -317,17 +347,27 @@ mod tests {
             ..make_session("sess-4", "project-a", 4000)
         };
 
-        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s3, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s4, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s3, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s4, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/projects/project-a/branches").await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let branches = json["branches"].as_array().expect("should have branches array");
+        let branches = json["branches"]
+            .as_array()
+            .expect("should have branches array");
 
         assert_eq!(branches.len(), 3, "should have 3 distinct branches");
 
@@ -337,10 +377,17 @@ mod tests {
 
         // Second and third are both count 1, so order may vary
         // Just verify they exist
-        let has_feature_auth = branches.iter().any(|b| b["branch"] == "feature/auth" && b["count"] == 1);
-        let has_null = branches.iter().any(|b| b["branch"].is_null() && b["count"] == 1);
+        let has_feature_auth = branches
+            .iter()
+            .any(|b| b["branch"] == "feature/auth" && b["count"] == 1);
+        let has_null = branches
+            .iter()
+            .any(|b| b["branch"].is_null() && b["count"] == 1);
 
-        assert!(has_feature_auth, "should have feature/auth branch with count 1");
+        assert!(
+            has_feature_auth,
+            "should have feature/auth branch with count 1"
+        );
         assert!(has_null, "should have null branch with count 1");
     }
 
@@ -352,8 +399,14 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let branches = json["branches"].as_array().expect("should have branches array");
-        assert_eq!(branches.len(), 0, "should return empty array for nonexistent project");
+        let branches = json["branches"]
+            .as_array()
+            .expect("should have branches array");
+        assert_eq!(
+            branches.len(),
+            0,
+            "should return empty array for nonexistent project"
+        );
     }
 
     #[tokio::test]
@@ -370,14 +423,20 @@ mod tests {
             ..make_session("sess-2", "project-a", 2000)
         };
 
-        db.insert_session(&s1, "project-a", "Project A").await.unwrap();
-        db.insert_session(&s2, "project-a", "Project A").await.unwrap();
+        db.insert_session(&s1, "project-a", "Project A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (_, body) = do_get(app, "/api/projects/project-a/branches").await;
 
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let branches = json["branches"].as_array().expect("should have branches array");
+        let branches = json["branches"]
+            .as_array()
+            .expect("should have branches array");
 
         // Should only see main, not the sidechain branch
         assert_eq!(branches.len(), 1);

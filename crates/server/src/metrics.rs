@@ -96,7 +96,11 @@ pub fn record_request(endpoint: &str, status: &str, duration: std::time::Duratio
 /// * `sync_type` - The type of sync ("deep" or "git")
 /// * `duration` - Sync duration
 /// * `sessions_processed` - Number of sessions processed (if applicable)
-pub fn record_sync(sync_type: &str, duration: std::time::Duration, sessions_processed: Option<u64>) {
+pub fn record_sync(
+    sync_type: &str,
+    duration: std::time::Duration,
+    sessions_processed: Option<u64>,
+) {
     histogram!("sync_duration_seconds", "type" => sync_type.to_string())
         .record(duration.as_secs_f64());
 

@@ -12,14 +12,16 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
 use claude_view_db::Database;
-use claude_view_server::indexing_state::{IndexingState, IndexingStatus};
 use claude_view_server::create_app_with_indexing;
+use claude_view_server::indexing_state::{IndexingState, IndexingStatus};
+use tower::ServiceExt;
 
 /// Helper: create an in-memory database for tests.
 async fn test_db() -> Database {
-    Database::new_in_memory().await.expect("in-memory DB for tests")
+    Database::new_in_memory()
+        .await
+        .expect("in-memory DB for tests")
 }
 
 /// Simulate deep indexing progress by updating the shared `IndexingState`
@@ -28,10 +30,7 @@ async fn test_db() -> Database {
 /// while incrementing `bytes_processed` in batches.
 ///
 /// Returns the file sizes used so callers can verify totals.
-fn spawn_indexing_simulation(
-    state: Arc<IndexingState>,
-    file_sizes: Vec<u64>,
-) {
+fn spawn_indexing_simulation(state: Arc<IndexingState>, file_sizes: Vec<u64>) {
     let total_bytes: u64 = file_sizes.iter().sum();
     let num_files = file_sizes.len();
 

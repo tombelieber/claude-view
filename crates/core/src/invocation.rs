@@ -18,10 +18,7 @@ pub enum ClassifyResult {
         kind: InvocableKind,
     },
     /// Recognized tool pattern but failed validation.
-    Rejected {
-        raw_value: String,
-        reason: String,
-    },
+    Rejected { raw_value: String, reason: String },
     /// Unknown tool, silently discard.
     Ignored,
 }

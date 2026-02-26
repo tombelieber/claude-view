@@ -2,6 +2,11 @@
 // Fast JSONL parsing with memory-mapped I/O and SIMD-accelerated scanning.
 // Also contains the two-pass indexing pipeline: Pass 1 (index JSON) and Pass 2 (deep JSONL).
 
+use claude_view_core::{
+    classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
+    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
+    ClassificationInput, ClassifyResult, Registry, ToolCounts,
+};
 use memchr::memmem;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
@@ -10,11 +15,6 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use claude_view_core::{
-    classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
-    ClassificationInput, ClassifyResult, Registry, ToolCounts,
-};
 
 use crate::Database;
 
@@ -59,13 +59,13 @@ pub struct ParsedSession {
     pub tool_counts_read: i32,
     pub tool_counts_bash: i32,
     pub tool_counts_write: i32,
-    pub files_touched: String,       // JSON array
-    pub skills_used: String,         // JSON array
+    pub files_touched: String, // JSON array
+    pub skills_used: String,   // JSON array
     pub user_prompt_count: i32,
     pub api_call_count: i32,
     pub tool_call_count: i32,
-    pub files_read: String,          // JSON array
-    pub files_edited: String,        // JSON array
+    pub files_read: String,   // JSON array
+    pub files_edited: String, // JSON array
     pub files_read_count: i32,
     pub files_edited_count: i32,
     pub reedited_files_count: i32,
@@ -423,7 +423,9 @@ pub const COMMIT_SKILL_NAMES: &[&str] = &[
 /// - `input.skill` is one of the commit-related skill names
 ///
 /// Returns a list of `CommitSkillInvocation` with skill name and timestamp.
-pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Vec<CommitSkillInvocation> {
+pub fn extract_commit_skill_invocations(
+    raw_invocations: &[RawInvocation],
+) -> Vec<CommitSkillInvocation> {
     raw_invocations
         .iter()
         .filter_map(|inv| {
@@ -433,11 +435,7 @@ pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Ve
             }
 
             // Extract the skill name from input.skill
-            let skill_name = inv
-                .input
-                .as_ref()?
-                .get("skill")?
-                .as_str()?;
+            let skill_name = inv.input.as_ref()?.get("skill")?.as_str()?;
 
             // Check if it's a commit-related skill
             if COMMIT_SKILL_NAMES.contains(&skill_name) {
@@ -590,8 +588,14 @@ fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
 
     if is_edit {
         // Edit tool: old_string → removed, new_string → added
-        let old = input.get("old_string").and_then(|s| s.as_str()).unwrap_or("");
-        let new = input.get("new_string").and_then(|s| s.as_str()).unwrap_or("");
+        let old = input
+            .get("old_string")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        let new = input
+            .get("new_string")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
         let old_lines = old.lines().count() as u32;
         let new_lines = new.lines().count() as u32;
         (new_lines, old_lines)
@@ -790,7 +794,10 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             let is_tool_result = tool_result_finder.find(line).is_some();
             let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
+                if first_user_content.is_none()
+                    && !is_system_user_content(&content)
+                    && !is_tool_result
+                {
                     first_user_content = Some(content.clone());
                 }
                 last_user_content = Some(content.clone());
@@ -799,12 +806,19 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 if !is_tool_result && !is_system_user_content(&content) {
                     let current_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
                     // Close previous turn if one was open
-                    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                    if let (Some(start_ts), Some(end_ts)) =
+                        (result.deep.current_turn_start_ts, last_timestamp)
+                    {
                         let wall_secs = (end_ts - start_ts).max(0) as u32;
                         result.deep.total_task_time_seconds += wall_secs;
-                        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                        if result
+                            .deep
+                            .longest_task_seconds
+                            .is_none_or(|prev| wall_secs > prev)
+                        {
                             result.deep.longest_task_seconds = Some(wall_secs);
-                            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                            result.deep.longest_task_preview =
+                                result.deep.current_turn_prompt.take();
                         }
                     }
                     // Start new turn
@@ -827,11 +841,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
                 let search_role = if is_tool_result { "tool" } else { "user" };
-                result.search_messages.push(claude_view_core::SearchableMessage {
-                    role: search_role.to_string(),
-                    content: text,
-                    timestamp: user_ts,
-                });
+                result
+                    .search_messages
+                    .push(claude_view_core::SearchableMessage {
+                        role: search_role.to_string(),
+                        content: text,
+                        timestamp: user_ts,
+                    });
             }
             continue;
         }
@@ -875,20 +891,28 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
                     // Collect assistant text content for search indexing.
                     // Use SIMD text_finder on raw bytes — avoids re-parse, consistent with user path.
-                    if let Some(text) = extract_first_text_content(line, &content_finder, &text_finder) {
+                    if let Some(text) =
+                        extract_first_text_content(line, &content_finder, &text_finder)
+                    {
                         if !text.is_empty() {
-                            result.search_messages.push(claude_view_core::SearchableMessage {
-                                role: "assistant".to_string(),
-                                content: text,
-                                timestamp: assistant_ts,
-                            });
+                            result
+                                .search_messages
+                                .push(claude_view_core::SearchableMessage {
+                                    role: "assistant".to_string(),
+                                    content: text,
+                                    timestamp: assistant_ts,
+                                });
                         }
                     }
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
                     // Fallback: SIMD skill extraction even when typed parse fails
-                    extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
+                    extract_skills_from_line(
+                        line,
+                        &skill_name_finder,
+                        &mut result.deep.skills_used,
+                    );
                 }
             }
             continue;
@@ -899,7 +923,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             diag.json_parse_attempts += 1;
             match serde_json::from_slice::<SystemLine>(line) {
                 Ok(parsed) => {
-                    handle_system_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                    handle_system_line(
+                        parsed,
+                        &mut result.deep,
+                        diag,
+                        &mut first_timestamp,
+                        &mut last_timestamp,
+                    );
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
@@ -913,7 +943,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             diag.json_parse_attempts += 1;
             match serde_json::from_slice::<SummaryLine>(line) {
                 Ok(parsed) => {
-                    handle_summary_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                    handle_summary_line(
+                        parsed,
+                        &mut result.deep,
+                        diag,
+                        &mut first_timestamp,
+                        &mut last_timestamp,
+                    );
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
@@ -951,8 +987,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 let is_tool_result = tool_result_finder.find(line).is_some();
                 let fallback_user_ts = extract_timestamp_from_value(&value);
                 let mut fallback_user_text: Option<String> = None;
-                if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                    if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
+                if let Some(content) =
+                    extract_first_text_content(line, &content_finder, &text_finder)
+                {
+                    if first_user_content.is_none()
+                        && !is_system_user_content(&content)
+                        && !is_tool_result
+                    {
                         first_user_content = Some(content.clone());
                     }
                     last_user_content = Some(content.clone());
@@ -962,12 +1003,19 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         // Timestamp was already extracted above (before the match)
                         let current_ts = fallback_user_ts;
                         // Close previous turn if one was open
-                        if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                        if let (Some(start_ts), Some(end_ts)) =
+                            (result.deep.current_turn_start_ts, last_timestamp)
+                        {
                             let wall_secs = (end_ts - start_ts).max(0) as u32;
                             result.deep.total_task_time_seconds += wall_secs;
-                            if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                            if result
+                                .deep
+                                .longest_task_seconds
+                                .is_none_or(|prev| wall_secs > prev)
+                            {
                                 result.deep.longest_task_seconds = Some(wall_secs);
-                                result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                                result.deep.longest_task_preview =
+                                    result.deep.current_turn_prompt.take();
                             }
                         }
                         // Start new turn
@@ -982,11 +1030,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
                     let search_role = if is_tool_result { "tool" } else { "user" };
-                    result.search_messages.push(claude_view_core::SearchableMessage {
-                        role: search_role.to_string(),
-                        content: text,
-                        timestamp: fallback_user_ts,
-                    });
+                    result
+                        .search_messages
+                        .push(claude_view_core::SearchableMessage {
+                            role: search_role.to_string(),
+                            content: text,
+                            timestamp: fallback_user_ts,
+                        });
                 }
             }
             "assistant" => {
@@ -1026,20 +1076,24 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 let (text_content, tool_entries) = extract_search_content_from_value(&value);
                 if let Some(text) = text_content {
                     if !text.is_empty() {
-                        result.search_messages.push(claude_view_core::SearchableMessage {
-                            role: "assistant".to_string(),
-                            content: text,
-                            timestamp: fallback_assistant_ts,
-                        });
+                        result
+                            .search_messages
+                            .push(claude_view_core::SearchableMessage {
+                                role: "assistant".to_string(),
+                                content: text,
+                                timestamp: fallback_assistant_ts,
+                            });
                     }
                 }
                 for tool_text in tool_entries {
                     if !tool_text.is_empty() {
-                        result.search_messages.push(claude_view_core::SearchableMessage {
-                            role: "tool".to_string(),
-                            content: tool_text,
-                            timestamp: fallback_assistant_ts,
-                        });
+                        result
+                            .search_messages
+                            .push(claude_view_core::SearchableMessage {
+                                role: "tool".to_string(),
+                                content: tool_text,
+                                timestamp: fallback_assistant_ts,
+                            });
                     }
                 }
             }
@@ -1062,7 +1116,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         result.deep.compaction_count += 1;
                     }
                     "stop_hook_summary" => {
-                        if value.get("preventedContinuation").and_then(|v| v.as_bool()) == Some(true) {
+                        if value.get("preventedContinuation").and_then(|v| v.as_bool())
+                            == Some(true)
+                        {
                             result.deep.hook_blocked_count += 1;
                         }
                     }
@@ -1071,7 +1127,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             "progress" => {
                 diag.lines_progress += 1;
-                let data_type = value.get("data").and_then(|d| d.get("type")).and_then(|t| t.as_str()).unwrap_or("");
+                let data_type = value
+                    .get("data")
+                    .and_then(|d| d.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
                 match data_type {
                     "agent_progress" => result.deep.agent_spawn_count += 1,
                     "bash_progress" => result.deep.bash_progress_count += 1,
@@ -1111,7 +1171,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
         let wall_secs = (end_ts - start_ts).max(0) as u32;
         result.deep.total_task_time_seconds += wall_secs;
-        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+        if result
+            .deep
+            .longest_task_seconds
+            .is_none_or(|prev| wall_secs > prev)
+        {
             result.deep.longest_task_seconds = Some(wall_secs);
             result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
         }
@@ -1119,7 +1183,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // Finalize metrics
     result.deep.turn_count = (user_count as usize).min(assistant_count as usize);
-    result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
+    result.deep.last_message = last_user_content
+        .map(|c| truncate(&c, 200))
+        .unwrap_or_default();
     result.deep.first_user_prompt = first_user_content.map(|c| truncate(&c, 500));
     result.deep.user_prompt_count = user_count;
     result.deep.api_call_count = unique_api_call_count;
@@ -1142,8 +1208,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // AI contribution tracking: count lines added/removed from Edit/Write tool_use
     let ai_line_count = count_ai_lines(
-        result.raw_invocations.iter().map(|inv| (inv.name.as_str(), &inv.input))
-            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i)))
+        result
+            .raw_invocations
+            .iter()
+            .map(|inv| (inv.name.as_str(), &inv.input))
+            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i))),
     );
     result.deep.ai_lines_added = ai_line_count.lines_added;
     result.deep.ai_lines_removed = ai_line_count.lines_removed;
@@ -1274,8 +1343,14 @@ fn handle_assistant_line(
                 (
                     message.usage.as_ref().and_then(|u| u.input_tokens),
                     message.usage.as_ref().and_then(|u| u.output_tokens),
-                    message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
-                    message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_read_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation_input_tokens),
                 )
             } else {
                 (Some(0), Some(0), Some(0), Some(0))
@@ -1321,7 +1396,9 @@ fn handle_assistant_line(
                                 "Write" => deep.tool_counts.write += 1,
                                 "Bash" => deep.tool_counts.bash += 1,
                                 "Skill" => {
-                                    if let Some(skill_name) = block.input.as_ref()
+                                    if let Some(skill_name) = block
+                                        .input
+                                        .as_ref()
                                         .and_then(|i| i.get("skill"))
                                         .and_then(|v| v.as_str())
                                     {
@@ -1334,7 +1411,9 @@ fn handle_assistant_line(
                             }
 
                             // Extract file paths
-                            if let Some(fp) = block.input.as_ref()
+                            if let Some(fp) = block
+                                .input
+                                .as_ref()
                                 .and_then(|i| i.get("file_path"))
                                 .and_then(|v| v.as_str())
                             {
@@ -1390,7 +1469,10 @@ fn handle_assistant_value(
     unique_api_call_count: &mut u32,
 ) {
     // Dedup check — same logic as handle_assistant_line
-    let msg_id = value.get("message").and_then(|m| m.get("id")).and_then(|v| v.as_str());
+    let msg_id = value
+        .get("message")
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str());
     let req_id = value.get("requestId").and_then(|v| v.as_str());
     let is_first_block = match (msg_id, req_id) {
         (Some(mid), Some(rid)) => {
@@ -1413,10 +1495,16 @@ fn handle_assistant_value(
             if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
                 deep.total_output_tokens += v;
             }
-            if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+            if let Some(v) = usage
+                .get("cache_read_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
                 deep.cache_read_tokens += v;
             }
-            if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+            if let Some(v) = usage
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
                 deep.cache_creation_tokens += v;
             }
         }
@@ -1438,9 +1526,17 @@ fn handle_assistant_value(
             }
 
             let usage = message.get("usage");
-            let uuid = value.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let content_type = message.get("content")
+            let uuid = value
+                .get("uuid")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let parent_uuid = value
+                .get("parentUuid")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let content_type = message
+                .get("content")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|block| block.get("type"))
@@ -1452,10 +1548,18 @@ fn handle_assistant_value(
             // Zero out token fields on duplicate blocks so per-turn queries don't double-count
             let (inp, outp, cr, cc) = if is_first_block {
                 (
-                    usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("output_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_read_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation_input_tokens"))
+                        .and_then(|v| v.as_u64()),
                 )
             } else {
                 (Some(0), Some(0), Some(0), Some(0))
@@ -1471,7 +1575,10 @@ fn handle_assistant_value(
                 output_tokens: outp,
                 cache_read_tokens: cr,
                 cache_creation_tokens: cc,
-                service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                service_tier: usage
+                    .and_then(|u| u.get("service_tier"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 timestamp,
             });
             diag.turns_extracted += 1;
@@ -1505,9 +1612,8 @@ fn handle_assistant_value(
                             "Write" => deep.tool_counts.write += 1,
                             "Bash" => deep.tool_counts.bash += 1,
                             "Skill" => {
-                                if let Some(skill_name) = input
-                                    .and_then(|i| i.get("skill"))
-                                    .and_then(|v| v.as_str())
+                                if let Some(skill_name) =
+                                    input.and_then(|i| i.get("skill")).and_then(|v| v.as_str())
                                 {
                                     if !skill_name.is_empty() {
                                         deep.skills_used.push(skill_name.to_string());
@@ -1517,7 +1623,10 @@ fn handle_assistant_value(
                             _ => {}
                         }
 
-                        if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
+                        if let Some(fp) = input
+                            .and_then(|i| i.get("file_path"))
+                            .and_then(|v| v.as_str())
+                        {
                             if !fp.is_empty() {
                                 diag.file_paths_extracted += 1;
                                 deep.files_touched.push(fp.to_string());
@@ -1714,9 +1823,7 @@ fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])>
 ///
 /// Handles both string content (`"content": "..."`) and array content
 /// (`"content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]`).
-fn extract_search_content_from_value(
-    value: &serde_json::Value,
-) -> (Option<String>, Vec<String>) {
+fn extract_search_content_from_value(value: &serde_json::Value) -> (Option<String>, Vec<String>) {
     let mut tool_entries = Vec::new();
 
     let message = match value.get("message") {
@@ -1743,15 +1850,20 @@ fn extract_search_content_from_value(
                     }
                     "tool_use" => {
                         // Include tool name + stringified input for searchability
-                        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let name = block
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown");
                         if let Some(input) = block.get("input") {
                             if let Some(s) = input.as_str() {
                                 tool_entries.push(format!("{}: {}", name, s));
                             }
                             // For object inputs, include only if small (e.g., command field)
-                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
+                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str())
+                            {
                                 tool_entries.push(format!("{}: {}", name, cmd));
-                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str()) {
+                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str())
+                            {
                                 tool_entries.push(format!("{}: {}", name, fp));
                             }
                         }
@@ -1868,7 +1980,9 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// (common for worktree dirs) are scanned for `.jsonl` files and included.
 ///
 /// Returns `(num_projects, num_sessions)`.
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 #[allow(deprecated)]
 pub async fn pass_1_read_indexes(
     claude_dir: &Path,
@@ -1899,8 +2013,8 @@ pub async fn pass_1_read_indexes(
         let entry_cwd = entry_cwd_owned.as_deref();
 
         // Infer git_root from cwd path (detects /.claude/worktrees/ and /.worktrees/ patterns)
-        let inferred_git_root = entry_cwd
-            .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
+        let inferred_git_root =
+            entry_cwd.and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
 
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
@@ -1970,7 +2084,10 @@ pub async fn pass_1_read_indexes(
             // Always store session_cwd and git_root so the backfill and UI grouping work.
             // Use entry-level cwd if available, else the project-level resolved cwd.
             let session_cwd = entry.session_cwd.as_deref().or(entry_cwd);
-            if session_cwd.is_some() || entry.parent_session_id.is_some() || inferred_git_root.is_some() {
+            if session_cwd.is_some()
+                || entry.parent_session_id.is_some()
+                || inferred_git_root.is_some()
+            {
                 db.update_session_topology(
                     &entry.session_id,
                     session_cwd,
@@ -1993,8 +2110,14 @@ pub async fn pass_1_read_indexes(
             continue;
         }
         total_projects += 1;
-        insert_project_sessions(claude_dir, db, project_encoded, entries, &mut total_sessions)
-            .await?;
+        insert_project_sessions(
+            claude_dir,
+            db,
+            project_encoded,
+            entries,
+            &mut total_sessions,
+        )
+        .await?;
     }
 
     // Loop 2: Orphan sessions from dirs without sessions-index.json
@@ -2042,7 +2165,9 @@ pub async fn pass_1_read_indexes(
 ///
 /// Returns `(indexed_count, total_bytes)` on success, where `total_bytes` is the
 /// sum of all JSONL file sizes that were eligible for deep indexing.
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 #[allow(deprecated)]
 pub async fn pass_2_deep_index<F>(
     db: &Database,
@@ -2084,41 +2209,51 @@ where
     let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
-        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
-            let needs_index = if force_search_reindex {
-                // Search index was rebuilt — must re-parse to regenerate search_messages
-                true
-            } else if deep_indexed_at.is_none() {
-                // Never deep-indexed → must index
-                true
-            } else if parse_version < CURRENT_PARSE_VERSION {
-                // Parser upgraded → must re-index
-                true
-            } else if let (Some(sz), Some(mt)) = (stored_size, stored_mtime) {
-                // Has stored metadata → stat the file and compare size + mtime
-                match std::fs::metadata(&file_path) {
-                    Ok(meta) => {
-                        let current_size = meta.len() as i64;
-                        let current_mtime = meta
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-                        current_size != sz || current_mtime != mt
+        .filter_map(
+            |(
+                id,
+                file_path,
+                stored_size,
+                stored_mtime,
+                deep_indexed_at,
+                parse_version,
+                project,
+            )| {
+                let needs_index = if force_search_reindex {
+                    // Search index was rebuilt — must re-parse to regenerate search_messages
+                    true
+                } else if deep_indexed_at.is_none() {
+                    // Never deep-indexed → must index
+                    true
+                } else if parse_version < CURRENT_PARSE_VERSION {
+                    // Parser upgraded → must re-index
+                    true
+                } else if let (Some(sz), Some(mt)) = (stored_size, stored_mtime) {
+                    // Has stored metadata → stat the file and compare size + mtime
+                    match std::fs::metadata(&file_path) {
+                        Ok(meta) => {
+                            let current_size = meta.len() as i64;
+                            let current_mtime = meta
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0);
+                            current_size != sz || current_mtime != mt
+                        }
+                        Err(_) => false, // File doesn't exist or can't be read, skip
                     }
-                    Err(_) => false, // File doesn't exist or can't be read, skip
+                } else {
+                    // No stored file metadata → must re-index to populate it
+                    true
+                };
+                if needs_index {
+                    Some((id, file_path, project))
+                } else {
+                    None
                 }
-            } else {
-                // No stored file metadata → must re-index to populate it
-                true
-            };
-            if needs_index {
-                Some((id, file_path, project))
-            } else {
-                None
-            }
-        })
+            },
+        )
         .collect();
 
     let phase_start = std::time::Instant::now();
@@ -2228,7 +2363,8 @@ where
                             result.deep.total_input_tokens += sub_result.deep.total_input_tokens;
                             result.deep.total_output_tokens += sub_result.deep.total_output_tokens;
                             result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
-                            result.deep.cache_creation_tokens += sub_result.deep.cache_creation_tokens;
+                            result.deep.cache_creation_tokens +=
+                                sub_result.deep.cache_creation_tokens;
                         }
                     }
                 }
@@ -2257,11 +2393,8 @@ where
                     .raw_invocations
                     .iter()
                     .filter_map(|raw| {
-                        let result = claude_view_core::classify_tool_use(
-                            &raw.name,
-                            &raw.input,
-                            registry,
-                        );
+                        let result =
+                            claude_view_core::classify_tool_use(&raw.name, &raw.input, registry);
                         match result {
                             ClassifyResult::Valid { invocable_id, .. } => Some((
                                 file_path.clone(),
@@ -2345,7 +2478,11 @@ where
                 messages: r.parse_result.search_messages.clone(),
                 skills: r.parse_result.deep.skills_used.clone(),
                 preview: r.parse_result.deep.first_user_prompt.clone(),
-                last_message: if r.parse_result.deep.last_message.is_empty() { None } else { Some(r.parse_result.deep.last_message.clone()) },
+                last_message: if r.parse_result.deep.last_message.is_empty() {
+                    None
+                } else {
+                    Some(r.parse_result.deep.last_message.clone())
+                },
                 timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
             })
             .collect()
@@ -2493,10 +2630,7 @@ where
 /// Write deep index results using sqlx async transactions.
 /// Used by pass_2_deep_index (retained for test compatibility).
 #[allow(deprecated)]
-async fn write_results_sqlx(
-    db: &Database,
-    results: &[DeepIndexResult],
-) -> Result<usize, String> {
+async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Result<usize, String> {
     let mut tx = db
         .pool()
         .begin()
@@ -2508,14 +2642,14 @@ async fn write_results_sqlx(
     for result in results {
         let meta = &result.parse_result.deep;
 
-        let files_touched = serde_json::to_string(&meta.files_touched)
-            .unwrap_or_else(|_| "[]".to_string());
-        let skills_used = serde_json::to_string(&meta.skills_used)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_read = serde_json::to_string(&meta.files_read)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_edited = serde_json::to_string(&meta.files_edited)
-            .unwrap_or_else(|_| "[]".to_string());
+        let files_touched =
+            serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
+        let skills_used =
+            serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
+        let files_read =
+            serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
+        let files_edited =
+            serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
 
         let commit_invocations =
             extract_commit_skill_invocations(&result.parse_result.raw_invocations);
@@ -2525,7 +2659,11 @@ async fn write_results_sqlx(
             (None, None, None)
         } else {
             let total: u64 = meta.turn_durations_ms.iter().sum();
-            let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
+            let max = *meta
+                .turn_durations_ms
+                .iter()
+                .max()
+                .expect("non-empty checked above");
             let avg = total / meta.turn_durations_ms.len() as u64;
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
@@ -2621,17 +2759,14 @@ async fn write_results_sqlx(
             .map_err(|e| format!("DELETE invocations for {} error: {}", result.session_id, e))?;
 
         if !result.classified_invocations.is_empty() {
-            crate::queries::batch_insert_invocations_tx(
-                &mut tx,
-                &result.classified_invocations,
-            )
-            .await
-            .map_err(|e| {
-                format!(
-                    "Failed to insert invocations for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            crate::queries::batch_insert_invocations_tx(&mut tx, &result.classified_invocations)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert invocations for {}: {}",
+                        result.session_id, e
+                    )
+                })?;
         }
 
         if !result.parse_result.turns.is_empty() {
@@ -2641,12 +2776,7 @@ async fn write_results_sqlx(
                 seen_at,
             )
             .await
-            .map_err(|e| {
-                format!(
-                    "Failed to upsert models for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            .map_err(|e| format!("Failed to upsert models for {}: {}", result.session_id, e))?;
 
             crate::queries::batch_insert_turns_tx(
                 &mut tx,
@@ -2654,12 +2784,7 @@ async fn write_results_sqlx(
                 &result.parse_result.turns,
             )
             .await
-            .map_err(|e| {
-                format!(
-                    "Failed to insert turns for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            .map_err(|e| format!("Failed to insert turns for {}: {}", result.session_id, e))?;
         }
     }
 
@@ -2754,7 +2879,9 @@ where
         .unwrap_or(false);
 
     if force_search_reindex {
-        tracing::info!("Search index was rebuilt — forcing full re-parse to repopulate search data");
+        tracing::info!(
+            "Search index was rebuilt — forcing full re-parse to repopulate search data"
+        );
     }
 
     // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
@@ -2799,9 +2926,11 @@ where
         .map_err(|e| format!("Failed to load existing sessions: {}", e))?;
     let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32)> = existing_sessions
         .into_iter()
-        .map(|(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj)| {
-            (id, (stored_size, stored_mtime, pv))
-        })
+        .map(
+            |(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj)| {
+                (id, (stored_size, stored_mtime, pv))
+            },
+        )
         .collect();
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(
@@ -2860,11 +2989,10 @@ where
 
             // 3. Parse the JSONL file (blocking I/O in spawn_blocking)
             let path_for_parse = path.clone();
-            let parse_result = tokio::task::spawn_blocking(move || {
-                parse_file_bytes(&path_for_parse)
-            })
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+            let parse_result =
+                tokio::task::spawn_blocking(move || parse_file_bytes(&path_for_parse))
+                    .await
+                    .map_err(|e| format!("spawn_blocking join error: {}", e))?;
 
             let meta = &parse_result.deep;
 
@@ -2881,10 +3009,16 @@ where
 
             let (effective_encoded, resolved) =
                 if let Some(parent_encoded) = resolve_worktree_parent(&project_encoded) {
-                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&parent_encoded, cwd);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(
+                        &parent_encoded,
+                        cwd,
+                    );
                     (parent_encoded, r)
                 } else {
-                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&project_encoded, cwd);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(
+                        &project_encoded,
+                        cwd,
+                    );
                     (project_encoded.clone(), r)
                 };
 
@@ -2922,14 +3056,14 @@ where
             let work_type = classify_work_type(&work_type_input);
             let primary_model = compute_primary_model(&parse_result.turns);
 
-            let files_touched_json = serde_json::to_string(&meta.files_touched)
-                .unwrap_or_else(|_| "[]".to_string());
-            let skills_used_json = serde_json::to_string(&meta.skills_used)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_read_json = serde_json::to_string(&meta.files_read)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_edited_json = serde_json::to_string(&meta.files_edited)
-                .unwrap_or_else(|_| "[]".to_string());
+            let files_touched_json =
+                serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
+            let skills_used_json =
+                serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
+            let files_read_json =
+                serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
+            let files_edited_json =
+                serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
 
             let git_branch = parse_result.git_branch.clone().or(git_branch_hint);
             let summary = meta.summary_text.clone().or(summary_hint);
@@ -3063,7 +3197,12 @@ where
 
     let total_search_bytes: usize = indexed_sessions
         .iter()
-        .map(|s| s.search_messages.iter().map(|m| m.content.len()).sum::<usize>())
+        .map(|s| {
+            s.search_messages
+                .iter()
+                .map(|m| m.content.len())
+                .sum::<usize>()
+        })
         .sum();
     tracing::info!(
         sessions = indexed_sessions.len(),
@@ -3145,14 +3284,24 @@ where
             if !session.turns.is_empty() {
                 crate::queries::batch_insert_turns_tx(&mut tx, &session.parsed.id, &session.turns)
                     .await
-                    .map_err(|e| format!("Failed to insert turns for {}: {}", session.parsed.id, e))?;
+                    .map_err(|e| {
+                        format!("Failed to insert turns for {}: {}", session.parsed.id, e)
+                    })?;
             }
 
             // INSERT invocations
             if !session.classified_invocations.is_empty() {
-                crate::queries::batch_insert_invocations_tx(&mut tx, &session.classified_invocations)
-                    .await
-                    .map_err(|e| format!("Failed to insert invocations for {}: {}", session.parsed.id, e))?;
+                crate::queries::batch_insert_invocations_tx(
+                    &mut tx,
+                    &session.classified_invocations,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert invocations for {}: {}",
+                        session.parsed.id, e
+                    )
+                })?;
             }
         }
 
@@ -3226,7 +3375,8 @@ where
                         content: summary_parts.join(" | "),
                         turn_number: 0,
                         timestamp: session.parsed.last_message_at,
-                        skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
+                        skills: serde_json::from_str(&session.parsed.skills_used)
+                            .unwrap_or_default(),
                     });
                 }
             }
@@ -3246,7 +3396,11 @@ where
                     tracing::warn!(error = %e, "Failed to reload search reader after commit");
                 }
                 if search_errors > 0 {
-                    tracing::info!(indexed = sessions_indexed, errors = search_errors, "Search index write complete (with errors)");
+                    tracing::info!(
+                        indexed = sessions_indexed,
+                        errors = search_errors,
+                        "Search index write complete (with errors)"
+                    );
                 }
                 // Mark schema synced if this was a full reindex
                 if force_search_reindex {
@@ -3347,13 +3501,11 @@ mod tests {
         // Byte offsets: first two invocations share the same line offset,
         // third invocation is on a different line
         assert_eq!(
-            result.raw_invocations[0].byte_offset,
-            result.raw_invocations[1].byte_offset,
+            result.raw_invocations[0].byte_offset, result.raw_invocations[1].byte_offset,
             "Read and Edit are on the same JSONL line"
         );
         assert_ne!(
-            result.raw_invocations[0].byte_offset,
-            result.raw_invocations[2].byte_offset,
+            result.raw_invocations[0].byte_offset, result.raw_invocations[2].byte_offset,
             "Bash is on a different JSONL line"
         );
     }
@@ -3440,7 +3592,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a10"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 5, "Should count 5 user messages");
+        assert_eq!(
+            result.deep.user_prompt_count, 5,
+            "Should count 5 user messages"
+        );
     }
 
     #[test]
@@ -3450,7 +3605,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 0, "Should be 0 with no user messages");
+        assert_eq!(
+            result.deep.user_prompt_count, 0,
+            "Should be 0 with no user messages"
+        );
     }
 
     #[test]
@@ -3467,14 +3625,20 @@ mod tests {
 {"type":"user","message":{"content":"Fifth"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 5, "Unicode content should not affect counting");
+        assert_eq!(
+            result.deep.user_prompt_count, 5,
+            "Unicode content should not affect counting"
+        );
     }
 
     #[test]
     fn test_user_prompt_count_empty_file() {
         // Test case 5: Empty JSONL file → 0
         let result = parse_bytes(b"");
-        assert_eq!(result.deep.user_prompt_count, 0, "Empty file should have 0 user prompts");
+        assert_eq!(
+            result.deep.user_prompt_count, 0,
+            "Empty file should have 0 user prompts"
+        );
     }
 
     // --- Step 4: api_call_count (A1.6) ---
@@ -3497,7 +3661,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a8"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.api_call_count, 8, "Should count 8 assistant messages");
+        assert_eq!(
+            result.deep.api_call_count, 8,
+            "Should count 8 assistant messages"
+        );
     }
 
     #[test]
@@ -3507,7 +3674,10 @@ mod tests {
 {"type":"user","message":{"content":"q2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.api_call_count, 0, "Should be 0 with no assistant messages");
+        assert_eq!(
+            result.deep.api_call_count, 0,
+            "Should be 0 with no assistant messages"
+        );
     }
 
     // --- Step 5: tool_call_count (A1.7) ---
@@ -3523,7 +3693,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 6, "Should count 6 tool calls (2 per message x 3)");
+        assert_eq!(
+            result.deep.tool_call_count, 6,
+            "Should count 6 tool calls (2 per message x 3)"
+        );
     }
 
     #[test]
@@ -3535,7 +3708,10 @@ mod tests {
 {"type":"assistant","message":{"content":"More text."}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 0, "Should be 0 with no tool calls");
+        assert_eq!(
+            result.deep.tool_call_count, 0,
+            "Should be 0 with no tool calls"
+        );
     }
 
     #[test]
@@ -3545,7 +3721,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 5, "Should count 5 parallel tool calls");
+        assert_eq!(
+            result.deep.tool_call_count, 5,
+            "Should count 5 parallel tool calls"
+        );
     }
 
     // --- Step 6: files_read (A1.2) ---
@@ -3557,7 +3736,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"/a/bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 2, "Should have 2 unique files read");
+        assert_eq!(
+            result.deep.files_read_count, 2,
+            "Should have 2 unique files read"
+        );
         assert!(result.deep.files_read.contains(&"/a/foo.rs".to_string()));
         assert!(result.deep.files_read.contains(&"/a/bar.rs".to_string()));
     }
@@ -3571,7 +3753,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 1, "Should dedup to 1 unique file");
+        assert_eq!(
+            result.deep.files_read_count, 1,
+            "Should dedup to 1 unique file"
+        );
         assert_eq!(result.deep.files_read.len(), 1);
         assert_eq!(result.deep.files_read[0], "/a/foo.rs");
     }
@@ -3594,7 +3779,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"other":"value"}},{"type":"tool_use","name":"Read","input":{"file_path":"/valid/path.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 1, "Should only count valid file_path");
+        assert_eq!(
+            result.deep.files_read_count, 1,
+            "Should only count valid file_path"
+        );
         assert_eq!(result.deep.files_read[0], "/valid/path.rs");
     }
 
@@ -3606,7 +3794,10 @@ mod tests {
 "#;
         let result = parse_bytes(data);
         assert_eq!(result.deep.files_read_count, 1);
-        assert_eq!(result.deep.files_read[0], "/a/my file.rs", "Path with spaces should be preserved");
+        assert_eq!(
+            result.deep.files_read[0], "/a/my file.rs",
+            "Path with spaces should be preserved"
+        );
     }
 
     // --- Step 7: files_edited (A1.3) ---
@@ -3618,7 +3809,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_edited_count, 2, "Should have 2 unique files edited");
+        assert_eq!(
+            result.deep.files_edited_count, 2,
+            "Should have 2 unique files edited"
+        );
         assert!(result.deep.files_edited.contains(&"foo.rs".to_string()));
         assert!(result.deep.files_edited.contains(&"bar.rs".to_string()));
     }
@@ -3634,8 +3828,15 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_edited.len(), 3, "Should store ALL occurrences (3)");
-        assert_eq!(result.deep.files_edited_count, 1, "Unique count should be 1");
+        assert_eq!(
+            result.deep.files_edited.len(),
+            3,
+            "Should store ALL occurrences (3)"
+        );
+        assert_eq!(
+            result.deep.files_edited_count, 1,
+            "Unique count should be 1"
+        );
     }
 
     #[test]
@@ -3674,7 +3875,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 1, "Only foo.rs was re-edited (3 times)");
+        assert_eq!(
+            result.deep.reedited_files_count, 1,
+            "Only foo.rs was re-edited (3 times)"
+        );
     }
 
     #[test]
@@ -3684,7 +3888,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"b.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"c.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 0, "No re-edits when all files are unique");
+        assert_eq!(
+            result.deep.reedited_files_count, 0,
+            "No re-edits when all files are unique"
+        );
     }
 
     #[test]
@@ -3706,7 +3913,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"x.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"y.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 2, "Both x.rs and y.rs were re-edited");
+        assert_eq!(
+            result.deep.reedited_files_count, 2,
+            "Both x.rs and y.rs were re-edited"
+        );
     }
 
     // --- Step 9: duration_seconds (A1.5) ---
@@ -3714,24 +3924,32 @@ mod tests {
     #[test]
     fn test_duration_seconds_basic() {
         // Test case 1: 10:00:00 to 10:15:30 → 930 seconds (15m 30s)
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 {"type":"assistant","timestamp":"2026-01-27T10:05:00Z","message":{"content":"a1"}}
 {"type":"user","timestamp":"2026-01-27T10:10:00Z","message":{"content":"q2"}}
 {"type":"assistant","timestamp":"2026-01-27T10:15:30Z","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 930, "Duration should be 930 seconds");
-        assert_eq!(result.deep.first_timestamp, Some(1769508000));  // 2026-01-27T10:00:00Z
-        assert_eq!(result.deep.last_timestamp, Some(1769508930));   // 2026-01-27T10:15:30Z
+        assert_eq!(
+            result.deep.duration_seconds, 930,
+            "Duration should be 930 seconds"
+        );
+        assert_eq!(result.deep.first_timestamp, Some(1769508000)); // 2026-01-27T10:00:00Z
+        assert_eq!(result.deep.last_timestamp, Some(1769508930)); // 2026-01-27T10:15:30Z
     }
 
     #[test]
     fn test_duration_seconds_single_message() {
         // Test case 2: Single message → 0
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 0, "Single message should have 0 duration");
+        assert_eq!(
+            result.deep.duration_seconds, 0,
+            "Single message should have 0 duration"
+        );
     }
 
     #[test]
@@ -3750,7 +3968,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 0, "No timestamps means 0 duration");
+        assert_eq!(
+            result.deep.duration_seconds, 0,
+            "No timestamps means 0 duration"
+        );
     }
 
     #[test]
@@ -3760,19 +3981,26 @@ mod tests {
 {"type":"assistant","timestamp":1706400500,"message":{"content":"a1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 500, "Should handle Unix integer timestamps");
+        assert_eq!(
+            result.deep.duration_seconds, 500,
+            "Should handle Unix integer timestamps"
+        );
     }
 
     #[test]
     fn test_duration_seconds_mixed_messages() {
         // Only some messages have timestamps - should still compute from first/last
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 {"type":"assistant","message":{"content":"a1"}}
 {"type":"user","message":{"content":"q2"}}
 {"type":"assistant","timestamp":"2026-01-27T10:10:00Z","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 600, "Should compute from first and last available timestamps");
+        assert_eq!(
+            result.deep.duration_seconds, 600,
+            "Should compute from first and last available timestamps"
+        );
     }
 
     // --- Unit test for count_reedited_files ---
@@ -3792,8 +4020,11 @@ mod tests {
 
         // Multiple re-edited
         let multi_reedit = vec![
-            "a".to_string(), "a".to_string(),
-            "b".to_string(), "b".to_string(), "b".to_string(),
+            "a".to_string(),
+            "a".to_string(),
+            "b".to_string(),
+            "b".to_string(),
+            "b".to_string(),
             "c".to_string(),
         ];
         assert_eq!(count_reedited_files(&multi_reedit), 2); // a and b were re-edited
@@ -3826,8 +4057,15 @@ mod tests {
         assert_eq!(result.deep.files_read_count, 2);
 
         // files_edited: ["/src/main.rs", "/src/main.rs", "/src/new.rs"], count=2 (unique)
-        assert_eq!(result.deep.files_edited.len(), 3, "Should store all occurrences");
-        assert_eq!(result.deep.files_edited_count, 2, "Unique count should be 2");
+        assert_eq!(
+            result.deep.files_edited.len(),
+            3,
+            "Should store all occurrences"
+        );
+        assert_eq!(
+            result.deep.files_edited_count, 2,
+            "Unique count should be 2"
+        );
 
         // reedited_files_count: 1 (/src/main.rs was edited twice)
         assert_eq!(result.deep.reedited_files_count, 1);
@@ -3978,9 +4216,15 @@ mod tests {
         // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, move |done, _total, _bytes| {
-            progress_clone.store(done, Ordering::Relaxed);
-        })
+        let (indexed, _) = pass_2_deep_index(
+            &db,
+            None,
+            None,
+            |_| {},
+            move |done, _total, _bytes| {
+                progress_clone.store(done, Ordering::Relaxed);
+            },
+        )
         .await
         .unwrap();
 
@@ -4047,10 +4291,26 @@ mod tests {
         let projects = db.list_projects().await.unwrap();
         let session = &projects[0].sessions[0];
         // Parent: 100+80+60=240 input, 50+30+20=100 output
-        assert_eq!(session.total_input_tokens, Some(240), "input = parent + sub1 + sub2");
-        assert_eq!(session.total_output_tokens, Some(100), "output = parent + sub1 + sub2");
-        assert_eq!(session.total_cache_read_tokens, Some(1800), "cache_read = 1000 + 500 + 300");
-        assert_eq!(session.total_cache_creation_tokens, Some(350), "cache_create = 200 + 100 + 50");
+        assert_eq!(
+            session.total_input_tokens,
+            Some(240),
+            "input = parent + sub1 + sub2"
+        );
+        assert_eq!(
+            session.total_output_tokens,
+            Some(100),
+            "output = parent + sub1 + sub2"
+        );
+        assert_eq!(
+            session.total_cache_read_tokens,
+            Some(1800),
+            "cache_read = 1000 + 500 + 300"
+        );
+        assert_eq!(
+            session.total_cache_creation_tokens,
+            Some(350),
+            "cache_create = 200 + 100 + 50"
+        );
     }
 
     #[tokio::test]
@@ -4060,11 +4320,15 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -4077,13 +4341,16 @@ mod tests {
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
         // Run Pass 2 — should deep-index the 1 session
-        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
 
         // Verify file_size_at_index and file_mtime_at_index are populated
         let sessions = db.get_sessions_needing_deep_index().await.unwrap();
         assert_eq!(sessions.len(), 1);
-        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) = &sessions[0];
+        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) =
+            &sessions[0];
         assert!(
             stored_size.is_some(),
             "file_size_at_index should be populated after deep index"
@@ -4092,17 +4359,16 @@ mod tests {
             stored_mtime.is_some(),
             "file_mtime_at_index should be populated after deep index"
         );
-        assert!(
-            deep_indexed_at.is_some(),
-            "deep_indexed_at should be set"
-        );
+        assert!(deep_indexed_at.is_some(), "deep_indexed_at should be set");
         assert_eq!(
             *parse_version, CURRENT_PARSE_VERSION,
             "parse_version should match current"
         );
 
         // Run Pass 2 again — should skip because file hasn't changed
-        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(second_run, 0, "Should skip unchanged session");
 
         // Now append data to the JSONL file (simulates user continuing conversation)
@@ -4132,20 +4398,30 @@ mod tests {
         drop(file);
 
         // Run Pass 2 again — should re-index because file size changed
-        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
-        assert_eq!(third_run, 1, "Should re-index session after file was modified");
+        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(
+            third_run, 1,
+            "Should re-index session after file was modified"
+        );
 
         // Verify the updated metrics reflect the new content
         let projects = db.list_projects().await.unwrap();
         let session = &projects[0].sessions[0];
-        assert_eq!(session.turn_count, 3, "Should now have 3 turns after re-index");
+        assert_eq!(
+            session.turn_count, 3,
+            "Should now have 3 turns after re-index"
+        );
         assert_eq!(
             session.last_message, "one more question",
             "Last user message should reflect appended content"
         );
 
         // Run Pass 2 one more time — should skip again (file hasn't changed)
-        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
@@ -4199,7 +4475,11 @@ mod tests {
 
         let result = extract_commit_skill_invocations(&raw);
 
-        assert_eq!(result.len(), 1, "Should detect commit-commands:commit-push-pr");
+        assert_eq!(
+            result.len(),
+            1,
+            "Should detect commit-commands:commit-push-pr"
+        );
         assert_eq!(result[0].skill_name, "commit-commands:commit-push-pr");
         assert_eq!(result[0].timestamp_unix, 1706400300);
     }
@@ -4390,7 +4670,10 @@ mod tests {
         assert_eq!(result.deep.agent_spawn_count, 0);
 
         // Summary
-        assert_eq!(result.deep.summary_text.as_deref(), Some("Fixed authentication bug in auth.rs"));
+        assert_eq!(
+            result.deep.summary_text.as_deref(),
+            Some("Fixed authentication bug in auth.rs")
+        );
 
         // Queue
         assert_eq!(result.deep.queue_enqueue_count, 1);
@@ -4400,12 +4683,24 @@ mod tests {
         assert_eq!(result.deep.file_snapshot_count, 1);
 
         // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:04:00 = 240s)
-        assert!(result.deep.total_task_time_seconds > 0, "total_task_time_seconds should be > 0");
+        assert!(
+            result.deep.total_task_time_seconds > 0,
+            "total_task_time_seconds should be > 0"
+        );
         assert_eq!(result.deep.total_task_time_seconds, 240);
-        assert!(result.deep.longest_task_seconds.is_some(), "longest_task_seconds should be Some");
+        assert!(
+            result.deep.longest_task_seconds.is_some(),
+            "longest_task_seconds should be Some"
+        );
         assert_eq!(result.deep.longest_task_seconds, Some(240));
-        assert!(result.deep.longest_task_preview.is_some(), "longest_task_preview should be Some");
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read and fix auth.rs"));
+        assert!(
+            result.deep.longest_task_preview.is_some(),
+            "longest_task_preview should be Some"
+        );
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Read and fix auth.rs")
+        );
 
         // Sanity check: wall-clock task time >= CC turn_duration_total_ms / 1000
         let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
@@ -4481,11 +4776,20 @@ mod tests {
 
         // Longest task is turn 1 at 100 seconds
         assert_eq!(result.deep.longest_task_seconds, Some(100));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Implement the login page"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Implement the login page")
+        );
 
         // Verify longest is the maximum, not first or last
-        assert!(result.deep.longest_task_seconds.unwrap() > 40, "longest should not be the last turn (40s)");
-        assert!(result.deep.longest_task_seconds.unwrap() > 95, "longest should not be the second turn (95s)");
+        assert!(
+            result.deep.longest_task_seconds.unwrap() > 40,
+            "longest should not be the last turn (40s)"
+        );
+        assert!(
+            result.deep.longest_task_seconds.unwrap() > 95,
+            "longest should not be the second turn (95s)"
+        );
 
         // Sanity check: wall-clock >= CC turn_duration_total / 1000
         let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
@@ -4510,7 +4814,10 @@ mod tests {
         // Only 1 real turn: "Hello world" at ts=1700000000 → ends at ts=1700000120 (last_timestamp) = 120s
         assert_eq!(result.deep.total_task_time_seconds, 120);
         assert_eq!(result.deep.longest_task_seconds, Some(120));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Hello world"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Hello world")
+        );
     }
 
     #[test]
@@ -4526,7 +4833,10 @@ mod tests {
         // Only 1 real turn: "Read the file" at ts=1700000000 → ends at ts=1700000090 = 90s
         assert_eq!(result.deep.total_task_time_seconds, 90);
         assert_eq!(result.deep.longest_task_seconds, Some(90));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read the file"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Read the file")
+        );
     }
 
     #[test]
@@ -4631,7 +4941,10 @@ mod tests {
 
         assert_eq!(
             skills,
-            vec!["superpowers:brainstorming", "superpowers:systematic-debugging"],
+            vec![
+                "superpowers:brainstorming",
+                "superpowers:systematic-debugging"
+            ],
             "Should extract exactly the 2 skills from assistant tool_use blocks"
         );
 
@@ -4836,7 +5149,10 @@ mod tests {
         );
         let data = line.as_bytes();
         let result = parse_bytes(data);
-        let prompt = result.deep.first_user_prompt.expect("Should have first_user_prompt");
+        let prompt = result
+            .deep
+            .first_user_prompt
+            .expect("Should have first_user_prompt");
         // truncate() adds "..." when truncating, so max is 500 chars + "..."
         assert!(
             prompt.chars().count() <= 503,
@@ -4857,13 +5173,25 @@ mod tests {
         let result = parse_bytes(data);
 
         // Session-level tokens: should be counted ONCE, not 3x
-        assert_eq!(result.deep.total_input_tokens, 100, "input_tokens counted 3x");
-        assert_eq!(result.deep.total_output_tokens, 50, "output_tokens counted 3x");
+        assert_eq!(
+            result.deep.total_input_tokens, 100,
+            "input_tokens counted 3x"
+        );
+        assert_eq!(
+            result.deep.total_output_tokens, 50,
+            "output_tokens counted 3x"
+        );
         assert_eq!(result.deep.cache_read_tokens, 1000, "cache_read counted 3x");
-        assert_eq!(result.deep.cache_creation_tokens, 200, "cache_create counted 3x");
+        assert_eq!(
+            result.deep.cache_creation_tokens, 200,
+            "cache_create counted 3x"
+        );
 
         // api_call_count: 3 JSONL lines but only 1 unique API response
-        assert_eq!(result.deep.api_call_count, 1, "api_call_count inflated by content blocks");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "api_call_count inflated by content blocks"
+        );
 
         // Should still create 3 turns (one per content block) for UI display,
         // but only the FIRST turn should carry token counts
@@ -4885,13 +5213,28 @@ mod tests {
         let result = parse_bytes(data);
 
         // Should count tokens only once despite 2 blocks
-        assert_eq!(result.deep.total_input_tokens, 200, "fallback path: input_tokens counted 2x");
-        assert_eq!(result.deep.total_output_tokens, 80, "fallback path: output_tokens counted 2x");
-        assert_eq!(result.deep.cache_read_tokens, 5000, "fallback path: cache_read counted 2x");
-        assert_eq!(result.deep.cache_creation_tokens, 300, "fallback path: cache_create counted 2x");
+        assert_eq!(
+            result.deep.total_input_tokens, 200,
+            "fallback path: input_tokens counted 2x"
+        );
+        assert_eq!(
+            result.deep.total_output_tokens, 80,
+            "fallback path: output_tokens counted 2x"
+        );
+        assert_eq!(
+            result.deep.cache_read_tokens, 5000,
+            "fallback path: cache_read counted 2x"
+        );
+        assert_eq!(
+            result.deep.cache_creation_tokens, 300,
+            "fallback path: cache_create counted 2x"
+        );
 
         // api_call_count: 2 JSONL lines but only 1 unique API response
-        assert_eq!(result.deep.api_call_count, 1, "fallback path: api_call_count inflated");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "fallback path: api_call_count inflated"
+        );
     }
 
     #[test]
@@ -4912,7 +5255,10 @@ mod tests {
         assert_eq!(result.deep.cache_creation_tokens, 500); // 200 + 300
 
         // 3 assistant JSONL lines, but only 2 unique API responses
-        assert_eq!(result.deep.api_call_count, 2, "should count 2 unique API calls");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "should count 2 unique API calls"
+        );
     }
 
     #[test]
@@ -4930,7 +5276,10 @@ mod tests {
         assert_eq!(result.deep.total_output_tokens, 100);
 
         // Legacy: each line treated as a separate API call (no IDs to dedup with)
-        assert_eq!(result.deep.api_call_count, 2, "legacy lines each count as api call");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "legacy lines each count as api call"
+        );
     }
 
     #[test]
@@ -4968,7 +5317,10 @@ mod tests {
         // and the other through the Value fallback
         assert_eq!(result.deep.total_input_tokens, 500);
         assert_eq!(result.deep.total_output_tokens, 100);
-        assert_eq!(result.deep.api_call_count, 1, "mixed paths should share dedup");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "mixed paths should share dedup"
+        );
     }
 
     #[test]
@@ -4977,13 +5329,16 @@ mod tests {
         let result = parse_bytes(data);
 
         // 2 unique API responses (req_001 with 2 blocks, req_002 with 3 blocks)
-        assert_eq!(result.deep.api_call_count, 2, "should have 2 unique API calls");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "should have 2 unique API calls"
+        );
 
         // Tokens: req_001(1500+150+500+100) + req_002(2000+200+1500+0)
-        assert_eq!(result.deep.total_input_tokens, 3500);  // 1500 + 2000
-        assert_eq!(result.deep.total_output_tokens, 350);   // 150 + 200
-        assert_eq!(result.deep.cache_read_tokens, 2000);    // 500 + 1500
-        assert_eq!(result.deep.cache_creation_tokens, 100);  // 100 + 0
+        assert_eq!(result.deep.total_input_tokens, 3500); // 1500 + 2000
+        assert_eq!(result.deep.total_output_tokens, 350); // 150 + 200
+        assert_eq!(result.deep.cache_read_tokens, 2000); // 500 + 1500
+        assert_eq!(result.deep.cache_creation_tokens, 100); // 100 + 0
 
         // Tools: Read from req_001, Edit from req_002 (both still counted)
         assert_eq!(result.deep.tool_counts.read, 1);
@@ -4993,10 +5348,10 @@ mod tests {
         assert_eq!(result.turns.len(), 5);
         // First block of each API call has tokens, rest zeroed
         assert_eq!(result.turns[0].input_tokens, Some(1500)); // req_001 first
-        assert_eq!(result.turns[1].input_tokens, Some(0));     // req_001 dup
+        assert_eq!(result.turns[1].input_tokens, Some(0)); // req_001 dup
         assert_eq!(result.turns[2].input_tokens, Some(2000)); // req_002 first
-        assert_eq!(result.turns[3].input_tokens, Some(0));     // req_002 dup
-        assert_eq!(result.turns[4].input_tokens, Some(0));     // req_002 dup
+        assert_eq!(result.turns[3].input_tokens, Some(0)); // req_002 dup
+        assert_eq!(result.turns[4].input_tokens, Some(0)); // req_002 dup
 
         // user_prompt_count: 2 user lines (one is tool_result, still counted)
         assert_eq!(result.deep.user_prompt_count, 2);

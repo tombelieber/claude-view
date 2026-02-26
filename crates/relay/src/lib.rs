@@ -39,4 +39,3 @@ pub fn app(state: RelayState) -> Router {
         .layer(cors)
         .with_state(state)
 }
-

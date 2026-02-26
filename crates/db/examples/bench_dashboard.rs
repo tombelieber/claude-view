@@ -12,8 +12,8 @@
 //   get_all_time_metrics:          <5ms  for 500 sessions
 //   get_dashboard_stats_with_range: <10ms for 500 sessions
 
-use std::time::Instant;
 use claude_view_db::Database;
+use std::time::Instant;
 
 const NUM_SESSIONS: usize = 500;
 const NUM_PROJECTS: usize = 10;
@@ -26,7 +26,10 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
     let now = chrono::Utc::now().timestamp();
     let one_week = 7 * 86400;
 
-    println!("Seeding {} sessions with turns, commits, invocations...", NUM_SESSIONS);
+    println!(
+        "Seeding {} sessions with turns, commits, invocations...",
+        NUM_SESSIONS
+    );
     let start = Instant::now();
 
     // Batch all inserts in a single transaction
@@ -115,22 +118,22 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
         .bind(TURNS_PER_SESSION as i32)
         .bind(TURNS_PER_SESSION as i32 * 2)
         .bind(2048_i64)
-        .bind((i % 10) as i32)    // edit
-        .bind((i % 20) as i32)    // read
-        .bind((i % 5) as i32)     // bash
-        .bind((i % 3) as i32)     // write
+        .bind((i % 10) as i32) // edit
+        .bind((i % 20) as i32) // read
+        .bind((i % 5) as i32) // bash
+        .bind((i % 3) as i32) // write
         .bind((i % 15 + 1) as i32) // user_prompt_count
-        .bind((i % 8) as i32)     // files_edited_count
-        .bind((i % 3) as i32)     // reedited_files_count
-        .bind((i * 120) as i32)   // duration_seconds
+        .bind((i % 8) as i32) // files_edited_count
+        .bind((i % 3) as i32) // reedited_files_count
+        .bind((i * 120) as i32) // duration_seconds
         .bind(COMMITS_PER_SESSION as i32)
         .bind(branch)
         .bind((i % 10 + 5) as i32) // api_call_count
         .bind((i % 20 + 10) as i32) // tool_call_count
-        .bind((i % 6) as i32)     // files_read_count
-        .bind(ts)                  // indexed_at
+        .bind((i % 6) as i32) // files_read_count
+        .bind(ts) // indexed_at
         .bind((i * 1000 + 5000) as i64) // total_input_tokens
-        .bind((i * 500 + 2000) as i64)  // total_output_tokens
+        .bind((i * 500 + 2000) as i64) // total_output_tokens
         .execute(&mut *tx)
         .await?;
 

@@ -1,19 +1,19 @@
 // crates/db/src/queries/mod.rs
 // Session CRUD operations for the claude-view SQLite database.
 
-pub(crate) mod row_types;
+mod ai_generation;
 mod classification;
 mod dashboard;
+pub mod facets;
+mod fluency;
 pub mod hook_events;
 mod invocables;
 mod models;
-pub mod sessions;
-mod system;
-mod ai_generation;
-pub mod facets;
-mod fluency;
 pub mod reports;
+pub(crate) mod row_types;
+pub mod sessions;
 pub mod settings;
+mod system;
 mod types;
 
 pub use dashboard::ActivityPoint;

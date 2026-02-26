@@ -110,7 +110,10 @@ mod tests {
     fn test_data_dir_resolves_relative_path() {
         env::set_var("CLAUDE_VIEW_DATA_DIR", "./.data");
         let dir = data_dir();
-        assert!(dir.is_absolute(), "relative path should be resolved to absolute");
+        assert!(
+            dir.is_absolute(),
+            "relative path should be resolved to absolute"
+        );
         assert!(dir.ends_with(".data"));
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
     }

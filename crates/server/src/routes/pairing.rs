@@ -54,13 +54,10 @@ struct PairedDeviceResponse {
 }
 
 /// GET /pairing/qr — Generate QR payload for mobile pairing.
-async fn generate_qr(
-    State(_state): State<Arc<AppState>>,
-) -> Result<Json<QrPayload>, StatusCode> {
+async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPayload>, StatusCode> {
     let identity = load_or_create_identity().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let box_secret =
-        box_secret_key(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let box_secret = box_secret_key(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let box_public = box_secret.public_key();
 
     let token = uuid::Uuid::new_v4().to_string();

@@ -256,7 +256,10 @@ mod tests {
             "You're {improvement}% more efficient during {best_time} compared to {worst_time}.",
             &vars,
         );
-        assert_eq!(result, "You're 25% more efficient during morning compared to evening.");
+        assert_eq!(
+            result,
+            "You're 25% more efficient during morning compared to evening."
+        );
     }
 
     #[test]
@@ -289,8 +292,16 @@ mod tests {
     #[test]
     fn test_all_templates_have_body() {
         for t in TEMPLATES {
-            assert!(!t.body_template.is_empty(), "Template {} has empty body", t.pattern_id);
-            assert!(!t.title.is_empty(), "Template {} has empty title", t.pattern_id);
+            assert!(
+                !t.body_template.is_empty(),
+                "Template {} has empty body",
+                t.pattern_id
+            );
+            assert!(
+                !t.title.is_empty(),
+                "Template {} has empty title",
+                t.pattern_id
+            );
         }
     }
 }

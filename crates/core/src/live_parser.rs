@@ -53,7 +53,7 @@ pub struct SubAgentResult {
     pub tool_use_id: String,
     /// Alphanumeric agent ID from `toolUseResult.agentId`.
     pub agent_id: Option<String>,
-    pub status: String,  // "completed", "error", etc.
+    pub status: String, // "completed", "error", etc.
     pub total_duration_ms: Option<u64>,
     /// Number of tool calls from `toolUseResult.totalToolUseCount`.
     pub total_tool_use_count: Option<u32>,
@@ -252,31 +252,30 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // lines that don't contain the keys we care about).
     // Check result/progress/summary BEFORE user/assistant because these lines
     // may contain nested "role":"assistant" which would match the assistant finder.
-    let line_type = if finders.type_result.find(raw).is_some()
-        && finders.type_progress.find(raw).is_none()
-    {
-        // "result" appears in result lines AND in toolUseResult lines.
-        // Disambiguate: if line has "result" but NOT "user", it's a
-        // top-level result line. If it has both "result" and "user", it's
-        // a toolUseResult on a user line → classify as User below.
-        if finders.type_user.find(raw).is_none() {
-            LineType::Result
-        } else {
+    let line_type =
+        if finders.type_result.find(raw).is_some() && finders.type_progress.find(raw).is_none() {
+            // "result" appears in result lines AND in toolUseResult lines.
+            // Disambiguate: if line has "result" but NOT "user", it's a
+            // top-level result line. If it has both "result" and "user", it's
+            // a toolUseResult on a user line → classify as User below.
+            if finders.type_user.find(raw).is_none() {
+                LineType::Result
+            } else {
+                LineType::User
+            }
+        } else if finders.type_progress.find(raw).is_some() {
+            LineType::Progress
+        } else if finders.type_summary.find(raw).is_some() {
+            LineType::Summary
+        } else if finders.type_user.find(raw).is_some() {
             LineType::User
-        }
-    } else if finders.type_progress.find(raw).is_some() {
-        LineType::Progress
-    } else if finders.type_summary.find(raw).is_some() {
-        LineType::Summary
-    } else if finders.type_user.find(raw).is_some() {
-        LineType::User
-    } else if finders.type_assistant.find(raw).is_some() {
-        LineType::Assistant
-    } else if finders.type_system.find(raw).is_some() {
-        LineType::System
-    } else {
-        LineType::Other
-    };
+        } else if finders.type_assistant.find(raw).is_some() {
+            LineType::Assistant
+        } else if finders.type_system.find(raw).is_some() {
+            LineType::System
+        } else {
+            LineType::Other
+        };
 
     // Parse JSON to extract structured fields
     let parsed: serde_json::Value = match serde_json::from_slice(raw) {
@@ -426,12 +425,16 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     let mut sub_agent_spawns = Vec::new();
     if line_type == LineType::Assistant && finders.task_name_key.find(raw).is_some() {
         // Already have `parsed` from JSON parse above
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("Task")
                 {
-                    let tool_use_id = block.get("id")
+                    let tool_use_id = block
+                        .get("id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -459,52 +462,64 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     }
 
     // --- Sub-agent completion detection (user lines with toolUseResult) ---
-    let sub_agent_result = if line_type == LineType::User
-        && finders.tool_use_result_key.find(raw).is_some()
-    {
-        // Extract toolUseResult from top-level (NOT inside message.content)
-        parsed.get("toolUseResult").and_then(|tur| {
-            // Find the matching tool_use_id from the tool_result block in content
-            let tool_use_id = msg
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-                .and_then(|blocks| {
-                    blocks.iter().find_map(|b| {
-                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
-                        } else {
-                            None
-                        }
-                    })
-                })?;
+    let sub_agent_result =
+        if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
+            // Extract toolUseResult from top-level (NOT inside message.content)
+            parsed.get("toolUseResult").and_then(|tur| {
+                // Find the matching tool_use_id from the tool_result block in content
+                let tool_use_id = msg
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array())
+                    .and_then(|blocks| {
+                        blocks.iter().find_map(|b| {
+                            if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                                b.get("tool_use_id")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from)
+                            } else {
+                                None
+                            }
+                        })
+                    })?;
 
-            let agent_id = tur.get("agentId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let status = tur.get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("completed")
-                .to_string();
-            let total_duration_ms = tur.get("totalDurationMs").and_then(|v| v.as_u64());
-            let total_tool_use_count = tur.get("totalToolUseCount")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32);
-            let usage = tur.get("usage");
-            Some(SubAgentResult {
-                tool_use_id,
-                agent_id,
-                status,
-                total_duration_ms,
-                total_tool_use_count,
-                usage_input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                usage_output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                usage_cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                usage_cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                let agent_id = tur
+                    .get("agentId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let status = tur
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("completed")
+                    .to_string();
+                let total_duration_ms = tur.get("totalDurationMs").and_then(|v| v.as_u64());
+                let total_tool_use_count = tur
+                    .get("totalToolUseCount")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let usage = tur.get("usage");
+                Some(SubAgentResult {
+                    tool_use_id,
+                    agent_id,
+                    status,
+                    total_duration_ms,
+                    total_tool_use_count,
+                    usage_input_tokens: usage
+                        .and_then(|u| u.get("input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage_output_tokens: usage
+                        .and_then(|u| u.get("output_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage_cache_read_tokens: usage
+                        .and_then(|u| u.get("cache_read_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage_cache_creation_tokens: usage
+                        .and_then(|u| u.get("cache_creation_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                })
             })
-        })
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // --- Sub-agent progress detection (progress lines with agent_progress) ---
     // SIMD pre-filter on "agent_progress" then verify the parsed JSON `type` field
@@ -516,14 +531,17 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
             if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
                 return None;
             }
-            let parent_tool_use_id = parsed.get("parentToolUseID")
+            let parent_tool_use_id = parsed
+                .get("parentToolUseID")
                 .and_then(|v| v.as_str())
                 .map(String::from)?;
-            let agent_id = data.get("agentId")
+            let agent_id = data
+                .get("agentId")
                 .and_then(|v| v.as_str())
                 .map(String::from)?;
             // Extract current tool from the latest tool_use block in message.content
-            let current_tool = data.get("message")
+            let current_tool = data
+                .get("message")
                 .and_then(|m| m.get("content"))
                 .and_then(|c| c.as_array())
                 .and_then(|blocks| {
@@ -546,46 +564,85 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     };
 
     // --- TodoWrite detection (assistant lines with TodoWrite tool_use) ---
-    let todo_write = if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
-        msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()).and_then(|blocks| {
-            blocks.iter().find_map(|b| {
-                if b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-                    && b.get("name").and_then(|n| n.as_str()) == Some("TodoWrite")
-                {
-                    b.get("input").and_then(|i| i.get("todos")).and_then(|t| t.as_array()).map(|todos| {
-                        todos.iter().filter_map(|item| {
-                            Some(RawTodoItem {
-                                content: item.get("content").and_then(|v| v.as_str())?.to_string(),
-                                status: item.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string(),
-                                active_form: item.get("activeForm").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            })
-                        }).collect::<Vec<_>>()
+    let todo_write =
+        if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
+            msg.and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|blocks| {
+                    blocks.iter().find_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                            && b.get("name").and_then(|n| n.as_str()) == Some("TodoWrite")
+                        {
+                            b.get("input")
+                                .and_then(|i| i.get("todos"))
+                                .and_then(|t| t.as_array())
+                                .map(|todos| {
+                                    todos
+                                        .iter()
+                                        .filter_map(|item| {
+                                            Some(RawTodoItem {
+                                                content: item
+                                                    .get("content")
+                                                    .and_then(|v| v.as_str())?
+                                                    .to_string(),
+                                                status: item
+                                                    .get("status")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("pending")
+                                                    .to_string(),
+                                                active_form: item
+                                                    .get("activeForm")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string(),
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                        } else {
+                            None
+                        }
                     })
-                } else {
-                    None
-                }
-            })
-        })
-    } else {
-        None
-    };
+                })
+        } else {
+            None
+        };
 
     // --- TaskCreate detection (assistant lines with TaskCreate tool_use) ---
     let mut task_creates = Vec::new();
     if line_type == LineType::Assistant && finders.task_create_key.find(raw).is_some() {
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("TaskCreate")
                 {
-                    let tool_use_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let tool_use_id = block
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let input = block.get("input");
                     if !tool_use_id.is_empty() {
                         task_creates.push(RawTaskCreate {
                             tool_use_id,
-                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            description: input.and_then(|i| i.get("description")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            subject: input
+                                .and_then(|i| i.get("subject"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            description: input
+                                .and_then(|i| i.get("description"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            active_form: input
+                                .and_then(|i| i.get("activeForm"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                         });
                     }
                 }
@@ -596,19 +653,35 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // --- TaskUpdate detection (assistant lines with TaskUpdate tool_use) ---
     let mut task_updates = Vec::new();
     if line_type == LineType::Assistant && finders.task_update_key.find(raw).is_some() {
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("TaskUpdate")
                 {
                     let input = block.get("input");
-                    let task_id = input.and_then(|i| i.get("taskId")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let task_id = input
+                        .and_then(|i| i.get("taskId"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if !task_id.is_empty() {
                         task_updates.push(RawTaskUpdate {
                             task_id,
-                            status: input.and_then(|i| i.get("status")).and_then(|v| v.as_str()).map(String::from),
-                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).map(String::from),
-                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).map(String::from),
+                            status: input
+                                .and_then(|i| i.get("status"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            subject: input
+                                .and_then(|i| i.get("subject"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            active_form: input
+                                .and_then(|i| i.get("activeForm"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
                         });
                     }
                 }
@@ -619,7 +692,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // --- TaskIdAssignment detection (user lines with toolUseResult containing task.id) ---
     let mut task_id_assignments = Vec::new();
     if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
-        if let Some(task_id) = parsed.get("toolUseResult")
+        if let Some(task_id) = parsed
+            .get("toolUseResult")
             .and_then(|tur| tur.get("task"))
             .and_then(|t| t.get("id"))
             .and_then(|v| v.as_str())
@@ -630,7 +704,9 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 .and_then(|blocks| {
                     blocks.iter().find_map(|b| {
                         if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
+                            b.get("tool_use_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
                         } else {
                             None
                         }
@@ -897,7 +973,11 @@ mod tests {
         // Write initial content
         {
             let mut f = File::create(&path).unwrap();
-            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#).unwrap();
+            writeln!(
+                f,
+                r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#
+            )
+            .unwrap();
             writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"hi"}}]}}}}"#).unwrap();
         }
 
@@ -909,12 +989,19 @@ mod tests {
         // "Replace" the file with smaller content (simulates log rotation)
         {
             let mut f = File::create(&path).unwrap();
-            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"new session"}}}}"#).unwrap();
+            writeln!(
+                f,
+                r#"{{"type":"user","message":{{"role":"user","content":"new session"}}}}"#
+            )
+            .unwrap();
         }
 
         // Old offset is larger than new file — should reset and read from start
         let (lines2, offset2) = parse_tail(&path, offset, &finders).unwrap();
-        assert!(!lines2.is_empty(), "Should read new content after file replacement");
+        assert!(
+            !lines2.is_empty(),
+            "Should read new content after file replacement"
+        );
         assert!(offset2 > 0);
     }
 
@@ -1468,11 +1555,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no_content.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(
-            f,
-            r#"{{"type":"user","message":{{"role":"user"}}}}"#
-        )
-        .unwrap();
+        writeln!(f, r#"{{"type":"user","message":{{"role":"user"}}}}"#).unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -1690,7 +1773,10 @@ mod tests {
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{"skill":""}}]}}"#;
         let line = parse_single_line(raw, &finders);
         assert_eq!(line.tool_names, vec!["Skill"]);
-        assert!(line.skill_names.is_empty(), "Empty skill name should be ignored");
+        assert!(
+            line.skill_names.is_empty(),
+            "Empty skill name should be ignored"
+        );
     }
 
     #[test]
@@ -1699,7 +1785,10 @@ mod tests {
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{}}]}}"#;
         let line = parse_single_line(raw, &finders);
         assert_eq!(line.tool_names, vec!["Skill"]);
-        assert!(line.skill_names.is_empty(), "Missing skill field should produce no skill_names");
+        assert!(
+            line.skill_names.is_empty(),
+            "Missing skill field should produce no skill_names"
+        );
     }
 
     #[test]
@@ -1707,8 +1796,17 @@ mod tests {
         let finders = TailFinders::new();
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"toolu_01B","name":"mcp__plugin_playwright_playwright__browser_navigate","input":{"url":"http://example.com"}}]}}"#;
         let line = parse_single_line(raw, &finders);
-        assert_eq!(line.tool_names, vec!["Bash", "mcp__plugin_playwright_playwright__browser_navigate"]);
-        assert!(line.skill_names.is_empty(), "Non-Skill tools should produce no skill_names");
+        assert_eq!(
+            line.tool_names,
+            vec![
+                "Bash",
+                "mcp__plugin_playwright_playwright__browser_navigate"
+            ]
+        );
+        assert!(
+            line.skill_names.is_empty(),
+            "Non-Skill tools should produce no skill_names"
+        );
     }
 
     #[test]
@@ -1716,7 +1814,10 @@ mod tests {
         let finders = TailFinders::new();
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"mcp__chrome-devtools__take_screenshot","input":{}},{"type":"tool_use","id":"toolu_01B","name":"Skill","input":{"skill":"pdf"}}]}}"#;
         let line = parse_single_line(raw, &finders);
-        assert_eq!(line.tool_names, vec!["mcp__chrome-devtools__take_screenshot", "Skill"]);
+        assert_eq!(
+            line.tool_names,
+            vec!["mcp__chrome-devtools__take_screenshot", "Skill"]
+        );
         assert_eq!(line.skill_names, vec!["pdf"]);
     }
 }

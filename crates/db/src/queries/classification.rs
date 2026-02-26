@@ -1,9 +1,9 @@
 // crates/db/src/queries/classification.rs
 // Classification job and index run CRUD operations (Theme 4).
 
+use super::row_types::{ClassificationJobRow, IndexRunRow};
 use crate::{Database, DbResult};
 use chrono::Utc;
-use super::row_types::{ClassificationJobRow, IndexRunRow};
 
 impl Database {
     /// Create a new classification job. Returns the new job ID.
@@ -33,7 +33,9 @@ impl Database {
     }
 
     /// Get the currently running classification job, if any.
-    pub async fn get_active_classification_job(&self) -> DbResult<Option<claude_view_core::ClassificationJob>> {
+    pub async fn get_active_classification_job(
+        &self,
+    ) -> DbResult<Option<claude_view_core::ClassificationJob>> {
         let row: Option<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1",
         )
@@ -134,13 +136,17 @@ impl Database {
     }
 
     /// Get recent classification jobs (last 10).
-    pub async fn get_recent_classification_jobs(&self) -> DbResult<Vec<claude_view_core::ClassificationJob>> {
-        let rows: Vec<ClassificationJobRow> = sqlx::query_as(
-            "SELECT * FROM classification_jobs ORDER BY started_at DESC LIMIT 10",
-        )
-        .fetch_all(self.pool())
-        .await?;
-        Ok(rows.into_iter().map(|r| r.into_classification_job()).collect())
+    pub async fn get_recent_classification_jobs(
+        &self,
+    ) -> DbResult<Vec<claude_view_core::ClassificationJob>> {
+        let rows: Vec<ClassificationJobRow> =
+            sqlx::query_as("SELECT * FROM classification_jobs ORDER BY started_at DESC LIMIT 10")
+                .fetch_all(self.pool())
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| r.into_classification_job())
+            .collect())
     }
 
     /// Create a new index run. Returns the new run ID.
@@ -217,11 +223,10 @@ impl Database {
 
     /// Get recent index runs (last 20).
     pub async fn get_recent_index_runs(&self) -> DbResult<Vec<claude_view_core::IndexRun>> {
-        let rows: Vec<IndexRunRow> = sqlx::query_as(
-            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20",
-        )
-        .fetch_all(self.pool())
-        .await?;
+        let rows: Vec<IndexRunRow> =
+            sqlx::query_as("SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20")
+                .fetch_all(self.pool())
+                .await?;
         Ok(rows.into_iter().map(|r| r.into_index_run()).collect())
     }
 
@@ -272,12 +277,11 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Option<(String, String, String)>> {
-        let row: Option<(String, String, String)> = sqlx::query_as(
-            "SELECT id, preview, skills_used FROM sessions WHERE id = ?1",
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+        let row: Option<(String, String, String)> =
+            sqlx::query_as("SELECT id, preview, skills_used FROM sessions WHERE id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
         Ok(row)
     }
 
@@ -297,31 +301,27 @@ impl Database {
 
     /// Count unclassified sessions.
     pub async fn count_unclassified_sessions(&self) -> DbResult<i64> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NULL",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NULL")
+                .fetch_one(self.pool())
+                .await?;
         Ok(row.0)
     }
 
     /// Count all sessions (using valid_sessions view for consistent counts).
     pub async fn count_all_sessions(&self) -> DbResult<i64> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
         Ok(row.0)
     }
 
     /// Count classified sessions (using valid_sessions view for consistent counts).
     pub async fn count_classified_sessions(&self) -> DbResult<i64> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL")
+                .fetch_one(self.pool())
+                .await?;
         Ok(row.0)
     }
 
@@ -360,18 +360,22 @@ impl Database {
     }
 
     /// Get a classification job by ID.
-    pub async fn get_classification_job(&self, job_id: i64) -> DbResult<Option<claude_view_core::ClassificationJob>> {
-        let row: Option<ClassificationJobRow> = sqlx::query_as(
-            "SELECT * FROM classification_jobs WHERE id = ?1",
-        )
-        .bind(job_id)
-        .fetch_optional(self.pool())
-        .await?;
+    pub async fn get_classification_job(
+        &self,
+        job_id: i64,
+    ) -> DbResult<Option<claude_view_core::ClassificationJob>> {
+        let row: Option<ClassificationJobRow> =
+            sqlx::query_as("SELECT * FROM classification_jobs WHERE id = ?1")
+                .bind(job_id)
+                .fetch_optional(self.pool())
+                .await?;
         Ok(row.map(|r| r.into_classification_job()))
     }
 
     /// Get the most recent completed/cancelled/failed classification job.
-    pub async fn get_last_completed_classification_job(&self) -> DbResult<Option<claude_view_core::ClassificationJob>> {
+    pub async fn get_last_completed_classification_job(
+        &self,
+    ) -> DbResult<Option<claude_view_core::ClassificationJob>> {
         let row: Option<ClassificationJobRow> = sqlx::query_as(
             "SELECT * FROM classification_jobs WHERE status IN ('completed', 'cancelled', 'failed') ORDER BY completed_at DESC LIMIT 1",
         )
