@@ -94,10 +94,11 @@ async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPaylo
     // Include verification secret in QR URL so phone can compute HMAC binding.
     // The relay never sees `s` — it's only in the direct QR scan.
     let mobile_url = format!(
-        "{}/mobile?k={}&t={}&s={}",
+        "{}/mobile?k={}&t={}&r={}&s={}",
         relay_http,
         urlencoding::encode(&k_b64),
         urlencoding::encode(&token),
+        urlencoding::encode(&relay_ws),
         urlencoding::encode(&s_b64),
     );
 

@@ -222,17 +222,6 @@ pub fn store_verification_secret(token: &str, secret: &[u8; 32]) -> Result<(), S
     Ok(())
 }
 
-/// Load and delete a pairing verification secret (one-time use).
-pub fn load_verification_secret(token: &str) -> Result<[u8; 32], String> {
-    let path = storage_dir()?.join("pairing_secrets").join(token);
-    let bytes = fs::read(&path).map_err(|e| format!("read verification secret: {e}"))?;
-    fs::remove_file(&path).map_err(|e| format!("remove verification secret: {e}"))?;
-    let secret: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| "verification secret must be 32 bytes".to_string())?;
-    Ok(secret)
-}
-
 /// Verify an HMAC-SHA256(verification_secret, phone_x25519_pubkey) against
 /// all stored pairing secrets. On match, the secret file is consumed (deleted).
 ///

@@ -12,6 +12,7 @@ import {
   Info,
   Loader2,
   RefreshCw,
+  Smartphone,
   XCircle,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -23,6 +24,7 @@ import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '..
 import { formatNumber } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
+import { PairingQrCode } from './PairingQrCode'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
 
@@ -605,6 +607,14 @@ export function SettingsPage() {
                 </>
               )}
             </button>
+          </SettingsSection>
+
+          {/* MOBILE PAIRING */}
+          <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Scan this QR code with the Claude View mobile app to pair your phone.
+            </p>
+            <PairingQrCode />
           </SettingsSection>
 
           {/* ABOUT */}
