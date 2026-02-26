@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "version": "0.9.0",
-  "description": "Browse and export Claude Code sessions as beautiful HTML",
+  "description": "Mission Control for Claude Code — live monitoring, cost tracking, session search, and agent visibility in one dashboard",
   "type": "module",
   "files": [
     "dist"
@@ -42,11 +42,20 @@
   },
   "keywords": [
     "claude",
+    "claude-code",
+    "ai",
+    "dashboard",
+    "monitoring",
+    "session",
+    "mission-control",
+    "developer-tools",
+    "cli",
     "anthropic",
-    "viewer",
-    "export",
-    "conversation",
-    "cli"
+    "devtools",
+    "real-time",
+    "agent",
+    "mcp",
+    "cost-tracking"
   ],
   "author": "",
   "license": "MIT",

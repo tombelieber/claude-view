@@ -346,6 +346,10 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ---
 
+## Related
+
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Back up your Claude Code environment to GitHub. `npx claude-backup`
+
 ## License
 
 MIT © 2026
