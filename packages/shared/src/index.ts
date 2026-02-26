@@ -5,6 +5,7 @@ export * from './crypto/storage'
 export {
   useRelayConnection,
   type ConnectionState,
+  type UseRelayConnectionOptions,
   type UseRelayConnectionResult,
 } from './relay/use-relay-connection'
 export * from './utils/format-cost'
