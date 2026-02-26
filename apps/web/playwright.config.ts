@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import path from 'path'
 
 export default defineConfig({
   testDir: './e2e',
@@ -7,11 +8,11 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
-  timeout: 180000, // 3 minute timeout (projects endpoint scans filesystem)
+  timeout: 180000,
   use: {
     baseURL: 'http://localhost:47892',
     trace: 'on-first-retry',
-    actionTimeout: 15000, // 15s timeout for actions
+    actionTimeout: 15000,
   },
   projects: [
     {
@@ -20,7 +21,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'cargo run -p claude-view-server',
+    command: 'cd ../.. && cargo run -p claude-view-server',
+    env: { STATIC_DIR: path.resolve(__dirname, 'dist') },
     url: 'http://localhost:47892/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
