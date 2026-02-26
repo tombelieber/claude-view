@@ -35,6 +35,12 @@ pub struct SidecarManager {
     socket_path: String,
 }
 
+impl Default for SidecarManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SidecarManager {
     pub fn new() -> Self {
         let pid = std::process::id();
