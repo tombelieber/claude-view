@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { H4, Spinner, Text, XStack, YStack } from 'tamagui'
 import { ConnectionDot } from '../../components/ConnectionDot'
 import { SessionCard } from '../../components/SessionCard'
+import { SessionDetailSheet } from '../../components/SessionDetailSheet'
 import { SummaryBar } from '../../components/SummaryBar'
 import { usePairingStatus } from '../../hooks/use-pairing-status'
 import { useRelaySessions } from '../../hooks/use-relay-sessions'
@@ -18,6 +19,7 @@ export default function SessionsScreen() {
   // ALL hooks must be called before any conditional returns (Rules of Hooks)
   const sessionList = useMemo(() => Object.values(sessions), [sessions])
   const { needsYou, autonomous } = useMemo(() => groupByStatus(sessionList), [sessionList])
+  const selectedSession = selectedId ? (sessions[selectedId] ?? null) : null
 
   if (isPaired === null) {
     return (
@@ -95,6 +97,13 @@ export default function SessionsScreen() {
       <SummaryBar sessions={sessionList} />
 
       {/* Bottom sheet (Task 7) */}
+      <SessionDetailSheet
+        session={selectedSession}
+        open={selectedId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedId(null)
+        }}
+      />
     </SafeAreaView>
   )
 }
