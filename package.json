@@ -55,7 +55,12 @@
     "real-time",
     "agent",
     "mcp",
-    "cost-tracking"
+    "cost-tracking",
+    "full-text-search",
+    "session-history",
+    "analytics",
+    "metrics",
+    "heatmap"
   ],
   "author": "",
   "license": "MIT",
