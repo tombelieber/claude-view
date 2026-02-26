@@ -33,13 +33,20 @@ fn get_port() -> u16 {
 ///
 /// Priority:
 /// 1. STATIC_DIR environment variable (explicit override)
-/// 2. ./dist directory (if it exists)
-/// 3. None (API-only mode)
+/// 2. ./apps/web/dist directory (monorepo layout)
+/// 3. ./dist directory (npx distribution flat layout)
+/// 4. None (API-only mode)
 fn get_static_dir() -> Option<PathBuf> {
     std::env::var("STATIC_DIR")
         .ok()
         .map(PathBuf::from)
         .or_else(|| {
+            // Monorepo layout: apps/web/dist
+            let monorepo_dist = PathBuf::from("apps/web/dist");
+            if monorepo_dist.exists() {
+                return Some(monorepo_dist);
+            }
+            // Fallback: flat layout (npx distribution)
             let dist = PathBuf::from("dist");
             dist.exists().then_some(dist)
         })
