@@ -31,6 +31,9 @@ claude-view.db-*
 .DS_Store
 Thumbs.db
 
+# npm lockfile (Bun workspaces use workspace:* which npm can't resolve)
+package-lock.json
+
 # Logs
 *.log
 npm-debug.log*
