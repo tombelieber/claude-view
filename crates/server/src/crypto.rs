@@ -207,3 +207,68 @@ pub fn verifying_key_bytes(identity: &DeviceIdentity) -> Result<Vec<u8>, String>
     );
     Ok(signing_key.verifying_key().to_bytes().to_vec())
 }
+
+// ---------------------------------------------------------------------------
+// HMAC verification secret storage (anti-MITM pairing binding)
+// ---------------------------------------------------------------------------
+
+/// Store a pairing verification secret (keyed by one-time token).
+/// The secret is known only to the Mac and encoded into the QR URL.
+/// It is never sent to the relay server.
+pub fn store_verification_secret(token: &str, secret: &[u8; 32]) -> Result<(), String> {
+    let dir = storage_dir()?.join("pairing_secrets");
+    fs::create_dir_all(&dir).map_err(|e| format!("create pairing_secrets dir: {e}"))?;
+    fs::write(dir.join(token), secret).map_err(|e| format!("write verification secret: {e}"))?;
+    Ok(())
+}
+
+/// Load and delete a pairing verification secret (one-time use).
+pub fn load_verification_secret(token: &str) -> Result<[u8; 32], String> {
+    let path = storage_dir()?.join("pairing_secrets").join(token);
+    let bytes = fs::read(&path).map_err(|e| format!("read verification secret: {e}"))?;
+    fs::remove_file(&path).map_err(|e| format!("remove verification secret: {e}"))?;
+    let secret: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| "verification secret must be 32 bytes".to_string())?;
+    Ok(secret)
+}
+
+/// Verify an HMAC-SHA256(verification_secret, phone_x25519_pubkey) against
+/// all stored pairing secrets. On match, the secret file is consumed (deleted).
+///
+/// This prevents relay key substitution attacks: the relay never sees the
+/// verification secret (it's in the QR URL only), so it cannot forge the HMAC.
+pub fn find_and_verify_hmac(phone_x25519_pubkey_b64: &str, hmac_b64: &str) -> Result<bool, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let dir = storage_dir()?.join("pairing_secrets");
+    if !dir.exists() {
+        return Ok(false);
+    }
+    let expected_hmac = STANDARD
+        .decode(hmac_b64)
+        .map_err(|e| format!("bad hmac base64: {e}"))?;
+    let pubkey_bytes = STANDARD
+        .decode(phone_x25519_pubkey_b64)
+        .map_err(|e| format!("bad pubkey base64: {e}"))?;
+
+    let entries = fs::read_dir(&dir).map_err(|e| format!("read pairing_secrets dir: {e}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read dir entry: {e}"))?;
+        let secret_bytes = fs::read(entry.path()).map_err(|e| format!("read secret: {e}"))?;
+        if secret_bytes.len() != 32 {
+            continue;
+        }
+        let mut mac =
+            HmacSha256::new_from_slice(&secret_bytes).map_err(|e| format!("hmac init: {e}"))?;
+        mac.update(&pubkey_bytes);
+        if mac.verify_slice(&expected_hmac).is_ok() {
+            // Consume the one-time secret
+            let _ = fs::remove_file(entry.path());
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}

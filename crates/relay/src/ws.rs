@@ -126,8 +126,20 @@ async fn handle_socket(socket: WebSocket, state: RelayState) {
         }
     }
 
-    // Cleanup
+    // Cleanup: remove connection and notify paired devices that this device went offline.
     state.connections.remove(&device_id);
     forward_task.abort();
+
+    // Notify all paired devices that this device is offline.
+    // This allows phones to show a "Mac offline" indicator immediately
+    // rather than waiting for a heartbeat timeout.
+    if let Some(device_entry) = state.devices.get(&device_id) {
+        for paired_id in &device_entry.paired_devices {
+            if let Some(conn) = state.connections.get(paired_id.as_str()) {
+                let _ = conn.tx.send(r#"{"type":"mac_offline"}"#.to_string());
+            }
+        }
+    }
+
     info!(device_id = %device_id_clone, "device disconnected");
 }
