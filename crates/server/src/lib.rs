@@ -17,6 +17,7 @@ pub mod jobs;
 pub mod live;
 pub mod metrics;
 pub mod routes;
+pub mod sidecar;
 pub mod state;
 pub mod terminal_state;
 
@@ -28,6 +29,7 @@ pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
+pub use sidecar::SidecarManager;
 pub use state::{AppState, RegistryHolder, SearchIndexHolder};
 
 use std::collections::HashMap;

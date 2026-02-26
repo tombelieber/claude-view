@@ -23,6 +23,9 @@ pub struct ClaimRequest {
     pub pubkey: Vec<u8>,
     /// Phone's X25519 pubkey encrypted with Mac's X25519 pubkey (NaCl box).
     pub pubkey_encrypted_blob: String,
+    /// Phone's plaintext X25519 pubkey (base64). Mac uses this to decrypt
+    /// the blob and verify ownership. Forwarded in pair_complete message.
+    pub x25519_pubkey: String,
 }
 
 #[derive(Serialize)]
@@ -113,12 +116,13 @@ pub async fn claim_pair(
         mac_device.paired_devices.insert(req.device_id.clone());
     }
 
-    // Forward encrypted phone pubkey blob to Mac via WS (if connected)
+    // Forward encrypted phone pubkey blob + plaintext X25519 key to Mac via WS
     if let Some(mac_conn) = state.connections.get(&offer.device_id) {
         let msg = serde_json::json!({
             "type": "pair_complete",
             "device_id": req.device_id,
             "pubkey_encrypted_blob": req.pubkey_encrypted_blob,
+            "x25519_pubkey": req.x25519_pubkey,
         });
         let _ = mac_conn.tx.send(msg.to_string());
     }
