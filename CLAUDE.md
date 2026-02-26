@@ -24,9 +24,28 @@ Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm 
 |----------|--------|
 | Runtime | Localhost web server (browser, not desktop app) |
 | Backend | Rust (Axum), ~15MB binary |
-| Frontend | React SPA |
+| Frontend | React SPA (Vite) + Expo native app |
+| Monorepo | Turborepo + Bun workspaces |
 | Desktop app (Tauri) | Deferred indefinitely |
 | Node.js sidecar | Mission Control Phase F |
+
+### Monorepo Workspace Layout
+
+| Path | Package | Purpose |
+|------|---------|---------|
+| `apps/web/` | `@claude-view/web` | React SPA (Vite) — the main web frontend |
+| `apps/mobile/` | `@claude-view/mobile` | Expo SDK 55 native app (Tamagui v2) |
+| `apps/landing/` | `@claude-view/landing` | Static HTML landing page (Cloudflare Pages) |
+| `packages/shared/` | `@claude-view/shared` | Relay types, theme tokens |
+| `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
+| `crates/` | — | Rust backend (unchanged) |
+
+**Key config files:**
+
+- `turbo.json` — Turborepo pipeline config
+- `bunfig.toml` — `linker = "hoisted"` (required for Metro/Expo compatibility)
+- `tsconfig.base.json` — shared TypeScript base config, apps extend it
+- React pinned to 19.2.0 across all apps for deduplication
 
 ### Rust Crate Structure
 | Crate | Package name | Purpose |
@@ -90,6 +109,17 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 1. Local dev working first — Rust backend serves existing React UI
 2. npx deployment second — defer until backend works
 
+### Dev Commands (Monorepo)
+
+| Command | What it does |
+|---------|-------------|
+| `bun run dev` | `bunx turbo dev` — starts all apps |
+| `bun run dev:full` | Concurrent Rust server + web frontend |
+| `bun run build` | `bunx turbo build` — builds all apps |
+| `bun run test` | `bunx turbo test` — runs all test suites |
+| `cd apps/web && bunx vitest run` | Run web frontend tests only |
+| `cargo test -p claude-view-server` | Run Rust server tests only |
+
 ## Hard Rules
 
 > Detailed code examples: `docs/claude-rules-reference.md`
@@ -114,6 +144,7 @@ Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> 
 
 ### Frontend / React
 
+- **Source location:** `apps/web/src/` (not root `src/` -- that was the pre-monorepo layout)
 - **useEffect deps:** Never raw parsed objects. `useMemo` on a primitive key
 - **URL params:** Copy-then-modify (`new URLSearchParams(existing)`), never blank constructor
 - **Timestamps:** Guard `ts <= 0` before `new Date(ts * 1000)` at every layer. Timestamp 0 = data bug
@@ -135,7 +166,7 @@ Never trust a single external data source. Cross-check indexes against filesyste
 
 ### SSE / Vite Dev Proxy
 
-Vite buffers SSE. In dev mode, connect `EventSource` directly to Rust server at `:47892`. Test SSE with `bun run preview`.
+Vite buffers SSE. In dev mode, connect `EventSource` directly to Rust server at `:47892`. Test SSE with `cd apps/web && bun run preview`.
 
 ### Release Process
 
@@ -143,9 +174,12 @@ Use `./scripts/release.sh {patch|minor|major}` then push with tags. Also bump `C
 
 ### Testing
 
-- **Test only what changed.** Before running tests, check `git diff --name-only` to identify touched crates. Only run `cargo test -p claude-view-{crate}` for crates with actual changes. Never blanket-run `cargo test -p claude-view-core` (626 tests, ~60s) unless core was modified.
+- **Test only what changed.** Before running tests, check `git diff --name-only` to identify touched crates/apps.
+- **Rust:** Only run `cargo test -p claude-view-{crate}` for crates with actual changes. Never blanket-run `cargo test -p claude-view-core` (626 tests, ~60s) unless core was modified.
 - **Module-scoped filters** when only a few files changed: `cargo test -p claude-view-core parser::` instead of the full crate.
-- **Full workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
+- **Full Rust workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
+- **Web frontend:** `cd apps/web && bunx vitest run` (not `bun run test:client` -- that no longer exists).
+- **All workspaces:** `bun run test` runs `bunx turbo test` across all apps.
 
 ## UI/UX Rules
 

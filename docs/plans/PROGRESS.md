@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-02-24
+> **Last updated:** 2026-02-26
 
 ---
 
@@ -17,6 +17,7 @@
 
 ## Recently Completed
 
+- Monorepo Restructure (Turborepo + Bun workspaces: `apps/web`, `apps/mobile`, `apps/landing`, `packages/shared`, `packages/design-tokens`)
 - Custom Skill Registry (user-level custom skill discovery and registry auto-reindex)
 - JSONL Ground Truth Recovery (startup state derivation from JSONL, staleness hack removed)
 - Mission Control Phases A-D (monitoring, views, monitor mode, sub-agent viz, drilldown)
@@ -60,7 +61,7 @@
 | **Reliability Release** | **Pending** | Both |
 | **Star / Label Sessions** | **Pending** | Both |
 | **Session Backup** | **Pending** | Both |
-| **Monorepo Restructure** | **Deferred (next cycle)** | Both |
+| **Monorepo Restructure** | **DONE** | Both |
 | **Mobile Remote M1** | **Deferred (next cycle)** | Both |
 | Phase 5: Enterprise Team Layer | Not started | **Enterprise** |
 
@@ -88,8 +89,8 @@ Plans in `docs/plans/` (active work only):
 | `2026-02-24-star-label-sessions-design.md` | approved (concept) | Named bookmarks on sessions — CLI + every UI surface |
 | `2026-02-24-session-backup-design.md` | draft | Preserve sessions beyond Claude Code's 30-day retention |
 | `mission-control/` | in-progress | Phases A-D done, E-J pending (see `mission-control/PROGRESS.md`) |
-| `2026-02-25-monorepo-restructure-design.md` | deferred (next cycle) | Turborepo monorepo: `apps/web`, `apps/mobile`, `packages/shared` |
-| `2026-02-25-monorepo-restructure-impl.md` | deferred (next cycle) | 12 tasks: git mv web SPA, workspaces, Expo scaffold, landing page |
+| `2026-02-25-monorepo-restructure-design.md` | done | Turborepo monorepo: `apps/web`, `apps/mobile`, `packages/shared` |
+| `2026-02-25-monorepo-restructure-impl.md` | done | 12 tasks: git mv web SPA, workspaces, Expo scaffold, landing page |
 | `mobile-remote/2026-02-25-clawmini-mobile-m1-design.md` | deferred (next cycle) | Expo native app: live dashboard, keypair auth, dumb relay |
 | `mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md` | deferred (next cycle) | 12 tasks: relay fixes, pair screen, dashboard, deploy pipeline |
 
