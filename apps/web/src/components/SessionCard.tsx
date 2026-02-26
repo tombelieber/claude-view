@@ -32,6 +32,7 @@ interface SessionCardProps {
   session: ExtendedSessionInfo | null | undefined
   isSelected?: boolean
   projectDisplayName?: string | null
+  onResumeClick?: (sessionId: string) => void
 }
 
 /**
@@ -140,7 +141,12 @@ function formatRelativeTime(timestamp: number): string {
   }
 }
 
-export function SessionCard({ session, isSelected = false, projectDisplayName }: SessionCardProps) {
+export function SessionCard({
+  session,
+  isSelected = false,
+  projectDisplayName,
+  onResumeClick,
+}: SessionCardProps) {
   // Null safety: handle null/undefined session
   if (!session) {
     return (
@@ -436,17 +442,34 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           )}
         </div>
 
-        {/* Turn/message count — always visible for scanning session length */}
-        {((session.turnCount ?? 0) > 0 || (session.messageCount ?? 0) > 0) && (
-          <div className="flex items-center gap-1 text-xs text-gray-400 tabular-nums">
-            <MessageSquare className="w-3 h-3" />
-            <span>
-              {(session.turnCount ?? 0) > 0
-                ? `${session.turnCount} turn${session.turnCount !== 1 ? 's' : ''}`
-                : `${session.messageCount} msg${(session.messageCount ?? 0) !== 1 ? 's' : ''}`}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Resume button (only when handler provided) */}
+          {onResumeClick && session.id && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                onResumeClick(session.id)
+              }}
+              className="px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+            >
+              Resume
+            </button>
+          )}
+
+          {/* Turn/message count — always visible for scanning session length */}
+          {((session.turnCount ?? 0) > 0 || (session.messageCount ?? 0) > 0) && (
+            <div className="flex items-center gap-1 text-xs text-gray-400 tabular-nums">
+              <MessageSquare className="w-3 h-3" />
+              <span>
+                {(session.turnCount ?? 0) > 0
+                  ? `${session.turnCount} turn${session.turnCount !== 1 ? 's' : ''}`
+                  : `${session.messageCount} msg${(session.messageCount ?? 0) !== 1 ? 's' : ''}`}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </article>
   )
