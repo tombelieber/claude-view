@@ -33,11 +33,13 @@
     "release:major": "./scripts/release.sh major",
     "release:bump": "node -e \"const v=process.argv[1]; const fs=require('fs'); const p=JSON.parse(fs.readFileSync('npx-cli/package.json','utf8')); p.version=v; fs.writeFileSync('npx-cli/package.json', JSON.stringify(p,null,2)+'\\n'); console.log('npx-cli/package.json -> '+v);\"",
     "release:tag": "node -e \"const v=require('./npx-cli/package.json').version; require('child_process').execFileSync('git',['tag','v'+v],{stdio:'inherit'}); console.log('Tagged v'+v);\"",
-    "release:push": "git push && git push --tags"
+    "release:push": "git push && git push --tags",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "concurrently": "^9.1.2",
+    "lefthook": "^2.1.1",
     "turbo": "^2"
   }
 }
