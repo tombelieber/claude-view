@@ -95,13 +95,27 @@ impl Message {
         }
     }
 
-    pub fn user(content: impl Into<String>) -> Self { Self::new_with_role(Role::User, content) }
-    pub fn assistant(content: impl Into<String>) -> Self { Self::new_with_role(Role::Assistant, content) }
-    pub fn system(content: impl Into<String>) -> Self { Self::new_with_role(Role::System, content) }
-    pub fn tool_use(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolUse, content) }
-    pub fn tool_result(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolResult, content) }
-    pub fn progress(content: impl Into<String>) -> Self { Self::new_with_role(Role::Progress, content) }
-    pub fn summary(content: impl Into<String>) -> Self { Self::new_with_role(Role::Summary, content) }
+    pub fn user(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::User, content)
+    }
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Assistant, content)
+    }
+    pub fn system(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::System, content)
+    }
+    pub fn tool_use(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::ToolUse, content)
+    }
+    pub fn tool_result(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::ToolResult, content)
+    }
+    pub fn progress(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Progress, content)
+    }
+    pub fn summary(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Summary, content)
+    }
 
     pub fn with_timestamp(mut self, timestamp: impl Into<String>) -> Self {
         self.timestamp = Some(timestamp.into());
@@ -185,8 +199,16 @@ impl ParsedSession {
     }
 
     pub fn turn_count(&self) -> usize {
-        let user_count = self.messages.iter().filter(|m| m.role == Role::User).count();
-        let assistant_count = self.messages.iter().filter(|m| m.role == Role::Assistant).count();
+        let user_count = self
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::User)
+            .count();
+        let assistant_count = self
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::Assistant)
+            .count();
         user_count.min(assistant_count)
     }
 }
@@ -303,7 +325,7 @@ pub struct SessionInfo {
     #[serde(default)]
     pub lines_removed: u32,
     #[serde(default)]
-    pub loc_source: u8,  // 0 = not computed, 1 = tool-call estimate, 2 = git diff
+    pub loc_source: u8, // 0 = not computed, 1 = tool-call estimate, 2 = git diff
     #[serde(default)]
     pub parse_version: u32,
     // Theme 4: Classification
@@ -329,12 +351,12 @@ pub struct SessionInfo {
     // Wall-clock task time metrics
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
-    pub total_task_time_seconds: Option<u32>,    // sum of all turn wall-clock durations
+    pub total_task_time_seconds: Option<u32>, // sum of all turn wall-clock durations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
-    pub longest_task_seconds: Option<u32>,       // single longest turn (wall clock)
+    pub longest_task_seconds: Option<u32>, // single longest turn (wall clock)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub longest_task_preview: Option<String>,    // first 60 chars of the prompt that started it
+    pub longest_task_preview: Option<String>, // first 60 chars of the prompt that started it
 }
 
 impl SessionInfo {
@@ -879,14 +901,16 @@ mod tests {
         let counts = ToolCounts::default();
         assert!(counts.is_empty());
 
-        let counts = ToolCounts { edit: 1, ..Default::default() };
+        let counts = ToolCounts {
+            edit: 1,
+            ..Default::default()
+        };
         assert!(!counts.is_empty());
     }
 
     #[test]
     fn test_message_builders() {
-        let msg = Message::user("Hello")
-            .with_timestamp("2026-01-27T10:00:00Z");
+        let msg = Message::user("Hello").with_timestamp("2026-01-27T10:00:00Z");
 
         assert_eq!(msg.role, Role::User);
         assert_eq!(msg.content, "Hello");
@@ -895,8 +919,12 @@ mod tests {
 
     #[test]
     fn test_message_with_tools() {
-        let msg = Message::assistant("Let me help")
-            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2, input: None, category: None }]);
+        let msg = Message::assistant("Let me help").with_tools(vec![ToolCall {
+            name: "Read".to_string(),
+            count: 2,
+            input: None,
+            category: None,
+        }]);
 
         assert_eq!(msg.role, Role::Assistant);
         assert!(msg.tool_calls.is_some());
@@ -929,12 +957,27 @@ mod tests {
     #[test]
     fn test_role_serialization() {
         assert_eq!(serde_json::to_string(&Role::User).unwrap(), "\"user\"");
-        assert_eq!(serde_json::to_string(&Role::Assistant).unwrap(), "\"assistant\"");
-        assert_eq!(serde_json::to_string(&Role::ToolUse).unwrap(), "\"tool_use\"");
-        assert_eq!(serde_json::to_string(&Role::ToolResult).unwrap(), "\"tool_result\"");
+        assert_eq!(
+            serde_json::to_string(&Role::Assistant).unwrap(),
+            "\"assistant\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::ToolUse).unwrap(),
+            "\"tool_use\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::ToolResult).unwrap(),
+            "\"tool_result\""
+        );
         assert_eq!(serde_json::to_string(&Role::System).unwrap(), "\"system\"");
-        assert_eq!(serde_json::to_string(&Role::Progress).unwrap(), "\"progress\"");
-        assert_eq!(serde_json::to_string(&Role::Summary).unwrap(), "\"summary\"");
+        assert_eq!(
+            serde_json::to_string(&Role::Progress).unwrap(),
+            "\"progress\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::Summary).unwrap(),
+            "\"summary\""
+        );
     }
 
     #[test]
@@ -1024,10 +1067,13 @@ mod tests {
 
     #[test]
     fn test_message_with_thinking() {
-        let msg = Message::assistant("Here's the answer")
-            .with_thinking("Let me reason about this...");
+        let msg =
+            Message::assistant("Here's the answer").with_thinking("Let me reason about this...");
 
-        assert_eq!(msg.thinking, Some("Let me reason about this...".to_string()));
+        assert_eq!(
+            msg.thinking,
+            Some("Let me reason about this...".to_string())
+        );
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"thinking\":\"Let me reason about this...\""));
     }
@@ -1120,19 +1166,34 @@ mod tests {
 
     #[test]
     fn test_parse_model_id_anthropic_opus() {
-        assert_eq!(parse_model_id("claude-opus-4-5-20251101"), ("anthropic", "opus"));
-        assert_eq!(parse_model_id("claude-opus-4-20250514"), ("anthropic", "opus"));
+        assert_eq!(
+            parse_model_id("claude-opus-4-5-20251101"),
+            ("anthropic", "opus")
+        );
+        assert_eq!(
+            parse_model_id("claude-opus-4-20250514"),
+            ("anthropic", "opus")
+        );
     }
 
     #[test]
     fn test_parse_model_id_anthropic_sonnet() {
-        assert_eq!(parse_model_id("claude-sonnet-4-20250514"), ("anthropic", "sonnet"));
-        assert_eq!(parse_model_id("claude-sonnet-4-5-20260130"), ("anthropic", "sonnet"));
+        assert_eq!(
+            parse_model_id("claude-sonnet-4-20250514"),
+            ("anthropic", "sonnet")
+        );
+        assert_eq!(
+            parse_model_id("claude-sonnet-4-5-20260130"),
+            ("anthropic", "sonnet")
+        );
     }
 
     #[test]
     fn test_parse_model_id_anthropic_haiku() {
-        assert_eq!(parse_model_id("claude-haiku-4-20250514"), ("anthropic", "haiku"));
+        assert_eq!(
+            parse_model_id("claude-haiku-4-20250514"),
+            ("anthropic", "haiku")
+        );
     }
 
     #[test]
@@ -1158,7 +1219,10 @@ mod tests {
     #[test]
     fn test_parse_model_id_unknown() {
         assert_eq!(parse_model_id("llama-3-70b"), ("unknown", "llama-3-70b"));
-        assert_eq!(parse_model_id("mistral-large"), ("unknown", "mistral-large"));
+        assert_eq!(
+            parse_model_id("mistral-large"),
+            ("unknown", "mistral-large")
+        );
         assert_eq!(parse_model_id(""), ("unknown", ""));
     }
 

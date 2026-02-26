@@ -17,11 +17,10 @@ pub struct AppSettings {
 impl Database {
     /// Read current app settings.
     pub async fn get_app_settings(&self) -> DbResult<AppSettings> {
-        let row: (String, i64) = sqlx::query_as(
-            "SELECT llm_model, llm_timeout_secs FROM app_settings WHERE id = 1"
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let row: (String, i64) =
+            sqlx::query_as("SELECT llm_model, llm_timeout_secs FROM app_settings WHERE id = 1")
+                .fetch_one(self.pool())
+                .await?;
         Ok(AppSettings {
             llm_model: row.0,
             llm_timeout_secs: row.1,
@@ -84,7 +83,10 @@ mod tests {
     #[tokio::test]
     async fn test_update_both() {
         let db = Database::new_in_memory().await.unwrap();
-        let settings = db.update_app_settings(Some("opus"), Some(180)).await.unwrap();
+        let settings = db
+            .update_app_settings(Some("opus"), Some(180))
+            .await
+            .unwrap();
         assert_eq!(settings.llm_model, "opus");
         assert_eq!(settings.llm_timeout_secs, 180);
     }

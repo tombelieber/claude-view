@@ -2,11 +2,7 @@
 
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::Deserialize;
 
 use crate::{error::ApiError, state::AppState};
@@ -23,9 +19,7 @@ struct UpdateSettingsRequest {
 }
 
 /// GET /api/settings - Read current app settings.
-async fn get_settings(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<AppSettings>, ApiError> {
+async fn get_settings(State(state): State<Arc<AppState>>) -> Result<Json<AppSettings>, ApiError> {
     let settings = state
         .db
         .get_app_settings()
@@ -79,10 +73,14 @@ pub fn router() -> Router<Arc<AppState>> {
 pub async fn create_llm_provider(
     db: &claude_view_db::Database,
 ) -> Result<claude_view_core::llm::ClaudeCliProvider, ApiError> {
-    let settings = db.get_app_settings().await
+    let settings = db
+        .get_app_settings()
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to read LLM settings: {e}")))?;
-    Ok(claude_view_core::llm::ClaudeCliProvider::new(&settings.llm_model)
-        .with_timeout(settings.llm_timeout_secs.clamp(10, 300) as u64))
+    Ok(
+        claude_view_core::llm::ClaudeCliProvider::new(&settings.llm_model)
+            .with_timeout(settings.llm_timeout_secs.clamp(10, 300) as u64),
+    )
 }
 
 #[cfg(test)]
@@ -99,9 +97,7 @@ mod tests {
             .await
             .expect("in-memory DB");
         let state = AppState::new(db);
-        Router::new()
-            .nest("/api", router())
-            .with_state(state)
+        Router::new().nest("/api", router()).with_state(state)
     }
 
     #[tokio::test]
@@ -177,9 +173,7 @@ mod tests {
                     .method("PUT")
                     .uri("/api/settings")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"llmModel":"opus","llmTimeoutSecs":180}"#,
-                    ))
+                    .body(Body::from(r#"{"llmModel":"opus","llmTimeoutSecs":180}"#))
                     .unwrap(),
             )
             .await

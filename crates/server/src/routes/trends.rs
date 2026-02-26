@@ -17,9 +17,7 @@ use crate::state::AppState;
 /// - Total files edited
 /// - Avg re-edit rate
 /// - Commit link count
-pub async fn get_trends(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<WeekTrends>> {
+pub async fn get_trends(State(state): State<Arc<AppState>>) -> ApiResult<Json<WeekTrends>> {
     let trends = state.db.get_week_trends().await?;
     Ok(Json(trends))
 }
@@ -35,8 +33,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")

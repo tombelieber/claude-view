@@ -20,9 +20,7 @@ use ts_rs::TS;
 use crate::classify_state::ClassifyStatus;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use claude_view_core::classification::{
-    self, ClassificationInput, BATCH_SIZE,
-};
+use claude_view_core::classification::{self, ClassificationInput, BATCH_SIZE};
 use claude_view_core::llm::{ClassificationRequest, LlmProvider};
 
 // ============================================================================
@@ -195,9 +193,7 @@ async fn start_classification(
     };
 
     if session_count == 0 {
-        return Err(ApiError::BadRequest(
-            "No sessions to classify".to_string(),
-        ));
+        return Err(ApiError::BadRequest("No sessions to classify".to_string()));
     }
 
     let batch_size = BATCH_SIZE as i64;
@@ -219,14 +215,21 @@ async fn start_classification(
     }
 
     // Create the job in the database
-    let settings = state.db.get_app_settings().await.map_err(|e| {
-        ApiError::Internal(format!("Failed to read LLM settings: {e}"))
-    })?;
+    let settings = state
+        .db
+        .get_app_settings()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to read LLM settings: {e}")))?;
     let provider_name = "claude-cli";
     let model_name = settings.llm_model.clone();
     let db_job_id = state
         .db
-        .create_classification_job(session_count, provider_name, &model_name, Some(estimated_cost))
+        .create_classification_job(
+            session_count,
+            provider_name,
+            &model_name,
+            Some(estimated_cost),
+        )
         .await?;
 
     let job_id_str = format!("cls_{}", db_job_id);
@@ -260,9 +263,15 @@ async fn get_classification_status(
     let classify_state = &state.classify;
     let current_status = classify_state.status();
 
-    let total_sessions = state.db.count_all_sessions().await
+    let total_sessions = state
+        .db
+        .count_all_sessions()
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to count sessions: {e}")))?;
-    let classified_sessions = state.db.count_classified_sessions().await
+    let classified_sessions = state
+        .db
+        .count_classified_sessions()
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to count classified sessions: {e}")))?;
     let unclassified_sessions = total_sessions - classified_sessions;
 
@@ -307,7 +316,11 @@ async fn get_classification_status(
 
     let job_id = if current_status == ClassifyStatus::Running {
         let id = classify_state.db_job_id();
-        if id > 0 { Some(id) } else { None }
+        if id > 0 {
+            Some(id)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -666,7 +679,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 
         // Batch write to database (single transaction)
         let batch_persisted = if !batch_updates.is_empty() {
-            match db.batch_update_session_classifications(&batch_updates).await {
+            match db
+                .batch_update_session_classifications(&batch_updates)
+                .await
+            {
                 Ok(_) => true,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to persist batch classifications");
@@ -736,7 +752,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/classify", post(start_classification))
-        .route("/classify/single/{session_id}", post(classify_single_session))
+        .route(
+            "/classify/single/{session_id}",
+            post(classify_single_session),
+        )
         .route("/classify/status", get(get_classification_status))
         .route("/classify/stream", get(stream_classification))
         .route("/classify/cancel", post(cancel_classification))
@@ -819,15 +838,13 @@ mod tests {
     async fn test_start_classification_empty_db() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -849,15 +866,13 @@ mod tests {
     async fn test_get_status_idle() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -883,15 +898,13 @@ mod tests {
     async fn test_cancel_when_not_running() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -928,15 +941,13 @@ mod tests {
     async fn test_classify_single_session_not_found() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(

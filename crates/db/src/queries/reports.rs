@@ -111,9 +111,41 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
-                id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
-            })
+            .map(
+                |(
+                    id,
+                    report_type,
+                    date_start,
+                    date_end,
+                    content_md,
+                    context_digest,
+                    session_count,
+                    project_count,
+                    total_duration_secs,
+                    total_cost_cents,
+                    generation_ms,
+                    generation_model,
+                    generation_input_tokens,
+                    generation_output_tokens,
+                    created_at,
+                )| ReportRow {
+                    id,
+                    report_type,
+                    date_start,
+                    date_end,
+                    content_md,
+                    context_digest,
+                    session_count,
+                    project_count,
+                    total_duration_secs,
+                    total_cost_cents,
+                    generation_ms,
+                    generation_model,
+                    generation_input_tokens,
+                    generation_output_tokens,
+                    created_at,
+                },
+            )
             .collect())
     }
 
@@ -126,9 +158,41 @@ impl Database {
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|(id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at)| ReportRow {
-            id, report_type, date_start, date_end, content_md, context_digest, session_count, project_count, total_duration_secs, total_cost_cents, generation_ms, generation_model, generation_input_tokens, generation_output_tokens, created_at,
-        }))
+        Ok(row.map(
+            |(
+                id,
+                report_type,
+                date_start,
+                date_end,
+                content_md,
+                context_digest,
+                session_count,
+                project_count,
+                total_duration_secs,
+                total_cost_cents,
+                generation_ms,
+                generation_model,
+                generation_input_tokens,
+                generation_output_tokens,
+                created_at,
+            )| ReportRow {
+                id,
+                report_type,
+                date_start,
+                date_end,
+                content_md,
+                context_digest,
+                session_count,
+                project_count,
+                total_duration_secs,
+                total_cost_cents,
+                generation_ms,
+                generation_model,
+                generation_input_tokens,
+                generation_output_tokens,
+                created_at,
+            },
+        ))
     }
 
     /// Delete a report by id. Returns true if a row was deleted.
@@ -288,7 +352,10 @@ impl Database {
 
         let projects = project_rows
             .into_iter()
-            .map(|(name, session_count)| ProjectPreview { name, session_count })
+            .map(|(name, session_count)| ProjectPreview {
+                name,
+                session_count,
+            })
             .collect();
 
         // Estimate cost from total tokens using blended rate (~$2.50/M tokens = 0.00025 cents/token)
@@ -313,7 +380,21 @@ mod tests {
     async fn test_insert_and_get_report() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("daily", "2026-02-21", "2026-02-21", "- Shipped search", None, 8, 3, 15120, 680, Some(14200), None, None, None)
+            .insert_report(
+                "daily",
+                "2026-02-21",
+                "2026-02-21",
+                "- Shipped search",
+                None,
+                8,
+                3,
+                15120,
+                680,
+                Some(14200),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         assert!(id > 0);
@@ -327,8 +408,40 @@ mod tests {
     #[tokio::test]
     async fn test_list_reports_newest_first() {
         let db = Database::new_in_memory().await.unwrap();
-        db.insert_report("daily", "2026-02-20", "2026-02-20", "day 1", None, 5, 2, 3600, 100, None, None, None, None).await.unwrap();
-        db.insert_report("daily", "2026-02-21", "2026-02-21", "day 2", None, 8, 3, 7200, 200, None, None, None, None).await.unwrap();
+        db.insert_report(
+            "daily",
+            "2026-02-20",
+            "2026-02-20",
+            "day 1",
+            None,
+            5,
+            2,
+            3600,
+            100,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        db.insert_report(
+            "daily",
+            "2026-02-21",
+            "2026-02-21",
+            "day 2",
+            None,
+            8,
+            3,
+            7200,
+            200,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         let reports = db.list_reports().await.unwrap();
         assert_eq!(reports.len(), 2);
@@ -339,7 +452,24 @@ mod tests {
     #[tokio::test]
     async fn test_delete_report() {
         let db = Database::new_in_memory().await.unwrap();
-        let id = db.insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None, None, None, None).await.unwrap();
+        let id = db
+            .insert_report(
+                "weekly",
+                "2026-02-17",
+                "2026-02-21",
+                "week summary",
+                None,
+                32,
+                5,
+                64800,
+                2450,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
 
         assert!(db.delete_report(id).await.unwrap());
         assert!(db.get_report(id).await.unwrap().is_none());
@@ -407,14 +537,30 @@ mod tests {
     #[tokio::test]
     async fn test_insert_report_with_generation_metadata() {
         let db = Database::new_in_memory().await.unwrap();
-        let id = db.insert_report(
-            "daily", "2026-02-21", "2026-02-21", "content", None,
-            8, 3, 15120, 680, Some(14200),
-            Some("claude-haiku-4-5-20251001"), Some(1200), Some(340),
-        ).await.unwrap();
+        let id = db
+            .insert_report(
+                "daily",
+                "2026-02-21",
+                "2026-02-21",
+                "content",
+                None,
+                8,
+                3,
+                15120,
+                680,
+                Some(14200),
+                Some("claude-haiku-4-5-20251001"),
+                Some(1200),
+                Some(340),
+            )
+            .await
+            .unwrap();
 
         let report = db.get_report(id).await.unwrap().unwrap();
-        assert_eq!(report.generation_model.as_deref(), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(
+            report.generation_model.as_deref(),
+            Some("claude-haiku-4-5-20251001")
+        );
         assert_eq!(report.generation_input_tokens, Some(1200));
         assert_eq!(report.generation_output_tokens, Some(340));
     }

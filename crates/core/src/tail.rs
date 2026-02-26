@@ -98,10 +98,7 @@ pub async fn tail_lines(path: &Path, n: usize) -> io::Result<Vec<String>> {
     // Take only the last n lines.
     let start = all_lines.len().saturating_sub(n);
 
-    Ok(all_lines[start..]
-        .iter()
-        .map(|s| s.to_string())
-        .collect())
+    Ok(all_lines[start..].iter().map(|s| s.to_string()).collect())
 }
 
 #[cfg(test)]

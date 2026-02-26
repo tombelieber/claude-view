@@ -3,7 +3,7 @@
 //! [`IndexingState`] uses atomics so the indexing background task can update
 //! progress counters while the HTTP handler reads them without contention.
 
-use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::RwLock;
 
 /// Which phase the indexer is currently in.

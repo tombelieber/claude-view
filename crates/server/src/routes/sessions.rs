@@ -8,11 +8,11 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use claude_view_core::accumulator::SessionAccumulator;
 use claude_view_core::{ParsedSession, SessionInfo};
 use claude_view_db::git_correlation::GitCommit;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -252,13 +252,21 @@ pub async fn list_sessions(
             None
         } else {
             // Try to get search index
-            let search_index = state.search_index.read().ok().and_then(|guard| guard.clone());
+            let search_index = state
+                .search_index
+                .read()
+                .ok()
+                .and_then(|guard| guard.clone());
             match search_index {
                 Some(idx) => {
                     const TANTIVY_SESSION_LIMIT: usize = 10_000;
                     match idx.search(q_trimmed, None, TANTIVY_SESSION_LIMIT, 0) {
                         Ok(response) => {
-                            let ids: Vec<String> = response.sessions.into_iter().map(|s| s.session_id).collect();
+                            let ids: Vec<String> = response
+                                .sessions
+                                .into_iter()
+                                .map(|s| s.session_id)
+                                .collect();
                             if ids.len() >= TANTIVY_SESSION_LIMIT {
                                 tracing::warn!(
                                     query = q_trimmed,
@@ -284,8 +292,12 @@ pub async fn list_sessions(
     let params = claude_view_db::SessionFilterParams {
         q: query.q,
         search_session_ids,
-        branches: query.branches.map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
-        models: query.models.map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
+        branches: query
+            .branches
+            .map(|s| s.split(',').map(|b| b.trim().to_string()).collect()),
+        models: query
+            .models
+            .map(|s| s.split(',').map(|m| m.trim().to_string()).collect()),
         has_commits,
         has_skills: query.has_skills,
         min_duration,
@@ -420,12 +432,11 @@ pub async fn get_session_rich(
     let pricing = state.pricing.read().expect("pricing lock poisoned").clone();
 
     // 3. Parse JSONL through SessionAccumulator (blocking I/O → spawn_blocking)
-    let rich_data = tokio::task::spawn_blocking(move || {
-        SessionAccumulator::from_file(&path, &pricing)
-    })
-    .await
-    .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?
-    .map_err(|e| ApiError::Internal(format!("Parse error: {e}")))?;
+    let rich_data =
+        tokio::task::spawn_blocking(move || SessionAccumulator::from_file(&path, &pricing))
+            .await
+            .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?
+            .map_err(|e| ApiError::Internal(format!("Parse error: {e}")))?;
 
     Ok(Json(rich_data))
 }
@@ -485,9 +496,7 @@ pub async fn get_session_messages(
 ///
 /// Returns a sorted array of unique branch names found in the database.
 /// Excludes sessions without a branch (NULL git_branch).
-pub async fn list_branches(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<Vec<String>>> {
+pub async fn list_branches(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<String>>> {
     // Fetch all projects with sessions
     let projects = state.db.list_projects().await?;
 
@@ -567,7 +576,11 @@ pub async fn session_activity(
 ) -> ApiResult<Json<SessionActivityResponse>> {
     let (activity, bucket) = state.db.session_activity_histogram().await?;
     let total = state.db.get_session_count().await? as usize;
-    Ok(Json(SessionActivityResponse { activity, bucket, total }))
+    Ok(Json(SessionActivityResponse {
+        activity,
+        bucket,
+        total,
+    }))
 }
 
 /// Create the sessions routes router.
@@ -582,7 +595,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/rich", get(get_session_rich))
         .route("/sessions/{id}/hook-events", get(get_session_hook_events))
         .route("/session/{project_dir}/{session_id}", get(get_session))
-        .route("/session/{project_dir}/{session_id}/messages", get(get_session_messages))
+        .route(
+            "/session/{project_dir}/{session_id}/messages",
+            get(get_session_messages),
+        )
         .route("/branches", get(list_branches))
 }
 
@@ -593,10 +609,10 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use std::path::PathBuf;
-    use tower::ServiceExt;
     use claude_view_core::{Message, SessionMetadata, ToolCounts};
     use claude_view_db::Database;
+    use std::path::PathBuf;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -765,7 +781,10 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["details"].as_str().unwrap().contains("invalid"));
-        assert!(json["details"].as_str().unwrap().contains("all, has_commits"));
+        assert!(json["details"]
+            .as_str()
+            .unwrap()
+            .contains("all, has_commits"));
     }
 
     #[tokio::test]
@@ -1145,7 +1164,11 @@ mod tests {
 
         let app = build_app(db);
         // Filter for sessions between Feb 2024 and Nov 2024
-        let (status, body) = do_get(app, "/api/sessions?time_after=1710000000&time_before=1730000000").await;
+        let (status, body) = do_get(
+            app,
+            "/api/sessions?time_after=1710000000&time_before=1730000000",
+        )
+        .await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -1183,7 +1206,11 @@ mod tests {
 
         let app = build_app(db);
         // Filter: main branch AND has commits AND duration >= 30 mins
-        let (status, body) = do_get(app, "/api/sessions?branches=main&has_commits=true&min_duration=1800").await;
+        let (status, body) = do_get(
+            app,
+            "/api/sessions?branches=main&has_commits=true&min_duration=1800",
+        )
+        .await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -1255,10 +1282,7 @@ mod tests {
     fn test_paginated_messages_serialization() {
         use claude_view_core::PaginatedMessages;
         let result = PaginatedMessages {
-            messages: vec![
-                Message::user("Hello"),
-                Message::assistant("Hi"),
-            ],
+            messages: vec![Message::user("Hello"), Message::assistant("Hi")],
             total: 100,
             offset: 0,
             limit: 2,
@@ -1340,7 +1364,9 @@ mod tests {
         let db = test_db().await;
         let mut session = make_session("parsed-test", "proj", 1700000000);
         session.file_path = "/nonexistent/path.jsonl".to_string();
-        db.insert_session(&session, "proj", "Project").await.unwrap();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/sessions/parsed-test/parsed").await;
@@ -1357,18 +1383,26 @@ mod tests {
         std::fs::write(
             &session_file,
             r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut session = make_session("parsed-ok", "proj", 1700000000);
         session.file_path = session_file.to_str().unwrap().to_string();
-        db.insert_session(&session, "proj", "Project").await.unwrap();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/sessions/parsed-ok/parsed").await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let messages = json["messages"].as_array().expect("Response should contain messages array");
-        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
+        let messages = json["messages"]
+            .as_array()
+            .expect("Response should contain messages array");
+        assert!(
+            !messages.is_empty(),
+            "Fixture should produce at least one parsed message"
+        );
     }
 
     // ========================================================================
@@ -1379,7 +1413,8 @@ mod tests {
     async fn test_get_session_messages_by_id_not_in_db() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) = do_get(app, "/api/sessions/nonexistent/messages?limit=10&offset=0").await;
+        let (status, body) =
+            do_get(app, "/api/sessions/nonexistent/messages?limit=10&offset=0").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["error"], "Session not found");
@@ -1390,7 +1425,9 @@ mod tests {
         let db = test_db().await;
         let mut session = make_session("msg-test", "proj", 1700000000);
         session.file_path = "/nonexistent/path.jsonl".to_string();
-        db.insert_session(&session, "proj", "Project").await.unwrap();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/sessions/msg-test/messages?limit=10&offset=0").await;
@@ -1407,19 +1444,30 @@ mod tests {
         std::fs::write(
             &session_file,
             r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut session = make_session("msg-ok", "proj", 1700000000);
         session.file_path = session_file.to_str().unwrap().to_string();
-        db.insert_session(&session, "proj", "Project").await.unwrap();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/sessions/msg-ok/messages?limit=10&offset=0").await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let messages = json["messages"].as_array().expect("Response should contain messages array");
-        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
-        assert!(json["total"].as_u64().unwrap() > 0, "Total should reflect the fixture message count");
+        let messages = json["messages"]
+            .as_array()
+            .expect("Response should contain messages array");
+        assert!(
+            !messages.is_empty(),
+            "Fixture should produce at least one parsed message"
+        );
+        assert!(
+            json["total"].as_u64().unwrap() > 0,
+            "Total should reflect the fixture message count"
+        );
     }
 
     // ========================================================================
@@ -1434,19 +1482,27 @@ mod tests {
         std::fs::write(
             &session_file,
             r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut session = make_session("legacy-ok", "proj", 1700000000);
         session.file_path = session_file.to_str().unwrap().to_string();
-        db.insert_session(&session, "proj", "Project").await.unwrap();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         // Legacy endpoint: project_dir is now ignored, path comes from DB
         let (status, body) = do_get(app, "/api/session/proj/legacy-ok").await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let messages = json["messages"].as_array().expect("should contain messages");
-        assert!(!messages.is_empty(), "Fixture should produce at least one parsed message");
+        let messages = json["messages"]
+            .as_array()
+            .expect("should contain messages");
+        assert!(
+            !messages.is_empty(),
+            "Fixture should produce at least one parsed message"
+        );
     }
 
     // ========================================================================
@@ -1457,7 +1513,9 @@ mod tests {
     async fn test_session_activity() {
         let db = test_db().await;
         let session = make_session("sess-activity", "project-a", 1700000000);
-        db.insert_session(&session, "project-a", "Project A").await.unwrap();
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/sessions/activity").await;
@@ -1537,13 +1595,18 @@ mod tests {
         assert_eq!(hook_events[1]["eventName"], "PreToolUse");
         assert_eq!(hook_events[1]["toolName"], "Bash");
         assert_eq!(hook_events[1]["label"], "Running: git status");
-        assert!(hook_events[1]["context"].as_str().unwrap().contains("git status"));
+        assert!(hook_events[1]["context"]
+            .as_str()
+            .unwrap()
+            .contains("git status"));
     }
 
     #[tokio::test]
     async fn test_get_hook_events_from_live_session() {
+        use crate::live::state::{
+            AgentState, AgentStateGroup, HookEvent, LiveSession, SessionStatus,
+        };
         use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
-        use crate::live::state::{AgentState, AgentStateGroup, HookEvent, LiveSession, SessionStatus};
 
         let db = test_db().await;
 

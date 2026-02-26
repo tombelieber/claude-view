@@ -148,8 +148,12 @@ pub fn create_app_full(
     let mut initial_pricing = claude_view_db::default_pricing();
     claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
     let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
-    let (manager, live_sessions, live_tx) =
-        live::manager::LiveSessionManager::start(pricing.clone(), db.clone(), search_index.clone(), registry.clone());
+    let (manager, live_sessions, live_tx) = live::manager::LiveSessionManager::start(
+        pricing.clone(),
+        db.clone(),
+        search_index.clone(),
+        registry.clone(),
+    );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
     live::hook_registrar::register(
@@ -229,7 +233,10 @@ async fn refresh_pricing(
             }
 
             *pricing.write().expect("pricing lock poisoned") = merged;
-            tracing::info!(models = count, "Pricing refreshed from litellm + cached to SQLite");
+            tracing::info!(
+                models = count,
+                "Pricing refreshed from litellm + cached to SQLite"
+            );
         }
         Err(e) => {
             tracing::warn!("litellm fetch failed: {e}");

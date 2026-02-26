@@ -120,10 +120,7 @@ impl SessionAccumulator {
         // Track last cache hit time from Anthropic API response tokens
         // -----------------------------------------------------------------
         if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
-            || line
-                .cache_creation_tokens
-                .map(|v| v > 0)
-                .unwrap_or(false)
+            || line.cache_creation_tokens.map(|v| v > 0).unwrap_or(false)
         {
             if let Some(ref ts) = line.timestamp {
                 self.last_cache_hit_at = parse_timestamp_to_unix(ts);
@@ -718,11 +715,13 @@ mod tests {
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
         spawn_line.timestamp = Some("2026-02-20T10:00:00Z".to_string());
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search codebase".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search codebase".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents.len(), 1);
@@ -761,11 +760,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01BG".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Backend work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01BG".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Backend work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
 
@@ -802,11 +803,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01BG2".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Backend work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01BG2".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Backend work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // async_launched (captures agentId)
@@ -831,11 +834,10 @@ mod tests {
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
         notif_line.timestamp = Some("2026-02-20T11:00:00Z".to_string());
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "ab897bc".to_string(),
-                status: "completed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "ab897bc".to_string(),
+            status: "completed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Complete);
@@ -851,11 +853,13 @@ mod tests {
         // Spawn + async_launched
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01FAIL".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Failing work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01FAIL".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Failing work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         let mut launch_line = empty_line();
@@ -876,11 +880,10 @@ mod tests {
         // <task-notification> failed
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "afailed1".to_string(),
-                status: "failed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "afailed1".to_string(),
+            status: "failed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
@@ -894,11 +897,13 @@ mod tests {
         // Spawn + async_launched
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01KILL".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Killed work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01KILL".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Killed work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         let mut launch_line = empty_line();
@@ -919,11 +924,10 @@ mod tests {
         // <task-notification> killed
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "akilled1".to_string(),
-                status: "killed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "akilled1".to_string(),
+            status: "killed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
@@ -936,11 +940,12 @@ mod tests {
 
         let mut line = empty_line();
         line.line_type = LineType::Assistant;
-        line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search".to_string(),
-        });
+        line.sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search".to_string(),
+            });
 
         // Process same spawn twice (replay resilience)
         acc.process_line(&line, 0, &pricing);
@@ -957,11 +962,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // Progress event
@@ -975,10 +982,7 @@ mod tests {
         acc.process_line(&progress_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].agent_id.as_deref(), Some("a951849"));
-        assert_eq!(
-            acc.sub_agents[0].current_activity.as_deref(),
-            Some("Read")
-        );
+        assert_eq!(acc.sub_agents[0].current_activity.as_deref(), Some("Read"));
     }
 
     #[test]
@@ -1282,11 +1286,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_cost".to_string(),
-            agent_type: "code".to_string(),
-            description: "Write code".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_cost".to_string(),
+                agent_type: "code".to_string(),
+                description: "Write code".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // Complete with token usage

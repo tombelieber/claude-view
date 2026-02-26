@@ -142,19 +142,31 @@ mod tests {
     #[test]
     fn test_effect_size_small() {
         let score = calculate_effect_size(0.05);
-        assert!((score - 0.1).abs() < 0.01, "5% diff should be ~0.1, got {}", score);
+        assert!(
+            (score - 0.1).abs() < 0.01,
+            "5% diff should be ~0.1, got {}",
+            score
+        );
     }
 
     #[test]
     fn test_effect_size_medium() {
         let score = calculate_effect_size(0.15);
-        assert!(score > 0.2 && score < 0.5, "15% diff should be medium, got {}", score);
+        assert!(
+            score > 0.2 && score < 0.5,
+            "15% diff should be medium, got {}",
+            score
+        );
     }
 
     #[test]
     fn test_effect_size_large() {
         let score = calculate_effect_size(0.35);
-        assert!(score > 0.5 && score < 0.9, "35% diff should be large, got {}", score);
+        assert!(
+            score > 0.5 && score < 0.9,
+            "35% diff should be large, got {}",
+            score
+        );
     }
 
     #[test]
@@ -183,14 +195,22 @@ mod tests {
     fn test_sample_confidence_at_threshold() {
         let score = calculate_sample_confidence(50, 50);
         // At exactly threshold, ln(1) = 0, so 1 - 1/(1+0) = 0
-        assert!((score - 0.0).abs() < 0.01, "At threshold should be ~0, got {}", score);
+        assert!(
+            (score - 0.0).abs() < 0.01,
+            "At threshold should be ~0, got {}",
+            score
+        );
     }
 
     #[test]
     fn test_sample_confidence_double_threshold() {
         let score = calculate_sample_confidence(100, 50);
         // ln(2) ~= 0.693, 1 - 1/(1+0.693) = 1 - 0.59 = 0.41
-        assert!(score > 0.3 && score < 0.6, "2x threshold should be medium, got {}", score);
+        assert!(
+            score > 0.3 && score < 0.6,
+            "2x threshold should be medium, got {}",
+            score
+        );
     }
 
     #[test]

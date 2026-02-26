@@ -9,14 +9,14 @@ use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
 use crate::terminal_state::TerminalConnectionManager;
+use claude_view_core::Registry;
+use claude_view_db::{Database, ModelPricing};
+use claude_view_search::SearchIndex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::broadcast;
-use claude_view_core::Registry;
-use claude_view_db::{Database, ModelPricing};
-use claude_view_search::SearchIndex;
 
 /// Type alias for the shared registry holder.
 ///
@@ -73,9 +73,11 @@ pub struct AppState {
     pub shutdown: tokio::sync::watch::Receiver<bool>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
     /// Key: session_id. Created on demand when a WS connects, cleaned up on SessionEnd.
-    pub hook_event_channels: Arc<tokio::sync::RwLock<
-        HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
-    >>,
+    pub hook_event_channels: Arc<
+        tokio::sync::RwLock<
+            HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
+        >,
+    >,
 }
 
 impl AppState {

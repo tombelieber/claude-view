@@ -1,8 +1,10 @@
 // crates/core/src/llm/provider.rs
 //! LlmProvider trait defining the interface for LLM integrations.
 
+use super::types::{
+    ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError,
+};
 use async_trait::async_trait;
-use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError};
 
 /// Trait for LLM providers that can classify sessions.
 ///
@@ -13,7 +15,10 @@ use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequ
 pub trait LlmProvider: Send + Sync {
     /// Classify a session's first prompt into the category taxonomy.
     /// Used by: AI Fluency Score (Theme 4). DO NOT REMOVE.
-    async fn classify(&self, request: ClassificationRequest) -> Result<ClassificationResponse, LlmError>;
+    async fn classify(
+        &self,
+        request: ClassificationRequest,
+    ) -> Result<ClassificationResponse, LlmError>;
 
     /// Run a general-purpose completion with system + user prompt.
     /// Used by: Intelligent Session States (pause classification), future features.

@@ -298,8 +298,7 @@ impl LightSession {
     fn into_session_info(self) -> SessionInfo {
         let files_edited: Vec<String> =
             serde_json::from_str(&self.files_edited).unwrap_or_default();
-        let files_read: Vec<String> =
-            serde_json::from_str(&self.files_read).unwrap_or_default();
+        let files_read: Vec<String> = serde_json::from_str(&self.files_read).unwrap_or_default();
 
         SessionInfo {
             id: self.id,
@@ -425,7 +424,11 @@ pub async fn get_insights(
     // 4. Filter by categories if specified
     if let Some(ref cats) = query.categories {
         let allowed: Vec<&str> = cats.split(',').map(|s| s.trim()).collect();
-        all_insights.retain(|i| allowed.iter().any(|c| i.category.to_lowercase().contains(&c.to_lowercase())));
+        all_insights.retain(|i| {
+            allowed
+                .iter()
+                .any(|c| i.category.to_lowercase().contains(&c.to_lowercase()))
+        });
     }
 
     let patterns_evaluated = all_insights.len() as u32;
@@ -662,9 +665,7 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
 }
 
 /// Get classification status from the database.
-async fn get_classification_status(
-    pool: &sqlx::SqlitePool,
-) -> ApiResult<ClassificationCoverage> {
+async fn get_classification_status(pool: &sqlx::SqlitePool) -> ApiResult<ClassificationCoverage> {
     let row: (i64, i64) = sqlx::query_as(
         r#"
         SELECT
@@ -790,16 +791,18 @@ async fn fetch_category_counts(
 
     Ok(rows
         .into_iter()
-        .map(|(l1, l2, l3, count, reedit, dur, prompts, commit)| CategoryCountRow {
-            category_l1: l1,
-            category_l2: l2,
-            category_l3: l3,
-            count: count as u32,
-            avg_reedit_rate: reedit.unwrap_or(0.0),
-            avg_duration: dur.unwrap_or(0.0) as u32,
-            avg_prompts: prompts.unwrap_or(0.0),
-            commit_rate: commit.unwrap_or(0.0),
-        })
+        .map(
+            |(l1, l2, l3, count, reedit, dur, prompts, commit)| CategoryCountRow {
+                category_l1: l1,
+                category_l2: l2,
+                category_l3: l3,
+                count: count as u32,
+                avg_reedit_rate: reedit.unwrap_or(0.0),
+                avg_duration: dur.unwrap_or(0.0) as u32,
+                avg_prompts: prompts.unwrap_or(0.0),
+                commit_rate: commit.unwrap_or(0.0),
+            },
+        )
         .collect())
 }
 
@@ -934,8 +937,7 @@ fn build_category_tree(counts: &[CategoryCountRow], total: u32) -> Vec<CategoryN
         l2_children.sort_by(|a, b| b.count.cmp(&a.count));
 
         // Calculate L1 aggregates
-        let (avg_reedit, avg_dur, avg_prompts, commit_rate) =
-            aggregate_category_metrics(l1_counts);
+        let (avg_reedit, avg_dur, avg_prompts, commit_rate) = aggregate_category_metrics(l1_counts);
 
         result.push(CategoryNode {
             id: l1_name.clone(),
@@ -1047,7 +1049,12 @@ fn aggregate_category_metrics(counts: &[&CategoryCountRow]) -> (f64, u32, f64, f
         .sum::<f64>()
         / total_f;
 
-    (weighted_reedit, weighted_dur as u32, weighted_prompts, weighted_commit)
+    (
+        weighted_reedit,
+        weighted_dur as u32,
+        weighted_prompts,
+        weighted_commit,
+    )
 }
 
 // ============================================================================
@@ -1077,7 +1084,13 @@ fn default_granularity() -> String {
     "week".to_string()
 }
 
-const VALID_METRICS: &[&str] = &["reedit_rate", "sessions", "lines", "cost_per_line", "prompts"];
+const VALID_METRICS: &[&str] = &[
+    "reedit_rate",
+    "sessions",
+    "lines",
+    "cost_per_line",
+    "prompts",
+];
 const VALID_TREND_RANGES: &[&str] = &["3mo", "6mo", "1yr", "all"];
 const VALID_GRANULARITIES: &[&str] = &["day", "week", "month"];
 
@@ -1532,9 +1545,18 @@ pub async fn get_benchmarks(
     let month_name = format!(
         "{} {}",
         match now_dt.month() {
-            1 => "January", 2 => "February", 3 => "March", 4 => "April",
-            5 => "May", 6 => "June", 7 => "July", 8 => "August",
-            9 => "September", 10 => "October", 11 => "November", 12 => "December",
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
             _ => "Unknown",
         },
         now_dt.year()
@@ -1583,9 +1605,15 @@ fn bench_progress_insight(
 
     let mut parts = Vec::new();
     if imp.reedit_rate < -30.0 {
-        parts.push(format!("You've cut re-edits by {:.0}%", imp.reedit_rate.abs()));
+        parts.push(format!(
+            "You've cut re-edits by {:.0}%",
+            imp.reedit_rate.abs()
+        ));
     } else if imp.reedit_rate < -10.0 {
-        parts.push(format!("Re-edit rate improved by {:.0}%", imp.reedit_rate.abs()));
+        parts.push(format!(
+            "Re-edit rate improved by {:.0}%",
+            imp.reedit_rate.abs()
+        ));
     }
     if imp.commit_rate > 20.0 {
         parts.push(format!("commit rate up {:.0}%", imp.commit_rate));
@@ -1597,7 +1625,10 @@ fn bench_progress_insight(
     if parts.is_empty() {
         "Your metrics are stable -- consistency is a strength!".to_string()
     } else {
-        format!("{} -- your prompts are significantly more effective than when you started", parts.join(" and "))
+        format!(
+            "{} -- your prompts are significantly more effective than when you started",
+            parts.join(" and ")
+        )
     }
 }
 
@@ -1621,24 +1652,49 @@ fn bench_top_wins(
     let mut wins = Vec::new();
 
     if let Some(ref imp) = progress.improvement {
-        if imp.reedit_rate < -20.0 { wins.push(format!("Re-edit rate improved by {:.0}%", imp.reedit_rate.abs())); }
-        if imp.commit_rate > 20.0 { wins.push(format!("Commit rate up {:.0}%", imp.commit_rate)); }
-        if imp.prompts_per_task < -15.0 { wins.push(format!("Prompts per task reduced by {:.0}%", imp.prompts_per_task.abs())); }
+        if imp.reedit_rate < -20.0 {
+            wins.push(format!(
+                "Re-edit rate improved by {:.0}%",
+                imp.reedit_rate.abs()
+            ));
+        }
+        if imp.commit_rate > 20.0 {
+            wins.push(format!("Commit rate up {:.0}%", imp.commit_rate));
+        }
+        if imp.prompts_per_task < -15.0 {
+            wins.push(format!(
+                "Prompts per task reduced by {:.0}%",
+                imp.prompts_per_task.abs()
+            ));
+        }
     }
 
-    let excellent_count = categories.iter().filter(|c| c.verdict == CV::Excellent).count();
+    let excellent_count = categories
+        .iter()
+        .filter(|c| c.verdict == CV::Excellent)
+        .count();
     if excellent_count > 0 {
-        wins.push(format!("{} categor{} rated excellent", excellent_count, if excellent_count == 1 { "y" } else { "ies" }));
+        wins.push(format!(
+            "{} categor{} rated excellent",
+            excellent_count,
+            if excellent_count == 1 { "y" } else { "ies" }
+        ));
     }
 
     if let Some(best) = skills.first() {
         if best.impact_on_reedit < -20.0 {
-            wins.push(format!("{} skill reduced re-edits by {:.0}%", best.skill, best.impact_on_reedit.abs()));
+            wins.push(format!(
+                "{} skill reduced re-edits by {:.0}%",
+                best.skill,
+                best.impact_on_reedit.abs()
+            ));
         }
     }
 
     wins.truncate(3);
-    if wins.is_empty() { wins.push("Keep using Claude Code to build your track record".to_string()); }
+    if wins.is_empty() {
+        wins.push("Keep using Claude Code to build your track record".to_string());
+    }
     wins
 }
 
@@ -1647,10 +1703,18 @@ fn bench_focus_areas(categories: &[claude_view_core::CategoryPerformance]) -> Ve
     let mut areas: Vec<String> = categories
         .iter()
         .filter(|c| c.verdict == CV::NeedsWork)
-        .map(|c| format!("{} sessions have high re-edit rate ({:.2})", c.category.replace('_', " "), c.reedit_rate))
+        .map(|c| {
+            format!(
+                "{} sessions have high re-edit rate ({:.2})",
+                c.category.replace('_', " "),
+                c.reedit_rate
+            )
+        })
         .collect();
     areas.truncate(3);
-    if areas.is_empty() { areas.push("All categories performing well -- maintain your current approach".to_string()); }
+    if areas.is_empty() {
+        areas.push("All categories performing well -- maintain your current approach".to_string());
+    }
     areas
 }
 
@@ -1677,8 +1741,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -1725,7 +1789,10 @@ mod tests {
         // patterns should be empty arrays
         assert_eq!(json["patterns"]["high"].as_array().unwrap().len(), 0);
         assert_eq!(json["patterns"]["medium"].as_array().unwrap().len(), 0);
-        assert_eq!(json["patterns"]["observations"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            json["patterns"]["observations"].as_array().unwrap().len(),
+            0
+        );
 
         // classification status
         assert_eq!(json["classificationStatus"]["total"], 0);
@@ -1803,7 +1870,10 @@ mod tests {
 
         // Should have some sessions in overview
         assert!(
-            json["overview"]["workBreakdown"]["totalSessions"].as_u64().unwrap() > 0,
+            json["overview"]["workBreakdown"]["totalSessions"]
+                .as_u64()
+                .unwrap()
+                > 0,
             "Should have sessions: {}",
             body
         );
@@ -2080,8 +2150,7 @@ mod tests {
     async fn test_trends_invalid_granularity() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, _body) =
-            do_get(app, "/api/insights/trends?granularity=quarter").await;
+        let (status, _body) = do_get(app, "/api/insights/trends?granularity=quarter").await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
@@ -2119,8 +2188,7 @@ mod tests {
     async fn test_trends_sessions_metric() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) =
-            do_get(app, "/api/insights/trends?metric=sessions").await;
+        let (status, body) = do_get(app, "/api/insights/trends?metric=sessions").await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -2131,11 +2199,7 @@ mod tests {
     async fn test_trends_day_granularity() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) = do_get(
-            app,
-            "/api/insights/trends?granularity=day&range=3mo",
-        )
-        .await;
+        let (status, body) = do_get(app, "/api/insights/trends?granularity=day&range=3mo").await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();

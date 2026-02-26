@@ -4,7 +4,7 @@
 //! This module provides battle-tested parsing of Claude Code's JSONL session format,
 //! handling malformed lines gracefully, aggregating tool calls, and cleaning command tags.
 
-use crate::category::{categorize_tool, categorize_progress};
+use crate::category::{categorize_progress, categorize_tool};
 use crate::error::ParseError;
 use crate::types::*;
 use regex_lite::Regex;
@@ -73,12 +73,17 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
     // Regex for cleaning command tags from user messages (dotall for multi-line content)
     let command_name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
     let command_args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-    let command_message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+    let command_message_regex =
+        Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
 
     // Track pending thinking text from thinking-only assistant messages
     let mut pending_thinking: Option<String> = None;
 
-    while let Some(line_result) = lines.next_line().await.map_err(|e| ParseError::io(file_path, e))? {
+    while let Some(line_result) = lines
+        .next_line()
+        .await
+        .map_err(|e| ParseError::io(file_path, e))?
+    {
         line_number += 1;
         let line = line_result.trim();
 
@@ -93,9 +98,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             Err(e) => {
                 debug!(
                     "Skipping malformed JSON at line {} in {:?}: {}",
-                    line_number,
-                    file_path,
-                    e
+                    line_number, file_path, e
                 );
                 continue;
             }
@@ -104,15 +107,24 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
         let entry_type = match value.get("type").and_then(|t| t.as_str()) {
             Some(t) => t,
             None => {
-                debug!("Skipping line {} with missing/non-string type field", line_number);
+                debug!(
+                    "Skipping line {} with missing/non-string type field",
+                    line_number
+                );
                 continue;
             }
         };
 
         // Extract common fields: uuid, parentUuid, timestamp
         let uuid = value.get("uuid").and_then(|v| v.as_str()).map(String::from);
-        let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(String::from);
-        let timestamp = value.get("timestamp").and_then(|v| v.as_str()).map(String::from);
+        let parent_uuid = value
+            .get("parentUuid")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let timestamp = value
+            .get("timestamp")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         match entry_type {
             "user" => {
@@ -127,22 +139,25 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 match msg_content {
                     Some(serde_json::Value::Array(arr)) => {
                         // Check if any block is a tool_result type
-                        let has_tool_result = arr.iter().any(|b|
-                            b.get("type").and_then(|t| t.as_str()) == Some("tool_result")
-                        );
+                        let has_tool_result = arr
+                            .iter()
+                            .any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result"));
                         if has_tool_result {
                             // Role::ToolResult - extract readable content
                             let content = extract_tool_result_content(arr);
                             if !content.trim().is_empty() {
                                 let message = Message::tool_result(content);
-                                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                                let message =
+                                    attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                                 messages.push(message);
                             }
                         } else {
                             // Array content without tool_result blocks - extract text
                             // Deserialize message field for existing helper
                             if let Some(msg_value) = value.get("message") {
-                                if let Ok(msg) = serde_json::from_value::<JsonlMessage>(msg_value.clone()) {
+                                if let Ok(msg) =
+                                    serde_json::from_value::<JsonlMessage>(msg_value.clone())
+                                {
                                     let content = extract_text_content(&msg.content);
                                     let cleaned_content = clean_command_tags(
                                         &content,
@@ -153,7 +168,12 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                     let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                     if !cleaned_content.trim().is_empty() {
                                         let message = Message::user(cleaned_content);
-                                        let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                                        let message = attach_common_fields(
+                                            message,
+                                            &timestamp,
+                                            &uuid,
+                                            &parent_uuid,
+                                        );
                                         messages.push(message);
                                     }
                                 }
@@ -173,14 +193,17 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
 
                         if !cleaned_content.trim().is_empty() {
                             let message = Message::user(cleaned_content);
-                            let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                            let message =
+                                attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                             messages.push(message);
                         }
                     }
                     _ => {
                         // No content or unexpected format - try legacy deserialization
                         if let Some(msg_value) = value.get("message") {
-                            if let Ok(msg) = serde_json::from_value::<JsonlMessage>(msg_value.clone()) {
+                            if let Ok(msg) =
+                                serde_json::from_value::<JsonlMessage>(msg_value.clone())
+                            {
                                 let content = extract_text_content(&msg.content);
                                 let cleaned_content = clean_command_tags(
                                     &content,
@@ -191,7 +214,12 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                 let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                 if !cleaned_content.trim().is_empty() {
                                     let message = Message::user(cleaned_content);
-                                    let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                                    let message = attach_common_fields(
+                                        message,
+                                        &timestamp,
+                                        &uuid,
+                                        &parent_uuid,
+                                    );
                                     messages.push(message);
                                 }
                             }
@@ -220,7 +248,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                         }
 
                         // Skip completely empty assistant messages
-                        if !has_content && !has_tools && !has_thinking && pending_thinking.is_none() {
+                        if !has_content && !has_tools && !has_thinking && pending_thinking.is_none()
+                        {
                             continue;
                         }
 
@@ -250,7 +279,10 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 }
             }
             "system" => {
-                let subtype = value.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let subtype = value
+                    .get("subtype")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
 
                 // Note: system lines may have isMeta=true but we still emit them as metadata events
 
@@ -263,7 +295,10 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
 
                 // Build metadata from relevant fields
                 let mut meta = serde_json::Map::new();
-                meta.insert("subtype".to_string(), serde_json::Value::String(subtype.to_string()));
+                meta.insert(
+                    "subtype".to_string(),
+                    serde_json::Value::String(subtype.to_string()),
+                );
                 if let Some(ms) = duration_ms {
                     meta.insert("durationMs".to_string(), serde_json::json!(ms));
                 }
@@ -271,8 +306,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     meta.insert("error".to_string(), err.clone());
                 }
 
-                let message = Message::system(content)
-                    .with_metadata(serde_json::Value::Object(meta));
+                let message =
+                    Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("system");
                 messages.push(message);
@@ -285,19 +320,25 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     .unwrap_or("unknown");
 
                 // Build a readable content string
-                let content = if let Some(hook_name) = data.and_then(|d| d.get("hookName")).and_then(|v| v.as_str()) {
+                let content = if let Some(hook_name) = data
+                    .and_then(|d| d.get("hookName"))
+                    .and_then(|v| v.as_str())
+                {
                     format!("{}: {}", data_type, hook_name)
-                } else if let Some(command) = data.and_then(|d| d.get("command")).and_then(|v| v.as_str()) {
+                } else if let Some(command) =
+                    data.and_then(|d| d.get("command")).and_then(|v| v.as_str())
+                {
                     format!("{}: {}", data_type, command)
                 } else {
                     data_type.to_string()
                 };
 
                 // Copy data object as metadata
-                let metadata = data.cloned().unwrap_or(serde_json::json!({"type": data_type}));
+                let metadata = data
+                    .cloned()
+                    .unwrap_or(serde_json::json!({"type": data_type}));
 
-                let message = Message::progress(content)
-                    .with_metadata(metadata);
+                let message = Message::progress(content).with_metadata(metadata);
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = if let Some(cat) = categorize_progress(data_type) {
                     message.with_category(cat)
@@ -307,7 +348,10 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 messages.push(message);
             }
             "queue-operation" => {
-                let operation = value.get("operation").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let operation = value
+                    .get("operation")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 let op_content = value.get("content").and_then(|v| v.as_str());
 
                 let content = if let Some(c) = op_content {
@@ -317,20 +361,32 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 };
 
                 let mut meta = serde_json::Map::new();
-                meta.insert("type".to_string(), serde_json::Value::String("queue-operation".to_string()));
-                meta.insert("operation".to_string(), serde_json::Value::String(operation.to_string()));
+                meta.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("queue-operation".to_string()),
+                );
+                meta.insert(
+                    "operation".to_string(),
+                    serde_json::Value::String(operation.to_string()),
+                );
                 if let Some(c) = op_content {
-                    meta.insert("content".to_string(), serde_json::Value::String(c.to_string()));
+                    meta.insert(
+                        "content".to_string(),
+                        serde_json::Value::String(c.to_string()),
+                    );
                 }
 
-                let message = Message::system(content)
-                    .with_metadata(serde_json::Value::Object(meta));
+                let message =
+                    Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("queue");
                 messages.push(message);
             }
             "file-history-snapshot" => {
-                let is_update = value.get("isSnapshotUpdate").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_update = value
+                    .get("isSnapshotUpdate")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let content = if is_update {
                     "file-history-snapshot (update)".to_string()
                 } else {
@@ -338,14 +394,17 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 };
 
                 let mut meta = serde_json::Map::new();
-                meta.insert("type".to_string(), serde_json::Value::String("file-history-snapshot".to_string()));
+                meta.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("file-history-snapshot".to_string()),
+                );
                 if let Some(snapshot) = value.get("snapshot") {
                     meta.insert("snapshot".to_string(), snapshot.clone());
                 }
                 meta.insert("isSnapshotUpdate".to_string(), serde_json::json!(is_update));
 
-                let message = Message::system(content)
-                    .with_metadata(serde_json::Value::Object(meta));
+                let message =
+                    Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("snapshot");
                 messages.push(message);
@@ -355,9 +414,15 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let leaf_uuid = value.get("leafUuid").and_then(|v| v.as_str());
 
                 let mut meta = serde_json::Map::new();
-                meta.insert("summary".to_string(), serde_json::Value::String(summary_text.to_string()));
+                meta.insert(
+                    "summary".to_string(),
+                    serde_json::Value::String(summary_text.to_string()),
+                );
                 if let Some(lu) = leaf_uuid {
-                    meta.insert("leafUuid".to_string(), serde_json::Value::String(lu.to_string()));
+                    meta.insert(
+                        "leafUuid".to_string(),
+                        serde_json::Value::String(lu.to_string()),
+                    );
                 }
 
                 let message = Message::summary(summary_text.to_string())
@@ -367,7 +432,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
             }
             "saved_hook_context" => {
                 // Hook-injected context (e.g. claude-mem snapshots)
-                let content_items = value.get("content")
+                let content_items = value
+                    .get("content")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
                         arr.iter()
@@ -387,13 +453,16 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 };
 
                 let mut meta = serde_json::Map::new();
-                meta.insert("type".to_string(), serde_json::Value::String("saved_hook_context".to_string()));
+                meta.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("saved_hook_context".to_string()),
+                );
                 if let Some(content) = value.get("content") {
                     meta.insert("content".to_string(), content.clone());
                 }
 
-                let message = Message::system(display)
-                    .with_metadata(serde_json::Value::Object(meta));
+                let message =
+                    Message::system(display).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("context");
                 messages.push(message);
@@ -402,17 +471,30 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let mut meta = serde_json::Map::new();
                 meta.insert("type".into(), serde_json::json!("result"));
                 for (k, v) in value.as_object().unwrap_or(&serde_json::Map::new()) {
-                    if k != "type" { meta.insert(k.clone(), v.clone()); }
+                    if k != "type" {
+                        meta.insert(k.clone(), v.clone());
+                    }
                 }
-                let subtype = value.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let subtype = value
+                    .get("subtype")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 let display = format!("Session result: {subtype}");
                 let message = Message::system(display)
                     .with_metadata(serde_json::json!(meta))
                     .with_category("result");
-                messages.push(attach_common_fields(message, &timestamp, &uuid, &parent_uuid));
+                messages.push(attach_common_fields(
+                    message,
+                    &timestamp,
+                    &uuid,
+                    &parent_uuid,
+                ));
             }
             "hook_event" => {
-                let event_name = value.get("eventName").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let event_name = value
+                    .get("eventName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 let tool_name = value.get("toolName").and_then(|v| v.as_str());
                 let label = value.get("label").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -424,18 +506,24 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
 
                 // Carry the full original value as _hookEvent for the frontend's HookEventRow
                 let mut meta = serde_json::Map::new();
-                meta.insert("type".to_string(), serde_json::Value::String("hook_event".to_string()));
+                meta.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("hook_event".to_string()),
+                );
                 meta.insert("_hookEvent".to_string(), value.clone());
 
-                let message = Message::progress(content)
-                    .with_metadata(serde_json::Value::Object(meta));
+                let message =
+                    Message::progress(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("hook");
                 messages.push(message);
             }
             _ => {
                 // Silently ignore unknown entry types for forward compatibility
-                debug!("Ignoring unknown entry type '{}' at line {}", entry_type, line_number);
+                debug!(
+                    "Ignoring unknown entry type '{}' at line {}",
+                    entry_type, line_number
+                );
             }
         }
     }
@@ -480,7 +568,10 @@ fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
         let block_type = block.get("type").and_then(|t| t.as_str());
         match block_type {
             Some("tool_result") => {
-                let tool_use_id = block.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let tool_use_id = block
+                    .get("tool_use_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 // Try to extract text content from the tool result
                 match block.get("content") {
                     Some(serde_json::Value::String(s)) => {
@@ -498,7 +589,8 @@ fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
                     }
                     Some(serde_json::Value::Array(arr)) => {
                         // Content might be array of text blocks
-                        let text: String = arr.iter()
+                        let text: String = arr
+                            .iter()
                             .filter_map(|item| {
                                 if item.get("type").and_then(|t| t.as_str()) == Some("text") {
                                     item.get("text").and_then(|t| t.as_str()).map(String::from)
@@ -535,16 +627,14 @@ fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
 fn extract_text_content(content: &JsonlContent) -> String {
     match content {
         JsonlContent::Text(text) => text.clone(),
-        JsonlContent::Blocks(blocks) => {
-            blocks
-                .iter()
-                .filter_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
+        JsonlContent::Blocks(blocks) => blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
@@ -652,7 +742,10 @@ mod tests {
         assert_eq!(session.messages[0].role, Role::User);
         assert_eq!(session.messages[0].content, "Hello, Claude!");
         assert_eq!(session.messages[1].role, Role::Assistant);
-        assert_eq!(session.messages[1].content, "Hello! How can I help you today?");
+        assert_eq!(
+            session.messages[1].content,
+            "Hello! How can I help you today?"
+        );
     }
 
     #[tokio::test]
@@ -985,11 +1078,9 @@ mod tests {
 
     #[test]
     fn test_extract_assistant_content_thinking_only() {
-        let content = JsonlContent::Blocks(vec![
-            ContentBlock::Thinking {
-                thinking: "Just thinking...".to_string(),
-            },
-        ]);
+        let content = JsonlContent::Blocks(vec![ContentBlock::Thinking {
+            thinking: "Just thinking...".to_string(),
+        }]);
 
         let (text, tools, thinking) = extract_assistant_content(&content);
         assert_eq!(text, "");
@@ -1015,7 +1106,8 @@ mod tests {
         let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
 
         // When command-args is present, its content becomes the message
-        let input = "<command-name>/review</command-name>\n<command-args>123</command-args>\nReview PR";
+        let input =
+            "<command-name>/review</command-name>\n<command-args>123</command-args>\nReview PR";
         let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
         assert_eq!(result, "123");
     }
@@ -1179,7 +1271,10 @@ mod tests {
         assert!(msg.content.contains("5000"));
 
         let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("subtype").unwrap().as_str().unwrap(), "turn_duration");
+        assert_eq!(
+            meta.get("subtype").unwrap().as_str().unwrap(),
+            "turn_duration"
+        );
         assert_eq!(meta.get("durationMs").unwrap().as_u64().unwrap(), 5000);
     }
 
@@ -1195,7 +1290,10 @@ mod tests {
 
         let meta = msg.metadata.as_ref().unwrap();
         assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "hook_progress");
-        assert_eq!(meta.get("hookName").unwrap().as_str().unwrap(), "lint-check");
+        assert_eq!(
+            meta.get("hookName").unwrap().as_str().unwrap(),
+            "lint-check"
+        );
     }
 
     #[tokio::test]
@@ -1209,7 +1307,10 @@ mod tests {
         assert!(msg.content.contains("enqueue"));
 
         let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "queue-operation");
+        assert_eq!(
+            meta.get("type").unwrap().as_str().unwrap(),
+            "queue-operation"
+        );
         assert_eq!(meta.get("operation").unwrap().as_str().unwrap(), "enqueue");
         assert_eq!(meta.get("content").unwrap().as_str().unwrap(), "next task");
 
@@ -1232,8 +1333,14 @@ mod tests {
         assert!(msg.content.contains("file-history-snapshot"));
 
         let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "file-history-snapshot");
-        assert_eq!(meta.get("isSnapshotUpdate").unwrap().as_bool().unwrap(), false);
+        assert_eq!(
+            meta.get("type").unwrap().as_str().unwrap(),
+            "file-history-snapshot"
+        );
+        assert_eq!(
+            meta.get("isSnapshotUpdate").unwrap().as_bool().unwrap(),
+            false
+        );
         assert!(meta.get("snapshot").is_some());
     }
 
@@ -1248,7 +1355,10 @@ mod tests {
         assert_eq!(msg.content, "Fixed authentication bug in auth.rs");
 
         let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("summary").unwrap().as_str().unwrap(), "Fixed authentication bug in auth.rs");
+        assert_eq!(
+            meta.get("summary").unwrap().as_str().unwrap(),
+            "Fixed authentication bug in auth.rs"
+        );
         assert_eq!(meta.get("leafUuid").unwrap().as_str().unwrap(), "a2");
     }
 
@@ -1314,7 +1424,10 @@ mod tests {
         assert_eq!(msg.category.as_deref(), Some("context"));
 
         let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "saved_hook_context");
+        assert_eq!(
+            meta.get("type").unwrap().as_str().unwrap(),
+            "saved_hook_context"
+        );
         let content_arr = meta.get("content").unwrap().as_array().unwrap();
         assert_eq!(content_arr.len(), 2);
         assert_eq!(content_arr[0].as_str().unwrap(), "hook context line 1");
@@ -1336,7 +1449,10 @@ mod tests {
         assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "hook_event");
         // _hookEvent carries the full original JSONL entry
         let hook = meta.get("_hookEvent").unwrap();
-        assert_eq!(hook.get("eventName").unwrap().as_str().unwrap(), "PreToolUse");
+        assert_eq!(
+            hook.get("eventName").unwrap().as_str().unwrap(),
+            "PreToolUse"
+        );
         assert_eq!(hook.get("toolName").unwrap().as_str().unwrap(), "Bash");
     }
 

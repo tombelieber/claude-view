@@ -14,10 +14,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use claude_view_core::ClaudeCliStatus;
 use claude_view_db::{ClassificationStatus, HealthStats, HealthStatus, SystemStorageStats};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -210,14 +210,13 @@ pub async fn get_system_status(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<SystemResponse>> {
     // Run independent queries in parallel
-    let (storage_result, health_result, metadata_result, index_runs_result, classification_result) =
-        tokio::join!(
-            state.db.get_storage_stats(),
-            state.db.get_health_stats(),
-            state.db.get_index_metadata(),
-            state.db.get_recent_index_runs(),
-            state.db.get_classification_status(),
-        );
+    let (storage_result, health_result, metadata_result, index_runs_result, classification_result) = tokio::join!(
+        state.db.get_storage_stats(),
+        state.db.get_health_stats(),
+        state.db.get_index_metadata(),
+        state.db.get_recent_index_runs(),
+        state.db.get_classification_status(),
+    );
 
     let storage_stats = storage_result?;
     let health_stats = health_result?;
@@ -406,8 +405,7 @@ pub async fn reset_all(
     // Require exact confirmation string
     if body.confirm != "RESET_ALL_DATA" {
         return Err(ApiError::BadRequest(
-            "Invalid confirmation. Send {\"confirm\": \"RESET_ALL_DATA\"} to confirm."
-                .to_string(),
+            "Invalid confirmation. Send {\"confirm\": \"RESET_ALL_DATA\"} to confirm.".to_string(),
         ));
     }
 
@@ -502,8 +500,8 @@ mod tests {
         body::Body,
         http::{Method, Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -525,11 +523,7 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap())
     }
 
-    async fn do_post_json(
-        app: axum::Router,
-        uri: &str,
-        json_body: &str,
-    ) -> (StatusCode, String) {
+    async fn do_post_json(app: axum::Router, uri: &str, json_body: &str) -> (StatusCode, String) {
         let response = app
             .oneshot(
                 Request::builder()
@@ -737,7 +731,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["status"], "not_implemented");
-        assert!(json["message"].as_str().unwrap().contains("not yet available"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("not yet available"));
     }
 
     // ========================================================================
@@ -748,12 +745,8 @@ mod tests {
     async fn test_reset_requires_confirmation() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, _body) = do_post_json(
-            app,
-            "/api/system/reset",
-            r#"{"confirm": "wrong"}"#,
-        )
-        .await;
+        let (status, _body) =
+            do_post_json(app, "/api/system/reset", r#"{"confirm": "wrong"}"#).await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
@@ -785,12 +778,8 @@ mod tests {
         assert_eq!(health.sessions_count, 1);
 
         let app = build_app(db.clone());
-        let (status, body) = do_post_json(
-            app,
-            "/api/system/reset",
-            r#"{"confirm": "RESET_ALL_DATA"}"#,
-        )
-        .await;
+        let (status, body) =
+            do_post_json(app, "/api/system/reset", r#"{"confirm": "RESET_ALL_DATA"}"#).await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();

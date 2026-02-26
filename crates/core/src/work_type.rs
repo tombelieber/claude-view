@@ -292,7 +292,7 @@ mod tests {
     fn test_classify_quick_ask_at_threshold() {
         let input = ClassificationInput {
             duration_seconds: 5 * 60, // exactly 5 minutes
-            turn_count: 3,             // exactly 3 turns
+            turn_count: 3,            // exactly 3 turns
             files_edited_count: 0,
             ai_lines_added: 0,
             skills_used: vec![],
@@ -390,8 +390,8 @@ mod tests {
         let input = ClassificationInput {
             duration_seconds: 30 * 60, // exactly 30 minutes
             turn_count: 20,
-            files_edited_count: 5,     // exactly 5 files
-            ai_lines_added: 200,       // exactly 200 lines
+            files_edited_count: 5, // exactly 5 files
+            ai_lines_added: 200,   // exactly 200 lines
             skills_used: vec![],
         };
         assert_eq!(classify_work_type(&input), WorkType::DeepWork);

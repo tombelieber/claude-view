@@ -147,7 +147,8 @@ impl ClassifyState {
 
     /// Transition to running state.
     pub fn set_running(&self, job_id: String, db_job_id: i64, total: u64) {
-        self.status.store(ClassifyStatus::Running as u8, Ordering::Relaxed);
+        self.status
+            .store(ClassifyStatus::Running as u8, Ordering::Relaxed);
         self.total.store(total, Ordering::Relaxed);
         self.classified.store(0, Ordering::Relaxed);
         self.errors.store(0, Ordering::Relaxed);
@@ -200,12 +201,14 @@ impl ClassifyState {
 
     /// Mark as completed.
     pub fn set_completed(&self) {
-        self.status.store(ClassifyStatus::Completed as u8, Ordering::Relaxed);
+        self.status
+            .store(ClassifyStatus::Completed as u8, Ordering::Relaxed);
     }
 
     /// Mark as failed.
     pub fn set_failed(&self, message: String) {
-        self.status.store(ClassifyStatus::Failed as u8, Ordering::Relaxed);
+        self.status
+            .store(ClassifyStatus::Failed as u8, Ordering::Relaxed);
         match self.error_message.write() {
             Ok(mut guard) => *guard = Some(message),
             Err(e) => tracing::error!("RwLock poisoned writing error_message: {e}"),
@@ -214,7 +217,8 @@ impl ClassifyState {
 
     /// Mark as cancelled.
     pub fn set_cancelled(&self) {
-        self.status.store(ClassifyStatus::Cancelled as u8, Ordering::Relaxed);
+        self.status
+            .store(ClassifyStatus::Cancelled as u8, Ordering::Relaxed);
     }
 
     /// Check if cancellation has been requested.
@@ -229,7 +233,8 @@ impl ClassifyState {
 
     /// Reset to idle state.
     pub fn reset(&self) {
-        self.status.store(ClassifyStatus::Idle as u8, Ordering::Relaxed);
+        self.status
+            .store(ClassifyStatus::Idle as u8, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
         self.classified.store(0, Ordering::Relaxed);
         self.errors.store(0, Ordering::Relaxed);
@@ -358,7 +363,10 @@ mod tests {
 
         state.set_failed("Connection timeout".to_string());
         assert_eq!(state.status(), ClassifyStatus::Failed);
-        assert_eq!(state.error_message(), Some("Connection timeout".to_string()));
+        assert_eq!(
+            state.error_message(),
+            Some("Connection timeout".to_string())
+        );
     }
 
     #[test]
