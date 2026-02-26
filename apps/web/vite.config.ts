@@ -8,9 +8,7 @@ const rootPkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.j
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(
-      process.env.npm_package_version || rootPkg.version
-    ),
+    __APP_VERSION__: JSON.stringify(rootPkg.version),
   },
   plugins: [react(), tailwindcss()],
   resolve: {
