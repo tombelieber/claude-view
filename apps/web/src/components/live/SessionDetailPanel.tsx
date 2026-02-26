@@ -129,7 +129,7 @@ export function SessionDetailPanel({
   // Live mode: WebSocket messages; History mode: pre-loaded messages
   const {
     messages: liveMessages,
-    hookEvents: liveHookEvents,
+    hookEvents: _liveHookEvents,
     bufferDone: liveBufferDone,
   } = useLiveSessionMessages(
     data.id,
@@ -142,7 +142,7 @@ export function SessionDetailPanel({
   const categoryCounts = useMemo(() => computeCategoryCounts(richMessages), [richMessages])
 
   // Historical hook events (REST fetch for non-live sessions)
-  const historicalHookEvents = useHookEvents(data.id, !isLive)
+  useHookEvents(data.id, !isLive)
 
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string

@@ -340,7 +340,7 @@ export function SettingsPage() {
   const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [_searchParams, _setSearchParams] = useSearchParams()
 
   const handleIntervalChange = useCallback(
     async (value: string) => {

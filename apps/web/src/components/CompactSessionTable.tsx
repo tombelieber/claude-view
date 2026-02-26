@@ -65,8 +65,11 @@ function formatDuration(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`
 }
 
-function formatTokens(inputTokens: bigint | null, outputTokens: bigint | null): string {
-  const total = Number((inputTokens ?? 0n) + (outputTokens ?? 0n))
+function formatTokens(
+  inputTokens: number | null | undefined,
+  outputTokens: number | null | undefined,
+): string {
+  const total = (inputTokens ?? 0) + (outputTokens ?? 0)
   return formatTokenCount(total)
 }
 
@@ -88,7 +91,7 @@ function buildColumns(
       size: 20,
       cell: ({ row }) => {
         const s = row.original
-        const totalTokens = Number((s.totalInputTokens ?? 0n) + (s.totalOutputTokens ?? 0n))
+        const totalTokens = (s.totalInputTokens ?? 0) + (s.totalOutputTokens ?? 0)
         const tier = computeWeight({
           totalTokens,
           userPromptCount: s.userPromptCount,

@@ -124,7 +124,7 @@ Line 4</untrusted-data-abc123>`
       expect(preElement).toBeInTheDocument()
 
       const preContent = preElement?.textContent || ''
-      xssPayloads.forEach((payload) => {
+      xssPayloads.forEach((_payload) => {
         // Each payload should be visible as text
         expect(preContent).toContain('<')
         expect(preContent).toContain('>')
@@ -234,10 +234,6 @@ Line 5: More content
       // Verify dangerous markup appears as plaintext (not as executable HTML)
       // With KEEP_CONTENT: true, DOMPurify keeps tags as text but strips attributes
       // This is safe because <pre> renders it as literal text, not as HTML
-      const hasTagsAsText =
-        preContent.includes('<script>') ||
-        preContent.includes('onclick=') ||
-        preContent.includes('<div')
       // Whether tags appear as text or are removed, they cannot execute
       // What matters is that actual script elements and onclick handlers don't exist in DOM
       expect(container.querySelectorAll('script').length).toBe(0)

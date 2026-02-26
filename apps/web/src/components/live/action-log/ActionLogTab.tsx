@@ -5,7 +5,7 @@ import type { RichMessage } from '../RichPane'
 import { ActionFilterChips } from './ActionFilterChips'
 import { ActionRow } from './ActionRow'
 import { TurnSeparatorRow } from './TurnSeparatorRow'
-import { isTurnSeparator } from './types'
+import { isHookEvent, isTurnSeparator } from './types'
 import type { ActionCategory } from './types'
 import { useActionItems } from './use-action-items'
 
@@ -47,7 +47,7 @@ export function ActionLogTab({
       summary: 0,
     }
     for (const item of allItems) {
-      if (!isTurnSeparator(item)) {
+      if (!isTurnSeparator(item) && !isHookEvent(item)) {
         c[item.category]++
       }
     }
@@ -59,6 +59,7 @@ export function ActionLogTab({
     if (activeFilter === 'all') return allItems
     return allItems.filter((item) => {
       if (isTurnSeparator(item)) return true // always show turn separators
+      if (isHookEvent(item)) return activeFilter === 'hook'
       return item.category === activeFilter
     })
   }, [allItems, activeFilter])
@@ -109,6 +110,17 @@ export function ActionLogTab({
             itemContent={(_, item) =>
               isTurnSeparator(item) ? (
                 <TurnSeparatorRow role={item.role} content={item.content} />
+              ) : isHookEvent(item) ? (
+                <ActionRow
+                  action={{
+                    id: item.id,
+                    timestamp: item.timestamp,
+                    category: 'hook',
+                    toolName: item.toolName ?? 'hook',
+                    label: item.label,
+                    status: 'success',
+                  }}
+                />
               ) : (
                 <ActionRow action={item} />
               )

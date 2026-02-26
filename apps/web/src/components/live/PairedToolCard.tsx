@@ -68,7 +68,7 @@ function computeDuration(startTs?: number, endTs?: number): string | null {
 function ResultContent({
   content,
   index,
-  verboseMode,
+  verboseMode: _verboseMode,
 }: { content: string; index: number; verboseMode: boolean }) {
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const hasContent = content.length > 0

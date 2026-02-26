@@ -125,8 +125,8 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                 borderRadius: '8px',
                 fontSize: '12px',
               }}
-              formatter={(value: number, _name: string, props: any) => {
-                const item = props.payload
+              formatter={(value, _name, props) => {
+                const item = (props as any).payload
                 const parts = [`${value} sessions`]
                 if (item.avgLoc > 0) parts.push(`Avg LOC: +${item.avgLoc}`)
                 parts.push(`Commit: ${formatPercent(item.commitRate)}`)
@@ -141,7 +141,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
               <LabelList
                 dataKey="sessions"
                 position="right"
-                formatter={(v: number) => `${v} sessions`}
+                formatter={(v) => `${v} sessions`}
                 style={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
               />
             </Bar>

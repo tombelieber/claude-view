@@ -549,7 +549,7 @@ describe('SessionCard', () => {
         locSource: 0, // not computed
       })
 
-      const { container } = render(<SessionCard session={session} />, {
+      const { container: _container } = render(<SessionCard session={session} />, {
         wrapper: createWrapper(),
       })
 

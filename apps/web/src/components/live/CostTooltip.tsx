@@ -23,7 +23,7 @@ const MARGIN = 8
 
 export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTooltipProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const triggerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({})

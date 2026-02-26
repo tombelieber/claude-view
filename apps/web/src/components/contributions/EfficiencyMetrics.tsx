@@ -216,9 +216,6 @@ function CostTrendChart({
 
   if (chartData.length < 2) return null
 
-  const maxVal = Math.max(...chartData.map((d) => d.value))
-  const precision = metric === 'line' ? (maxVal >= 0.1 ? 2 : maxVal >= 0.01 ? 3 : 4) : 2
-
   const chartLabel = (() => {
     switch (metric) {
       case 'commit':
@@ -255,7 +252,7 @@ function CostTrendChart({
               tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
               tickLine={false}
               axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
-              tickFormatter={(v: number) => formatCostUsd(v)}
+              tickFormatter={(v) => formatCostUsd(v as number)}
             />
             <RechartsTooltip
               contentStyle={{
@@ -264,7 +261,7 @@ function CostTrendChart({
                 borderRadius: '8px',
                 fontSize: '12px',
               }}
-              formatter={(value: number) => [formatCostUsd(value), chartLabel]}
+              formatter={(value) => [formatCostUsd(value as number), chartLabel]}
             />
             <Area
               type="monotone"

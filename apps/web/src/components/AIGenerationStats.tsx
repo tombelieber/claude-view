@@ -68,13 +68,9 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
     0,
   )
 
-  // Calculate net lines
-  const netLines = stats.linesAdded - stats.linesRemoved
-
   // Check if we have any meaningful data
   const hasTokenData = stats.totalInputTokens > 0 || stats.totalOutputTokens > 0
   const hasFileData = stats.filesCreated > 0
-  const hasLineData = stats.linesAdded > 0 || stats.linesRemoved > 0
 
   // If no data at all, don't show the component
   if (!hasTokenData && !hasFileData) {

@@ -261,9 +261,9 @@ describe('CompactSessionTable', () => {
       // Activity column is at index 5 (weight, time, branch, preview, category, activity)
       const activityCell = within(firstDataRow).getAllByRole('cell')[5]
 
-      // "8/45K" — prompt count, separator, token count
+      // "8/45k" — prompt count, separator, token count
       expect(activityCell.textContent).toContain('8')
-      expect(activityCell.textContent).toContain('45K')
+      expect(activityCell.textContent).toContain('45k')
     })
 
     it('formats changes as files + LOC inline', () => {

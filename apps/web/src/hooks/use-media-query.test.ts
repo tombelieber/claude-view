@@ -9,8 +9,8 @@ import {
   useMediaQuery,
 } from './use-media-query'
 
-// Mock matchMedia
-interface MockMediaQueryList {
+// Mock matchMedia — MockMQL keeps `.matches` writable and `.mock` accessible on vi.fn() fields
+interface MockMQL {
   matches: boolean
   media: string
   onchange: null
@@ -21,7 +21,7 @@ interface MockMediaQueryList {
   dispatchEvent: ReturnType<typeof vi.fn>
 }
 
-function createMockMediaQueryList(matches: boolean): MockMediaQueryList {
+function createMockMQL(matches: boolean): MockMQL {
   return {
     matches,
     media: '',
@@ -34,14 +34,20 @@ function createMockMediaQueryList(matches: boolean): MockMediaQueryList {
   }
 }
 
+/** Assign a mock matchMedia to window, returning the vi.fn mock for assertions */
+function setMockMatchMedia(fn: (...args: unknown[]) => MockMQL): ReturnType<typeof vi.fn> {
+  const mock = vi.fn(fn)
+  window.matchMedia = mock as unknown as typeof window.matchMedia
+  return mock
+}
+
 describe('useMediaQuery', () => {
   let mockMatchMedia: ReturnType<typeof vi.fn>
-  let mockMediaQueryList: MockMediaQueryList
+  let mockMQL: MockMQL
 
   beforeEach(() => {
-    mockMediaQueryList = createMockMediaQueryList(false)
-    mockMatchMedia = vi.fn(() => mockMediaQueryList)
-    window.matchMedia = mockMatchMedia
+    mockMQL = createMockMQL(false)
+    mockMatchMedia = setMockMatchMedia(() => mockMQL)
   })
 
   afterEach(() => {
@@ -50,13 +56,13 @@ describe('useMediaQuery', () => {
 
   describe('basic functionality', () => {
     it('returns false when media query does not match', () => {
-      mockMediaQueryList.matches = false
+      mockMQL.matches = false
       const { result } = renderHook(() => useMediaQuery('(max-width: 640px)'))
       expect(result.current).toBe(false)
     })
 
     it('returns true when media query matches', () => {
-      mockMediaQueryList.matches = true
+      mockMQL.matches = true
       const { result } = renderHook(() => useMediaQuery('(max-width: 640px)'))
       expect(result.current).toBe(true)
     })
@@ -68,32 +74,26 @@ describe('useMediaQuery', () => {
 
     it('adds event listener on mount', () => {
       renderHook(() => useMediaQuery('(max-width: 640px)'))
-      expect(mockMediaQueryList.addEventListener).toHaveBeenCalledWith(
-        'change',
-        expect.any(Function),
-      )
+      expect(mockMQL.addEventListener).toHaveBeenCalledWith('change', expect.any(Function))
     })
 
     it('removes event listener on unmount', () => {
       const { unmount } = renderHook(() => useMediaQuery('(max-width: 640px)'))
       unmount()
-      expect(mockMediaQueryList.removeEventListener).toHaveBeenCalledWith(
-        'change',
-        expect.any(Function),
-      )
+      expect(mockMQL.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function))
     })
   })
 
   describe('dynamic updates', () => {
     it('updates when media query changes', () => {
-      mockMediaQueryList.matches = false
+      mockMQL.matches = false
       const { result } = renderHook(() => useMediaQuery('(max-width: 640px)'))
 
       expect(result.current).toBe(false)
 
       // Simulate a media query change
       act(() => {
-        const changeHandler = mockMediaQueryList.addEventListener.mock.calls[0][1]
+        const changeHandler = mockMQL.addEventListener.mock.calls[0][1]
         changeHandler({ matches: true } as MediaQueryListEvent)
       })
 
@@ -101,7 +101,7 @@ describe('useMediaQuery', () => {
     })
 
     it('updates when query prop changes', () => {
-      mockMediaQueryList.matches = false
+      mockMQL.matches = false
       const { result, rerender } = renderHook(({ query }) => useMediaQuery(query), {
         initialProps: { query: '(max-width: 640px)' },
       })
@@ -109,7 +109,7 @@ describe('useMediaQuery', () => {
       expect(result.current).toBe(false)
 
       // Change to a matching query
-      mockMediaQueryList.matches = true
+      mockMQL.matches = true
       rerender({ query: '(max-width: 1024px)' })
 
       expect(result.current).toBe(true)
@@ -119,43 +119,41 @@ describe('useMediaQuery', () => {
 
 describe('useIsMobile', () => {
   beforeEach(() => {
-    window.matchMedia = vi.fn((query) =>
-      createMockMediaQueryList(query === `(max-width: ${BREAKPOINTS.sm - 1}px)`),
+    setMockMatchMedia((query: unknown) =>
+      createMockMQL(query === `(max-width: ${BREAKPOINTS.sm - 1}px)`),
     )
   })
 
   it('returns true for mobile viewport', () => {
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(true))
+    setMockMatchMedia(() => createMockMQL(true))
     const { result } = renderHook(() => useIsMobile())
     expect(result.current).toBe(true)
   })
 
   it('returns false for non-mobile viewport', () => {
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(false))
+    setMockMatchMedia(() => createMockMQL(false))
     const { result } = renderHook(() => useIsMobile())
     expect(result.current).toBe(false)
   })
 
   it('uses correct breakpoint query', () => {
-    const mockMatchMedia = vi.fn(() => createMockMediaQueryList(false))
-    window.matchMedia = mockMatchMedia
+    const mock = setMockMatchMedia(() => createMockMQL(false))
     renderHook(() => useIsMobile())
-    expect(mockMatchMedia).toHaveBeenCalledWith('(max-width: 639px)')
+    expect(mock).toHaveBeenCalledWith('(max-width: 639px)')
   })
 })
 
 describe('useIsTablet', () => {
   it('uses correct breakpoint query range', () => {
-    const mockMatchMedia = vi.fn(() => createMockMediaQueryList(false))
-    window.matchMedia = mockMatchMedia
+    const mock = setMockMatchMedia(() => createMockMQL(false))
     renderHook(() => useIsTablet())
-    expect(mockMatchMedia).toHaveBeenCalledWith(
+    expect(mock).toHaveBeenCalledWith(
       `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`,
     )
   })
 
   it('returns true when in tablet range', () => {
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(true))
+    setMockMatchMedia(() => createMockMQL(true))
     const { result } = renderHook(() => useIsTablet())
     expect(result.current).toBe(true)
   })
@@ -163,14 +161,13 @@ describe('useIsTablet', () => {
 
 describe('useIsDesktop', () => {
   it('uses correct breakpoint query', () => {
-    const mockMatchMedia = vi.fn(() => createMockMediaQueryList(false))
-    window.matchMedia = mockMatchMedia
+    const mock = setMockMatchMedia(() => createMockMQL(false))
     renderHook(() => useIsDesktop())
-    expect(mockMatchMedia).toHaveBeenCalledWith(`(min-width: ${BREAKPOINTS.lg}px)`)
+    expect(mock).toHaveBeenCalledWith(`(min-width: ${BREAKPOINTS.lg}px)`)
   })
 
   it('returns true when desktop or wider', () => {
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(true))
+    setMockMatchMedia(() => createMockMQL(true))
     const { result } = renderHook(() => useIsDesktop())
     expect(result.current).toBe(true)
   })
@@ -178,43 +175,43 @@ describe('useIsDesktop', () => {
 
 describe('useBreakpoint', () => {
   it('returns "mobile" for mobile viewport', () => {
-    window.matchMedia = vi.fn((query: string) => {
+    setMockMatchMedia((query: unknown) => {
       // Mobile query matches
       if (query === `(max-width: ${BREAKPOINTS.sm - 1}px)`) {
-        return createMockMediaQueryList(true)
+        return createMockMQL(true)
       }
-      return createMockMediaQueryList(false)
+      return createMockMQL(false)
     })
     const { result } = renderHook(() => useBreakpoint())
     expect(result.current).toBe('mobile')
   })
 
   it('returns "tablet" for tablet viewport', () => {
-    window.matchMedia = vi.fn((query: string) => {
+    setMockMatchMedia((query: unknown) => {
       // Tablet query matches
       if (query === `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`) {
-        return createMockMediaQueryList(true)
+        return createMockMQL(true)
       }
-      return createMockMediaQueryList(false)
+      return createMockMQL(false)
     })
     const { result } = renderHook(() => useBreakpoint())
     expect(result.current).toBe('tablet')
   })
 
   it('returns "desktop" for desktop viewport', () => {
-    window.matchMedia = vi.fn((query: string) => {
+    setMockMatchMedia((query: unknown) => {
       // Desktop query matches
       if (query === `(min-width: ${BREAKPOINTS.lg}px) and (max-width: ${BREAKPOINTS.xl - 1}px)`) {
-        return createMockMediaQueryList(true)
+        return createMockMQL(true)
       }
-      return createMockMediaQueryList(false)
+      return createMockMQL(false)
     })
     const { result } = renderHook(() => useBreakpoint())
     expect(result.current).toBe('desktop')
   })
 
   it('returns "wide" for wide viewport', () => {
-    window.matchMedia = vi.fn(() => createMockMediaQueryList(false))
+    setMockMatchMedia(() => createMockMQL(false))
     const { result } = renderHook(() => useBreakpoint())
     expect(result.current).toBe('wide')
   })
