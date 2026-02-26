@@ -3,6 +3,8 @@ import { useControlSession } from '../../hooks/use-control-session'
 import { useSessionMessages } from '../../hooks/use-session-messages'
 import type { ChatMessage } from '../../types/control'
 import type { Message } from '../../types/generated'
+import { ChatStatusBar } from './ChatStatusBar'
+import { PermissionDialog } from './PermissionDialog'
 
 interface DashboardChatProps {
   controlId: string
@@ -64,19 +66,13 @@ export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-950">
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-2">
-          <ControlStatusDot status={session.status} />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {statusLabel(session.status)}
-          </span>
-        </div>
-        {session.error && (
-          <span className="text-xs text-red-500 dark:text-red-400 truncate max-w-xs">
-            {session.error}
-          </span>
-        )}
-      </div>
+      <ChatStatusBar
+        contextUsage={session.contextUsage}
+        turnCount={session.turnCount}
+        sessionCost={session.sessionCost}
+        lastTurnCost={session.lastTurnCost}
+        status={session.status}
+      />
 
       {/* Messages */}
       <div
@@ -120,18 +116,11 @@ export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
           </div>
         )}
 
-        {/* Permission request banner */}
-        {session.permissionRequest && (
-          <PermissionBanner
-            description={session.permissionRequest.description}
-            onAllow={() =>
-              session.respondPermission(session.permissionRequest?.requestId ?? '', true)
-            }
-            onDeny={() =>
-              session.respondPermission(session.permissionRequest?.requestId ?? '', false)
-            }
-          />
-        )}
+        {/* Permission request dialog */}
+        <PermissionDialog
+          request={session.permissionRequest}
+          onRespond={session.respondPermission}
+        />
 
         {/* Session completed banner */}
         {session.status === 'completed' && (
@@ -173,68 +162,6 @@ export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
             Send
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function ControlStatusDot({ status }: { status: string }) {
-  const color =
-    {
-      connecting: 'bg-yellow-400',
-      active: 'bg-green-500 animate-pulse',
-      waiting_input: 'bg-blue-500',
-      waiting_permission: 'bg-amber-500 animate-pulse',
-      completed: 'bg-gray-400',
-      error: 'bg-red-500',
-      disconnected: 'bg-gray-400',
-      reconnecting: 'bg-yellow-400 animate-pulse',
-    }[status] ?? 'bg-gray-400'
-
-  return <span className={`inline-block w-2 h-2 rounded-full ${color}`} />
-}
-
-function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    connecting: 'Connecting...',
-    active: 'Active',
-    waiting_input: 'Waiting for input',
-    waiting_permission: 'Permission required',
-    completed: 'Completed',
-    error: 'Error',
-    disconnected: 'Disconnected',
-    reconnecting: 'Reconnecting...',
-  }
-  return labels[status] ?? status
-}
-
-/** Permission request banner — extracted to avoid non-null assertions */
-function PermissionBanner({
-  description,
-  onAllow,
-  onDeny,
-}: { description: string; onAllow: () => void; onDeny: () => void }) {
-  return (
-    <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
-      <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
-        Permission required
-      </p>
-      <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">{description}</p>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onAllow}
-          className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
-        >
-          Allow
-        </button>
-        <button
-          type="button"
-          onClick={onDeny}
-          className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700"
-        >
-          Deny
-        </button>
       </div>
     </div>
   )

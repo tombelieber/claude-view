@@ -39,6 +39,7 @@ import type { SortColumn } from './CompactSessionTable'
 import { SessionsEmptyState, Skeleton } from './LoadingStates'
 import { SessionCard } from './SessionCard'
 import { SessionToolbar } from './SessionToolbar'
+import { ResumePreFlight } from './live/ResumePreFlight'
 import { DateRangePicker, TimeRangeSelector } from './ui'
 
 /** Human-readable labels for sort options */
@@ -116,6 +117,7 @@ export function HistoryView() {
   const isMobile = useIsMobile()
 
   const [searchText, setSearchText] = useState('')
+  const [resumeSessionId, setResumeSessionId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
@@ -554,6 +556,7 @@ export function HistoryView() {
                                     session={session}
                                     isSelected={false}
                                     projectDisplayName={projectDisplayNames.get(session.project)}
+                                    onResumeClick={setResumeSessionId}
                                   />
                                 </Link>
                                 {/* Sort metric badge overlay */}
@@ -589,6 +592,20 @@ export function HistoryView() {
             </div>
           )}
         </div>
+
+        {/* Resume pre-flight modal */}
+        {resumeSessionId && (
+          <ResumePreFlight
+            sessionId={resumeSessionId}
+            open={!!resumeSessionId}
+            onOpenChange={(open) => {
+              if (!open) setResumeSessionId(null)
+            }}
+            onResume={(controlId, sid) => {
+              navigate(`/control/${controlId}?sessionId=${encodeURIComponent(sid)}`)
+            }}
+          />
+        )}
       </div>
     </div>
   )
