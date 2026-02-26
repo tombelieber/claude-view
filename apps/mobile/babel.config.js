@@ -12,7 +12,6 @@ module.exports = (api) => {
           disableExtraction: process.env.NODE_ENV === 'development',
         },
       ],
-      'react-native-worklets/plugin',
     ],
   }
 }

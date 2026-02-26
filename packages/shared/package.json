@@ -2,7 +2,6 @@
   "name": "@claude-view/shared",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -11,6 +10,9 @@
   },
   "dependencies": {
     "@claude-view/design-tokens": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
   },
   "scripts": {
     "build": "echo 'No build step — consumed as TypeScript source'",
