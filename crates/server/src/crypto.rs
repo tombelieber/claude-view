@@ -134,6 +134,37 @@ pub fn encrypt_for_device(
     Ok(STANDARD.encode(wire))
 }
 
+/// Decrypt a NaCl box message from a paired device.
+/// Wire format: nonce (24 bytes) || ciphertext, base64-encoded.
+pub fn decrypt_from_device(
+    encrypted_b64: &str,
+    sender_pubkey_b64: &str,
+    recipient_secret: &BoxSecretKey,
+) -> Result<Vec<u8>, String> {
+    let wire = STANDARD
+        .decode(encrypted_b64)
+        .map_err(|e| format!("bad encrypted base64: {e}"))?;
+    if wire.len() < 24 {
+        return Err("encrypted data too short (need at least nonce)".into());
+    }
+
+    let sender_pubkey_bytes = STANDARD
+        .decode(sender_pubkey_b64)
+        .map_err(|e| format!("bad sender pubkey base64: {e}"))?;
+    let sender_pubkey = BoxPublicKey::from(
+        <[u8; 32]>::try_from(sender_pubkey_bytes.as_slice())
+            .map_err(|_| "sender pubkey must be 32 bytes")?,
+    );
+
+    let nonce = crypto_box::Nonce::from_slice(&wire[..24]);
+    let ciphertext = &wire[24..];
+
+    let salsa_box = SalsaBox::new(&sender_pubkey, recipient_secret);
+    salsa_box
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("decryption failed: {e}"))
+}
+
 /// Sign an auth challenge for relay authentication.
 pub fn sign_auth_challenge(identity: &DeviceIdentity) -> Result<(u64, String), String> {
     let signing_bytes = STANDARD

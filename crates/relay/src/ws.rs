@@ -18,6 +18,12 @@ struct RelayEnvelope {
     to: String,
     #[allow(dead_code)]
     payload: String,
+    /// Unencrypted push hint from Mac — relay uses this to trigger push
+    /// notifications without needing to decrypt the payload.
+    #[allow(dead_code)]
+    push_hint: Option<String>,
+    #[allow(dead_code)]
+    push_title: Option<String>,
 }
 
 pub async fn ws_handler(
