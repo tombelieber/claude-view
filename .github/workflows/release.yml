@@ -76,7 +76,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build frontend
-        run: bun run build
+        run: cd apps/web && bun run build
 
       - name: Build Rust binary
         run: cargo build --release -p claude-view-server
@@ -86,7 +86,7 @@ jobs:
         run: |
           mkdir -p staging
           cp target/release/${{ matrix.binary }} staging/
-          cp -r dist staging/
+          cp -r apps/web/dist staging/
           tar -czf ${{ matrix.artifact }} -C staging .
 
       - name: Package (windows)
@@ -95,7 +95,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path staging
           Copy-Item "target\release\${{ matrix.binary }}" -Destination staging\
-          Copy-Item -Recurse dist staging\dist
+          Copy-Item -Recurse apps\web\dist staging\dist
           Compress-Archive -Path staging\* -DestinationPath ${{ matrix.artifact }}
 
       - name: Upload artifact
