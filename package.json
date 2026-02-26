@@ -18,6 +18,8 @@
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace -- -D warnings",
     "lint:all": "turbo lint && cargo clippy --workspace -- -D warnings",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
     "fmt": "cargo fmt --all",
     "clean:db": "rm -f ~/Library/Caches/claude-view/claude-view.db*",
     "cleanupport": "PORTS='47892 5173'; for port in $PORTS; do pids=\"$(lsof -ti tcp:$port)\"; if [ -n \"$pids\" ]; then echo \"Killing $pids listening on port $port\"; kill -9 $pids; else echo \"No process found on port $port\"; fi; done",
@@ -34,6 +36,7 @@
     "release:push": "git push && git push --tags"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "concurrently": "^9.1.2",
     "turbo": "^2"
   }
