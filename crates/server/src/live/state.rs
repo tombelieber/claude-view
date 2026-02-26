@@ -3,8 +3,8 @@
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
-use serde::{Deserialize, Serialize};
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+use serde::{Deserialize, Serialize};
 
 /// The universal agent state — driven by hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]

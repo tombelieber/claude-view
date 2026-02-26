@@ -161,8 +161,7 @@ pub fn box_secret_key(identity: &DeviceIdentity) -> Result<BoxSecretKey, String>
         .decode(&identity.encryption_key)
         .map_err(|e| format!("bad encryption key: {e}"))?;
     Ok(BoxSecretKey::from(
-        <[u8; 32]>::try_from(bytes.as_slice())
-            .map_err(|_| "encryption key must be 32 bytes")?,
+        <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| "encryption key must be 32 bytes")?,
     ))
 }
 

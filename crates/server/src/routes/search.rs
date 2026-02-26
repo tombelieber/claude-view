@@ -10,9 +10,9 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use claude_view_search::types::SearchResponse;
 use serde::Deserialize;
 use std::sync::Arc;
-use claude_view_search::types::SearchResponse;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -59,9 +59,7 @@ async fn search_handler(
     let search_index = state
         .search_index
         .read()
-        .map_err(|_| {
-            crate::error::ApiError::Internal("search index lock poisoned".into())
-        })?
+        .map_err(|_| crate::error::ApiError::Internal("search index lock poisoned".into()))?
         .clone();
     let search_index = search_index.ok_or_else(|| {
         crate::error::ApiError::ServiceUnavailable(

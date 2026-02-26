@@ -22,15 +22,14 @@ pub async fn metrics_handler() -> Response {
     match render_metrics() {
         Some(output) => (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+            [(
+                header::CONTENT_TYPE,
+                "text/plain; version=0.0.4; charset=utf-8",
+            )],
             output,
         )
             .into_response(),
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Metrics not initialized",
-        )
-            .into_response(),
+        None => (StatusCode::SERVICE_UNAVAILABLE, "Metrics not initialized").into_response(),
     }
 }
 
@@ -48,8 +47,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -64,7 +63,12 @@ mod tests {
         let app = crate::create_app(db);
 
         let response = app
-            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -84,7 +88,12 @@ mod tests {
         let app = crate::create_app(db);
 
         let response = app
-            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

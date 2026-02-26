@@ -19,8 +19,8 @@ use claude_view_core::pricing::{
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
-use claude_view_db::Database;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::Database;
 
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
@@ -231,7 +231,11 @@ async fn derive_agent_state_from_jsonl(path: &Path) -> Option<AgentState> {
                         state: "acting".into(),
                         label: format!(
                             "Using {}",
-                            parsed.tool_names.first().map(|s| s.as_str()).unwrap_or("tool")
+                            parsed
+                                .tool_names
+                                .first()
+                                .map(|s| s.as_str())
+                                .unwrap_or("tool")
                         ),
                         context: None,
                     }
@@ -525,9 +529,7 @@ impl LiveSessionManager {
                                     .pricing
                                     .read()
                                     .ok()
-                                    .map(|p| {
-                                        calculate_cost(&acc.tokens, acc.model.as_deref(), &p)
-                                    })
+                                    .map(|p| calculate_cost(&acc.tokens, acc.model.as_deref(), &p))
                                     .unwrap_or_default();
 
                                 let cache_status = match acc.last_cache_hit_at {
@@ -570,8 +572,7 @@ impl LiveSessionManager {
                                         let mut skill: Vec<_> =
                                             acc.skills.iter().cloned().collect();
                                         skill.sort();
-                                        let mut tools =
-                                            Vec::with_capacity(mcp.len() + skill.len());
+                                        let mut tools = Vec::with_capacity(mcp.len() + skill.len());
                                         for name in mcp {
                                             tools.push(super::state::ToolUsed {
                                                 name,
@@ -635,9 +636,7 @@ impl LiveSessionManager {
                                 .write()
                                 .await
                                 .insert(session_id.clone(), session.clone());
-                            let _ = manager
-                                .tx
-                                .send(SessionEvent::SessionDiscovered { session });
+                            let _ = manager.tx.send(SessionEvent::SessionDiscovered { session });
                             promoted += 1;
                         } else {
                             warn!(
@@ -655,7 +654,10 @@ impl LiveSessionManager {
                         for id in &dead_ids {
                             accumulators.remove(id);
                         }
-                        info!(cleaned = dead_ids.len(), "Cleaned accumulators for dead snapshot PIDs");
+                        info!(
+                            cleaned = dead_ids.len(),
+                            "Cleaned accumulators for dead snapshot PIDs"
+                        );
                     }
 
                     if promoted > 0 || dead > 0 {
@@ -739,12 +741,27 @@ impl LiveSessionManager {
                         let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
                         let hints = build_index_hints(&claude_dir);
                         let search_for_rescan = manager.search_index.read().unwrap().clone();
-                        let registry_for_rescan = manager.registry.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
+                        let registry_for_rescan = manager
+                            .registry
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .map(|r| std::sync::Arc::new(r.clone()));
                         let (indexed, _) = scan_and_index_all(
-                            &claude_dir, &manager.db, &hints, search_for_rescan, registry_for_rescan, |_| {},
-                        ).await.unwrap_or((0, 0));
+                            &claude_dir,
+                            &manager.db,
+                            &hints,
+                            search_for_rescan,
+                            registry_for_rescan,
+                            |_| {},
+                        )
+                        .await
+                        .unwrap_or((0, 0));
                         if indexed > 0 {
-                            tracing::info!(indexed, "Reconciliation scan complete — resyncing live state");
+                            tracing::info!(
+                                indexed,
+                                "Reconciliation scan complete — resyncing live state"
+                            );
                             // Resync in-memory state for all recently-modified files
                             let recent_paths = initial_scan(&claude_dir);
                             for path in &recent_paths {
@@ -823,7 +840,6 @@ impl LiveSessionManager {
                                 continue;
                             }
                         }
-
                     }
 
                     // Remove dead sessions from map
@@ -861,10 +877,9 @@ impl LiveSessionManager {
                 }
 
                 // 2.1 — Process count refresh (display metric only)
-                let total_count =
-                    tokio::task::spawn_blocking(count_claude_processes)
-                        .await
-                        .unwrap_or_default();
+                let total_count = tokio::task::spawn_blocking(count_claude_processes)
+                    .await
+                    .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
 
                 // 2.2 — Unconditional snapshot save (defense in depth)
@@ -916,7 +931,9 @@ impl LiveSessionManager {
         // Use cached cwd from accumulator if available (avoids re-reading file every poll)
         let cached_cwd = {
             let accumulators = self.accumulators.read().await;
-            accumulators.get(&session_id).and_then(|a| a.resolved_cwd.clone())
+            accumulators
+                .get(&session_id)
+                .and_then(|a| a.resolved_cwd.clone())
         };
         let (project, project_display_name, project_path, resolved_cwd) =
             extract_project_info(path, cached_cwd.as_deref());
@@ -1162,8 +1179,9 @@ impl LiveSessionManager {
                                 input_tokens: result.usage_input_tokens.unwrap_or(0),
                                 output_tokens: result.usage_output_tokens.unwrap_or(0),
                                 cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
-                                cache_creation_tokens:
-                                    result.usage_cache_creation_tokens.unwrap_or(0),
+                                cache_creation_tokens: result
+                                    .usage_cache_creation_tokens
+                                    .unwrap_or(0),
                                 cache_creation_5m_tokens: 0,
                                 cache_creation_1hr_tokens: 0,
                                 total_tokens: 0, // not used by calculate_cost
@@ -1335,7 +1353,11 @@ impl LiveSessionManager {
         let cache_status = match acc.last_cache_hit_at {
             Some(ts) => {
                 let secs = seconds_since_modified_from_timestamp(ts);
-                if secs < 300 { CacheStatus::Warm } else { CacheStatus::Cold }
+                if secs < 300 {
+                    CacheStatus::Warm
+                } else {
+                    CacheStatus::Cold
+                }
             }
             None => CacheStatus::Unknown,
         };
@@ -1390,24 +1412,28 @@ impl LiveSessionManager {
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
         let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
-        if let Err(e) = self.db.update_session_from_tail(
-            &session_id,
-            acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
-            acc.user_turn_count as i32,
-            last_activity_at,
-            &acc.last_user_message,
-            file_size,
-            file_size,
-            last_activity_at, // mtime approximation
-            acc.tokens.input_tokens as i64,
-            acc.tokens.output_tokens as i64,
-            acc.tokens.cache_read_tokens as i64,
-            acc.tokens.cache_creation_tokens as i64,
-            acc.tool_counts_edit as i32,
-            acc.tool_counts_read as i32,
-            acc.tool_counts_bash as i32,
-            acc.tool_counts_write as i32,
-        ).await {
+        if let Err(e) = self
+            .db
+            .update_session_from_tail(
+                &session_id,
+                acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
+                acc.user_turn_count as i32,
+                last_activity_at,
+                &acc.last_user_message,
+                file_size,
+                file_size,
+                last_activity_at, // mtime approximation
+                acc.tokens.input_tokens as i64,
+                acc.tokens.output_tokens as i64,
+                acc.tokens.cache_read_tokens as i64,
+                acc.tokens.cache_creation_tokens as i64,
+                acc.tool_counts_edit as i32,
+                acc.tool_counts_read as i32,
+                acc.tool_counts_bash as i32,
+                acc.tool_counts_write as i32,
+            )
+            .await
+        {
             tracing::warn!(session_id = %session_id, error = %e, "Failed to update session from tail");
         }
 
@@ -1458,7 +1484,10 @@ fn extract_session_id(path: &Path) -> String {
 /// Returns `(encoded_project_name, display_name, decoded_project_path, resolved_cwd)`.
 /// The 4th value is the raw cwd used for resolution — callers should cache it
 /// in `SessionAccumulator.resolved_cwd` to avoid re-reading JSONL on every poll.
-fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, String, String, Option<String>) {
+fn extract_project_info(
+    path: &Path,
+    cached_cwd: Option<&str>,
+) -> (String, String, String, Option<String>) {
     let project_encoded = path
         .parent()
         .and_then(|p| p.file_name())
@@ -1467,19 +1496,22 @@ fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, Strin
         .to_string();
 
     // Use cached cwd if available, else resolve from JSONL on disk.
-    let cwd = cached_cwd
-        .map(|s| s.to_string())
-        .or_else(|| {
-            path.parent()
-                .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
-        });
+    let cwd = cached_cwd.map(|s| s.to_string()).or_else(|| {
+        path.parent()
+            .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
+    });
 
     let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
         &project_encoded,
         cwd.as_deref(),
     );
 
-    (project_encoded, resolved.display_name, resolved.full_path, cwd)
+    (
+        project_encoded,
+        resolved.display_name,
+        resolved.full_path,
+        cwd,
+    )
 }
 
 /// Calculate seconds since a Unix timestamp.
@@ -1533,7 +1565,12 @@ fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
 fn load_session_snapshot(path: &Path) -> SessionSnapshot {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return SessionSnapshot { version: 2, sessions: HashMap::new() },
+        Err(_) => {
+            return SessionSnapshot {
+                version: 2,
+                sessions: HashMap::new(),
+            }
+        }
     };
     load_session_snapshot_from_str(&content)
 }
@@ -1565,9 +1602,15 @@ fn load_session_snapshot_from_str(content: &str) -> SessionSnapshot {
                 )
             })
             .collect();
-        return SessionSnapshot { version: 2, sessions };
+        return SessionSnapshot {
+            version: 2,
+            sessions,
+        };
     }
-    SessionSnapshot { version: 2, sessions: HashMap::new() }
+    SessionSnapshot {
+        version: 2,
+        sessions: HashMap::new(),
+    }
 }
 
 #[cfg(test)]
@@ -1735,7 +1778,10 @@ mod tests {
                 last_activity_at: 1708500000,
             },
         );
-        let snapshot = SessionSnapshot { version: 2, sessions: entries };
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions: entries,
+        };
 
         save_session_snapshot(&path, &snapshot);
         let loaded = load_session_snapshot(&path);
@@ -1770,18 +1816,24 @@ mod tests {
         use std::collections::HashMap;
 
         let mut entries = HashMap::new();
-        entries.insert("session-1".to_string(), SnapshotEntry {
-            pid: 12345,
-            status: "working".to_string(),
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working".into(),
-                context: None,
+        entries.insert(
+            "session-1".to_string(),
+            SnapshotEntry {
+                pid: 12345,
+                status: "working".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                last_activity_at: 1708500000,
             },
-            last_activity_at: 1708500000,
-        });
-        let snapshot = SessionSnapshot { version: 2, sessions: entries };
+        );
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions: entries,
+        };
 
         let json = serde_json::to_string(&snapshot).unwrap();
         let parsed: SessionSnapshot = serde_json::from_str(&json).unwrap();
@@ -1811,9 +1863,7 @@ mod tests {
 
     #[test]
     fn test_build_recovered_session_from_snapshot() {
-        use crate::live::state::{
-            AgentState, AgentStateGroup, SessionStatus, SnapshotEntry,
-        };
+        use crate::live::state::{AgentState, AgentStateGroup, SessionStatus, SnapshotEntry};
 
         let entry = SnapshotEntry {
             pid: 12345,
@@ -1929,8 +1979,16 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         // Real assistant line first, then progress lines after it
         writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Done"}}],"stop_reason":"end_turn"}}}}"#).unwrap();
-        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
-        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let state = derive_agent_state_from_jsonl(&path).await;

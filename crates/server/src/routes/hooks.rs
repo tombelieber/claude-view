@@ -81,9 +81,8 @@ async fn handle_hook(
         return Json(serde_json::json!({ "ok": true }));
     }
 
-    let claude_pid = extract_pid_from_header(
-        headers.get("x-claude-pid").and_then(|v| v.to_str().ok()),
-    );
+    let claude_pid =
+        extract_pid_from_header(headers.get("x-claude-pid").and_then(|v| v.to_str().ok()));
     let mut pid_newly_bound = false;
     let mut state_changed = false;
 
@@ -102,10 +101,12 @@ async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let hook_event_context: Option<serde_json::Value> = payload
-        .tool_input
-        .clone()
-        .or_else(|| payload.error.as_ref().map(|e| serde_json::json!({"error": e})));
+    let hook_event_context: Option<serde_json::Value> = payload.tool_input.clone().or_else(|| {
+        payload
+            .error
+            .as_ref()
+            .map(|e| serde_json::json!({"error": e}))
+    });
 
     // ── Lazy session creation ────────────────────────────────────────────
     // Sessions that were already running before the server started won't
@@ -306,11 +307,12 @@ async fn handle_hook(
                                 context: e.context.clone(),
                             })
                             .collect();
-                        if let Err(e) =
-                            claude_view_db::hook_events_queries::insert_hook_events(
-                                &state.db, &session_id, &rows,
-                            )
-                            .await
+                        if let Err(e) = claude_view_db::hook_events_queries::insert_hook_events(
+                            &state.db,
+                            &session_id,
+                            &rows,
+                        )
+                        .await
                         {
                             tracing::warn!(
                                 session_id = %session_id,
@@ -333,11 +335,7 @@ async fn handle_hook(
                 mgr.remove_accumulator(&session_id).await;
             }
             // Clean up hook event broadcast channel
-            state
-                .hook_event_channels
-                .write()
-                .await
-                .remove(&session_id);
+            state.hook_event_channels.write().await.remove(&session_id);
             let _ = state
                 .live_tx
                 .send(SessionEvent::SessionCompleted { session_id });
@@ -1261,7 +1259,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1313,7 +1313,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1354,7 +1356,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1398,7 +1402,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1452,7 +1458,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await

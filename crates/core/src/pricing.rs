@@ -153,8 +153,8 @@ pub fn calculate_cost(
 
             // Cache creation: split by TTL if available, otherwise use total with tiering
             let cache_creation_cost_usd = {
-                let has_split = tokens.cache_creation_5m_tokens > 0
-                    || tokens.cache_creation_1hr_tokens > 0;
+                let has_split =
+                    tokens.cache_creation_5m_tokens > 0 || tokens.cache_creation_1hr_tokens > 0;
                 if has_split {
                     let cost_5m = tiered_cost(
                         tokens.cache_creation_5m_tokens as i64,
@@ -300,22 +300,22 @@ pub fn default_pricing() -> HashMap<String, ModelPricing> {
 
     let models: &[(&str, f64, f64, f64, f64)] = &[
         // Current generation
-        ("claude-opus-4-6",             5e-6,    25e-6,   6.25e-6,  0.5e-6),
-        ("claude-sonnet-4-6",           3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-sonnet-4-5-20250929",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-haiku-4-5-20251001",   1e-6,     5e-6,   1.25e-6,  0.1e-6),
-        ("claude-opus-4-5-20251101",    5e-6,    25e-6,   6.25e-6,  0.5e-6),
+        ("claude-opus-4-6", 5e-6, 25e-6, 6.25e-6, 0.5e-6),
+        ("claude-sonnet-4-6", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-sonnet-4-5-20250929", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-haiku-4-5-20251001", 1e-6, 5e-6, 1.25e-6, 0.1e-6),
+        ("claude-opus-4-5-20251101", 5e-6, 25e-6, 6.25e-6, 0.5e-6),
         // Legacy
-        ("claude-opus-4-1-20250805",   15e-6,    75e-6,  18.75e-6,  1.5e-6),
-        ("claude-opus-4-20250514",     15e-6,    75e-6,  18.75e-6,  1.5e-6),
-        ("claude-sonnet-4-20250514",    3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-3-7-sonnet-20250219",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-3-5-sonnet-20241022",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-3-5-sonnet-20240620",  3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-3-5-haiku-20241022",   0.8e-6,   4e-6,   1e-6,     0.08e-6),
-        ("claude-3-opus-20240229",     15e-6,    75e-6,  18.75e-6,  1.5e-6),
-        ("claude-3-sonnet-20240229",    3e-6,    15e-6,   3.75e-6,  0.3e-6),
-        ("claude-3-haiku-20240307",     0.25e-6,  1.25e-6, 0.3e-6,  0.03e-6),
+        ("claude-opus-4-1-20250805", 15e-6, 75e-6, 18.75e-6, 1.5e-6),
+        ("claude-opus-4-20250514", 15e-6, 75e-6, 18.75e-6, 1.5e-6),
+        ("claude-sonnet-4-20250514", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-3-7-sonnet-20250219", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-3-5-sonnet-20241022", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-3-5-sonnet-20240620", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-3-5-haiku-20241022", 0.8e-6, 4e-6, 1e-6, 0.08e-6),
+        ("claude-3-opus-20240229", 15e-6, 75e-6, 18.75e-6, 1.5e-6),
+        ("claude-3-sonnet-20240229", 3e-6, 15e-6, 3.75e-6, 0.3e-6),
+        ("claude-3-haiku-20240307", 0.25e-6, 1.25e-6, 0.3e-6, 0.03e-6),
     ];
 
     for &(id, input, output, cache_create, cache_read) in models {
@@ -544,10 +544,26 @@ mod tests {
         fill_tiering_gaps(&mut pricing);
         let m = pricing.get("test-model").unwrap();
         assert_approx(m.input_cost_per_token_above_200k, 10e-6, "input_above_200k");
-        assert_approx(m.output_cost_per_token_above_200k, 37.5e-6, "output_above_200k");
-        assert_approx(m.cache_creation_cost_per_token_above_200k, 12.5e-6, "cache_create_above_200k");
-        assert_approx(m.cache_read_cost_per_token_above_200k, 1e-6, "cache_read_above_200k");
-        assert_approx(m.cache_creation_cost_per_token_1hr, 10e-6, "cache_create_1hr");
+        assert_approx(
+            m.output_cost_per_token_above_200k,
+            37.5e-6,
+            "output_above_200k",
+        );
+        assert_approx(
+            m.cache_creation_cost_per_token_above_200k,
+            12.5e-6,
+            "cache_create_above_200k",
+        );
+        assert_approx(
+            m.cache_read_cost_per_token_above_200k,
+            1e-6,
+            "cache_read_above_200k",
+        );
+        assert_approx(
+            m.cache_creation_cost_per_token_1hr,
+            10e-6,
+            "cache_create_1hr",
+        );
     }
 
     #[test]
@@ -570,8 +586,15 @@ mod tests {
 
         fill_tiering_gaps(&mut pricing);
         let m = pricing.get("test-model").unwrap();
-        assert_approx(m.input_cost_per_token_above_200k, 99e-6, "input_above_200k preserved");
-        assert_approx(m.output_cost_per_token_above_200k, 37.5e-6, "output_above_200k derived");
+        assert_approx(
+            m.input_cost_per_token_above_200k,
+            99e-6,
+            "input_above_200k preserved",
+        );
+        assert_approx(
+            m.output_cost_per_token_above_200k,
+            37.5e-6,
+            "output_above_200k derived",
+        );
     }
-
 }

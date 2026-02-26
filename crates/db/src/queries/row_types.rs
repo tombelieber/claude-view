@@ -4,11 +4,11 @@
 
 use crate::DbResult;
 use chrono::Utc;
-use sqlx::Row;
 use claude_view_core::{
     parse_model_id, ClassificationJob, ClassificationJobStatus, IndexRun, IndexRunStatus,
     IndexRunType, RawTurn, SessionInfo, ToolCounts,
 };
+use sqlx::Row;
 
 // ============================================================================
 // Theme 4: Internal row types for classification_jobs and index_runs
@@ -131,7 +131,9 @@ impl IndexRunRow {
 /// Same SQL as `Database::update_session_deep_fields` but executes on the
 /// provided transaction instead of acquiring a new connection from the pool.
 #[allow(clippy::too_many_arguments)]
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 pub async fn update_session_deep_fields_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
@@ -581,11 +583,9 @@ impl SessionRow {
     pub(crate) fn into_session_info(self, project_encoded: &str) -> SessionInfo {
         let files_touched: Vec<String> =
             serde_json::from_str(&self.files_touched).unwrap_or_default();
-        let skills_used: Vec<String> =
-            serde_json::from_str(&self.skills_used).unwrap_or_default();
+        let skills_used: Vec<String> = serde_json::from_str(&self.skills_used).unwrap_or_default();
         // Phase 3: Deserialize files_read and files_edited from JSON
-        let files_read: Vec<String> =
-            serde_json::from_str(&self.files_read).unwrap_or_default();
+        let files_read: Vec<String> = serde_json::from_str(&self.files_read).unwrap_or_default();
         let files_edited: Vec<String> =
             serde_json::from_str(&self.files_edited).unwrap_or_default();
 

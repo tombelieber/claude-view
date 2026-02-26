@@ -56,10 +56,8 @@ fn fill_date_gaps(sparse: Vec<DailyTrendPoint>, from: &str, to: &str) -> Vec<Dai
     }
 
     // Build a lookup from date string -> existing data point
-    let mut by_date: std::collections::HashMap<String, DailyTrendPoint> = sparse
-        .into_iter()
-        .map(|p| (p.date.clone(), p))
-        .collect();
+    let mut by_date: std::collections::HashMap<String, DailyTrendPoint> =
+        sparse.into_iter().map(|p| (p.date.clone(), p)).collect();
 
     let mut result = Vec::new();
     let mut current = start;
@@ -131,12 +129,12 @@ impl TimeRange {
     /// Cache duration in seconds for this time range.
     pub fn cache_seconds(&self) -> u64 {
         match self {
-            TimeRange::Today => 60,      // 1 minute for real-time data
-            TimeRange::Week => 300,      // 5 minutes
-            TimeRange::Month => 900,     // 15 minutes
+            TimeRange::Today => 60,        // 1 minute for real-time data
+            TimeRange::Week => 300,        // 5 minutes
+            TimeRange::Month => 900,       // 15 minutes
             TimeRange::NinetyDays => 1800, // 30 minutes
-            TimeRange::All => 1800,      // 30 minutes
-            TimeRange::Custom => 900,    // 15 minutes
+            TimeRange::All => 1800,        // 30 minutes
+            TimeRange::Custom => 900,      // 15 minutes
         }
     }
 }
@@ -569,7 +567,8 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01");
                 let to_default = Local::now().format("%Y-%m-%d").to_string();
                 let to = to_date.unwrap_or(&to_default);
-                self.get_contributions_in_range(from, to, project_id, branch).await
+                self.get_contributions_in_range(from, to, project_id, branch)
+                    .await
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
@@ -577,7 +576,8 @@ impl Database {
                     .format("%Y-%m-%d")
                     .to_string();
                 let to = Local::now().format("%Y-%m-%d").to_string();
-                self.get_contributions_in_range(&from, &to, project_id, branch).await
+                self.get_contributions_in_range(&from, &to, project_id, branch)
+                    .await
             }
         }
     }
@@ -1060,9 +1060,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -1109,18 +1110,20 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                    let cost_cents = estimate_cost_cents(tokens_used);
-                    DailyTrendPoint {
-                        date,
-                        lines_added,
-                        lines_removed,
-                        commits,
-                        sessions,
-                        tokens_used,
-                        cost_cents,
-                    }
-                })
+                .map(
+                    |(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
+                        let cost_cents = estimate_cost_cents(tokens_used);
+                        DailyTrendPoint {
+                            date,
+                            lines_added,
+                            lines_removed,
+                            commits,
+                            sessions,
+                            tokens_used,
+                            cost_cents,
+                        }
+                    },
+                )
                 .collect()
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
@@ -1152,18 +1155,20 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                    let cost_cents = estimate_cost_cents(tokens_used);
-                    DailyTrendPoint {
-                        date,
-                        lines_added,
-                        lines_removed,
-                        commits,
-                        sessions,
-                        tokens_used,
-                        cost_cents,
-                    }
-                })
+                .map(
+                    |(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
+                        let cost_cents = estimate_cost_cents(tokens_used);
+                        DailyTrendPoint {
+                            date,
+                            lines_added,
+                            lines_removed,
+                            commits,
+                            sessions,
+                            tokens_used,
+                            cost_cents,
+                        }
+                    },
+                )
                 .collect()
         } else {
             // Global: use pre-aggregated snapshots
@@ -1188,15 +1193,25 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
-                    date,
-                    lines_added,
-                    lines_removed,
-                    commits,
-                    sessions,
-                    tokens_used,
-                    cost_cents,
-                })
+                .map(
+                    |(
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    )| DailyTrendPoint {
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    },
+                )
                 .collect()
         };
 
@@ -1226,9 +1241,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -1277,7 +1293,15 @@ impl Database {
             Ok(rows
                 .into_iter()
                 .map(
-                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity)| {
+                    |(
+                        branch,
+                        sessions_count,
+                        lines_added,
+                        lines_removed,
+                        commits_count,
+                        _files_edited,
+                        last_activity,
+                    )| {
                         BranchBreakdown {
                             branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
                             sessions_count,
@@ -1294,7 +1318,17 @@ impl Database {
                 .collect())
         } else {
             // Global: group by project + branch so frontend can group by project
-            let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>, Option<String>, Option<String>)> = sqlx::query_as(
+            let rows: Vec<(
+                Option<String>,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                Option<i64>,
+                Option<String>,
+                Option<String>,
+            )> = sqlx::query_as(
                 r#"
                 SELECT
                     s.git_branch,
@@ -1329,7 +1363,17 @@ impl Database {
             Ok(rows
                 .into_iter()
                 .map(
-                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity, pid, pname)| {
+                    |(
+                        branch,
+                        sessions_count,
+                        lines_added,
+                        lines_removed,
+                        commits_count,
+                        _files_edited,
+                        last_activity,
+                        pid,
+                        pname,
+                    )| {
                         BranchBreakdown {
                             branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
                             sessions_count,
@@ -1373,10 +1417,11 @@ impl Database {
             Some(branch)
         };
 
-        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
-            if let Some(b) = branch_filter {
-                sqlx::query_as(
-                    r#"
+        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> =
+            if let Some(pid) = project_id {
+                if let Some(b) = branch_filter {
+                    sqlx::query_as(
+                        r#"
                     SELECT
                         id,
                         work_type,
@@ -1393,17 +1438,17 @@ impl Database {
                     ORDER BY last_message_at DESC
                     LIMIT ?5
                     "#,
-                )
-                .bind(pid)
-                .bind(b)
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+                    )
+                    .bind(pid)
+                    .bind(b)
+                    .bind(&from)
+                    .bind(&to)
+                    .bind(limit)
+                    .fetch_all(self.pool())
+                    .await?
+                } else {
+                    sqlx::query_as(
+                        r#"
                     SELECT
                         id,
                         work_type,
@@ -1420,17 +1465,17 @@ impl Database {
                     ORDER BY last_message_at DESC
                     LIMIT ?4
                     "#,
-                )
-                .bind(pid)
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            }
-        } else if let Some(b) = branch_filter {
-            sqlx::query_as(
-                r#"
+                    )
+                    .bind(pid)
+                    .bind(&from)
+                    .bind(&to)
+                    .bind(limit)
+                    .fetch_all(self.pool())
+                    .await?
+                }
+            } else if let Some(b) = branch_filter {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     id,
                     work_type,
@@ -1446,16 +1491,16 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?4
                 "#,
-            )
-            .bind(b)
-            .bind(&from)
-            .bind(&to)
-            .bind(limit)
-            .fetch_all(self.pool())
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
+                )
+                .bind(b)
+                .bind(&from)
+                .bind(&to)
+                .bind(limit)
+                .fetch_all(self.pool())
+                .await?
+            } else {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     id,
                     work_type,
@@ -1471,18 +1516,26 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?3
                 "#,
-            )
-            .bind(&from)
-            .bind(&to)
-            .bind(limit)
-            .fetch_all(self.pool())
-            .await?
-        };
+                )
+                .bind(&from)
+                .bind(&to)
+                .bind(limit)
+                .fetch_all(self.pool())
+                .await?
+            };
 
         Ok(rows
             .into_iter()
             .map(
-                |(session_id, work_type, duration_seconds, ai_lines_added, ai_lines_removed, commit_count, last_message_at)| {
+                |(
+                    session_id,
+                    work_type,
+                    duration_seconds,
+                    ai_lines_added,
+                    ai_lines_removed,
+                    commit_count,
+                    last_message_at,
+                )| {
                     BranchSession {
                         session_id,
                         work_type,
@@ -1502,9 +1555,13 @@ impl Database {
     // ========================================================================
 
     /// Get contribution detail for a single session.
-    pub async fn get_session_contribution(&self, session_id: &str) -> DbResult<Option<SessionContribution>> {
-        let row: Option<(String, Option<String>, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
-            r#"
+    pub async fn get_session_contribution(
+        &self,
+        session_id: &str,
+    ) -> DbResult<Option<SessionContribution>> {
+        let row: Option<(String, Option<String>, i64, i64, i64, i64, i64, i64, i64)> =
+            sqlx::query_as(
+                r#"
             SELECT
                 id,
                 work_type,
@@ -1518,13 +1575,13 @@ impl Database {
             FROM sessions
             WHERE id = ?1
             "#,
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+            )
+            .bind(session_id)
+            .fetch_optional(self.pool())
+            .await?;
 
-        Ok(row.map(|(session_id, work_type, duration_seconds, prompt_count, ai_lines_added, ai_lines_removed, files_edited_count, reedited_files_count, commit_count)| {
-            SessionContribution {
+        Ok(row.map(
+            |(
                 session_id,
                 work_type,
                 duration_seconds,
@@ -1534,8 +1591,20 @@ impl Database {
                 files_edited_count,
                 reedited_files_count,
                 commit_count,
-            }
-        }))
+            )| {
+                SessionContribution {
+                    session_id,
+                    work_type,
+                    duration_seconds,
+                    prompt_count,
+                    ai_lines_added,
+                    ai_lines_removed,
+                    files_edited_count,
+                    reedited_files_count,
+                    commit_count,
+                }
+            },
+        ))
     }
 
     /// Get commits linked to a session.
@@ -1560,13 +1629,15 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(hash, message, insertions, deletions, tier)| LinkedCommit {
-                hash,
-                message,
-                insertions,
-                deletions,
-                tier,
-            })
+            .map(
+                |(hash, message, insertions, deletions, tier)| LinkedCommit {
+                    hash,
+                    message,
+                    insertions,
+                    deletions,
+                    tier,
+                },
+            )
             .collect())
     }
 
@@ -1591,9 +1662,10 @@ impl Database {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
-            sqlx::query_as(
-                r#"
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> =
+            if let Some(pid) = project_id {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     s.primary_model as model,
                     COUNT(*) as sessions,
@@ -1613,16 +1685,16 @@ impl Database {
                 GROUP BY s.primary_model
                 ORDER BY input_tokens + output_tokens DESC
                 "#,
-            )
-            .bind(pid)
-            .bind(&from)
-            .bind(&to)
-            .bind(branch)
-            .fetch_all(self.pool())
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
+                )
+                .bind(pid)
+                .bind(&from)
+                .bind(&to)
+                .bind(branch)
+                .fetch_all(self.pool())
+                .await?
+            } else {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     s.primary_model as model,
                     COUNT(*) as sessions,
@@ -1641,35 +1713,18 @@ impl Database {
                 GROUP BY s.primary_model
                 ORDER BY input_tokens + output_tokens DESC
                 "#,
-            )
-            .bind(&from)
-            .bind(&to)
-            .bind(branch)
-            .fetch_all(self.pool())
-            .await?
-        };
+                )
+                .bind(&from)
+                .bind(&to)
+                .bind(branch)
+                .fetch_all(self.pool())
+                .await?
+            };
 
         Ok(rows
             .into_iter()
-            .map(|(model, sessions, lines, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reedited, files_edited)| {
-                let reedit_rate = if files_edited > 0 {
-                    Some(reedited as f64 / files_edited as f64)
-                } else {
-                    None
-                };
-
-                // cost_per_line is computed by the handler using per-model pricing
-                // (set to None here, filled in by contributions.rs)
-
-                // Generate simple insight
-                let insight = match reedit_rate {
-                    Some(rr) if rr < 0.15 => format!("Low re-edit rate ({:.0}%)", rr * 100.0),
-                    Some(rr) if rr > 0.35 => format!("High re-edit rate ({:.0}%)", rr * 100.0),
-                    Some(rr) => format!("{:.0}% re-edit rate", rr * 100.0),
-                    None => "No re-edit data".to_string(),
-                };
-
-                ModelStats {
+            .map(
+                |(
                     model,
                     sessions,
                     lines,
@@ -1677,11 +1732,40 @@ impl Database {
                     output_tokens,
                     cache_read_tokens,
                     cache_creation_tokens,
-                    reedit_rate,
-                    cost_per_line: None,
-                    insight,
-                }
-            })
+                    reedited,
+                    files_edited,
+                )| {
+                    let reedit_rate = if files_edited > 0 {
+                        Some(reedited as f64 / files_edited as f64)
+                    } else {
+                        None
+                    };
+
+                    // cost_per_line is computed by the handler using per-model pricing
+                    // (set to None here, filled in by contributions.rs)
+
+                    // Generate simple insight
+                    let insight = match reedit_rate {
+                        Some(rr) if rr < 0.15 => format!("Low re-edit rate ({:.0}%)", rr * 100.0),
+                        Some(rr) if rr > 0.35 => format!("High re-edit rate ({:.0}%)", rr * 100.0),
+                        Some(rr) => format!("{:.0}% re-edit rate", rr * 100.0),
+                        None => "No re-edit data".to_string(),
+                    };
+
+                    ModelStats {
+                        model,
+                        sessions,
+                        lines,
+                        input_tokens,
+                        output_tokens,
+                        cache_read_tokens,
+                        cache_creation_tokens,
+                        reedit_rate,
+                        cost_per_line: None,
+                        insight,
+                    }
+                },
+            )
             .collect())
     }
 
@@ -1737,11 +1821,9 @@ impl Database {
         let periods: Vec<LearningCurvePeriod> = rows
             .iter()
             .filter(|(_, _, files_edited)| *files_edited > 0)
-            .map(|(period, reedited, files_edited)| {
-                LearningCurvePeriod {
-                    period: period.clone(),
-                    reedit_rate: *reedited as f64 / *files_edited as f64,
-                }
+            .map(|(period, reedited, files_edited)| LearningCurvePeriod {
+                period: period.clone(),
+                reedit_rate: *reedited as f64 / *files_edited as f64,
             })
             .collect();
 
@@ -1956,13 +2038,15 @@ impl Database {
         // Build results
         let mut results: Vec<SkillStats> = skill_rows
             .into_iter()
-            .map(|(skill_name, sessions, avg_loc, commit_rate, reedit_rate)| SkillStats {
-                skill: skill_name,
-                sessions,
-                avg_loc: avg_loc.round() as i64,
-                commit_rate,
-                reedit_rate,
-            })
+            .map(
+                |(skill_name, sessions, avg_loc, commit_rate, reedit_rate)| SkillStats {
+                    skill: skill_name,
+                    sessions,
+                    avg_loc: avg_loc.round() as i64,
+                    commit_rate,
+                    reedit_rate,
+                },
+            )
             .collect();
 
         // Add "(no skill)" baseline if there are sessions without skills
@@ -2088,12 +2172,11 @@ impl Database {
     /// Parses files_edited JSON from the session.
     pub async fn get_session_file_impacts(&self, session_id: &str) -> DbResult<Vec<FileImpact>> {
         // Get files_edited JSON from session
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT files_edited FROM sessions WHERE id = ?1",
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT files_edited FROM sessions WHERE id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
 
         let Some((files_json,)) = row else {
             return Ok(Vec::new());
@@ -2115,7 +2198,7 @@ impl Database {
             .into_iter()
             .map(|path| FileImpact {
                 path,
-                lines_added: 0,  // Would need JSONL parsing for actual counts
+                lines_added: 0, // Would need JSONL parsing for actual counts
                 lines_removed: 0,
                 action: "modified".to_string(),
             })
@@ -2145,9 +2228,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2386,7 +2470,19 @@ impl Database {
         let mut tx = self.pool().begin().await?;
         let mut count = 0u32;
 
-        for (week_start, sessions, lines_added, lines_removed, commits, insertions, deletions, tokens, cost, files_edited) in weeks {
+        for (
+            week_start,
+            sessions,
+            lines_added,
+            lines_removed,
+            commits,
+            insertions,
+            deletions,
+            tokens,
+            cost,
+            files_edited,
+        ) in weeks
+        {
             // Create the week key format: "W:YYYY-MM-DD" to distinguish from daily
             let week_key = format!("W:{}", week_start);
 
@@ -2505,9 +2601,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2586,9 +2683,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2663,9 +2761,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2808,9 +2907,22 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert a snapshot
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 12)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            10,
+            500,
+            100,
+            5,
+            450,
+            80,
+            100000,
+            25,
+            12,
+        )
+        .await
+        .unwrap();
 
         // Query it back
         let row: (i64, i64, i64) = sqlx::query_as(
@@ -2825,17 +2937,29 @@ mod tests {
         assert_eq!(row.2, 5);
 
         // Upsert with different values
-        db.upsert_snapshot("2026-02-05", None, None, 15, 600, 150, 7, 500, 100, 150000, 38, 18)
-            .await
-            .unwrap();
-
-        // Should be updated, not duplicated
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM contribution_snapshots WHERE date = '2026-02-05'",
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            15,
+            600,
+            150,
+            7,
+            500,
+            100,
+            150000,
+            38,
+            18,
         )
-        .fetch_one(db.pool())
         .await
         .unwrap();
+
+        // Should be updated, not duplicated
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM contribution_snapshots WHERE date = '2026-02-05'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
         assert_eq!(count.0, 1);
 
         let row: (i64, i64) = sqlx::query_as(
@@ -2864,15 +2988,54 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert some snapshots
-        db.upsert_snapshot("2026-02-03", None, None, 5, 200, 50, 2, 180, 40, 50000, 13, 5)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2026-02-04", None, None, 8, 350, 80, 4, 300, 60, 80000, 20, 10)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 15)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-02-03",
+            None,
+            None,
+            5,
+            200,
+            50,
+            2,
+            180,
+            40,
+            50000,
+            13,
+            5,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2026-02-04",
+            None,
+            None,
+            8,
+            350,
+            80,
+            4,
+            300,
+            60,
+            80000,
+            20,
+            10,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            10,
+            500,
+            100,
+            5,
+            450,
+            80,
+            100000,
+            25,
+            15,
+        )
+        .await
+        .unwrap();
 
         let trend = db
             .get_contribution_trend(
@@ -3168,12 +3331,38 @@ mod tests {
         db.upsert_snapshot("2025-12-02", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 4)
             .await
             .unwrap();
-        db.upsert_snapshot("2025-12-03", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 7)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2025-12-04", None, None, 6, 150, 30, 2, 130, 25, 15000, 4, 5)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2025-12-03",
+            None,
+            None,
+            8,
+            200,
+            40,
+            3,
+            180,
+            30,
+            20000,
+            5,
+            7,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2025-12-04",
+            None,
+            None,
+            6,
+            150,
+            30,
+            2,
+            130,
+            25,
+            15000,
+            4,
+            5,
+        )
+        .await
+        .unwrap();
 
         // Perform rollup with 30 day retention
         let count = db.rollup_weekly_snapshots(30).await.unwrap();
@@ -3218,13 +3407,12 @@ mod tests {
         assert_eq!(count, 0); // Nothing rolled up
 
         // Recent snapshot should still exist
-        let daily_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1",
-        )
-        .bind(&today)
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+        let daily_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1")
+                .bind(&today)
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
         assert_eq!(daily_count.0, 1);
     }
 
@@ -3236,9 +3424,22 @@ mod tests {
         db.upsert_snapshot("2026-01-15", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 3)
             .await
             .unwrap();
-        db.upsert_snapshot("2026-01-16", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 6)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-01-16",
+            None,
+            None,
+            8,
+            200,
+            40,
+            3,
+            180,
+            30,
+            20000,
+            5,
+            6,
+        )
+        .await
+        .unwrap();
 
         // Insert a weekly snapshot manually
         sqlx::query(

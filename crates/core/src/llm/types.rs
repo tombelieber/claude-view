@@ -119,7 +119,10 @@ mod tests {
             "reasoning": "User is building a new React component"
         }"#;
         let resp: ClassificationResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.reasoning, Some("User is building a new React component".to_string()));
+        assert_eq!(
+            resp.reasoning,
+            Some("User is building a new React component".to_string())
+        );
     }
 
     #[test]
@@ -140,9 +143,14 @@ mod tests {
         assert_eq!(err.to_string(), "Timeout after 30 seconds");
 
         let err = LlmError::SpawnFailed("command not found".to_string());
-        assert_eq!(err.to_string(), "Failed to spawn LLM process: command not found");
+        assert_eq!(
+            err.to_string(),
+            "Failed to spawn LLM process: command not found"
+        );
 
-        let err = LlmError::RateLimited { retry_after_secs: 60 };
+        let err = LlmError::RateLimited {
+            retry_after_secs: 60,
+        };
         assert_eq!(err.to_string(), "Rate limited, retry after 60 seconds");
     }
 }

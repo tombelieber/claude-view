@@ -23,7 +23,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use claude_view_core::llm::LlmProvider;
 use claude_view_core::report::{
-    BranchDigest, ContextDigest, ProjectDigest, SessionDigest, build_report_prompt,
+    build_report_prompt, BranchDigest, ContextDigest, ProjectDigest, SessionDigest,
 };
 use claude_view_db::{ReportPreview, ReportRow};
 
@@ -70,9 +70,7 @@ pub struct PreviewQuery {
 // ============================================================================
 
 /// GET /api/reports — List all saved reports.
-async fn list_reports(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<Vec<ReportRow>>> {
+async fn list_reports(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<ReportRow>>> {
     let reports = state.db.list_reports().await?;
     Ok(Json(reports))
 }
@@ -82,7 +80,10 @@ async fn get_preview(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PreviewQuery>,
 ) -> ApiResult<Json<ReportPreview>> {
-    let preview = state.db.get_report_preview(params.start_ts, params.end_ts).await?;
+    let preview = state
+        .db
+        .get_report_preview(params.start_ts, params.end_ts)
+        .await?;
     Ok(Json(preview))
 }
 
@@ -140,7 +141,16 @@ async fn generate_report(
     let end_ts = body.end_ts;
 
     // Build context digest from DB data
-    let digest = match build_context_digest(&state, &body.report_type, &body.date_start, &body.date_end, start_ts, end_ts).await {
+    let digest = match build_context_digest(
+        &state,
+        &body.report_type,
+        &body.date_start,
+        &body.date_end,
+        start_ts,
+        end_ts,
+    )
+    .await
+    {
         Ok(d) => d,
         Err(e) => {
             GENERATING.store(false, Ordering::SeqCst);
@@ -159,22 +169,30 @@ async fn generate_report(
     let prompt = build_report_prompt(&digest);
 
     // Preview stats for persisting
-    let preview = state.db.get_report_preview(start_ts, end_ts).await.map_err(|e| {
-        GENERATING.store(false, Ordering::SeqCst);
-        ApiError::Internal(format!("Failed to get preview: {e}"))
-    })?;
+    let preview = state
+        .db
+        .get_report_preview(start_ts, end_ts)
+        .await
+        .map_err(|e| {
+            GENERATING.store(false, Ordering::SeqCst);
+            ApiError::Internal(format!("Failed to get preview: {e}"))
+        })?;
 
     // Spawn Claude CLI for streaming
-    let provider = super::settings::create_llm_provider(&state.db).await.map_err(|e| {
-        GENERATING.store(false, Ordering::SeqCst);
-        e
-    })?;
+    let provider = super::settings::create_llm_provider(&state.db)
+        .await
+        .map_err(|e| {
+            GENERATING.store(false, Ordering::SeqCst);
+            e
+        })?;
     let generation_model = provider.model().to_string();
     let (mut rx, _handle) = match provider.stream_completion(prompt) {
         Ok(pair) => pair,
         Err(e) => {
             GENERATING.store(false, Ordering::SeqCst);
-            return Err(ApiError::Internal(format!("Failed to spawn Claude CLI: {e}")));
+            return Err(ApiError::Internal(format!(
+                "Failed to spawn Claude CLI: {e}"
+            )));
         }
     };
 
@@ -255,7 +273,10 @@ async fn build_context_digest(
     end_ts: i64,
 ) -> Result<ContextDigest, ApiError> {
     // Query sessions in range via Database method
-    let sessions = state.db.get_sessions_in_range(start_ts, end_ts).await
+    let sessions = state
+        .db
+        .get_sessions_in_range(start_ts, end_ts)
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to query sessions: {e}")))?;
 
     if sessions.is_empty() {
@@ -286,18 +307,28 @@ async fn build_context_digest(
     }
 
     // Query commit counts per project via Database method
-    let commit_rows = state.db.get_commit_counts_in_range(start_ts, end_ts).await
+    let commit_rows = state
+        .db
+        .get_commit_counts_in_range(start_ts, end_ts)
+        .await
         .unwrap_or_default();
     let commit_counts: HashMap<String, i64> = commit_rows.into_iter().collect();
 
     // Query top tools and skills via Database methods
-    let top_tools = state.db.get_top_tools_in_range(start_ts, end_ts, 5).await
+    let top_tools = state
+        .db
+        .get_top_tools_in_range(start_ts, end_ts, 5)
+        .await
         .unwrap_or_default();
-    let top_skills = state.db.get_top_skills_in_range(start_ts, end_ts, 5).await
+    let top_skills = state
+        .db
+        .get_top_skills_in_range(start_ts, end_ts, 5)
+        .await
         .unwrap_or_default();
 
     // Query token totals
-    let (total_input_tokens, total_output_tokens) = state.db
+    let (total_input_tokens, total_output_tokens) = state
+        .db
         .get_token_totals_in_range(start_ts, end_ts)
         .await
         .unwrap_or((0, 0));
@@ -439,9 +470,23 @@ mod tests {
     #[tokio::test]
     async fn test_list_reports_with_data() {
         let db = Database::new_in_memory().await.unwrap();
-        db.insert_report("daily", "2026-02-21", "2026-02-21", "- Did stuff", None, 5, 2, 3600, 100, None, None, None, None)
-            .await
-            .unwrap();
+        db.insert_report(
+            "daily",
+            "2026-02-21",
+            "2026-02-21",
+            "- Did stuff",
+            None,
+            5,
+            2,
+            3600,
+            100,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         let state = AppState::new(db);
         let app = test_app(state);
@@ -470,7 +515,21 @@ mod tests {
     async fn test_get_report_by_id() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("weekly", "2026-02-17", "2026-02-21", "week summary", None, 32, 5, 64800, 2450, None, None, None, None)
+            .insert_report(
+                "weekly",
+                "2026-02-17",
+                "2026-02-21",
+                "week summary",
+                None,
+                32,
+                5,
+                64800,
+                2450,
+                None,
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
 
@@ -519,7 +578,21 @@ mod tests {
     async fn test_delete_report() {
         let db = Database::new_in_memory().await.unwrap();
         let id = db
-            .insert_report("daily", "2026-02-21", "2026-02-21", "test", None, 1, 1, 100, 10, None, None, None, None)
+            .insert_report(
+                "daily",
+                "2026-02-21",
+                "2026-02-21",
+                "test",
+                None,
+                1,
+                1,
+                100,
+                10,
+                None,
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
 

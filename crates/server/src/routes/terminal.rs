@@ -20,7 +20,7 @@ use memchr::memmem;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
-use claude_view_core::category::{categorize_tool, categorize_progress};
+use claude_view_core::category::{categorize_progress, categorize_tool};
 
 use crate::state::AppState;
 
@@ -125,7 +125,14 @@ async fn ws_terminal_handler(
             manager: terminal_connections.clone(),
         };
 
-        handle_terminal_ws(socket, sid.clone(), file_path, terminal_connections.clone(), state.clone()).await;
+        handle_terminal_ws(
+            socket,
+            sid.clone(),
+            file_path,
+            terminal_connections.clone(),
+            state.clone(),
+        )
+        .await;
         // _guard dropped here (or on panic/cancel), calling disconnect()
     })
 }
@@ -406,7 +413,9 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
 
             let category = categorize_progress(data_type);
 
-            let hook_name = data.and_then(|d| d.get("hookName")).and_then(|v| v.as_str());
+            let hook_name = data
+                .and_then(|d| d.get("hookName"))
+                .and_then(|v| v.as_str());
             let command = data.and_then(|d| d.get("command")).and_then(|v| v.as_str());
             let content = if let Some(hn) = hook_name {
                 format!("{}: {}", data_type, hn)
@@ -441,7 +450,10 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
             return vec![result.to_string()];
         }
         "system" => {
-            let subtype = parsed.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let subtype = parsed
+                .get("subtype")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let duration_ms = parsed.get("durationMs").and_then(|v| v.as_u64());
             let content = if let Some(ms) = duration_ms {
                 format!("{}: {}ms", subtype, ms)
@@ -459,7 +471,10 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
             return vec![result.to_string()];
         }
         "queue-operation" => {
-            let operation = parsed.get("operation").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let operation = parsed
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let mut result = serde_json::json!({
                 "type": "system",
                 "content": format!("queue-{}", operation),
@@ -1073,8 +1088,7 @@ async fn handle_terminal_ws(
 /// Modified events are sent through the `mpsc::Sender<WatchEvent>` channel.
 fn start_file_watcher(
     tx: mpsc::Sender<WatchEvent>,
-    #[allow(clippy::ptr_arg)]
-    file_path: &PathBuf,
+    #[allow(clippy::ptr_arg)] file_path: &PathBuf,
 ) -> notify::Result<RecommendedWatcher> {
     let target_path = file_path.clone();
 
@@ -1144,7 +1158,9 @@ mod tests {
             live_manager: None,
             search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         // Register the session in the live sessions map
@@ -1321,7 +1337,9 @@ mod tests {
             live_manager: None,
             search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
@@ -1751,8 +1769,7 @@ mod tests {
     #[test]
     fn format_line_rich_mode_progress_emits_category() {
         let finders = RichModeFinders::new();
-        let line =
-            r#"{"type":"progress","data":{"type":"hook_progress","hookName":"pre-commit"}}"#;
+        let line = r#"{"type":"progress","data":{"type":"hook_progress","hookName":"pre-commit"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
         assert_eq!(result.len(), 1, "Progress events should emit one message");
         let parsed: serde_json::Value = serde_json::from_str(&result[0]).unwrap();
