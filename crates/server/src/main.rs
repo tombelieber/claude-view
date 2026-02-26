@@ -33,23 +33,42 @@ fn get_port() -> u16 {
 ///
 /// Priority:
 /// 1. STATIC_DIR environment variable (explicit override)
-/// 2. ./apps/web/dist directory (monorepo layout)
-/// 3. ./dist directory (npx distribution flat layout)
-/// 4. None (API-only mode)
+/// 2. Binary-relative ./dist (npx distribution: binary + dist/ are siblings)
+/// 3. CWD-relative ./apps/web/dist (monorepo dev layout via cargo run)
+/// 4. CWD-relative ./dist (legacy flat layout)
+/// 5. None (API-only mode)
 fn get_static_dir() -> Option<PathBuf> {
-    std::env::var("STATIC_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| {
-            // Monorepo layout: apps/web/dist
-            let monorepo_dist = PathBuf::from("apps/web/dist");
-            if monorepo_dist.exists() {
-                return Some(monorepo_dist);
+    // 1. Explicit override always wins
+    if let Ok(dir) = std::env::var("STATIC_DIR") {
+        let p = PathBuf::from(&dir);
+        if p.exists() {
+            return Some(p);
+        }
+        tracing::warn!(static_dir = %dir, "STATIC_DIR set but directory does not exist");
+        return None;
+    }
+
+    // 2. Binary-relative: resolves symlinks (Homebrew), works regardless of CWD
+    if let Ok(exe) = std::env::current_exe() {
+        if let Ok(canonical) = exe.canonicalize() {
+            if let Some(exe_dir) = canonical.parent() {
+                let bin_dist = exe_dir.join("dist");
+                if bin_dist.exists() {
+                    return Some(bin_dist);
+                }
             }
-            // Fallback: flat layout (npx distribution)
-            let dist = PathBuf::from("dist");
-            dist.exists().then_some(dist)
-        })
+        }
+    }
+
+    // 3. CWD-relative: monorepo layout (cargo run from repo root)
+    let monorepo_dist = PathBuf::from("apps/web/dist");
+    if monorepo_dist.exists() {
+        return Some(monorepo_dist);
+    }
+
+    // 4. CWD-relative: flat layout fallback
+    let dist = PathBuf::from("dist");
+    dist.exists().then_some(dist)
 }
 
 /// Run git sync with structured logging. Used by both initial and periodic sync.
