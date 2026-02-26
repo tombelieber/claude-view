@@ -50,7 +50,10 @@ pub struct RawTaskIdAssignment {
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgressStatus {
     Pending,
@@ -59,7 +62,10 @@ pub enum ProgressStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgressSource {
     Todo,
@@ -67,7 +73,10 @@ pub enum ProgressSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressItem {
     /// For tasks: system-assigned ID ("1", "2", "3").

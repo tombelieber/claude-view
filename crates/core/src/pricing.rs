@@ -9,6 +9,7 @@
 
 use serde::Serialize;
 use std::collections::HashMap;
+use ts_rs::TS;
 
 /// Per-model pricing in USD per token.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -38,7 +39,11 @@ pub struct TokenBreakdown {
 }
 
 /// Accumulated token counts for a live session.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
     pub input_tokens: u64,
@@ -53,7 +58,11 @@ pub struct TokenUsage {
 }
 
 /// Itemized cost breakdown in USD.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CostBreakdown {
     pub total_usd: f64,
@@ -67,7 +76,11 @@ pub struct CostBreakdown {
 }
 
 /// Whether the Anthropic prompt cache is likely warm or cold.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CacheStatus {
     Warm,

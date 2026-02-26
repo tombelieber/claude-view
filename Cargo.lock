@@ -3755,6 +3755,7 @@ version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
 dependencies = [
+ "serde_json",
  "thiserror 2.0.18",
  "ts-rs-macros",
 ]
