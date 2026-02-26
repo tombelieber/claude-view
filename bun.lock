@@ -114,6 +114,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
+        "tweetnacl": "^1.0.3",
+        "tweetnacl-util": "^0.15.1",
       },
       "peerDependencies": {
         "react": ">=18",
