@@ -14,8 +14,8 @@ use super::manager::LiveSessionMap;
 use super::state::{AgentStateGroup, LiveSession, SessionEvent};
 use crate::crypto::{
     add_paired_device, box_secret_key, decrypt_from_device, encrypt_for_device,
-    load_or_create_identity, load_paired_devices, sign_auth_challenge, DeviceIdentity,
-    PairedDevice,
+    find_and_verify_hmac, load_or_create_identity, load_paired_devices, sign_auth_challenge,
+    DeviceIdentity, PairedDevice,
 };
 
 /// Configuration for the relay client.
@@ -244,6 +244,8 @@ async fn connect_and_stream(
                                 let phone_x25519_b64 = val.get("x25519_pubkey").and_then(|v| v.as_str());
                                 let encrypted_blob = val.get("pubkey_encrypted_blob").and_then(|v| v.as_str());
 
+                                let verification_hmac = val.get("verification_hmac").and_then(|v| v.as_str());
+
                                 match (phone_device_id, phone_x25519_b64, encrypted_blob) {
                                     (Some(did), Some(x_pub), Some(blob)) => {
                                         // Decrypt blob to verify phone owns the X25519 key
@@ -252,20 +254,49 @@ async fn connect_and_stream(
                                                 let claimed_pubkey = STANDARD.encode(&decrypted);
                                                 if claimed_pubkey != x_pub {
                                                     warn!("pair_complete: decrypted pubkey doesn't match claimed x25519_pubkey");
-                                                } else {
-                                                    info!(phone = %did, "pair_complete: verified and storing paired device");
-                                                    let device = PairedDevice {
-                                                        device_id: did.to_string(),
-                                                        x25519_pubkey: x_pub.to_string(),
-                                                        name: format!("Phone {}", &did[..did.len().min(12)]),
-                                                        paired_at: std::time::SystemTime::now()
-                                                            .duration_since(std::time::UNIX_EPOCH)
-                                                            .unwrap_or_default()
-                                                            .as_secs(),
-                                                    };
-                                                    if let Err(e) = add_paired_device(device) {
-                                                        error!("failed to store paired device: {e}");
+                                                    continue;
+                                                }
+
+                                                // HMAC anti-MITM verification: if the phone
+                                                // sent an HMAC, verify it against our stored
+                                                // verification secret. This proves the phone
+                                                // scanned our QR code directly (the relay
+                                                // cannot forge this without the secret).
+                                                match verification_hmac {
+                                                    Some(hmac) => {
+                                                        match find_and_verify_hmac(x_pub, hmac) {
+                                                            Ok(true) => {
+                                                                info!(phone = %did, "pair_complete: HMAC verified, anti-MITM binding confirmed");
+                                                            }
+                                                            Ok(false) => {
+                                                                warn!(phone = %did, "pair_complete: HMAC verification failed — possible relay key substitution, rejecting");
+                                                                continue;
+                                                            }
+                                                            Err(e) => {
+                                                                warn!(phone = %did, "pair_complete: HMAC verification error: {e}, rejecting");
+                                                                continue;
+                                                            }
+                                                        }
                                                     }
+                                                    None => {
+                                                        // Backwards compatibility: older phone
+                                                        // clients may not send HMAC yet.
+                                                        warn!(phone = %did, "pair_complete: no verification_hmac provided (legacy client), accepting without HMAC binding");
+                                                    }
+                                                }
+
+                                                info!(phone = %did, "pair_complete: verified and storing paired device");
+                                                let device = PairedDevice {
+                                                    device_id: did.to_string(),
+                                                    x25519_pubkey: x_pub.to_string(),
+                                                    name: format!("Phone {}", &did[..did.len().min(12)]),
+                                                    paired_at: std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_secs(),
+                                                };
+                                                if let Err(e) = add_paired_device(device) {
+                                                    error!("failed to store paired device: {e}");
                                                 }
                                             }
                                             Err(e) => {

@@ -90,11 +90,30 @@ export interface ClaimPairingParams {
   relayUrl: string
   keys: PhoneKeys
   storage: KeyStorage
+  /** Verification secret from QR code (base64, 32 bytes). Used for HMAC anti-MITM binding. */
+  verificationSecret?: string
+}
+
+/**
+ * Compute HMAC-SHA256(secret, data) using Web Crypto API.
+ * Returns the HMAC as a base64 string.
+ */
+async function computeHmacSha256(secretB64: string, data: Uint8Array): Promise<string> {
+  const secretBytes = decodeBase64(secretB64)
+  const key = await crypto.subtle.importKey(
+    'raw',
+    secretBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, data)
+  return encodeBase64(new Uint8Array(sig))
 }
 
 /** Claim a pairing offer at the relay. Stores keys and relay URL in secure storage. */
 export async function claimPairing(params: ClaimPairingParams): Promise<void> {
-  const { macPubkeyB64, token, relayUrl, keys, storage } = params
+  const { macPubkeyB64, token, relayUrl, keys, storage, verificationSecret } = params
   const macPubkey = decodeBase64(macPubkeyB64)
 
   // Encrypt phone's X25519 pubkey for Mac
@@ -104,22 +123,34 @@ export async function claimPairing(params: ClaimPairingParams): Promise<void> {
     keys.boxKeyPair.secretKey,
   )
 
+  // Compute HMAC-SHA256(verification_secret, phone_x25519_pubkey) for anti-MITM binding.
+  // The verification secret came from the QR code (never sent to relay).
+  let verificationHmac: string | undefined
+  if (verificationSecret) {
+    verificationHmac = await computeHmacSha256(verificationSecret, keys.boxKeyPair.publicKey)
+  }
+
   // Audit gap #30: Use regex to strip only trailing /ws
   const httpUrl = relayUrl
     .replace('wss://', 'https://')
     .replace('ws://', 'http://')
     .replace(/\/ws$/, '')
 
+  const body: Record<string, string> = {
+    one_time_token: token,
+    device_id: keys.deviceId,
+    pubkey: encodeBase64(keys.signingKeyPair.publicKey),
+    pubkey_encrypted_blob: encryptedBlob,
+    x25519_pubkey: encodeBase64(keys.boxKeyPair.publicKey),
+  }
+  if (verificationHmac) {
+    body.verification_hmac = verificationHmac
+  }
+
   const res = await fetch(`${httpUrl}/pair/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      one_time_token: token,
-      device_id: keys.deviceId,
-      pubkey: encodeBase64(keys.signingKeyPair.publicKey),
-      pubkey_encrypted_blob: encryptedBlob,
-      x25519_pubkey: encodeBase64(keys.boxKeyPair.publicKey),
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
