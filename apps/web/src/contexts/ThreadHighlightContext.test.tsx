@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { ThreadHighlightProvider, useThreadHighlight } from './ThreadHighlightContext'
+import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { describe, expect, it } from 'vitest'
+import { ThreadHighlightProvider, useThreadHighlight } from './ThreadHighlightContext'
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <ThreadHighlightProvider>{children}</ThreadHighlightProvider>

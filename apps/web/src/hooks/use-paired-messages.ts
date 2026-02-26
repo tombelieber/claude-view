@@ -42,7 +42,7 @@ export function pairMessages(messages: RichMessage[]): DisplayItem[] {
       }
 
       items.push({ kind: 'tool_pair', toolUse: m, toolResult: resultMsg })
-      i = resultMsg ? j + 1 : (skipped.length > 0 ? j : i + 1)
+      i = resultMsg ? j + 1 : skipped.length > 0 ? j : i + 1
       continue
     }
 

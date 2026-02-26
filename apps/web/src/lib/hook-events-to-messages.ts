@@ -1,6 +1,6 @@
-import type { Message } from '../types/generated'
 import type { RichMessage } from '../components/live/RichPane'
 import type { HookEventItem } from '../components/live/action-log/types'
+import type { Message } from '../types/generated'
 
 /**
  * Convert hook events (from SQLite) into synthetic Message objects
@@ -16,9 +16,7 @@ export function hookEventsToMessages(events: HookEventItem[]): Message[] {
     uuid: `hook-event-${e.id}`,
     role: 'progress' as const,
     content: `Hook: ${e.eventName} — ${e.label}`,
-    timestamp: e.timestamp > 0
-      ? new Date(e.timestamp * 1000).toISOString()
-      : null,
+    timestamp: e.timestamp > 0 ? new Date(e.timestamp * 1000).toISOString() : null,
     metadata: {
       type: 'hook_event',
       _sortTs: e.timestamp > 0 ? e.timestamp : undefined,
@@ -69,11 +67,7 @@ export function getMessageSortTs(m: Message): number | undefined {
  * hook_events from SQLite: ORDER BY timestamp ASC, id ASC
  * Messages from JSONL: chronological order from parser
  */
-export function mergeByTimestamp<T>(
-  a: T[],
-  b: T[],
-  getTs: (item: T) => number | undefined,
-): T[] {
+export function mergeByTimestamp<T>(a: T[], b: T[], getTs: (item: T) => number | undefined): T[] {
   if (b.length === 0) return a
   if (a.length === 0) return b
 
@@ -82,8 +76,8 @@ export function mergeByTimestamp<T>(
   let bi = 0
 
   while (ai < a.length && bi < b.length) {
-    const tsA = getTs(a[ai]) ?? Infinity
-    const tsB = getTs(b[bi]) ?? Infinity
+    const tsA = getTs(a[ai]) ?? Number.POSITIVE_INFINITY
+    const tsB = getTs(b[bi]) ?? Number.POSITIVE_INFINITY
     if (tsA <= tsB) {
       merged.push(a[ai++])
     } else {

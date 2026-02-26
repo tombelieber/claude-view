@@ -1,7 +1,7 @@
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, FileText, Pencil } from 'lucide-react'
 import { useState } from 'react'
-import { FileText, ChevronDown, ChevronUp, Eye, Pencil, AlertTriangle } from 'lucide-react'
-import { cn } from '../lib/utils'
 import type { FileTouched } from '../lib/files-touched'
+import { cn } from '../lib/utils'
 
 // Re-export for convenience
 export { buildFilesTouched, type FileTouched } from '../lib/files-touched'
@@ -37,11 +37,7 @@ function getParentDir(path: string): string {
  * - Expandable for long lists (default limit: 5)
  * - Sorted by: re-edited first, then edit count, then read count
  */
-export function FilesTouchedPanel({
-  files,
-  initialLimit = 5,
-  className,
-}: FilesTouchedPanelProps) {
+export function FilesTouchedPanel({ files, initialLimit = 5, className }: FilesTouchedPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const displayFiles = isExpanded ? files : files.slice(0, initialLimit)
@@ -49,7 +45,12 @@ export function FilesTouchedPanel({
 
   if (files.length === 0) {
     return (
-      <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+      <div
+        className={cn(
+          'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+          className,
+        )}
+      >
         <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
           <FileText className="w-4 h-4" />
           Files Touched
@@ -63,7 +64,12 @@ export function FilesTouchedPanel({
   }
 
   return (
-    <div className={cn('bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6', className)}>
+    <div
+      className={cn(
+        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+        className,
+      )}
+    >
       <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5 font-metric-label">
         <FileText className="w-4 h-4" />
         Files Touched
@@ -77,7 +83,9 @@ export function FilesTouchedPanel({
             key={file.path}
             className={cn(
               'flex items-center gap-2 p-2 -mx-2 rounded-lg transition-colors',
-              file.isReedited ? 'bg-amber-50 dark:bg-amber-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+              file.isReedited
+                ? 'bg-amber-50 dark:bg-amber-900/20'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
           >
             {/* Re-edit badge */}
@@ -96,9 +104,7 @@ export function FilesTouchedPanel({
                 {getFileName(file.path)}
               </p>
               {getParentDir(file.path) && (
-                <p className="text-xs text-gray-400 truncate">
-                  {getParentDir(file.path)}
-                </p>
+                <p className="text-xs text-gray-400 truncate">{getParentDir(file.path)}</p>
               )}
             </div>
 
@@ -117,7 +123,9 @@ export function FilesTouchedPanel({
                 <span
                   className={cn(
                     'flex items-center gap-1 text-xs',
-                    file.isReedited ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'
+                    file.isReedited
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-gray-500 dark:text-gray-400',
                   )}
                   title={`Edited ${file.editCount} time${file.editCount > 1 ? 's' : ''}`}
                 >

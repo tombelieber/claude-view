@@ -1,8 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Trash2 } from 'lucide-react'
+import { useCallback } from 'react'
 import { useReports } from '../../hooks/use-reports'
 import type { ReportRow } from '../../types/generated/ReportRow'
-import { useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
 
 interface ReportHistoryProps {
   onSelect: (report: ReportRow) => void
@@ -22,19 +22,22 @@ export function ReportHistory({ onSelect, selectedId }: ReportHistoryProps) {
   const { data: reports, isLoading } = useReports()
   const queryClient = useQueryClient()
 
-  const handleDelete = useCallback(async (id: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!window.confirm('Delete this report?')) return
-    const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      queryClient.invalidateQueries({ queryKey: ['reports'] })
-    }
-  }, [queryClient])
+  const handleDelete = useCallback(
+    async (id: number, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!window.confirm('Delete this report?')) return
+      const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['reports'] })
+      }
+    },
+    [queryClient],
+  )
 
   if (isLoading) {
     return (
       <div className="space-y-2">
-        {[1, 2, 3].map(i => (
+        {[1, 2, 3].map((i) => (
           <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-md animate-pulse" />
         ))}
       </div>
@@ -51,7 +54,7 @@ export function ReportHistory({ onSelect, selectedId }: ReportHistoryProps) {
 
   return (
     <div className="space-y-1">
-      {reports.map(report => (
+      {reports.map((report) => (
         <button
           key={report.id}
           type="button"
@@ -68,7 +71,9 @@ export function ReportHistory({ onSelect, selectedId }: ReportHistoryProps) {
                 {report.reportType}
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {report.dateStart === report.dateEnd ? report.dateStart : `${report.dateStart} \u2014 ${report.dateEnd}`}
+                {report.dateStart === report.dateEnd
+                  ? report.dateStart
+                  : `${report.dateStart} \u2014 ${report.dateEnd}`}
               </span>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">

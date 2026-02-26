@@ -1,7 +1,7 @@
-import { useState, useRef, useLayoutEffect, useCallback, type ReactNode } from 'react'
+import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { formatCostUsd } from '../../lib/format-utils'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 interface CostTooltipProps {
   cost: {
@@ -90,65 +90,77 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
   const sessionTotalUsd = cost.totalUsd + totalSubAgentCost
 
   return (
-    <div ref={triggerRef} className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <div
+      ref={triggerRef}
+      className="relative inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       {children}
-      {isOpen && createPortal(
-        <div ref={tooltipRef} style={tooltipStyle} className="w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-          <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Cost Breakdown</div>
-          <div className="space-y-1">
-            {hasSubAgentCosts ? (
-              <>
-                <div className="font-medium text-gray-900 dark:text-gray-100 mb-1">
-                  Session Cost: {formatCostUsd(sessionTotalUsd)}
+      {isOpen &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            style={tooltipStyle}
+            className="w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Cost Breakdown</div>
+            <div className="space-y-1">
+              {hasSubAgentCosts ? (
+                <>
+                  <div className="font-medium text-gray-900 dark:text-gray-100 mb-1">
+                    Session Cost: {formatCostUsd(sessionTotalUsd)}
+                  </div>
+                  <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
+                    <AgentCostRow label="Main agent:" cost={mainAgentCost} isLast={false} />
+                    {subAgentsWithCost.map((sa, idx) => (
+                      <AgentCostRow
+                        key={sa.toolUseId}
+                        label={sa.agentType}
+                        cost={sa.costUsd ?? 0}
+                        isLast={idx === subAgentsWithCost.length - 1}
+                      />
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-2" />
+                </>
+              ) : (
+                <>
+                  <CostRow label="Input" cost={cost.inputCostUsd} />
+                  <CostRow label="Output" cost={cost.outputCostUsd} />
+                  <CostRow label="Cache read" cost={cost.cacheReadCostUsd} />
+                  <CostRow label="Cache write" cost={cost.cacheCreationCostUsd} />
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                    <CostRow label="Total" cost={cost.totalUsd} bold />
+                  </div>
+                </>
+              )}
+              {cost.cacheSavingsUsd > 0 && (
+                <div className="text-green-600 dark:text-green-400 pt-1">
+                  Saved {formatCostUsd(cost.cacheSavingsUsd)} via caching
                 </div>
-                <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
-                  <AgentCostRow label="Main agent:" cost={mainAgentCost} isLast={false} />
-                  {subAgentsWithCost.map((sa, idx) => (
-                    <AgentCostRow
-                      key={sa.toolUseId}
-                      label={sa.agentType}
-                      cost={sa.costUsd ?? 0}
-                      isLast={idx === subAgentsWithCost.length - 1}
-                    />
-                  ))}
+              )}
+              <div className={`pt-1 ${cacheStatusColor}`}>Cache: {cacheStatusLabel}</div>
+              {cost.isEstimated && (
+                <div className="text-amber-500 dark:text-amber-400 pt-1 text-[10px]">
+                  Estimated - model not in pricing table
                 </div>
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-2" />
-              </>
-            ) : (
-              <>
-                <CostRow label="Input" cost={cost.inputCostUsd} />
-                <CostRow label="Output" cost={cost.outputCostUsd} />
-                <CostRow label="Cache read" cost={cost.cacheReadCostUsd} />
-                <CostRow label="Cache write" cost={cost.cacheCreationCostUsd} />
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
-                  <CostRow label="Total" cost={cost.totalUsd} bold />
-                </div>
-              </>
-            )}
-            {cost.cacheSavingsUsd > 0 && (
-              <div className="text-green-600 dark:text-green-400 pt-1">
-                Saved {formatCostUsd(cost.cacheSavingsUsd)} via caching
-              </div>
-            )}
-            <div className={`pt-1 ${cacheStatusColor}`}>
-              Cache: {cacheStatusLabel}
+              )}
             </div>
-            {cost.isEstimated && (
-              <div className="text-amber-500 dark:text-amber-400 pt-1 text-[10px]">
-                Estimated - model not in pricing table
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
 
 function CostRow({ label, cost, bold }: { label: string; cost: number; bold?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${bold ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
+    <div
+      className={`flex items-center justify-between ${bold ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}
+    >
       <span>{label}</span>
       <span className="tabular-nums font-mono">{formatCostUsd(cost)}</span>
     </div>

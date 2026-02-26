@@ -1,19 +1,11 @@
-import { useState, useCallback, type ReactNode } from 'react'
-import {
-  Loader2,
-  Pause,
-  Maximize2,
-  X,
-  Pin,
-  GitBranch,
-  Bell,
-} from 'lucide-react'
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
+import { Bell, GitBranch, Loader2, Maximize2, Pause, Pin, X } from 'lucide-react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
-import type { AgentStateGroup } from './types'
 import { cn } from '../../lib/utils'
-import { SubAgentPills } from './SubAgentPills'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SubAgentPills } from './SubAgentPills'
+import type { AgentStateGroup } from './types'
+import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 // --- Helpers ---
 
@@ -103,7 +95,7 @@ export function MonitorPane({
       if ((e.target as HTMLElement).closest('button')) return
       onSelect()
     },
-    [onSelect]
+    [onSelect],
   )
 
   if (!isVisible) return null
@@ -120,7 +112,7 @@ export function MonitorPane({
           ? 'ring-2 ring-blue-500 dark:ring-[#1F6FEB] border-blue-500 dark:border-[#1F6FEB] shadow-lg shadow-blue-500/10 dark:shadow-[#1F6FEB]/10'
           : isHovered
             ? 'border-gray-300 dark:border-[#30363D] shadow-md shadow-black/10 dark:shadow-black/30'
-            : 'border-gray-200 dark:border-[#21262D]'
+            : 'border-gray-200 dark:border-[#21262D]',
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -221,20 +213,23 @@ function FullHeader({
       <span className="text-[10px] font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
         {cost}
       </span>
-      <span className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}>
+      <span
+        className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}
+      >
         {ctxPct}% ctx
       </span>
 
       {/* Status icon */}
-      <GroupIcon group={session.agentState.group} className="w-3 h-3 text-gray-400 dark:text-[#8B949E] flex-shrink-0" />
+      <GroupIcon
+        group={session.agentState.group}
+        className="w-3 h-3 text-gray-400 dark:text-[#8B949E] flex-shrink-0"
+      />
 
       {/* Divider */}
       <div className="w-px h-3.5 bg-gray-200 dark:bg-[#30363D]" />
 
       {/* Pin indicator */}
-      {isPinned && (
-        <Pin className="w-3 h-3 text-blue-500 dark:text-[#79C0FF] flex-shrink-0" />
-      )}
+      {isPinned && <Pin className="w-3 h-3 text-blue-500 dark:text-[#79C0FF] flex-shrink-0" />}
 
       {/* Action buttons */}
       <button
@@ -244,7 +239,9 @@ function FullHeader({
         }}
         className={cn(
           'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-[#30363D] transition-colors',
-          isPinned ? 'text-blue-500 dark:text-[#79C0FF] hover:text-blue-600 dark:hover:text-[#A5D6FF]' : 'text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]'
+          isPinned
+            ? 'text-blue-500 dark:text-[#79C0FF] hover:text-blue-600 dark:hover:text-[#A5D6FF]'
+            : 'text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9]',
         )}
         title={isPinned ? 'Unpin pane' : 'Pin pane'}
       >
@@ -311,7 +308,9 @@ function CompactHeader({
       </span>
 
       {/* Context % */}
-      <span className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}>
+      <span
+        className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}
+      >
         {ctxPct}%
       </span>
 
@@ -344,7 +343,10 @@ function CompactHeader({
 // --- Footer ---
 
 function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => void }) {
-  const activity = session.currentActivity || (session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : '') || ''
+  const activity =
+    session.currentActivity ||
+    (session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : '') ||
+    ''
   const truncatedActivity = activity.length > 40 ? activity.slice(0, 37) + '...' : activity
 
   return (
@@ -355,16 +357,11 @@ function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => 
       </span>
 
       {/* Turn count */}
-      <span className="font-mono tabular-nums flex-shrink-0">
-        Turn {session.turnCount}
-      </span>
+      <span className="font-mono tabular-nums flex-shrink-0">Turn {session.turnCount}</span>
 
       {/* Sub-agent pills */}
       {session.subAgents && session.subAgents.length > 0 && (
-        <SubAgentPills
-          subAgents={session.subAgents}
-          onExpand={onExpand}
-        />
+        <SubAgentPills subAgents={session.subAgents} onExpand={onExpand} />
       )}
     </div>
   )

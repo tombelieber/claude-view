@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Smoke Tests', () => {
   test('app loads and navigates', async ({ page }) => {
     // Collect console errors
     const errors: string[] = []
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       if (msg.type() === 'error') errors.push(msg.text())
     })
 
@@ -37,9 +37,7 @@ test.describe('Smoke Tests', () => {
     }
 
     // Verify no console errors (excluding favicon 404 which is benign)
-    expect(errors.filter(e =>
-      !e.includes('favicon')
-    )).toHaveLength(0)
+    expect(errors.filter((e) => !e.includes('favicon'))).toHaveLength(0)
   })
 
   test('health endpoint returns ok', async ({ request }) => {

@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { TimelineView } from './TimelineView'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { describe, expect, it } from 'vitest'
 import { formatCostUsd } from '../../lib/format-utils'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { TimelineView } from './TimelineView'
 
 function formatDurationSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
@@ -64,11 +64,7 @@ describe('TimelineView', () => {
 
   it('renders nothing when subAgents array is empty', () => {
     const { container } = render(
-      <TimelineView
-        subAgents={[]}
-        sessionStartedAt={baseSessionStart}
-        sessionDurationMs={30000}
-      />
+      <TimelineView subAgents={[]} sessionStartedAt={baseSessionStart} sessionDurationMs={30000} />,
     )
     expect(container.firstChild).toBeNull()
   })
@@ -80,7 +76,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={20000} // 20 seconds
-      />
+      />,
     )
     // Should use 5s intervals: 0s, 5s, 10s, 15s, 20s
     expect(screen.getByText('0s')).toBeDefined()
@@ -97,7 +93,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={45000} // 45 seconds
-      />
+      />,
     )
     // Should use 10s intervals
     expect(screen.getByText('0s')).toBeDefined()
@@ -114,7 +110,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={120000} // 2 minutes
-      />
+      />,
     )
     // Should use 30s intervals, formatted as "1m", "1m 30s"
     expect(screen.getByText('0s')).toBeDefined()
@@ -133,7 +129,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     expect(screen.getByText('Explore')).toBeDefined()
     expect(screen.getByText('code-review')).toBeDefined()
@@ -151,7 +147,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Check that labels appear in chronological order in the DOM
     const labels = screen.getAllByText(/First|Second|Third/)
@@ -176,7 +172,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should render without crashing, bar should have animation class
     const bars = container.querySelectorAll('.timeline-bar-growing')
@@ -196,7 +192,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should render with red color class
     const bars = container.querySelectorAll('.bg-red-500')
@@ -216,7 +212,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should render with green color class
     const bars = container.querySelectorAll('.bg-green-600')
@@ -236,7 +232,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should render with min-width CSS (max(2px, ...))
     // We can't easily test the computed width, but verify it renders
@@ -266,7 +262,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Both should render (overlapping bars visible)
     expect(screen.getByText('Agent1')).toBeDefined()
@@ -286,7 +282,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should clamp to 0% start position
     const bars = container.querySelectorAll('[class*="bg-green"]')
@@ -306,7 +302,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should clamp width to not exceed 100%
     const bars = container.querySelectorAll('[class*="bg-green"]')
@@ -325,7 +321,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Should render without crashing
     expect(container.querySelector('.font-mono')).toBeDefined()
@@ -338,7 +334,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Tooltip should show "$0.03" (rounded to 2 decimals)
     // Note: Tooltip content is in portal, harder to test without user interaction
@@ -353,7 +349,7 @@ describe('TimelineView', () => {
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
     // Tooltip should show "2.1s"
     // Note: Tooltip content is in portal, harder to test without user interaction
@@ -362,15 +358,13 @@ describe('TimelineView', () => {
   })
 
   it('makes timeline bars keyboard accessible', () => {
-    const agents = [
-      createAgent({ agentType: 'Explore', description: 'Test exploration task' }),
-    ]
+    const agents = [createAgent({ agentType: 'Explore', description: 'Test exploration task' })]
     const { container } = render(
       <TimelineView
         subAgents={agents}
         sessionStartedAt={baseSessionStart}
         sessionDurationMs={30000}
-      />
+      />,
     )
 
     // Find the timeline bar wrapper

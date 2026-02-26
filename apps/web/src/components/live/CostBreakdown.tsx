@@ -1,6 +1,6 @@
-import type { LiveSession } from './use-live-sessions'
+import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import { formatTokenCount, formatCostUsd } from '../../lib/format-utils'
+import type { LiveSession } from './use-live-sessions'
 
 interface CostBreakdownProps {
   cost: LiveSession['cost']
@@ -27,7 +27,8 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
       <div className="flex items-baseline justify-between">
         <span className="text-sm text-gray-500 dark:text-gray-400">Total Cost</span>
         <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">
-          {estimatedPrefix}{formatCostUsd(grandTotal)}
+          {estimatedPrefix}
+          {formatCostUsd(grandTotal)}
         </span>
       </div>
 
@@ -51,7 +52,11 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           />
         )}
         {(cost.cacheCreationCostUsd > 0 || (tokens?.cacheCreationTokens ?? 0) > 0) && (
-          <CostTokenRow label="Cache write" tokens={tokens?.cacheCreationTokens} cost={cost.cacheCreationCostUsd} />
+          <CostTokenRow
+            label="Cache write"
+            tokens={tokens?.cacheCreationTokens}
+            cost={cost.cacheCreationCostUsd}
+          />
         )}
 
         {cost.cacheSavingsUsd > 0 && (
@@ -71,7 +76,8 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">Effective rate</span>
             <span className="font-mono tabular-nums font-medium text-gray-900 dark:text-gray-100">
-              {formatCostUsd(effectiveRate)}<span className="text-gray-400 dark:text-gray-500 font-normal"> / 1M tokens</span>
+              {formatCostUsd(effectiveRate)}
+              <span className="text-gray-400 dark:text-gray-500 font-normal"> / 1M tokens</span>
             </span>
           </div>
           {cost.cacheSavingsUsd > 0 && uncachedRate > 0 && (
@@ -88,12 +94,18 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
       {/* Sub-agent breakdown */}
       {subAgents && subAgents.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
-          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Cost by Agent</h4>
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Cost by Agent
+          </h4>
           <CostRow label="Main agent" value={cost.totalUsd} />
           {subAgents
             .filter((a) => a.costUsd != null && a.costUsd > 0)
             .map((a) => (
-              <CostRow key={a.toolUseId} label={`${a.agentType}: ${a.description}`} value={a.costUsd!} />
+              <CostRow
+                key={a.toolUseId}
+                label={`${a.agentType}: ${a.description}`}
+                value={a.costUsd!}
+              />
             ))}
         </div>
       )}
@@ -115,7 +127,9 @@ function CostTokenRow({
   return (
     <div className="flex items-center text-sm">
       <span className="flex-1 text-gray-500 dark:text-gray-400 truncate mr-2">{label}</span>
-      <span className={`w-20 text-right font-mono tabular-nums ${tokenClassName ?? 'text-gray-500 dark:text-gray-400'}`}>
+      <span
+        className={`w-20 text-right font-mono tabular-nums ${tokenClassName ?? 'text-gray-500 dark:text-gray-400'}`}
+      >
         {tokens != null ? formatTokenCount(tokens) : '--'}
       </span>
       <span className="w-20 text-right font-mono tabular-nums text-gray-700 dark:text-gray-300">
@@ -125,7 +139,11 @@ function CostTokenRow({
   )
 }
 
-function CostRow({ label, value, className }: { label: string; value: number; className?: string }) {
+function CostRow({
+  label,
+  value,
+  className,
+}: { label: string; value: number; className?: string }) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-500 truncate mr-4">{label}</span>
@@ -135,4 +153,3 @@ function CostRow({ label, value, className }: { label: string; value: number; cl
     </div>
   )
 }
-

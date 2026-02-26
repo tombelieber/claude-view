@@ -44,7 +44,7 @@ export function SegmentedControl<T extends string>({
       aria-label={ariaLabel}
       className={cn(
         'inline-flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 p-1',
-        className
+        className,
       )}
     >
       {options.map((option) => {
@@ -63,7 +63,7 @@ export function SegmentedControl<T extends string>({
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1',
               isSelected
                 ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200',
             )}
           >
             {option.label}

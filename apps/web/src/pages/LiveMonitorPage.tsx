@@ -1,24 +1,29 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams, useNavigate, useOutletContext } from 'react-router-dom'
-import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
-import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
-import { filterLiveSessions } from '../components/live/live-filter'
-import { SessionCard } from '../components/live/SessionCard'
-import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
-import { ListView } from '../components/live/ListView'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { KanbanView } from '../components/live/KanbanView'
-import { MonitorView } from '../components/live/MonitorView'
-import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
+import { ListView } from '../components/live/ListView'
+import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { MobileTabBar } from '../components/live/MobileTabBar'
+import { MonitorView } from '../components/live/MonitorView'
+import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
+import { SessionCard } from '../components/live/SessionCard'
 import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
 import { TerminalOverlay } from '../components/live/TerminalOverlay'
-import { sessionTotalCost, type LiveSummary, type LiveSession, type UseLiveSessionsResult } from '../components/live/use-live-sessions'
+import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
+import { filterLiveSessions } from '../components/live/live-filter'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
-import { formatTokenCount, formatCostUsd } from '../lib/format-utils'
-import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
-import { LiveMonitorSkeleton } from '../components/LoadingStates'
+import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
+import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
+import {
+  type LiveSession,
+  type LiveSummary,
+  type UseLiveSessionsResult,
+  sessionTotalCost,
+} from '../components/live/use-live-sessions'
+import { formatCostUsd, formatTokenCount } from '../lib/format-utils'
 import { useLiveCommandStore } from '../store/live-command-context'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
@@ -35,7 +40,15 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 
 export function LiveMonitorPage() {
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
-  const { sessions, summary: serverSummary, isConnected, isInitialized, lastUpdate, stalledSessions, currentTime } = liveSessions
+  const {
+    sessions,
+    summary: serverSummary,
+    isConnected,
+    isInitialized,
+    lastUpdate,
+    stalledSessions,
+    currentTime,
+  } = liveSessions
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
@@ -49,10 +62,7 @@ export function LiveMonitorPage() {
   const [filters, filterActions] = useLiveSessionFilters(searchParams, setSearchParams)
 
   // Filtered sessions
-  const filteredSessions = useMemo(
-    () => filterLiveSessions(sessions, filters),
-    [sessions, filters]
-  )
+  const filteredSessions = useMemo(() => filterLiveSessions(sessions, filters), [sessions, filters])
 
   // Derive summary from current sessions so it always matches the kanban/grid.
   // Server-side summary is only used for cost/tokens (which may include cleaned-up sessions).
@@ -64,60 +74,76 @@ export function LiveMonitorPage() {
     let totalTokensToday = 0
     for (const s of sessions) {
       switch (s.agentState.group) {
-        case 'needs_you': needsYouCount++; break
-        case 'autonomous': autonomousCount++; break
+        case 'needs_you':
+          needsYouCount++
+          break
+        case 'autonomous':
+          autonomousCount++
+          break
       }
       totalCostTodayUsd += sessionTotalCost(s)
       totalTokensToday += s.tokens?.totalTokens ?? 0
     }
-    return { needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday, processCount: serverSummary?.processCount ?? sessions.length }
+    return {
+      needsYouCount,
+      autonomousCount,
+      totalCostTodayUsd,
+      totalTokensToday,
+      processCount: serverSummary?.processCount ?? sessions.length,
+    }
   }, [sessions, serverSummary])
 
   // Available filter options from current (unfiltered) sessions
   const availableStatuses = useMemo(() => {
-    const set = new Set(sessions.map(s => s.agentState.group))
+    const set = new Set(sessions.map((s) => s.agentState.group))
     return Array.from(set)
   }, [sessions])
 
   const availableProjects = useMemo(() => {
-    const set = new Set(sessions.map(s => s.projectDisplayName || s.project))
+    const set = new Set(sessions.map((s) => s.projectDisplayName || s.project))
     return Array.from(set).sort()
   }, [sessions])
 
   const availableBranches = useMemo(() => {
-    const set = new Set(sessions.filter(s => s.gitBranch).map(s => s.gitBranch!))
+    const set = new Set(sessions.filter((s) => s.gitBranch).map((s) => s.gitBranch!))
     return Array.from(set).sort()
   }, [sessions])
 
   // View mode change — clear overlays when switching views
-  const handleViewModeChange = useCallback((mode: LiveViewMode) => {
-    setViewMode(mode)
-    setSelectedId(null)
-    setMonitorOverlayId(null)
-    localStorage.setItem(LIVE_VIEW_STORAGE_KEY, mode)
-    const params = new URLSearchParams(searchParams)
-    params.set('view', mode)
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+  const handleViewModeChange = useCallback(
+    (mode: LiveViewMode) => {
+      setViewMode(mode)
+      setSelectedId(null)
+      setMonitorOverlayId(null)
+      localStorage.setItem(LIVE_VIEW_STORAGE_KEY, mode)
+      const params = new URLSearchParams(searchParams)
+      params.set('view', mode)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   // Session selection
   const handleSelectSession = useCallback((id: string) => {
-    setSelectedId(prev => prev === id ? null : id)
+    setSelectedId((prev) => (prev === id ? null : id))
   }, [])
 
   // Expand selected session (navigate to detail)
-  const handleExpandSession = useCallback((id: string) => {
-    navigate(`/sessions/${id}`)
-  }, [navigate])
+  const handleExpandSession = useCallback(
+    (id: string) => {
+      navigate(`/sessions/${id}`)
+    },
+    [navigate],
+  )
 
   // Monitor view: open large terminal overlay instead of side panel
   const handleMonitorExpand = useCallback((id: string) => {
-    setMonitorOverlayId(prev => prev === id ? null : id)
+    setMonitorOverlayId((prev) => (prev === id ? null : id))
   }, [])
 
   // Toggle help callback for command palette
   const handleToggleHelp = useCallback(() => {
-    setShowHelp(prev => !prev)
+    setShowHelp((prev) => !prev)
   }, [])
 
   // Keyboard shortcuts
@@ -136,16 +162,28 @@ export function LiveMonitorPage() {
   // Register live command context for unified Cmd+K
   // Use ref to prevent infinite loops from context updates
   const contextRef = useRef<{ viewMode: LiveViewMode; sessions: LiveSession[] } | null>(null)
-  const commandContext = useMemo(() => ({
-    sessions,
-    viewMode,
-    onViewModeChange: handleViewModeChange,
-    onFilterStatus: filterActions.setStatus,
-    onClearFilters: filterActions.clearAll,
-    onSort: filterActions.setSort,
-    onSelectSession: handleSelectSession,
-    onToggleHelp: handleToggleHelp,
-  }), [sessions, viewMode, handleViewModeChange, handleSelectSession, handleToggleHelp, filterActions.setStatus, filterActions.clearAll, filterActions.setSort])
+  const commandContext = useMemo(
+    () => ({
+      sessions,
+      viewMode,
+      onViewModeChange: handleViewModeChange,
+      onFilterStatus: filterActions.setStatus,
+      onClearFilters: filterActions.clearAll,
+      onSort: filterActions.setSort,
+      onSelectSession: handleSelectSession,
+      onToggleHelp: handleToggleHelp,
+    }),
+    [
+      sessions,
+      viewMode,
+      handleViewModeChange,
+      handleSelectSession,
+      handleToggleHelp,
+      filterActions.setStatus,
+      filterActions.clearAll,
+      filterActions.setSort,
+    ],
+  )
 
   useEffect(() => {
     // Only update if context actually changed (shallow compare key properties)
@@ -186,17 +224,17 @@ export function LiveMonitorPage() {
                 className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
               />
               {isConnected ? 'Live' : 'Reconnecting...'}
-              {lastUpdate && (
-                <span className="ml-2">
-                  Updated {formatRelativeTime(lastUpdate)}
-                </span>
-              )}
+              {lastUpdate && <span className="ml-2">Updated {formatRelativeTime(lastUpdate)}</span>}
               <OAuthUsagePill />
             </div>
           </div>
 
           {/* Summary bar */}
-          <SummaryBar summary={summary} filteredCount={filteredSessions.length} totalCount={sessions.length} />
+          <SummaryBar
+            summary={summary}
+            filteredCount={filteredSessions.length}
+            totalCount={sessions.length}
+          />
 
           {/* Filter bar */}
           <LiveFilterBar
@@ -216,12 +254,16 @@ export function LiveMonitorPage() {
       </div>
 
       {/* Scrollable content — kanban columns scroll independently, other views page-scroll */}
-      <div className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>
-        <div className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
+      <div
+        className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+      >
+        <div
+          className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
+        >
           {/* View content */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredSessions.map(session => (
+              {filteredSessions.map((session) => (
                 <div
                   key={session.id}
                   data-session-id={session.id}
@@ -239,7 +281,11 @@ export function LiveMonitorPage() {
           )}
 
           {viewMode === 'list' && (
-            <ListView sessions={filteredSessions} selectedId={selectedId} onSelect={handleSelectSession} />
+            <ListView
+              sessions={filteredSessions}
+              selectedId={selectedId}
+              onSelect={handleSelectSession}
+            />
           )}
 
           {viewMode === 'kanban' && (
@@ -266,7 +312,8 @@ export function LiveMonitorPage() {
                   <>
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 text-green-500 text-sm font-medium mb-3">
                       <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                      {serverSummary.processCount} Claude {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
+                      {serverSummary.processCount} Claude{' '}
+                      {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
                     </div>
                     <div className="text-sm">Sessions appear as they report in via hooks.</div>
                     <div className="text-xs mt-1 text-gray-500 dark:text-gray-600">
@@ -276,7 +323,9 @@ export function LiveMonitorPage() {
                 ) : (
                   <>
                     <div className="text-sm">No active Claude Code sessions detected.</div>
-                    <div className="text-xs mt-1">Start a session in your terminal and it will appear here.</div>
+                    <div className="text-xs mt-1">
+                      Start a session in your terminal and it will appear here.
+                    </div>
                   </>
                 )
               ) : (
@@ -299,30 +348,32 @@ export function LiveMonitorPage() {
       </div>
 
       {/* Session detail panel (Grid / List / Kanban) */}
-      {selectedId && (() => {
-        const session = sessions.find(s => s.id === selectedId)
-        if (!session) return null
-        return (
-          <SessionDetailPanel
-            key={selectedId}
-            session={session}
-            onClose={() => setSelectedId(null)}
-          />
-        )
-      })()}
+      {selectedId &&
+        (() => {
+          const session = sessions.find((s) => s.id === selectedId)
+          if (!session) return null
+          return (
+            <SessionDetailPanel
+              key={selectedId}
+              session={session}
+              onClose={() => setSelectedId(null)}
+            />
+          )
+        })()}
 
       {/* Terminal overlay (Monitor view) */}
-      {monitorOverlayId && (() => {
-        const session = sessions.find(s => s.id === monitorOverlayId)
-        if (!session) return null
-        return (
-          <TerminalOverlay
-            key={monitorOverlayId}
-            session={session}
-            onClose={() => setMonitorOverlayId(null)}
-          />
-        )
-      })()}
+      {monitorOverlayId &&
+        (() => {
+          const session = sessions.find((s) => s.id === monitorOverlayId)
+          if (!session) return null
+          return (
+            <TerminalOverlay
+              key={monitorOverlayId}
+              session={session}
+              onClose={() => setMonitorOverlayId(null)}
+            />
+          )
+        })()}
 
       {/* Mobile tab bar */}
       <MobileTabBar activeTab={viewMode} onTabChange={handleViewModeChange} />

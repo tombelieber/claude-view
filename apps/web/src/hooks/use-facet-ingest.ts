@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface FacetIngestProgress {
   status: 'idle' | 'scanning' | 'ingesting' | 'complete' | 'error' | 'no_cache_found'
@@ -83,8 +83,8 @@ export function useFacetIngest(): UseFacetIngestResult {
     return () => esRef.current?.close()
   }, [])
 
-  const isRunning = progress !== null &&
-    !['complete', 'error', 'no_cache_found', 'idle'].includes(progress.status)
+  const isRunning =
+    progress !== null && !['complete', 'error', 'no_cache_found', 'idle'].includes(progress.status)
 
   return { progress, isRunning, trigger }
 }

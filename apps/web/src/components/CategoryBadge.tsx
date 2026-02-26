@@ -1,15 +1,31 @@
 import {
-  Plus, Bug, RefreshCw, FlaskConical,
-  FileText, Settings, Server,
-  ClipboardList, Lightbulb, Blocks, Tag,
+  Blocks,
+  Bug,
+  ClipboardList,
+  FileText,
+  FlaskConical,
+  Lightbulb,
+  Plus,
+  RefreshCw,
+  Server,
+  Settings,
+  Tag,
 } from 'lucide-react'
-import { cn } from '../lib/utils'
 import { getCategoryConfig } from '../lib/category-utils'
+import { cn } from '../lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Plus, Bug, RefreshCw, FlaskConical,
-  FileText, Settings, Server,
-  ClipboardList, Lightbulb, Blocks, Tag,
+  Plus,
+  Bug,
+  RefreshCw,
+  FlaskConical,
+  FileText,
+  Settings,
+  Server,
+  ClipboardList,
+  Lightbulb,
+  Blocks,
+  Tag,
 }
 
 interface CategoryBadgeProps {

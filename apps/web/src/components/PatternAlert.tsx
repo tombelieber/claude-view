@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
 import { FlaskConical } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 interface PatternAlertData {
   pattern: string
@@ -13,8 +13,8 @@ export function PatternAlert() {
 
   useEffect(() => {
     fetch('/api/facets/pattern-alert')
-      .then(r => r.json())
-      .then(data => {
+      .then((r) => r.json())
+      .then((data) => {
         if (data.pattern) {
           const dismissedKey = `pattern-alert-${data.pattern}-${new Date().toISOString().slice(0, 10)}`
           if (!localStorage.getItem(dismissedKey)) {

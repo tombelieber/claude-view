@@ -1,11 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { RefreshCw, GitCommitHorizontal } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { GitCommitHorizontal, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import type { ProjectSummary } from '../hooks/use-projects'
-import { useStatus, formatRelativeTime, useTick } from '../hooks/use-status'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useGitSyncProgress } from '../hooks/use-git-sync-progress'
-import { useQueryClient } from '@tanstack/react-query'
+import type { ProjectSummary } from '../hooks/use-projects'
+import { formatRelativeTime, useStatus, useTick } from '../hooks/use-status'
 
 interface StatusBarProps {
   projects: ProjectSummary[]
@@ -26,7 +26,8 @@ export function StatusBar({ projects }: StatusBarProps) {
   // Reset to false when sseEnabled transitions to true (new sync started).
   const doneHandledRef = useRef(false)
 
-  const sessionsIndexed = totalSessions || (status?.sessionsIndexed ? Number(status.sessionsIndexed) : 0)
+  const sessionsIndexed =
+    totalSessions || (status?.sessionsIndexed ? Number(status.sessionsIndexed) : 0)
 
   // Use lastGitSyncAt for the "last updated" display (more recent than lastIndexedAt)
   const lastSyncTs = status?.lastGitSyncAt ?? status?.lastIndexedAt ?? null
@@ -37,7 +38,11 @@ export function StatusBar({ projects }: StatusBarProps) {
   const linksCreated = status?.linksCreated ? Number(status.linksCreated) : 0
 
   // Derive syncing state from SSE phase
-  const isSseActive = sseEnabled && progress.phase !== 'idle' && progress.phase !== 'done' && progress.phase !== 'error'
+  const isSseActive =
+    sseEnabled &&
+    progress.phase !== 'idle' &&
+    progress.phase !== 'done' &&
+    progress.phase !== 'error'
   const isSpinning = isStatusLoading || isSyncing || isSseActive
 
   // Handle retry from error toast
@@ -79,7 +84,16 @@ export function StatusBar({ projects }: StatusBarProps) {
       })
       setSseEnabled(false)
     }
-  }, [progress.phase, progress.reposScanned, progress.commitsFound, progress.linksCreated, progress.errorMessage, queryClient, resetSync, handleRetry])
+  }, [
+    progress.phase,
+    progress.reposScanned,
+    progress.commitsFound,
+    progress.linksCreated,
+    progress.errorMessage,
+    queryClient,
+    resetSync,
+    handleRetry,
+  ])
 
   // Handle 409 conflict from the HTTP sync trigger
   useEffect(() => {
@@ -122,7 +136,10 @@ export function StatusBar({ projects }: StatusBarProps) {
             {commitsFound > 0 && (
               <>
                 <span aria-hidden="true">&middot;</span>
-                <span className="inline-flex items-center gap-0.5" title={`${linksCreated} session-commit links`}>
+                <span
+                  className="inline-flex items-center gap-0.5"
+                  title={`${linksCreated} session-commit links`}
+                >
                   <GitCommitHorizontal className="w-3 h-3" aria-hidden="true" />
                   {commitsFound.toLocaleString()}
                 </span>
@@ -130,7 +147,9 @@ export function StatusBar({ projects }: StatusBarProps) {
             )}
           </>
         ) : (
-          <span>Not yet synced &middot; {projects.length} projects &middot; {totalSessions} sessions</span>
+          <span>
+            Not yet synced &middot; {projects.length} projects &middot; {totalSessions} sessions
+          </span>
         )}
       </div>
 

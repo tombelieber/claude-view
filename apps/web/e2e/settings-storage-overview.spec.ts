@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Feature 2E: Storage Overview (Settings Page)', () => {
   test('TC-2E-01: Storage Section Visibility', async ({ page }) => {
@@ -89,9 +89,9 @@ test.describe('Feature 2E: Storage Overview (Settings Page)', () => {
     const toastInProgress = page.locator('text=Rebuild in progress')
     const disabledButton = page.locator('button:has-text("Rebuild Index")[disabled]')
 
-    await expect(
-      toastSuccess.or(toastInProgress).or(disabledButton)
-    ).toBeVisible({ timeout: 10000 })
+    await expect(toastSuccess.or(toastInProgress).or(disabledButton)).toBeVisible({
+      timeout: 10000,
+    })
 
     // Take screenshot after clicking rebuild
     await page.screenshot({ path: 'e2e/screenshots/storage-rebuild-index.png' })
@@ -161,9 +161,7 @@ test.describe('Backend Observability', () => {
 
     // Verify content type is text-based (Prometheus exposition format)
     const contentType = response.headers()['content-type'] ?? ''
-    expect(
-      contentType.includes('text/plain') || contentType.includes('text/')
-    ).toBeTruthy()
+    expect(contentType.includes('text/plain') || contentType.includes('text/')).toBeTruthy()
 
     // Verify response body is non-empty text
     const body = await response.text()
@@ -172,7 +170,7 @@ test.describe('Backend Observability', () => {
     // Prometheus format uses lines like: metric_name{labels} value
     // or # HELP / # TYPE comment lines
     // Verify at least some content that looks like Prometheus metrics
-    const lines = body.split('\n').filter(l => l.trim().length > 0)
+    const lines = body.split('\n').filter((l) => l.trim().length > 0)
     expect(lines.length).toBeGreaterThan(0)
   })
 })

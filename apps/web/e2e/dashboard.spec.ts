@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Dashboard', () => {
   test('loads dashboard with metrics', async ({ page }) => {
@@ -37,7 +37,7 @@ test.describe('Dashboard', () => {
   test('dashboard shows loading skeleton initially', async ({ page }) => {
     // Intercept the dashboard stats API to delay response
     await page.route('**/api/stats/dashboard**', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 500))
       await route.continue()
     })
 

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { messagesToRichMessages } from './message-to-rich'
+import { describe, expect, it } from 'vitest'
 import type { Message } from '../types/generated'
+import { messagesToRichMessages } from './message-to-rich'
 
 function makeMsg(overrides: Partial<Message>): Message {
   return { role: 'user', content: '', ...overrides } as Message

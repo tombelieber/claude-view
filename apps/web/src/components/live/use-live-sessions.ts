@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { sseUrl } from '../../lib/sse-url'
-import type { AgentState } from './types'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { ProgressItem } from '../../types/generated/ProgressItem'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { AgentState } from './types'
 
 const STALL_THRESHOLD_MS = 3000
 
@@ -84,7 +84,10 @@ export function useLiveSessions(): UseLiveSessionsResult {
   const lastEventTimes = useRef<Map<string, number>>(new Map())
   const [stalledSessions, setStalledSessions] = useState<Set<string>>(new Set())
   const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
-  const resyncRef = useRef<{ ids: Set<string>; timer: ReturnType<typeof setTimeout> | null } | null>(null)
+  const resyncRef = useRef<{
+    ids: Set<string>
+    timer: ReturnType<typeof setTimeout> | null
+  } | null>(null)
 
   useEffect(() => {
     let es: EventSource | null = null
@@ -109,13 +112,15 @@ export function useLiveSessions(): UseLiveSessionsResult {
           const data = JSON.parse(e.data)
           const session = data.session ?? data
           if (session?.id) {
-            setSessions(prev => new Map(prev).set(session.id, session))
+            setSessions((prev) => new Map(prev).set(session.id, session))
             setLastUpdate(new Date())
             lastEventTimes.current.set(session.id, Date.now())
             // Track for resync window
             if (resyncRef.current) resyncRef.current.ids.add(session.id)
           }
-        } catch { /* ignore malformed */ }
+        } catch {
+          /* ignore malformed */
+        }
       })
 
       es.addEventListener('session_updated', (e: MessageEvent) => {
@@ -123,18 +128,20 @@ export function useLiveSessions(): UseLiveSessionsResult {
           const data = JSON.parse(e.data)
           const session = data.session ?? data
           if (session?.id) {
-            setSessions(prev => new Map(prev).set(session.id, session))
+            setSessions((prev) => new Map(prev).set(session.id, session))
             setLastUpdate(new Date())
             lastEventTimes.current.set(session.id, Date.now())
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       })
 
       es.addEventListener('session_completed', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
           if (data.sessionId) {
-            setSessions(prev => {
+            setSessions((prev) => {
               const next = new Map(prev)
               next.delete(data.sessionId)
               return next
@@ -142,7 +149,9 @@ export function useLiveSessions(): UseLiveSessionsResult {
             lastEventTimes.current.delete(data.sessionId)
             setLastUpdate(new Date())
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       })
 
       es.addEventListener('summary', (e: MessageEvent) => {
@@ -161,7 +170,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
             if (resyncRef.current) {
               const validIds = resyncRef.current.ids
               if (validIds.size > 0) {
-                setSessions(prev => {
+                setSessions((prev) => {
                   const next = new Map<string, LiveSession>()
                   for (const [id, session] of prev) {
                     if (validIds.has(id)) next.set(id, session)
@@ -172,7 +181,9 @@ export function useLiveSessions(): UseLiveSessionsResult {
               resyncRef.current = null
             }
           }, 500) // 500ms window for all session_discovered to arrive
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       })
 
       es.onerror = () => {
@@ -196,12 +207,12 @@ export function useLiveSessions(): UseLiveSessionsResult {
     const interval = setInterval(() => {
       const now = Date.now()
       // Stall detection: only update state when the stalled set actually changes
-      setStalledSessions(prev => {
+      setStalledSessions((prev) => {
         const stalled = new Set<string>()
         for (const [id, lastTime] of lastEventTimes.current.entries()) {
           if (now - lastTime > STALL_THRESHOLD_MS) stalled.add(id)
         }
-        if (stalled.size === prev.size && [...stalled].every(id => prev.has(id))) return prev
+        if (stalled.size === prev.size && [...stalled].every((id) => prev.has(id))) return prev
         return stalled
       })
       // Clock tick for duration computation (shared across all cards)
@@ -212,8 +223,16 @@ export function useLiveSessions(): UseLiveSessionsResult {
 
   const sessionList = useMemo(
     () => Array.from(sessions.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt),
-    [sessions]
+    [sessions],
   )
 
-  return { sessions: sessionList, summary, isConnected, isInitialized, lastUpdate, stalledSessions, currentTime }
+  return {
+    sessions: sessionList,
+    summary,
+    isConnected,
+    isInitialized,
+    lastUpdate,
+    stalledSessions,
+    currentTime,
+  }
 }

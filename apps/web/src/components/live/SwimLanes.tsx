@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import { cn } from '../../lib/utils'
 import { formatCostUsd } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 interface SwimLanesProps {
   subAgents: SubAgentInfo[]
@@ -82,7 +82,7 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
     <div
       className={cn(
         'flex flex-col gap-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-2',
-        subAgents.length > 5 && 'max-h-[360px] overflow-y-auto'
+        subAgents.length > 5 && 'max-h-[360px] overflow-y-auto',
       )}
     >
       {sortedAgents.map((agent) => {
@@ -93,13 +93,21 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
             key={agent.toolUseId}
             role={canDrillDown ? 'button' : undefined}
             tabIndex={canDrillDown ? 0 : undefined}
-            onClick={canDrillDown ? () => onDrillDown(agent.agentId!, agent.agentType, agent.description) : undefined}
-            onKeyDown={canDrillDown ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onDrillDown!(agent.agentId!, agent.agentType, agent.description)
-              }
-            } : undefined}
+            onClick={
+              canDrillDown
+                ? () => onDrillDown(agent.agentId!, agent.agentType, agent.description)
+                : undefined
+            }
+            onKeyDown={
+              canDrillDown
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onDrillDown!(agent.agentId!, agent.agentType, agent.description)
+                    }
+                  }
+                : undefined
+            }
             className={cn(
               'flex flex-col gap-1 rounded-md px-2.5 py-2 transition-colors',
               canDrillDown && 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50',
@@ -140,20 +148,18 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 pl-4 text-xs font-mono text-gray-400 dark:text-gray-500">
-                {agent.costUsd != null && (
-                  <span>{formatCost(agent.costUsd)}</span>
-                )}
+                {agent.costUsd != null && <span>{formatCost(agent.costUsd)}</span>}
                 {agent.costUsd != null && agent.durationMs != null && (
                   <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                 )}
-                {agent.durationMs != null && (
-                  <span>{formatDuration(agent.durationMs)}</span>
-                )}
+                {agent.durationMs != null && <span>{formatDuration(agent.durationMs)}</span>}
                 {agent.durationMs != null && agent.toolUseCount != null && (
                   <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                 )}
                 {agent.toolUseCount != null && (
-                  <span>{agent.toolUseCount} tool call{agent.toolUseCount !== 1 ? 's' : ''}</span>
+                  <span>
+                    {agent.toolUseCount} tool call{agent.toolUseCount !== 1 ? 's' : ''}
+                  </span>
                 )}
               </div>
             )}

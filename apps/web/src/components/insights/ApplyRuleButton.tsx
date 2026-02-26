@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
-import { cn } from '../../lib/utils'
 import { useCoachingRules } from '../../hooks/use-coaching-rules'
+import { cn } from '../../lib/utils'
 
 interface ApplyRuleButtonProps {
   patternId: string
@@ -75,7 +75,7 @@ export function ApplyRuleButton({
         isApplied
           ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400'
           : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30',
-        isLoading && 'opacity-50 cursor-wait'
+        isLoading && 'opacity-50 cursor-wait',
       )}
     >
       {isLoading ? (

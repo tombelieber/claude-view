@@ -1,13 +1,34 @@
-import { createHighlighter, type HighlighterGeneric, type BundledLanguage, type BundledTheme } from 'shiki'
+import {
+  type BundledLanguage,
+  type BundledTheme,
+  type HighlighterGeneric,
+  createHighlighter,
+} from 'shiki'
 
 let highlighter: HighlighterGeneric<BundledLanguage, BundledTheme> | null = null
 let highlighterPromise: Promise<HighlighterGeneric<BundledLanguage, BundledTheme>> | null = null
 
 const PRELOADED_LANGS: BundledLanguage[] = [
-  'typescript', 'javascript', 'tsx', 'jsx',
-  'python', 'rust', 'bash', 'json', 'html',
-  'css', 'sql', 'go', 'java', 'ruby',
-  'c', 'cpp', 'yaml', 'toml', 'markdown', 'diff',
+  'typescript',
+  'javascript',
+  'tsx',
+  'jsx',
+  'python',
+  'rust',
+  'bash',
+  'json',
+  'html',
+  'css',
+  'sql',
+  'go',
+  'java',
+  'ruby',
+  'c',
+  'cpp',
+  'yaml',
+  'toml',
+  'markdown',
+  'diff',
 ]
 
 export async function getHighlighter() {

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { AIGenerationStats } from './AIGenerationStats'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatModelName } from '../lib/format-model'
+import { AIGenerationStats } from './AIGenerationStats'
 
 // Mock hooks
 const mockUseAIGenerationStats = vi.fn()
@@ -42,11 +42,11 @@ function makeStats(overrides = {}) {
       { project: 'my-lib', inputTokens: 10000, outputTokens: 5000 },
     ],
     cost: {
-      totalCostUsd: 1.50,
-      inputCostUsd: 0.50,
-      outputCostUsd: 0.60,
-      cacheReadCostUsd: 0.10,
-      cacheCreationCostUsd: 0.30,
+      totalCostUsd: 1.5,
+      inputCostUsd: 0.5,
+      outputCostUsd: 0.6,
+      cacheReadCostUsd: 0.1,
+      cacheCreationCostUsd: 0.3,
       cacheSavingsUsd: 0.25,
     },
     ...overrides,
@@ -69,7 +69,12 @@ describe('AIGenerationStats', () => {
   describe('error state', () => {
     it('should show error card with retry button when error occurs', () => {
       const mockRefetch = vi.fn()
-      mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: false, error: new Error('fail'), refetch: mockRefetch })
+      mockUseAIGenerationStats.mockReturnValue({
+        data: null,
+        isLoading: false,
+        error: new Error('fail'),
+        refetch: mockRefetch,
+      })
       render(<AIGenerationStats />)
       expect(screen.getByText('Failed to load AI generation stats')).toBeInTheDocument()
       expect(screen.getByText('Retry')).toBeInTheDocument()
@@ -77,7 +82,12 @@ describe('AIGenerationStats', () => {
 
     it('should call refetch when retry button is clicked', () => {
       const mockRefetch = vi.fn()
-      mockUseAIGenerationStats.mockReturnValue({ data: null, isLoading: false, error: new Error('fail'), refetch: mockRefetch })
+      mockUseAIGenerationStats.mockReturnValue({
+        data: null,
+        isLoading: false,
+        error: new Error('fail'),
+        refetch: mockRefetch,
+      })
       render(<AIGenerationStats />)
       screen.getByText('Retry').click()
       expect(mockRefetch).toHaveBeenCalledOnce()

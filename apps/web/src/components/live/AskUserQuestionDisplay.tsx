@@ -1,4 +1,4 @@
-import { HelpCircle, MessageCircle, CheckCircle2, Circle } from 'lucide-react'
+import { CheckCircle2, Circle, HelpCircle, MessageCircle } from 'lucide-react'
 
 interface QuestionOption {
   label: string
@@ -41,7 +41,10 @@ const COLORS = {
   },
 } as const
 
-export function AskUserQuestionDisplay({ inputData, variant = 'purple' }: { inputData: unknown; variant?: 'purple' | 'amber' }) {
+export function AskUserQuestionDisplay({
+  inputData,
+  variant = 'purple',
+}: { inputData: unknown; variant?: 'purple' | 'amber' }) {
   if (!isAskUserQuestionInput(inputData)) return null
 
   const { questions } = inputData
@@ -51,16 +54,15 @@ export function AskUserQuestionDisplay({ inputData, variant = 'purple' }: { inpu
   return (
     <div className="mt-2 space-y-3">
       {questions.map((q, qi) => (
-        <div
-          key={qi}
-          className={`rounded-lg border ${c.border} ${c.bg} overflow-hidden`}
-        >
+        <div key={qi} className={`rounded-lg border ${c.border} ${c.bg} overflow-hidden`}>
           <div className={`px-3 py-2 border-b ${c.headerBorder} ${c.headerBg}`}>
             <div className="flex items-start gap-2">
               <Icon className={`w-4 h-4 ${c.icon} flex-shrink-0 mt-0.5`} />
               <div className="min-w-0 flex-1">
                 {q.header && (
-                  <div className={`text-[10px] font-mono ${c.headerText} uppercase tracking-wide mb-0.5`}>
+                  <div
+                    className={`text-[10px] font-mono ${c.headerText} uppercase tracking-wide mb-0.5`}
+                  >
                     {q.header}
                   </div>
                 )}

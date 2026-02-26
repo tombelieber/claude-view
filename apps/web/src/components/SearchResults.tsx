@@ -1,9 +1,9 @@
+import { AlertCircle, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { X, Loader2, AlertCircle } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useSearch } from '../hooks/use-search'
-import { SearchResultCard } from './SearchResultCard'
 import { useAppStore } from '../store/app-store'
+import { SearchResultCard } from './SearchResultCard'
 
 export function SearchResults() {
   const [searchParams] = useSearchParams()
@@ -20,7 +20,12 @@ export function SearchResults() {
     }
   }, [query, addRecentSearch])
 
-  const { data: searchResults, isLoading, error, isDebouncing } = useSearch(query, {
+  const {
+    data: searchResults,
+    isLoading,
+    error,
+    isDebouncing,
+  } = useSearch(query, {
     scope,
     limit: 50,
   })
@@ -61,9 +66,13 @@ export function SearchResults() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Search Results</h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+              Search Results
+            </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {totalSessions} {totalSessions === 1 ? 'session' : 'sessions'}, {totalMatches} {totalMatches === 1 ? 'match' : 'matches'} for &ldquo;<span className="font-mono">{query}</span>&rdquo;
+              {totalSessions} {totalSessions === 1 ? 'session' : 'sessions'}, {totalMatches}{' '}
+              {totalMatches === 1 ? 'match' : 'matches'} for &ldquo;
+              <span className="font-mono">{query}</span>&rdquo;
               <span className="ml-1 text-gray-400 dark:text-gray-500">({elapsedMs}ms)</span>
             </p>
           </div>

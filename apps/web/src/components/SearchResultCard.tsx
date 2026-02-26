@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { SessionHit, MatchHit } from '../types/generated'
+import type { MatchHit, SessionHit } from '../types/generated'
 
 /**
  * Render snippet HTML from Tantivy search results.
@@ -15,10 +15,26 @@ function SnippetHighlight({ html }: { html: string }) {
 
 function RoleIcon({ role }: { role: string }) {
   switch (role) {
-    case 'user': return <span className="text-blue-500 dark:text-blue-400" title="User">U</span>
-    case 'assistant': return <span className="text-green-500 dark:text-green-400" title="Assistant">A</span>
-    case 'tool': return <span className="text-orange-500 dark:text-orange-400" title="Tool">T</span>
-    default: return null
+    case 'user':
+      return (
+        <span className="text-blue-500 dark:text-blue-400" title="User">
+          U
+        </span>
+      )
+    case 'assistant':
+      return (
+        <span className="text-green-500 dark:text-green-400" title="Assistant">
+          A
+        </span>
+      )
+    case 'tool':
+      return (
+        <span className="text-orange-500 dark:text-orange-400" title="Tool">
+          T
+        </span>
+      )
+    default:
+      return null
   }
 }
 
@@ -52,9 +68,13 @@ export function SearchResultCard({ hit, isSelected, onSelect }: SearchResultCard
           {hit.branch && (
             <span className="text-gray-500 dark:text-gray-400">&middot; {hit.branch}</span>
           )}
-          <span className="text-gray-400 dark:text-gray-500">&middot; {hit.matchCount} {hit.matchCount === 1 ? 'match' : 'matches'}</span>
+          <span className="text-gray-400 dark:text-gray-500">
+            &middot; {hit.matchCount} {hit.matchCount === 1 ? 'match' : 'matches'}
+          </span>
         </div>
-        <span className="text-gray-400 dark:text-gray-500 text-xs">{formatDate(hit.modifiedAt)}</span>
+        <span className="text-gray-400 dark:text-gray-500 text-xs">
+          {formatDate(hit.modifiedAt)}
+        </span>
       </div>
 
       {/* Top match snippet */}
@@ -66,7 +86,10 @@ export function SearchResultCard({ hit, isSelected, onSelect }: SearchResultCard
       {hit.matchCount > 1 && (
         <div className="mt-2">
           <button
-            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpanded(!expanded)
+            }}
             className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
           >
             {expanded ? 'Hide matches' : `Show all ${hit.matchCount} matches`}
@@ -94,7 +117,9 @@ function MatchRow({ match, sessionId }: { match: MatchHit; sessionId: string }) 
     >
       <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
         <RoleIcon role={match.role} />
-        <span>{match.role === 'user' ? 'User' : match.role === 'assistant' ? 'Assistant' : 'Tool'}</span>
+        <span>
+          {match.role === 'user' ? 'User' : match.role === 'assistant' ? 'Assistant' : 'Tool'}
+        </span>
         <span>&middot; turn {match.turnNumber}</span>
       </div>
       <div className="mt-0.5 text-gray-700 dark:text-gray-300 line-clamp-2">

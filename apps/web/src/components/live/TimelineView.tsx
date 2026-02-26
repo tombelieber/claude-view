@@ -1,8 +1,8 @@
-import { useMemo, useEffect, useState } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import { cn } from '../../lib/utils'
+import { useEffect, useMemo, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
+import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 
 interface TimelineViewProps {
   subAgents: SubAgentInfo[]
@@ -95,7 +95,7 @@ export function TimelineView({
   // Calculate time intervals for the axis
   const timeIntervals = useMemo(
     () => calculateTimeIntervals(sessionDurationMs),
-    [sessionDurationMs]
+    [sessionDurationMs],
   )
 
   // Sort agents by startedAt (chronological order)
@@ -187,13 +187,9 @@ export function TimelineView({
               <div className="font-semibold text-gray-900 dark:text-white">{agent.agentType}</div>
               <div className="text-gray-600 dark:text-gray-300">{agent.description}</div>
               <div className="flex gap-3 text-gray-500 dark:text-gray-400 mt-1">
-                {agent.durationMs != null && (
-                  <span>{formatDurationSeconds(agent.durationMs)}</span>
-                )}
+                {agent.durationMs != null && <span>{formatDurationSeconds(agent.durationMs)}</span>}
                 {agent.costUsd != null && <span>{formatCost(agent.costUsd)}</span>}
-                {agent.toolUseCount != null && (
-                  <span>{agent.toolUseCount} tool calls</span>
-                )}
+                {agent.toolUseCount != null && <span>{agent.toolUseCount} tool calls</span>}
               </div>
               {agent.status === 'running' && (
                 <div className="text-green-600 dark:text-green-400 mt-1">Running...</div>
@@ -226,7 +222,7 @@ export function TimelineView({
                         className={cn(
                           'absolute h-full rounded transition-all',
                           barColorClass,
-                          isRunning && 'timeline-bar-growing'
+                          isRunning && 'timeline-bar-growing',
                         )}
                         style={{
                           left: `${startPct}%`,

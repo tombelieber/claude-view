@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { XmlCard, detectXmlType, extractXmlBlocks } from './XmlCard'
 
 // Mock ToolCallCard to verify it gets rendered with correct props
 vi.mock('./ToolCallCard', () => ({
-  ToolCallCard: ({ name, input, description }: { name: string; input: Record<string, unknown>; description: string }) => (
+  ToolCallCard: ({
+    name,
+    input,
+    description,
+  }: { name: string; input: Record<string, unknown>; description: string }) => (
     <div data-testid="tool-call-card" data-name={name} data-description={description}>
       ToolCallCard: {name} - {description} - {JSON.stringify(input)}
     </div>
@@ -33,7 +37,10 @@ describe('XmlCard', () => {
 
       expect(screen.getByTestId('tool-call-card')).toBeInTheDocument()
       expect(screen.getByTestId('tool-call-card')).toHaveAttribute('data-name', 'Read')
-      expect(screen.getByTestId('tool-call-card')).toHaveAttribute('data-description', 'Read a file')
+      expect(screen.getByTestId('tool-call-card')).toHaveAttribute(
+        'data-description',
+        'Read a file',
+      )
     })
 
     it('extracts JSON input from parameters tag', () => {
@@ -136,7 +143,9 @@ describe('XmlCard', () => {
 
   describe('existing card types still work', () => {
     it('renders nothing for hidden type', () => {
-      const { container } = render(<XmlCard content="<system-reminder>hidden</system-reminder>" type="hidden" />)
+      const { container } = render(
+        <XmlCard content="<system-reminder>hidden</system-reminder>" type="hidden" />,
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -210,7 +219,7 @@ describe('XmlCard', () => {
     it('extracts tool_call blocks with correct type', () => {
       const content = 'Some text <tool_call><name>Read</name></tool_call> more text'
       const blocks = extractXmlBlocks(content)
-      const toolBlock = blocks.find(b => b.type === 'tool_call')
+      const toolBlock = blocks.find((b) => b.type === 'tool_call')
       expect(toolBlock).toBeDefined()
       expect(toolBlock!.xml).toContain('<tool_call>')
     })

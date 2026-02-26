@@ -1,6 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { cn } from '../lib/utils'
 import { type WeightTier, weightDotClass } from '../lib/session-weight'
+import { cn } from '../lib/utils'
 
 interface WeightIndicatorProps {
   tier: WeightTier
@@ -53,17 +53,27 @@ export function WeightIndicator({ tier, inline }: WeightIndicatorProps) {
                     t.tier === tier && 'bg-white/10 dark:bg-black/10',
                   )}
                 >
-                  <span className={cn('w-2 h-2 rounded-full flex-shrink-0', weightDotClass(t.tier))} />
-                  <span className={cn(
-                    'text-[11px] font-medium w-14',
-                    t.tier === tier ? 'text-white dark:text-gray-900' : 'text-gray-400 dark:text-gray-500',
-                  )}>
+                  <span
+                    className={cn('w-2 h-2 rounded-full flex-shrink-0', weightDotClass(t.tier))}
+                  />
+                  <span
+                    className={cn(
+                      'text-[11px] font-medium w-14',
+                      t.tier === tier
+                        ? 'text-white dark:text-gray-900'
+                        : 'text-gray-400 dark:text-gray-500',
+                    )}
+                  >
                     {t.label}
                   </span>
-                  <span className={cn(
-                    'text-[10px] tabular-nums',
-                    t.tier === tier ? 'text-gray-200 dark:text-gray-700' : 'text-gray-500 dark:text-gray-400',
-                  )}>
+                  <span
+                    className={cn(
+                      'text-[10px] tabular-nums',
+                      t.tier === tier
+                        ? 'text-gray-200 dark:text-gray-700'
+                        : 'text-gray-500 dark:text-gray-400',
+                    )}
+                  >
                     {t.description}
                   </span>
                 </div>

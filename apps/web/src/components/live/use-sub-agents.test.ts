@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useSubAgents } from './use-sub-agents'
+import { describe, expect, it } from 'vitest'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { useSubAgents } from './use-sub-agents'
 
 // Test data factory helper
 function createAgent(overrides?: Partial<SubAgentInfo>): SubAgentInfo {
@@ -87,9 +87,27 @@ describe('useSubAgents', () => {
       const agents = [
         createAgent({ status: 'running', toolUseId: 'run_1', costUsd: 0.01 }),
         createAgent({ status: 'running', toolUseId: 'run_2', costUsd: 0.02 }),
-        createAgent({ status: 'complete', toolUseId: 'comp_1', costUsd: 0.05, completedAt: 2000, durationMs: 1000 }),
-        createAgent({ status: 'complete', toolUseId: 'comp_2', costUsd: 0.10, completedAt: 2500, durationMs: 1500 }),
-        createAgent({ status: 'error', toolUseId: 'err_1', costUsd: 0.03, completedAt: 1500, durationMs: 500 }),
+        createAgent({
+          status: 'complete',
+          toolUseId: 'comp_1',
+          costUsd: 0.05,
+          completedAt: 2000,
+          durationMs: 1000,
+        }),
+        createAgent({
+          status: 'complete',
+          toolUseId: 'comp_2',
+          costUsd: 0.1,
+          completedAt: 2500,
+          durationMs: 1500,
+        }),
+        createAgent({
+          status: 'error',
+          toolUseId: 'err_1',
+          costUsd: 0.03,
+          completedAt: 1500,
+          durationMs: 500,
+        }),
       ]
       const { result } = renderHook(() => useSubAgents(agents))
 
@@ -101,9 +119,9 @@ describe('useSubAgents', () => {
       expect(result.current.isAnyRunning).toBe(true)
 
       // Verify correct agents in each array
-      expect(result.current.active.map(a => a.toolUseId)).toEqual(['run_1', 'run_2'])
-      expect(result.current.completed.map(a => a.toolUseId)).toEqual(['comp_1', 'comp_2'])
-      expect(result.current.errored.map(a => a.toolUseId)).toEqual(['err_1'])
+      expect(result.current.active.map((a) => a.toolUseId)).toEqual(['run_1', 'run_2'])
+      expect(result.current.completed.map((a) => a.toolUseId)).toEqual(['comp_1', 'comp_2'])
+      expect(result.current.errored.map((a) => a.toolUseId)).toEqual(['err_1'])
     })
 
     it('correctly sums totalCost across all agents', () => {
@@ -121,8 +139,8 @@ describe('useSubAgents', () => {
     it('handles mixed costs with varying precision', () => {
       const agents = [
         createAgent({ status: 'complete', costUsd: 0.12345, completedAt: 2000, durationMs: 1000 }),
-        createAgent({ status: 'complete', costUsd: 0.67890, completedAt: 2500, durationMs: 1500 }),
-        createAgent({ status: 'running', costUsd: 0.10000 }),
+        createAgent({ status: 'complete', costUsd: 0.6789, completedAt: 2500, durationMs: 1500 }),
+        createAgent({ status: 'running', costUsd: 0.1 }),
       ]
       const { result } = renderHook(() => useSubAgents(agents))
 
@@ -145,14 +163,14 @@ describe('useSubAgents', () => {
 
     it('treats undefined costUsd as 0 in sum', () => {
       const agents = [
-        createAgent({ status: 'complete', costUsd: 0.10, completedAt: 2000, durationMs: 1000 }),
+        createAgent({ status: 'complete', costUsd: 0.1, completedAt: 2000, durationMs: 1000 }),
         createAgent({ status: 'running', costUsd: undefined }), // undefined should be treated as 0
-        createAgent({ status: 'complete', costUsd: 0.20, completedAt: 2500, durationMs: 1500 }),
+        createAgent({ status: 'complete', costUsd: 0.2, completedAt: 2500, durationMs: 1500 }),
       ]
       const { result } = renderHook(() => useSubAgents(agents))
 
       // 0.10 + 0 + 0.20 = 0.30
-      expect(result.current.totalCost).toBeCloseTo(0.30, 2)
+      expect(result.current.totalCost).toBeCloseTo(0.3, 2)
     })
 
     it('handles all null/undefined costs', () => {
@@ -185,13 +203,17 @@ describe('useSubAgents', () => {
     it('returns same reference for same input array', () => {
       const agents = [
         createAgent({ status: 'running', toolUseId: 'run_1' }),
-        createAgent({ status: 'complete', toolUseId: 'comp_1', completedAt: 2000, durationMs: 1000 }),
+        createAgent({
+          status: 'complete',
+          toolUseId: 'comp_1',
+          completedAt: 2000,
+          durationMs: 1000,
+        }),
       ]
 
-      const { result, rerender } = renderHook(
-        ({ subAgents }) => useSubAgents(subAgents),
-        { initialProps: { subAgents: agents } }
-      )
+      const { result, rerender } = renderHook(({ subAgents }) => useSubAgents(subAgents), {
+        initialProps: { subAgents: agents },
+      })
 
       const firstResult = result.current
 
@@ -203,17 +225,19 @@ describe('useSubAgents', () => {
     })
 
     it('returns different reference for different input array', () => {
-      const agents1 = [
-        createAgent({ status: 'running', toolUseId: 'run_1' }),
-      ]
+      const agents1 = [createAgent({ status: 'running', toolUseId: 'run_1' })]
       const agents2 = [
-        createAgent({ status: 'complete', toolUseId: 'comp_1', completedAt: 2000, durationMs: 1000 }),
+        createAgent({
+          status: 'complete',
+          toolUseId: 'comp_1',
+          completedAt: 2000,
+          durationMs: 1000,
+        }),
       ]
 
-      const { result, rerender } = renderHook(
-        ({ subAgents }) => useSubAgents(subAgents),
-        { initialProps: { subAgents: agents1 } }
-      )
+      const { result, rerender } = renderHook(({ subAgents }) => useSubAgents(subAgents), {
+        initialProps: { subAgents: agents1 },
+      })
 
       const firstResult = result.current
 
@@ -226,18 +250,20 @@ describe('useSubAgents', () => {
     })
 
     it('returns different reference when array contents change', () => {
-      const agents1 = [
-        createAgent({ status: 'running', toolUseId: 'run_1' }),
-      ]
+      const agents1 = [createAgent({ status: 'running', toolUseId: 'run_1' })]
       const agents2 = [
         createAgent({ status: 'running', toolUseId: 'run_1' }),
-        createAgent({ status: 'complete', toolUseId: 'comp_1', completedAt: 2000, durationMs: 1000 }),
+        createAgent({
+          status: 'complete',
+          toolUseId: 'comp_1',
+          completedAt: 2000,
+          durationMs: 1000,
+        }),
       ]
 
-      const { result, rerender } = renderHook(
-        ({ subAgents }) => useSubAgents(subAgents),
-        { initialProps: { subAgents: agents1 } }
-      )
+      const { result, rerender } = renderHook(({ subAgents }) => useSubAgents(subAgents), {
+        initialProps: { subAgents: agents1 },
+      })
 
       const firstResult = result.current
 
@@ -251,9 +277,7 @@ describe('useSubAgents', () => {
     })
 
     it('returns same reference on parent re-render when input unchanged', () => {
-      const agents = [
-        createAgent({ status: 'running', toolUseId: 'run_1' }),
-      ]
+      const agents = [createAgent({ status: 'running', toolUseId: 'run_1' })]
 
       let renderCount = 0
       const { result, rerender } = renderHook(
@@ -261,7 +285,7 @@ describe('useSubAgents', () => {
           renderCount++
           return useSubAgents(subAgents)
         },
-        { initialProps: { subAgents: agents, _tick: 0 } }
+        { initialProps: { subAgents: agents, _tick: 0 } },
       )
 
       const firstResult = result.current
@@ -293,7 +317,7 @@ describe('useSubAgents', () => {
       ]
       const { result } = renderHook(() => useSubAgents(agents))
 
-      expect(result.current.totalCost).toBeCloseTo(2000.00, 2)
+      expect(result.current.totalCost).toBeCloseTo(2000.0, 2)
     })
 
     it('handles very small cost values', () => {
@@ -347,7 +371,7 @@ describe('useSubAgents', () => {
       expect(result.current.active.length).toBeGreaterThan(0)
       expect(result.current.completed.length).toBeGreaterThan(0)
       expect(result.current.errored.length).toBeGreaterThan(0)
-      expect(result.current.totalCost).toBeCloseTo(10.00, 2) // 1000 * 0.01
+      expect(result.current.totalCost).toBeCloseTo(10.0, 2) // 1000 * 0.01
     })
   })
 })

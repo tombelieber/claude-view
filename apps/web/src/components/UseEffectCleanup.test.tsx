@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { useEffect, useState, useRef } from 'react'
+import { render, waitFor } from '@testing-library/react'
+import { useEffect, useRef } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
 /**
  * Test suite for verifying useEffect cleanup patterns across components.
@@ -127,10 +127,13 @@ describe('useEffect cleanup patterns', () => {
       // Unmount before timer fires
       unmount()
 
-      await waitFor(() => {
-        // Timer should not execute because it was cleaned up
-        expect(mockCallback).not.toHaveBeenCalled()
-      }, { timeout: 200 })
+      await waitFor(
+        () => {
+          // Timer should not execute because it was cleaned up
+          expect(mockCallback).not.toHaveBeenCalled()
+        },
+        { timeout: 200 },
+      )
     })
 
     it('should cleanup setInterval on unmount', async () => {
@@ -153,10 +156,13 @@ describe('useEffect cleanup patterns', () => {
       // Unmount before interval fires
       unmount()
 
-      await waitFor(() => {
-        // Interval should not execute because it was cleaned up
-        expect(mockCallback).not.toHaveBeenCalled()
-      }, { timeout: 200 })
+      await waitFor(
+        () => {
+          // Interval should not execute because it was cleaned up
+          expect(mockCallback).not.toHaveBeenCalled()
+        },
+        { timeout: 200 },
+      )
     })
 
     it('should cleanup multiple timers', async () => {
@@ -181,10 +187,13 @@ describe('useEffect cleanup patterns', () => {
 
       unmount()
 
-      await waitFor(() => {
-        expect(timeoutCallback).not.toHaveBeenCalled()
-        expect(intervalCallback).not.toHaveBeenCalled()
-      }, { timeout: 300 })
+      await waitFor(
+        () => {
+          expect(timeoutCallback).not.toHaveBeenCalled()
+          expect(intervalCallback).not.toHaveBeenCalled()
+        },
+        { timeout: 300 },
+      )
     })
   })
 

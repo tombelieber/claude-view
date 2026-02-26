@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * Standard breakpoints for responsive design.
@@ -91,9 +91,7 @@ export function useIsMobile(): boolean {
  * Tablet: 640px - 1023px (sm to below lg)
  */
 export function useIsTablet(): boolean {
-  return useMediaQuery(
-    `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`
-  )
+  return useMediaQuery(`(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`)
 }
 
 /**
@@ -113,10 +111,10 @@ export function useIsDesktop(): boolean {
 export function useBreakpoint(): 'mobile' | 'tablet' | 'desktop' | 'wide' {
   const isMobile = useMediaQuery(`(max-width: ${BREAKPOINTS.sm - 1}px)`)
   const isTablet = useMediaQuery(
-    `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`
+    `(min-width: ${BREAKPOINTS.sm}px) and (max-width: ${BREAKPOINTS.lg - 1}px)`,
   )
   const isDesktop = useMediaQuery(
-    `(min-width: ${BREAKPOINTS.lg}px) and (max-width: ${BREAKPOINTS.xl - 1}px)`
+    `(min-width: ${BREAKPOINTS.lg}px) and (max-width: ${BREAKPOINTS.xl - 1}px)`,
   )
 
   if (isMobile) return 'mobile'

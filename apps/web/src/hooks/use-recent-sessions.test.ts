@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createElement, type ReactNode } from 'react'
-import { useRecentSessions, type RecentSession } from './use-recent-sessions'
+import { renderHook, waitFor } from '@testing-library/react'
+import { type ReactNode, createElement } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { type RecentSession, useRecentSessions } from './use-recent-sessions'
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -79,10 +79,9 @@ describe('useRecentSessions', () => {
       }),
     )
 
-    const { result } = renderHook(
-      () => useRecentSessions('my-app', 'feature/auth'),
-      { wrapper: createWrapper() },
-    )
+    const { result } = renderHook(() => useRecentSessions('my-app', 'feature/auth'), {
+      wrapper: createWrapper(),
+    })
 
     await waitFor(() => {
       expect(result.current.data).toHaveLength(2)

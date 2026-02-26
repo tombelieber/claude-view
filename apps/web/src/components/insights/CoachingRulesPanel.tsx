@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import { cn } from '../../lib/utils'
 import { useCoachingRules } from '../../hooks/use-coaching-rules'
+import { cn } from '../../lib/utils'
 
 interface CoachingRulesPanelProps {
   onClose: () => void
@@ -99,7 +99,7 @@ export function CoachingRulesPanel({ onClose }: CoachingRulesPanelProps) {
                     disabled={isRemoving}
                     className={cn(
                       'text-[10px] px-1.5 py-0.5 rounded text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0',
-                      isRemoving && 'opacity-50 cursor-wait'
+                      isRemoving && 'opacity-50 cursor-wait',
                     )}
                   >
                     Remove

@@ -1,7 +1,7 @@
-import { ArrowUp, ArrowRight, Eye } from 'lucide-react'
-import { PatternCard } from './PatternCard'
+import { ArrowRight, ArrowUp, Eye } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { GeneratedInsight } from '../../types/generated/GeneratedInsight'
+import { PatternCard } from './PatternCard'
 
 interface PatternGroupProps {
   tier: 'high' | 'medium' | 'observations'

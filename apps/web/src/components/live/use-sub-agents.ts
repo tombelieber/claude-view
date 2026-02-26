@@ -13,9 +13,9 @@ export interface UseSubAgentsResult {
 
 export function useSubAgents(subAgents: SubAgentInfo[]): UseSubAgentsResult {
   return useMemo(() => {
-    const active = subAgents.filter(a => a.status === 'running')
-    const completed = subAgents.filter(a => a.status === 'complete')
-    const errored = subAgents.filter(a => a.status === 'error')
+    const active = subAgents.filter((a) => a.status === 'running')
+    const completed = subAgents.filter((a) => a.status === 'complete')
+    const errored = subAgents.filter((a) => a.status === 'error')
     const totalCost = subAgents.reduce((sum, a) => sum + (a.costUsd ?? 0), 0)
 
     return {

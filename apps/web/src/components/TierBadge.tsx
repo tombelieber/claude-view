@@ -18,10 +18,8 @@ export function TierBadge({ tier, className }: TierBadgeProps) {
     <span
       className={cn(
         'inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded',
-        tier === 1
-          ? 'bg-blue-100 text-blue-700'
-          : 'bg-gray-100 text-gray-600',
-        className
+        tier === 1 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600',
+        className,
       )}
       title={tier === 1 ? 'High confidence (commit skill)' : 'Medium confidence (during session)'}
     >

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { buildThreadMap } from '../lib/thread-map'
 
 describe('ConversationView thread integration', () => {

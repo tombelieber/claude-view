@@ -6,18 +6,12 @@ interface TaskQueueCardProps {
   queueLength?: number
 }
 
-export function TaskQueueCard({
-  waitDuration,
-  position,
-  queueLength,
-}: TaskQueueCardProps) {
+export function TaskQueueCard({ waitDuration, position, queueLength }: TaskQueueCardProps) {
   const details: string[] = []
 
   if (position !== undefined) {
     details.push(
-      queueLength !== undefined
-        ? `position ${position}/${queueLength}`
-        : `position ${position}`
+      queueLength !== undefined ? `position ${position}/${queueLength}` : `position ${position}`,
     )
   }
 
@@ -29,10 +23,7 @@ export function TaskQueueCard({
   const suffix = hasDetails ? ` (${details.join(', ')})` : '...'
 
   return (
-    <div
-      className="py-0.5 border-l-2 border-l-gray-400 pl-1 my-1"
-      aria-label="Task queue status"
-    >
+    <div className="py-0.5 border-l-2 border-l-gray-400 pl-1 my-1" aria-label="Task queue status">
       <div className="flex items-center gap-1.5">
         <Clock className="w-3 h-3 text-gray-500 flex-shrink-0" aria-hidden="true" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">

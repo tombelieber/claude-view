@@ -19,7 +19,9 @@ function renderToolCalls(toolCalls?: ToolCall[] | null): string {
   // Re-aggregate individual tool calls by name for display
   const counts = new Map<string, number>()
   for (const tc of toolCalls) counts.set(tc.name, (counts.get(tc.name) ?? 0) + tc.count)
-  const items = Array.from(counts).map(([name, count]) => `- **${name}** (x${count})`).join('\n')
+  const items = Array.from(counts)
+    .map(([name, count]) => `- **${name}** (x${count})`)
+    .join('\n')
   return `\n\n**Tools Used:**\n${items}`
 }
 
@@ -94,10 +96,7 @@ function truncateAtSafePoint(text: string, maxLen: number): string {
  * - Structured for LLM consumption, not human reading
  * - Graceful fallbacks when fields are null
  */
-export function generateResumeContext(
-  messages: Message[],
-  detail: SessionDetail,
-): string {
+export function generateResumeContext(messages: Message[], detail: SessionDetail): string {
   const sections: string[] = []
 
   // Header
@@ -125,32 +124,32 @@ export function generateResumeContext(
   // Files modified (deduplicated, max 15)
   const uniqueEdited = [...new Set(detail.filesEdited)]
   if (uniqueEdited.length > 0) {
-    const fileList = uniqueEdited.slice(0, 15).map(f => `- \`${f}\``).join('\n')
-    const suffix = uniqueEdited.length > 15
-      ? `\n- ... and ${uniqueEdited.length - 15} more`
-      : ''
+    const fileList = uniqueEdited
+      .slice(0, 15)
+      .map((f) => `- \`${f}\``)
+      .join('\n')
+    const suffix = uniqueEdited.length > 15 ? `\n- ... and ${uniqueEdited.length - 15} more` : ''
     sections.push(`**Files modified:**\n${fileList}${suffix}`)
   }
 
   // Files read (top 10, excluding already-listed edited files)
   const editedSet = new Set(uniqueEdited)
-  const readOnly = [...new Set(detail.filesRead)].filter(f => !editedSet.has(f))
+  const readOnly = [...new Set(detail.filesRead)].filter((f) => !editedSet.has(f))
   if (readOnly.length > 0) {
-    const fileList = readOnly.slice(0, 10).map(f => `- \`${f}\``).join('\n')
-    const suffix = readOnly.length > 10
-      ? `\n- ... and ${readOnly.length - 10} more`
-      : ''
+    const fileList = readOnly
+      .slice(0, 10)
+      .map((f) => `- \`${f}\``)
+      .join('\n')
+    const suffix = readOnly.length > 10 ? `\n- ... and ${readOnly.length - 10} more` : ''
     sections.push(`**Files referenced:**\n${fileList}${suffix}`)
   }
 
   // Last few conversation turns (user + assistant only, max 5 exchanges)
-  const conversational = messages.filter(
-    m => m.role === 'user' || m.role === 'assistant'
-  )
+  const conversational = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
   // Take last 10 messages (up to 5 exchanges)
   const recentMessages = conversational.slice(-10)
   if (recentMessages.length > 0) {
-    const turnLines = recentMessages.map(m => {
+    const turnLines = recentMessages.map((m) => {
       const role = m.role === 'user' ? 'User' : 'Assistant'
       // Truncate long messages at word boundary, avoid breaking code blocks
       const content = truncateAtSafePoint(m.content, 200)
@@ -162,7 +161,7 @@ export function generateResumeContext(
   sections.push(
     recentMessages.length > 0
       ? '---\nPlease continue from where we left off.'
-      : '---\nPlease help me with this project based on the context above.'
+      : '---\nPlease help me with this project based on the context above.',
   )
 
   return sections.join('\n\n')

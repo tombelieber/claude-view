@@ -21,7 +21,7 @@ export function WarningBanner({ warnings, onSync, className }: WarningBannerProp
 
   // Determine severity (any GitSyncIncomplete or PartialData = warning, else info)
   const hasActionableWarning = warnings.some(
-    (w) => w.code === 'GitSyncIncomplete' || w.code === 'PartialData'
+    (w) => w.code === 'GitSyncIncomplete' || w.code === 'PartialData',
   )
 
   const bgColor = hasActionableWarning
@@ -42,10 +42,7 @@ export function WarningBanner({ warnings, onSync, className }: WarningBannerProp
   const showSyncAction = onSync && warnings.some((w) => w.code === 'GitSyncIncomplete')
 
   return (
-    <div
-      className={cn('border rounded-xl p-4', bgColor, className)}
-      role="alert"
-    >
+    <div className={cn('border rounded-xl p-4', bgColor, className)} role="alert">
       <div className="flex items-start gap-3">
         <Icon className={cn('w-5 h-5 flex-shrink-0 mt-0.5', iconColor)} aria-hidden="true" />
         <div className="flex-1 space-y-1">
@@ -64,7 +61,7 @@ export function WarningBanner({ warnings, onSync, className }: WarningBannerProp
               'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors cursor-pointer',
               'bg-amber-100 dark:bg-amber-800/50 text-amber-800 dark:text-amber-200',
               'hover:bg-amber-200 dark:hover:bg-amber-800',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400'
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400',
             )}
           >
             <RefreshCw className="w-4 h-4" aria-hidden="true" />
@@ -103,7 +100,7 @@ export function WarningIndicator({
     <span
       className={cn(
         'inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400',
-        className
+        className,
       )}
       title={getWarningMessage(warning)}
     >

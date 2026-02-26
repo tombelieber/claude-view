@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist, type StorageValue } from 'zustand/middleware'
+import { type StorageValue, persist } from 'zustand/middleware'
 import type { ActionCategory } from '../components/live/action-log/types'
 
 export type VerboseFilter = ActionCategory | 'all'
@@ -51,29 +51,33 @@ export const useMonitorStore = create<MonitorState>()(
       selectPane: (id) => set({ selectedPaneId: id }),
       expandPane: (id) => set({ expandedPaneId: id }),
 
-      pinPane: (id) => set((state) => {
-        const next = new Set(state.pinnedPaneIds)
-        next.add(id)
-        return { pinnedPaneIds: next }
-      }),
+      pinPane: (id) =>
+        set((state) => {
+          const next = new Set(state.pinnedPaneIds)
+          next.add(id)
+          return { pinnedPaneIds: next }
+        }),
 
-      unpinPane: (id) => set((state) => {
-        const next = new Set(state.pinnedPaneIds)
-        next.delete(id)
-        return { pinnedPaneIds: next }
-      }),
+      unpinPane: (id) =>
+        set((state) => {
+          const next = new Set(state.pinnedPaneIds)
+          next.delete(id)
+          return { pinnedPaneIds: next }
+        }),
 
-      hidePane: (id) => set((state) => {
-        const next = new Set(state.hiddenPaneIds)
-        next.add(id)
-        return { hiddenPaneIds: next }
-      }),
+      hidePane: (id) =>
+        set((state) => {
+          const next = new Set(state.hiddenPaneIds)
+          next.add(id)
+          return { hiddenPaneIds: next }
+        }),
 
-      showPane: (id) => set((state) => {
-        const next = new Set(state.hiddenPaneIds)
-        next.delete(id)
-        return { hiddenPaneIds: next }
-      }),
+      showPane: (id) =>
+        set((state) => {
+          const next = new Set(state.hiddenPaneIds)
+          next.delete(id)
+          return { hiddenPaneIds: next }
+        }),
 
       toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
       setVerboseFilter: (filter) => set({ verboseFilter: filter }),
@@ -112,16 +116,20 @@ export const useMonitorStore = create<MonitorState>()(
           if (toStore.state) {
             toStore.state = { ...toStore.state }
             if (toStore.state.pinnedPaneIds instanceof Set) {
-              toStore.state.pinnedPaneIds = [...toStore.state.pinnedPaneIds] as unknown as Set<string>
+              toStore.state.pinnedPaneIds = [
+                ...toStore.state.pinnedPaneIds,
+              ] as unknown as Set<string>
             }
             if (toStore.state.hiddenPaneIds instanceof Set) {
-              toStore.state.hiddenPaneIds = [...toStore.state.hiddenPaneIds] as unknown as Set<string>
+              toStore.state.hiddenPaneIds = [
+                ...toStore.state.hiddenPaneIds,
+              ] as unknown as Set<string>
             }
           }
           localStorage.setItem(name, JSON.stringify(toStore))
         },
         removeItem: (name: string) => localStorage.removeItem(name),
       },
-    }
-  )
+    },
+  ),
 )

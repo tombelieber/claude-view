@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../store/app-store'
-import type { Theme } from '../store/app-store'
 
 function getSystemPreference(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light'
@@ -12,8 +11,7 @@ export function useTheme() {
   const setTheme = useAppStore((s) => s.setTheme)
   const cycleTheme = useAppStore((s) => s.cycleTheme)
 
-  const resolvedTheme: 'light' | 'dark' =
-    theme === 'system' ? getSystemPreference() : theme
+  const resolvedTheme: 'light' | 'dark' = theme === 'system' ? getSystemPreference() : theme
 
   // Apply dark class to <html> and listen for OS changes in system mode
   useEffect(() => {

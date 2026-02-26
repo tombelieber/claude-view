@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Sessions List', () => {
   test('displays session list with filter and sort', async ({ page }) => {
@@ -76,7 +76,7 @@ test.describe('Sessions List', () => {
     const sessionCountAfter = await page.locator('article').count()
 
     // Either empty state is shown or count decreased
-    expect(await emptyState.isVisible() || sessionCountAfter < sessionCountBefore).toBeTruthy()
+    expect((await emptyState.isVisible()) || sessionCountAfter < sessionCountBefore).toBeTruthy()
   })
 
   test('empty state shows when no sessions match filter', async ({ page }) => {

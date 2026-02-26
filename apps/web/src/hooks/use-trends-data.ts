@@ -68,8 +68,8 @@ export function useTrendsData(params: TrendsParams) {
   return useQuery({
     queryKey: ['insights', 'trends', params],
     queryFn: () => fetchTrends(params),
-    staleTime: 5 * 60 * 1000,   // 5 minutes
-    gcTime: 30 * 60 * 1000,     // 30 minutes cache
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
     refetchOnWindowFocus: false,
   })
 }

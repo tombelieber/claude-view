@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { TurnDurationCard } from './TurnDurationCard'
 
 describe('TurnDurationCard', () => {
@@ -15,13 +15,7 @@ describe('TurnDurationCard', () => {
     })
 
     it('should render start and end times when provided', () => {
-      render(
-        <TurnDurationCard
-          durationMs={1200}
-          startTime="10:30:00"
-          endTime="10:30:01"
-        />
-      )
+      render(<TurnDurationCard durationMs={1200} startTime="10:30:00" endTime="10:30:01" />)
       expect(screen.getByText(/10:30:00/)).toBeInTheDocument()
       expect(screen.getByText(/10:30:01/)).toBeInTheDocument()
     })

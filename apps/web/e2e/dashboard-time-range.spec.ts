@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
   /**
@@ -269,10 +269,9 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     // Test with time range params (last 7 days)
     const now = Math.floor(Date.now() / 1000)
     const sevenDaysAgo = now - 7 * 86400
-    const rangeResponse = await request.get(
-      `/api/stats/dashboard?from=${sevenDaysAgo}&to=${now}`,
-      { timeout: 60000 }
-    )
+    const rangeResponse = await request.get(`/api/stats/dashboard?from=${sevenDaysAgo}&to=${now}`, {
+      timeout: 60000,
+    })
     expect(rangeResponse.ok()).toBeTruthy()
 
     const rangeData = await rangeResponse.json()

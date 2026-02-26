@@ -32,9 +32,7 @@ export function formatModelName(modelId: string): string {
   // captures the 8-digit date suffix as a minor version number.
   // With (\d{1,2}), the regex engine backtracks correctly:
   //   "claude-opus-4-20250514" → minor skipped, date=20250514 → "Claude Opus 4"
-  const modernMatch = modelId.match(
-    /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-(\d{8}))?$/
-  )
+  const modernMatch = modelId.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-(\d{8}))?$/)
   if (modernMatch) {
     const [, family, major, minor] = modernMatch
     const familyName = family.charAt(0).toUpperCase() + family.slice(1)
@@ -44,9 +42,7 @@ export function formatModelName(modelId: string): string {
 
   // Pattern B: Legacy — claude-{major}[-{minor}]-{family}[-{date}]
   //   claude-3-5-sonnet-20241022, claude-3-opus-20240229
-  const legacyMatch = modelId.match(
-    /^claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)(?:-(\d{8}))?$/
-  )
+  const legacyMatch = modelId.match(/^claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)(?:-(\d{8}))?$/)
   if (legacyMatch) {
     const [, major, minor, family] = legacyMatch
     const familyName = family.charAt(0).toUpperCase() + family.slice(1)

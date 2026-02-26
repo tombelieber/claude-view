@@ -1,5 +1,5 @@
+import { Brain, Code2, FileText, HelpCircle } from 'lucide-react'
 import type { CategoryBreakdown } from '../../types/generated/CategoryBreakdown'
-import { Code2, FileText, Brain, HelpCircle } from 'lucide-react'
 
 interface Props {
   breakdown: CategoryBreakdown
@@ -62,9 +62,7 @@ export function CategoryStatsSummary({ breakdown, onCategoryClick }: Props) {
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {data.percentage.toFixed(0)}%
             </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              {config.label}
-            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">{config.label}</div>
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
               {data.count} session{data.count !== 1 ? 's' : ''}
             </div>

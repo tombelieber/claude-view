@@ -1,15 +1,15 @@
+import { CalendarDays, X } from 'lucide-react'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarDays, X } from 'lucide-react'
+import { CalendarHeatmap } from '../components/activity/CalendarHeatmap'
+import { DailyTimeline } from '../components/activity/DailyTimeline'
+import { ProjectBreakdown } from '../components/activity/ProjectBreakdown'
+import { SummaryStats } from '../components/activity/SummaryStats'
+import { DateRangePicker, TimeRangeSelector } from '../components/ui'
+import { useActivityData } from '../hooks/use-activity-data'
+import { useIsMobile } from '../hooks/use-media-query'
 import { useTimeRange } from '../hooks/use-time-range'
 import type { TimeRangePreset } from '../hooks/use-time-range'
-import { useActivityData } from '../hooks/use-activity-data'
-import { SummaryStats } from '../components/activity/SummaryStats'
-import { CalendarHeatmap } from '../components/activity/CalendarHeatmap'
-import { ProjectBreakdown } from '../components/activity/ProjectBreakdown'
-import { DailyTimeline } from '../components/activity/DailyTimeline'
-import { TimeRangeSelector, DateRangePicker } from '../components/ui'
-import { useIsMobile } from '../hooks/use-media-query'
 
 /** Human-readable labels for the summary header */
 const PRESET_LABELS: Record<TimeRangePreset, string> = {
@@ -70,10 +70,7 @@ export function ActivityPage() {
             ]}
           />
           {timeRange.preset === 'custom' && (
-            <DateRangePicker
-              value={timeRange.customRange}
-              onChange={setCustomRange}
-            />
+            <DateRangePicker value={timeRange.customRange} onChange={setCustomRange} />
           )}
         </div>
       </div>

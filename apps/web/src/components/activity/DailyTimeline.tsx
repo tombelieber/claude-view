@@ -1,11 +1,11 @@
+import { ArrowRight, Clock, GitBranch } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Clock, ArrowRight, GitBranch } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { formatHumanDuration } from '../../lib/format-utils'
 import type { DayActivity } from '../../lib/activity-utils'
-import { sessionStartTime, projectDisplayName } from '../../lib/activity-utils'
+import { projectDisplayName, sessionStartTime } from '../../lib/activity-utils'
+import { formatHumanDuration } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
+import { cn } from '../../lib/utils'
 import type { SessionInfo } from '../../types/generated/SessionInfo'
 
 /** Extract a short branch/worktree label for display. Returns null for main/master. */
@@ -38,7 +38,11 @@ function formatDayHeader(dateStr: string): string {
   const isToday = date.toDateString() === today.toDateString()
   const isYesterday = date.toDateString() === yesterday.toDateString()
 
-  const dayName = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  const dayName = date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  })
   if (isToday) return `Today — ${dayName}`
   if (isYesterday) return `Yesterday — ${dayName}`
   return dayName
@@ -52,7 +56,12 @@ interface DailyTimelineProps {
   maxDays?: number
 }
 
-export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: DailyTimelineProps) {
+export function DailyTimeline({
+  days,
+  selectedDate,
+  selectedProject,
+  maxDays,
+}: DailyTimelineProps) {
   const [searchParams] = useSearchParams()
 
   const filteredDays = useMemo(() => {
@@ -60,25 +69,34 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: 
 
     // Filter by selected date
     if (selectedDate) {
-      result = result.filter(d => d.date === selectedDate)
+      result = result.filter((d) => d.date === selectedDate)
     }
 
     // Filter sessions within days by project
     if (selectedProject) {
-      result = result.map(day => {
-        const filtered = day.sessions.filter(s => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === selectedProject)
-        return {
-          ...day,
-          sessions: filtered,
-          totalSeconds: filtered.reduce((sum, s) => sum + s.durationSeconds, 0),
-          sessionCount: filtered.length,
-        }
-      }).filter(day => day.sessions.length > 0)
+      result = result
+        .map((day) => {
+          const filtered = day.sessions.filter(
+            (s) => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === selectedProject,
+          )
+          return {
+            ...day,
+            sessions: filtered,
+            totalSeconds: filtered.reduce((sum, s) => sum + s.durationSeconds, 0),
+            sessionCount: filtered.length,
+          }
+        })
+        .filter((day) => day.sessions.length > 0)
     }
 
     return maxDays != null ? result.slice(0, maxDays) : result
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days.map(d => `${d.date}:${d.sessionCount}`).join(','), selectedDate, selectedProject, maxDays])
+  }, [
+    days.map((d) => `${d.date}:${d.sessionCount}`).join(','),
+    selectedDate,
+    selectedProject,
+    maxDays,
+  ])
 
   if (filteredDays.length === 0) {
     return (
@@ -90,7 +108,9 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: 
 
   return (
     <div>
-      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Session Timeline</h2>
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+        Session Timeline
+      </h2>
       <div className="space-y-4">
         {filteredDays.map((day) => (
           <div key={day.date}>
@@ -100,7 +120,8 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: 
                 {formatDayHeader(day.date)}
               </h3>
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {day.sessionCount} {day.sessionCount === 1 ? 'session' : 'sessions'} — {formatHumanDuration(day.totalSeconds)}
+                {day.sessionCount} {day.sessionCount === 1 ? 'session' : 'sessions'} —{' '}
+                {formatHumanDuration(day.totalSeconds)}
               </span>
             </div>
 
@@ -119,7 +140,7 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: 
                     aria-label={`${title}, ${formatHumanDuration(session.durationSeconds)}, ${projectDisplayName((session.gitRoot || null) ?? session.projectPath ?? session.project)}`}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150',
-                      'hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer group'
+                      'hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer group',
                     )}
                   >
                     {/* Time range */}
@@ -130,7 +151,9 @@ export function DailyTimeline({ days, selectedDate, selectedProject, maxDays }: 
                     {/* Project badge + branch tag */}
                     <span className="flex items-center gap-1 shrink-0">
                       <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded whitespace-nowrap">
-                        {projectDisplayName((session.gitRoot || null) ?? session.projectPath ?? session.project)}
+                        {projectDisplayName(
+                          (session.gitRoot || null) ?? session.projectPath ?? session.project,
+                        )}
                       </span>
                       {branchLabel(session) && (
                         <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-0.5 max-w-[140px]">

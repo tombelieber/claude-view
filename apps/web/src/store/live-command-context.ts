@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { LiveSession } from '../components/live/use-live-sessions'
-import type { LiveViewMode } from '../components/live/types'
 import type { LiveSortField } from '../components/live/live-filter'
+import type { LiveViewMode } from '../components/live/types'
+import type { LiveSession } from '../components/live/use-live-sessions'
 
 export interface LiveCommandContext {
   sessions: LiveSession[]

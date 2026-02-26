@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 /** Predefined time range options */
@@ -47,7 +47,10 @@ const LEGACY_RANGE_MAP: Record<string, TimeRangePreset> = {
 }
 
 /** Calculate timestamps from preset */
-function getTimestampsFromPreset(preset: TimeRangePreset): { from: number | null; to: number | null } {
+function getTimestampsFromPreset(preset: TimeRangePreset): {
+  from: number | null
+  to: number | null
+} {
   if (preset === 'all') {
     return { from: null, to: null }
   }
@@ -67,7 +70,10 @@ function getTimestampsFromPreset(preset: TimeRangePreset): { from: number | null
 }
 
 /** Calculate timestamps from custom date range */
-function getTimestampsFromCustomRange(range: CustomDateRange | null): { from: number | null; to: number | null } {
+function getTimestampsFromCustomRange(range: CustomDateRange | null): {
+  from: number | null
+  to: number | null
+} {
   if (!range) {
     return { from: null, to: null }
   }
@@ -126,7 +132,10 @@ export function useTimeRange(): UseTimeRangeReturn {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored)
-        if (parsed.preset && ['today', '7d', '30d', '90d', 'all', 'custom'].includes(parsed.preset)) {
+        if (
+          parsed.preset &&
+          ['today', '7d', '30d', '90d', 'all', 'custom'].includes(parsed.preset)
+        ) {
           return parsed.preset as TimeRangePreset
         }
       }
@@ -142,8 +151,8 @@ export function useTimeRange(): UseTimeRangeReturn {
     const fromParam = searchParams.get('from')
     const toParam = searchParams.get('to')
     if (fromParam && toParam) {
-      const from = parseInt(fromParam, 10)
-      const to = parseInt(toParam, 10)
+      const from = Number.parseInt(fromParam, 10)
+      const to = Number.parseInt(toParam, 10)
       if (!isNaN(from) && !isNaN(to)) {
         return {
           from: new Date(from * 1000),
@@ -185,10 +194,12 @@ export function useTimeRange(): UseTimeRangeReturn {
     // Update localStorage
     const toStore = {
       preset,
-      customRange: customRange ? {
-        from: customRange.from.toISOString(),
-        to: customRange.to.toISOString(),
-      } : null,
+      customRange: customRange
+        ? {
+            from: customRange.from.toISOString(),
+            to: customRange.to.toISOString(),
+          }
+        : null,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore))
 
@@ -258,7 +269,9 @@ export function useTimeRange(): UseTimeRangeReturn {
       return null // No comparison for all-time
     }
     if (preset === 'custom' && customRange) {
-      const days = Math.ceil((customRange.to.getTime() - customRange.from.getTime()) / (1000 * 86400))
+      const days = Math.ceil(
+        (customRange.to.getTime() - customRange.from.getTime()) / (1000 * 86400),
+      )
       return `vs prev ${days}d`
     }
     return `vs prev ${preset}`
@@ -267,12 +280,15 @@ export function useTimeRange(): UseTimeRangeReturn {
   // Build state object — memoized on primitive values to avoid creating a new
   // object reference every render, which would break downstream useEffect deps.
   // See CLAUDE.md: "Never put raw parsed objects in useEffect deps"
-  const state = useMemo<TimeRangeState>(() => ({
-    preset,
-    customRange,
-    fromTimestamp: timestamps.from,
-    toTimestamp: timestamps.to,
-  }), [preset, customRange, timestamps.from, timestamps.to])
+  const state = useMemo<TimeRangeState>(
+    () => ({
+      preset,
+      customRange,
+      fromTimestamp: timestamps.from,
+      toTimestamp: timestamps.to,
+    }),
+    [preset, customRange, timestamps.from, timestamps.to],
+  )
 
   return {
     state,

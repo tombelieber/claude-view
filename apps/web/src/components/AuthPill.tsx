@@ -1,5 +1,5 @@
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, AlertCircle } from 'lucide-react'
 import { useSystem } from '../hooks/use-system'
 
 export function AuthPill() {
@@ -43,9 +43,7 @@ export function AuthPill() {
 
   // Authenticated — show tier or fallback
   const tier = cli.subscriptionType
-  const label = tier
-    ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase()
-    : 'CLI \u2713'
+  const label = tier ? tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase() : 'CLI \u2713'
 
   return (
     <Link

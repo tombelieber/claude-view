@@ -1,6 +1,6 @@
+import { ArrowRight, Code2, GitBranch, RefreshCcw, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { TrendingUp, ArrowRight, GitBranch, Code2, RefreshCcw } from 'lucide-react'
-import { useContributions, type ContributionsTimeRange } from '../hooks/use-contributions'
+import { type ContributionsTimeRange, useContributions } from '../hooks/use-contributions'
 import { formatNumber, formatPercent } from '../lib/format-utils'
 import { cn } from '../lib/utils'
 
@@ -10,7 +10,6 @@ export interface ContributionSummaryCardProps {
   project?: string
   branch?: string
 }
-
 
 /**
  * ContributionSummaryCard displays a summary of AI contributions for the dashboard.
@@ -23,7 +22,12 @@ export interface ContributionSummaryCardProps {
  * - Insight line with trend comparison
  * - "View All" link to /contributions
  */
-export function ContributionSummaryCard({ className, timeRange, project, branch }: ContributionSummaryCardProps) {
+export function ContributionSummaryCard({
+  className,
+  timeRange,
+  project,
+  branch,
+}: ContributionSummaryCardProps) {
   const contribTime: ContributionsTimeRange = {
     preset: (timeRange?.preset as ContributionsTimeRange['preset']) || '30d',
     from: timeRange?.fromTimestamp,
@@ -34,10 +38,12 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
   // Loading state
   if (isLoading) {
     return (
-      <div className={cn(
-        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-        className
-      )}>
+      <div
+        className={cn(
+          'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+          className,
+        )}
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="h-5 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
           <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
@@ -58,10 +64,12 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
   // Error state - show minimal card with link and retry
   if (error || !data) {
     return (
-      <div className={cn(
-        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-        className
-      )}>
+      <div
+        className={cn(
+          'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
+          className,
+        )}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5 text-[#7c9885]" />
@@ -69,7 +77,10 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
               AI Contributions
             </h2>
           </div>
-          <Link to="/contributions" className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+          <Link
+            to="/contributions"
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+          >
             View All <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -77,11 +88,19 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
           {error ? (
             <>
               Unable to load contribution data.{' '}
-              <button onClick={(e) => { e.preventDefault(); refetch() }} className="underline hover:text-blue-600 dark:hover:text-blue-400">
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  refetch()
+                }}
+                className="underline hover:text-blue-600 dark:hover:text-blue-400"
+              >
                 Retry
               </button>
             </>
-          ) : 'No contribution data available'}
+          ) : (
+            'No contribution data available'
+          )}
         </p>
       </div>
     )
@@ -105,13 +124,20 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
 
   const titleLabel = (() => {
     switch (timeRange?.preset) {
-      case 'today': return 'AI Contribution Today'
-      case '7d': return 'AI Contribution This Week'
-      case '30d': return 'AI Contribution This Month'
-      case '90d': return 'AI Contribution (90 Days)'
-      case 'all': return 'AI Contribution (All Time)'
-      case 'custom': return 'AI Contribution (Custom Range)'
-      default: return 'AI Contribution This Month'
+      case 'today':
+        return 'AI Contribution Today'
+      case '7d':
+        return 'AI Contribution This Week'
+      case '30d':
+        return 'AI Contribution This Month'
+      case '90d':
+        return 'AI Contribution (90 Days)'
+      case 'all':
+        return 'AI Contribution (All Time)'
+      case 'custom':
+        return 'AI Contribution (Custom Range)'
+      default:
+        return 'AI Contribution This Month'
     }
   })()
 
@@ -121,16 +147,14 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
       className={cn(
         'block bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
         'hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm transition-all',
-        className
+        className,
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <GitBranch className="w-5 h-5 text-[#7c9885]" />
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            {titleLabel}
-          </h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{titleLabel}</h2>
         </div>
         <span className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
           View All <ArrowRight className="w-3.5 h-3.5" />
@@ -142,9 +166,7 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
         <div className="mb-4">
           <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
             <span>AI lines written</span>
-            <span className="tabular-nums font-medium">
-              {formatPercent(aiLinesPercent)}
-            </span>
+            <span className="tabular-nums font-medium">{formatPercent(aiLinesPercent)}</span>
           </div>
           <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div
@@ -160,7 +182,8 @@ export function ContributionSummaryCard({ className, timeRange, project, branch 
         <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
           <Code2 className="w-4 h-4" />
           <span className="tabular-nums font-medium text-gray-900 dark:text-gray-100">
-            {netLines >= 0 ? '+' : ''}{formatNumber(netLines)}
+            {netLines >= 0 ? '+' : ''}
+            {formatNumber(netLines)}
           </span>
           <span>lines</span>
         </div>

@@ -1,26 +1,52 @@
 import { DollarSign } from 'lucide-react'
+import { formatCostUsd } from '../lib/format-utils'
+import type { AggregateCostBreakdown } from '../types/generated/AggregateCostBreakdown'
 import { MetricCard, StackedBar } from './ui'
 import type { StackedBarSegment } from './ui/StackedBar'
-import type { AggregateCostBreakdown } from '../types/generated/AggregateCostBreakdown'
-import { formatCostUsd } from '../lib/format-utils'
 
 interface CostBreakdownCardProps {
   cost: AggregateCostBreakdown
 }
 
 const SEGMENTS: Array<{
-  key: keyof Pick<AggregateCostBreakdown, 'cacheReadCostUsd' | 'cacheCreationCostUsd' | 'outputCostUsd' | 'inputCostUsd'>
+  key: keyof Pick<
+    AggregateCostBreakdown,
+    'cacheReadCostUsd' | 'cacheCreationCostUsd' | 'outputCostUsd' | 'inputCostUsd'
+  >
   label: string
   cardLabel: string
   color: string
   darkColor: string
 }> = [
-  { key: 'cacheReadCostUsd', label: 'Cache Read', cardLabel: 'Cache Read', color: 'bg-emerald-500', darkColor: 'dark:bg-emerald-400' },
-  { key: 'cacheCreationCostUsd', label: 'Cache Write', cardLabel: 'Cache Write', color: 'bg-amber-500', darkColor: 'dark:bg-amber-400' },
-  { key: 'outputCostUsd', label: 'Output', cardLabel: 'Output', color: 'bg-blue-600', darkColor: 'dark:bg-blue-400' },
-  { key: 'inputCostUsd', label: 'Fresh Input', cardLabel: 'Fresh Input', color: 'bg-gray-400', darkColor: 'dark:bg-gray-500' },
+  {
+    key: 'cacheReadCostUsd',
+    label: 'Cache Read',
+    cardLabel: 'Cache Read',
+    color: 'bg-emerald-500',
+    darkColor: 'dark:bg-emerald-400',
+  },
+  {
+    key: 'cacheCreationCostUsd',
+    label: 'Cache Write',
+    cardLabel: 'Cache Write',
+    color: 'bg-amber-500',
+    darkColor: 'dark:bg-amber-400',
+  },
+  {
+    key: 'outputCostUsd',
+    label: 'Output',
+    cardLabel: 'Output',
+    color: 'bg-blue-600',
+    darkColor: 'dark:bg-blue-400',
+  },
+  {
+    key: 'inputCostUsd',
+    label: 'Fresh Input',
+    cardLabel: 'Fresh Input',
+    color: 'bg-gray-400',
+    darkColor: 'dark:bg-gray-500',
+  },
 ]
-
 
 export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
   if (cost.totalCostUsd === 0) return null

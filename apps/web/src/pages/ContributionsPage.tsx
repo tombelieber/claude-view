@@ -1,20 +1,20 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useTimeRange } from '../hooks/use-time-range'
-import { useContributions, type ContributionsTimeRange } from '../hooks/use-contributions'
-import { ContributionsHeader } from '../components/contributions/ContributionsHeader'
-import { OverviewCards } from '../components/contributions/OverviewCards'
-import { TrendChart } from '../components/contributions/TrendChart'
-import { ContributionsEmptyState } from '../components/contributions/ContributionsEmptyState'
-import { EfficiencyMetricsSection } from '../components/contributions/EfficiencyMetrics'
-import { ModelComparison } from '../components/contributions/ModelComparison'
-import { LearningCurve } from '../components/contributions/LearningCurve'
-import { SkillEffectiveness } from '../components/contributions/SkillEffectiveness'
+import { DashboardSkeleton, ErrorState } from '../components/LoadingStates'
 import { BranchList } from '../components/contributions/BranchList'
+import { ContributionsEmptyState } from '../components/contributions/ContributionsEmptyState'
+import { ContributionsHeader } from '../components/contributions/ContributionsHeader'
+import { EfficiencyMetricsSection } from '../components/contributions/EfficiencyMetrics'
+import { LearningCurve } from '../components/contributions/LearningCurve'
+import { ModelComparison } from '../components/contributions/ModelComparison'
+import { OverviewCards } from '../components/contributions/OverviewCards'
+import { SessionDrillDown } from '../components/contributions/SessionDrillDown'
+import { SkillEffectiveness } from '../components/contributions/SkillEffectiveness'
+import { TrendChart } from '../components/contributions/TrendChart'
 import { UncommittedWorkSection } from '../components/contributions/UncommittedWork'
 import { WarningBanner } from '../components/contributions/WarningBanner'
-import { SessionDrillDown } from '../components/contributions/SessionDrillDown'
-import { DashboardSkeleton, ErrorState } from '../components/LoadingStates'
+import { type ContributionsTimeRange, useContributions } from '../hooks/use-contributions'
+import { useTimeRange } from '../hooks/use-time-range'
 import { buildSessionUrl } from '../lib/url-utils'
 
 /**
@@ -52,7 +52,11 @@ export function ContributionsPage() {
   const [drillDownBranch, setDrillDownBranch] = useState<string | undefined>(undefined)
 
   // Fetch contributions data (with project + branch filter)
-  const { data, isLoading, error, refetch } = useContributions(contribTime, projectId ?? undefined, branchFilter)
+  const { data, isLoading, error, refetch } = useContributions(
+    contribTime,
+    projectId ?? undefined,
+    branchFilter,
+  )
 
   // Handle branch filter (copy-then-modify per CLAUDE.md rule)
   const handleBranchFilter = (branch: string | null) => {
@@ -97,10 +101,7 @@ export function ContributionsPage() {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center">
-        <ErrorState
-          message={error.message}
-          onRetry={() => refetch()}
-        />
+        <ErrorState message={error.message} onRetry={() => refetch()} />
       </div>
     )
   }
@@ -176,10 +177,7 @@ export function ContributionsPage() {
         <OverviewCards overview={data.overview} />
 
         {/* Trend Chart */}
-        <TrendChart
-          data={data.trend}
-          insight={generateTrendInsight(data.trend)}
-        />
+        <TrendChart data={data.trend} insight={generateTrendInsight(data.trend)} />
 
         {/* Efficiency Metrics (ROI) */}
         <EfficiencyMetricsSection

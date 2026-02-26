@@ -1,4 +1,4 @@
-import { GitBranch, Calendar, ArrowRight } from 'lucide-react'
+import { ArrowRight, Calendar, GitBranch } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { TimeRangePreset } from '../../hooks/use-time-range'
 
@@ -38,8 +38,8 @@ export function ContributionsEmptyState({ preset, onPresetChange }: Contribution
             No sessions {RANGE_LABELS[preset]}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mb-6">
-            There are no Claude Code sessions recorded for this time period.
-            Try expanding your time range to see more data.
+            There are no Claude Code sessions recorded for this time period. Try expanding your time
+            range to see more data.
           </p>
           <button
             type="button"

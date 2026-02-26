@@ -1,17 +1,17 @@
 // src/components/ActivitySparkline.tsx
 // Self-contained area chart — fetches activity data from /api/sessions/activity
 
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import {
-  AreaChart,
   Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  type TooltipProps,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts'
 import { useTheme } from '../hooks/use-theme'
 
@@ -21,9 +21,9 @@ interface ActivityPoint {
 }
 
 interface ChartDatum {
-  date: number   // timestamp ms for XAxis
+  date: number // timestamp ms for XAxis
   count: number
-  label: string  // formatted for tooltip
+  label: string // formatted for tooltip
 }
 
 export function ActivitySparkline() {
@@ -42,10 +42,8 @@ export function ActivitySparkline() {
 
   const chartData = useMemo((): ChartDatum[] => {
     if (!data?.activity) return []
-    return data.activity.map(pt => {
-      const ts = pt.date.includes('W')
-        ? parseWeekDate(pt.date)
-        : new Date(pt.date).getTime()
+    return data.activity.map((pt) => {
+      const ts = pt.date.includes('W') ? parseWeekDate(pt.date) : new Date(pt.date).getTime()
       return {
         date: ts,
         count: pt.count,
@@ -58,15 +56,12 @@ export function ActivitySparkline() {
   // appear on the chart axis) so it matches the list's "N sessions" count.
   const totalSessions = data?.total ?? chartData.reduce((sum, d) => sum + d.count, 0)
 
-  const activeDays = useMemo(
-    () => chartData.filter(d => d.count > 0).length,
-    [chartData]
-  )
+  const activeDays = useMemo(() => chartData.filter((d) => d.count > 0).length, [chartData])
 
   if (chartData.length === 0) return null
 
   // Compute nice Y-axis ticks — aim for 4-6 ticks regardless of magnitude
-  const maxCount = Math.max(...chartData.map(d => d.count), 1)
+  const maxCount = Math.max(...chartData.map((d) => d.count), 1)
   const yTicks = (() => {
     if (maxCount <= 1) return [0, 1]
     if (maxCount <= 4) return Array.from({ length: maxCount + 1 }, (_, i) => i)
@@ -74,7 +69,8 @@ export function ActivitySparkline() {
     const rawStep = maxCount / 5
     const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
     const normalized = rawStep / magnitude
-    const step = (normalized <= 1.5 ? 1 : normalized <= 3 ? 2 : normalized <= 7 ? 5 : 10) * magnitude
+    const step =
+      (normalized <= 1.5 ? 1 : normalized <= 3 ? 2 : normalized <= 7 ? 5 : 10) * magnitude
     const ceil = Math.ceil(maxCount / step) * step
     const ticks = [0]
     for (let v = step; v <= ceil; v += step) ticks.push(v)
@@ -109,10 +105,7 @@ export function ActivitySparkline() {
       {/* Chart area */}
       <div className="flex-1 min-w-0">
         <ResponsiveContainer width="100%" height={140}>
-          <AreaChart
-            data={chartData}
-            margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
-          >
+          <AreaChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
@@ -169,13 +162,21 @@ export function ActivitySparkline() {
       {/* Quick stats */}
       <div className="flex-shrink-0 flex gap-5 pt-2">
         <div className="text-right">
-          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">{totalSessions}</p>
+          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+            {totalSessions}
+          </p>
           <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">sessions</p>
         </div>
         <div className="text-right">
-          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">{activeDays}</p>
+          <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+            {activeDays}
+          </p>
           <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
-            {data?.bucket === 'week' ? 'active weeks' : data?.bucket === 'month' ? 'active months' : 'active days'}
+            {data?.bucket === 'week'
+              ? 'active weeks'
+              : data?.bucket === 'month'
+                ? 'active months'
+                : 'active days'}
           </p>
         </div>
       </div>
@@ -208,7 +209,8 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
       {datum.label}
       {' — '}
       <span className="font-semibold">{datum.count}</span>
-      {' session'}{datum.count !== 1 ? 's' : ''}
+      {' session'}
+      {datum.count !== 1 ? 's' : ''}
     </div>
   )
 }

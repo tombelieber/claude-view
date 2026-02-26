@@ -1,5 +1,5 @@
+import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { ProgressComparison } from '../../types/generated/ProgressComparison'
 
 interface ThenVsNowProps {
@@ -20,7 +20,8 @@ export function ThenVsNow({ progress, className }: ThenVsNowProps) {
     const isImprovement = lowerIsBetter ? value < 0 : value > 0
     const isRegression = lowerIsBetter ? value > 0 : value < 0
 
-    if (isImprovement) return <TrendingDown className="w-4 h-4 text-green-600 dark:text-green-400" />
+    if (isImprovement)
+      return <TrendingDown className="w-4 h-4 text-green-600 dark:text-green-400" />
     if (isRegression) return <TrendingUp className="w-4 h-4 text-red-600 dark:text-red-400" />
     return <Minus className="w-4 h-4 text-gray-400" />
   }
@@ -72,12 +73,10 @@ export function ThenVsNow({ progress, className }: ThenVsNowProps) {
     <div
       className={cn(
         'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-        className
+        className,
       )}
     >
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-        Your Progress
-      </h3>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Your Progress</h3>
 
       {!firstMonth ? (
         <div className="py-6 text-center">
@@ -130,10 +129,7 @@ export function ThenVsNow({ progress, className }: ThenVsNowProps) {
                   <>
                     {getImprovementIcon(m.change, m.lowerIsBetter)}
                     <span
-                      className={cn(
-                        'text-xs font-mono',
-                        getChangeColor(m.change, m.lowerIsBetter)
-                      )}
+                      className={cn('text-xs font-mono', getChangeColor(m.change, m.lowerIsBetter))}
                     >
                       {formatPercent(m.change)}
                     </span>

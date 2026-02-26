@@ -8,7 +8,7 @@ export type AgentStateGroup = 'needs_you' | 'autonomous'
 /** The universal agent state — core protocol */
 export interface AgentState {
   group: AgentStateGroup
-  state: string           // open string — v1 states listed above, more added over time
+  state: string // open string — v1 states listed above, more added over time
   label: string
   context?: Record<string, unknown>
 }

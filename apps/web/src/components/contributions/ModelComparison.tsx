@@ -1,16 +1,16 @@
+import { Check, ChevronRight, Cpu } from 'lucide-react'
 import { useMemo } from 'react'
-import { Cpu, Check, ChevronRight } from 'lucide-react'
-import { formatNumber, formatCostUsd } from '../../lib/format-utils'
 import {
-  BarChart,
   Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
+  BarChart,
   Cell,
   LabelList,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
 } from 'recharts'
+import { formatCostUsd, formatNumber } from '../../lib/format-utils'
 import type { ModelStats } from '../../types/generated'
 import { MetricTooltip } from './MetricTooltip'
 
@@ -37,7 +37,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
           reeditRate: m.reeditRate,
           costPerLine: m.costPerLine,
         })),
-    [byModel]
+    [byModel],
   )
 
   if (byModel.length === 0) {
@@ -58,7 +58,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
 
   // Find the best (lowest) re-edit rate
   const bestReeditRate = Math.min(
-    ...byModel.filter((m) => m.reeditRate !== null).map((m) => m.reeditRate!)
+    ...byModel.filter((m) => m.reeditRate !== null).map((m) => m.reeditRate!),
   )
 
   // Generate summary insight
@@ -102,8 +102,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
               formatter={(value: number, _name: string, props: any) => {
                 const item = props.payload
                 const parts = [`${formatNumber(value)} lines`]
-                if (item.reeditRate !== null)
-                  parts.push(`Re-edit: ${item.reeditRate.toFixed(2)}`)
+                if (item.reeditRate !== null) parts.push(`Re-edit: ${item.reeditRate.toFixed(2)}`)
                 if (item.costPerLine !== null)
                   parts.push(`Cost/line: ${formatCostUsd(item.costPerLine)}`)
                 return [parts.join(' \u00b7 '), item.displayName]
@@ -144,10 +143,19 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                   <span className="inline-flex items-center">
                     Re-edit Rate
                     <MetricTooltip>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">Re-edit rate</span> measures how often AI-generated files need further editing after the initial write.
-                      <br /><br />
-                      <span className="font-medium text-gray-900 dark:text-gray-100">Lower is better.</span> 0 = no re-edits needed.
-                      <br /><br />
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        Re-edit rate
+                      </span>{' '}
+                      measures how often AI-generated files need further editing after the initial
+                      write.
+                      <br />
+                      <br />
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        Lower is better.
+                      </span>{' '}
+                      0 = no re-edits needed.
+                      <br />
+                      <br />
                       Formula: files re-edited / total files edited
                     </MetricTooltip>
                   </span>

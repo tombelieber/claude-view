@@ -1,10 +1,10 @@
-import { RefreshCw, AlertTriangle } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useBenchmarks } from '../../hooks/use-benchmarks'
 import type { TimeRange } from '../../hooks/use-insights'
-import { ThenVsNow } from './ThenVsNow'
 import { CategoryPerformanceTable } from './CategoryPerformanceTable'
-import { SkillAdoptionImpact } from './SkillAdoptionImpact'
 import { MonthlyReportGenerator } from './MonthlyReportGenerator'
+import { SkillAdoptionImpact } from './SkillAdoptionImpact'
+import { ThenVsNow } from './ThenVsNow'
 
 // ============================================================================
 // Types

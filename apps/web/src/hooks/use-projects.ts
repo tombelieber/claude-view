@@ -25,7 +25,10 @@ export interface ProjectSessionsOptions {
   includeSidechains?: boolean
 }
 
-async function fetchProjectSessions(projectId: string, opts: ProjectSessionsOptions): Promise<SessionsPage> {
+async function fetchProjectSessions(
+  projectId: string,
+  opts: ProjectSessionsOptions,
+): Promise<SessionsPage> {
   const params = new URLSearchParams()
   if (opts.limit) params.set('limit', String(opts.limit))
   if (opts.offset) params.set('offset', String(opts.offset))
@@ -37,7 +40,10 @@ async function fetchProjectSessions(projectId: string, opts: ProjectSessionsOpti
   return response.json()
 }
 
-export function useProjectSessions(projectId: string | undefined, opts: ProjectSessionsOptions = {}) {
+export function useProjectSessions(
+  projectId: string | undefined,
+  opts: ProjectSessionsOptions = {},
+) {
   return useQuery({
     queryKey: ['project-sessions', projectId, opts],
     queryFn: () => fetchProjectSessions(projectId!, opts),

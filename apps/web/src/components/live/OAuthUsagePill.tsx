@@ -1,5 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { useOAuthUsage, type UsageTier } from '../../hooks/use-oauth-usage'
+import { type UsageTier, useOAuthUsage } from '../../hooks/use-oauth-usage'
 
 /** Human-readable reset countdown from an ISO date. */
 function formatReset(resetAt: string): string {
@@ -103,7 +103,11 @@ export function OAuthUsagePill() {
 
   return (
     <Tooltip.Provider delayDuration={300}>
-      <Tooltip.Root onOpenChange={(open) => { if (open) refetch() }}>
+      <Tooltip.Root
+        onOpenChange={(open) => {
+          if (open) refetch()
+        }}
+      >
         <Tooltip.Trigger asChild>
           <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums cursor-default">
             <MiniBar percentage={sessionTier.percentage} />

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { ActivityCalendar } from './ActivityCalendar'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionInfo } from '../hooks/use-projects'
+import { ActivityCalendar } from './ActivityCalendar'
 
 // Helper to create mock session data
 function createMockSession(id: string, modifiedAt: number): SessionInfo {
@@ -18,23 +18,21 @@ function createMockSession(id: string, modifiedAt: number): SessionInfo {
 function createSessionsForDate(date: Date, count: number): SessionInfo[] {
   const timestamp = Math.floor(date.getTime() / 1000)
   return Array.from({ length: count }, (_, i) =>
-    createMockSession(`session-${timestamp}-${i}`, timestamp + i)
+    createMockSession(`session-${timestamp}-${i}`, timestamp + i),
   )
 }
 
 // Helper to get our custom calendar cells (with session-related aria-labels)
 function getOurCalendarCells(): HTMLElement[] {
   const cells = screen.getAllByRole('gridcell')
-  return cells.filter(cell =>
-    cell.getAttribute('aria-label')?.includes('session')
-  )
+  return cells.filter((cell) => cell.getAttribute('aria-label')?.includes('session'))
 }
 
 // Helper to find a cell by session count
 function getCellBySessionCount(count: number): HTMLElement | undefined {
   const cells = getOurCalendarCells()
   const pattern = count === 1 ? `${count} session` : `${count} sessions`
-  return cells.find(cell => {
+  return cells.find((cell) => {
     const label = cell.getAttribute('aria-label')
     if (count === 1) {
       return label?.includes('1 session') && !label?.includes('1 sessions')
@@ -91,12 +89,7 @@ describe('ActivityCalendar', () => {
       const onRangeChange = vi.fn()
       const today = new Date()
       const sessions = createSessionsForDate(today, 2)
-      render(
-        <ActivityCalendar
-          sessions={sessions}
-          onRangeChange={onRangeChange}
-        />
-      )
+      render(<ActivityCalendar sessions={sessions} onRangeChange={onRangeChange} />)
 
       const cellWithSession = getCellBySessionCount(2)
       expect(cellWithSession).toBeDefined()
@@ -122,7 +115,7 @@ describe('ActivityCalendar', () => {
       render(<ActivityCalendar sessions={sessions} />)
 
       const ourCells = getOurCalendarCells()
-      const focusableCells = ourCells.filter(cell => cell.getAttribute('tabindex') === '0')
+      const focusableCells = ourCells.filter((cell) => cell.getAttribute('tabindex') === '0')
       // Exactly one cell should be focusable (roving tabindex)
       expect(focusableCells.length).toBe(1)
     })
@@ -132,7 +125,7 @@ describe('ActivityCalendar', () => {
       render(<ActivityCalendar sessions={sessions} />)
 
       const ourCells = getOurCalendarCells()
-      const nonFocusableCells = ourCells.filter(cell => cell.getAttribute('tabindex') === '-1')
+      const nonFocusableCells = ourCells.filter((cell) => cell.getAttribute('tabindex') === '-1')
       // All but one cell should have tabindex=-1
       expect(nonFocusableCells.length).toBe(ourCells.length - 1)
     })
@@ -188,7 +181,10 @@ describe('ActivityCalendar', () => {
       const { container } = render(<ActivityCalendar sessions={[]} />)
       const activityCalendar = container.querySelector('.activity-calendar')
       expect(activityCalendar).toHaveAttribute('role', 'grid')
-      expect(activityCalendar).toHaveAttribute('aria-label', 'Activity calendar showing sessions per day')
+      expect(activityCalendar).toHaveAttribute(
+        'aria-label',
+        'Activity calendar showing sessions per day',
+      )
     })
 
     it('should have aria-describedby linking to legend', () => {
@@ -201,7 +197,7 @@ describe('ActivityCalendar', () => {
       render(<ActivityCalendar sessions={[]} />)
       const ourCells = getOurCalendarCells()
       expect(ourCells.length).toBeGreaterThan(0)
-      ourCells.forEach(cell => {
+      ourCells.forEach((cell) => {
         expect(cell).toHaveAttribute('role', 'gridcell')
       })
     })
@@ -248,7 +244,7 @@ describe('ActivityCalendar', () => {
       const { rerender } = render(<ActivityCalendar sessions={singleSession} />)
 
       let cells = getOurCalendarCells()
-      const singleCell = cells.find(cell => {
+      const singleCell = cells.find((cell) => {
         const label = cell.getAttribute('aria-label')
         return label?.includes('1 session') && !label?.includes('1 sessions')
       })
@@ -259,8 +255,8 @@ describe('ActivityCalendar', () => {
       rerender(<ActivityCalendar sessions={multipleSessions} />)
 
       cells = getOurCalendarCells()
-      const pluralCell = cells.find(cell =>
-        cell.getAttribute('aria-label')?.includes('5 sessions')
+      const pluralCell = cells.find((cell) =>
+        cell.getAttribute('aria-label')?.includes('5 sessions'),
       )
       expect(pluralCell).toBeDefined()
     })
@@ -269,8 +265,8 @@ describe('ActivityCalendar', () => {
       render(<ActivityCalendar sessions={[]} />)
       const cells = getOurCalendarCells()
       // All cells should show "0 sessions"
-      const zeroSessionCells = cells.filter(cell =>
-        cell.getAttribute('aria-label')?.includes('0 sessions')
+      const zeroSessionCells = cells.filter((cell) =>
+        cell.getAttribute('aria-label')?.includes('0 sessions'),
       )
       expect(zeroSessionCells.length).toBeGreaterThan(0)
     })

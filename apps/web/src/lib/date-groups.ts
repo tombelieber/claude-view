@@ -12,9 +12,11 @@ function startOfDay(date: Date): Date {
 }
 
 function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
+  return (
+    a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
+  )
 }
 
 /** ISO week number (Mon=1) */
@@ -42,12 +44,16 @@ function getTierLabel(sessionDate: Date, now: Date): string {
   if (
     (sessionWeek === todayWeek - 1 && sessionYear === todayYear) ||
     (todayWeek === 1 && sessionYear === todayYear - 1)
-  ) return 'Last Week'
+  )
+    return 'Last Week'
 
   if (sessionDate.getMonth() === now.getMonth() && sessionYear === todayYear) return 'This Month'
 
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  if (sessionDate.getMonth() === prevMonth.getMonth() && sessionDate.getFullYear() === prevMonth.getFullYear()) {
+  if (
+    sessionDate.getMonth() === prevMonth.getMonth() &&
+    sessionDate.getFullYear() === prevMonth.getFullYear()
+  ) {
     return 'Last Month'
   }
 

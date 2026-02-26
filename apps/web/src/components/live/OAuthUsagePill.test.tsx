@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { OAuthUsagePill } from './OAuthUsagePill'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OAuthUsage } from '../../hooks/use-oauth-usage'
+import { OAuthUsagePill } from './OAuthUsagePill'
 
 const mockRefetch = vi.fn()
 const mockUseOAuthUsage = vi.fn()
@@ -15,10 +15,34 @@ const MULTI_TIER_DATA: OAuthUsage = {
   error: null,
   plan: 'Max',
   tiers: [
-    { id: 'session', label: 'Session (5hr)', percentage: 11, resetAt: '2026-02-20T05:00:00Z', spent: null },
-    { id: 'weekly', label: 'Weekly (7 day)', percentage: 46, resetAt: '2026-02-24T09:00:00Z', spent: null },
-    { id: 'weekly_sonnet', label: 'Weekly Sonnet', percentage: 3, resetAt: '2026-02-25T11:00:00Z', spent: null },
-    { id: 'extra', label: 'Extra usage', percentage: 100, resetAt: '2026-03-01T00:00:00Z', spent: '$51.25 / $50.00 spent' },
+    {
+      id: 'session',
+      label: 'Session (5hr)',
+      percentage: 11,
+      resetAt: '2026-02-20T05:00:00Z',
+      spent: null,
+    },
+    {
+      id: 'weekly',
+      label: 'Weekly (7 day)',
+      percentage: 46,
+      resetAt: '2026-02-24T09:00:00Z',
+      spent: null,
+    },
+    {
+      id: 'weekly_sonnet',
+      label: 'Weekly Sonnet',
+      percentage: 3,
+      resetAt: '2026-02-25T11:00:00Z',
+      spent: null,
+    },
+    {
+      id: 'extra',
+      label: 'Extra usage',
+      percentage: 100,
+      resetAt: '2026-03-01T00:00:00Z',
+      spent: '$51.25 / $50.00 spent',
+    },
   ],
 }
 
@@ -38,7 +62,12 @@ describe('OAuthUsagePill', () => {
     })
 
     it('renders loading state', () => {
-      mockUseOAuthUsage.mockReturnValue({ data: undefined, isLoading: true, error: null, refetch: mockRefetch })
+      mockUseOAuthUsage.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        error: null,
+        refetch: mockRefetch,
+      })
       render(<OAuthUsagePill />)
       expect(screen.getByText('Loading usage...')).toBeInTheDocument()
     })
@@ -98,7 +127,15 @@ describe('OAuthUsagePill', () => {
           hasAuth: true,
           error: null,
           plan: null,
-          tiers: [{ id: 'extra', label: 'Usage', percentage: 62, resetAt: '2026-03-01T00:00:00Z', spent: '$50 / $80 spent' }],
+          tiers: [
+            {
+              id: 'extra',
+              label: 'Usage',
+              percentage: 62,
+              resetAt: '2026-03-01T00:00:00Z',
+              spent: '$50 / $80 spent',
+            },
+          ],
         },
         isLoading: false,
         error: null,
@@ -118,7 +155,9 @@ describe('OAuthUsagePill', () => {
           hasAuth: true,
           error: null,
           plan: null,
-          tiers: [{ id: 'session', label: 'Session', percentage: 85, resetAt: '2026-02-20T04:00:00Z' }],
+          tiers: [
+            { id: 'session', label: 'Session', percentage: 85, resetAt: '2026-02-20T04:00:00Z' },
+          ],
         },
         isLoading: false,
         error: null,
@@ -134,7 +173,9 @@ describe('OAuthUsagePill', () => {
           hasAuth: true,
           error: null,
           plan: null,
-          tiers: [{ id: 'session', label: 'Session', percentage: 98, resetAt: '2026-02-20T04:00:00Z' }],
+          tiers: [
+            { id: 'session', label: 'Session', percentage: 98, resetAt: '2026-02-20T04:00:00Z' },
+          ],
         },
         isLoading: false,
         error: null,

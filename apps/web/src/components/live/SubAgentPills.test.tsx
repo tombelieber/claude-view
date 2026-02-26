@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { SubAgentPills } from './SubAgentPills'
+import { describe, expect, it, vi } from 'vitest'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { SubAgentPills } from './SubAgentPills'
 
 describe('SubAgentPills', () => {
   const mockRunningAgent: SubAgentInfo = {
@@ -55,7 +55,11 @@ describe('SubAgentPills', () => {
   })
 
   it('shows multiple agents with correct summary text (all active)', () => {
-    render(<SubAgentPills subAgents={[mockRunningAgent, { ...mockRunningAgent, toolUseId: 'tool_999' }]} />)
+    render(
+      <SubAgentPills
+        subAgents={[mockRunningAgent, { ...mockRunningAgent, toolUseId: 'tool_999' }]}
+      />,
+    )
     expect(screen.getByText('2 agents (2 active)')).toBeInTheDocument()
   })
 
@@ -70,11 +74,7 @@ describe('SubAgentPills', () => {
   })
 
   it('displays first 3 agents as pills', () => {
-    const agents = [
-      mockRunningAgent,
-      mockCompleteAgent,
-      mockErrorAgent,
-    ]
+    const agents = [mockRunningAgent, mockCompleteAgent, mockErrorAgent]
     render(<SubAgentPills subAgents={agents} />)
 
     // Check that pills are rendered (by their initials)

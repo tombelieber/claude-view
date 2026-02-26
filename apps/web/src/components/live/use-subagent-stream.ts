@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import { useTerminalSocket, type ConnectionState } from '../../hooks/use-terminal-socket'
-import { parseRichMessage, type RichMessage } from './RichPane'
+import { type ConnectionState, useTerminalSocket } from '../../hooks/use-terminal-socket'
+import { type RichMessage, parseRichMessage } from './RichPane'
 
 export interface UseSubAgentStreamOptions {
   sessionId: string
@@ -32,25 +32,30 @@ export function useSubAgentStream(options: UseSubAgentStreamOptions): UseSubAgen
   const [messages, setMessages] = useState<RichMessage[]>([])
   const [bufferDone, setBufDone] = useState(false)
 
-  const handleMessage = useCallback((data: string) => {
-    // Check for buffer_end signal
-    try {
-      const parsed = JSON.parse(data)
-      if (parsed.type === 'buffer_end') {
-        setBufDone(true)
-        // Don't return — let useTerminalSocket handle the state transition,
-        // but still forward to the consumer
-        onMessage(data)
-        return
+  const handleMessage = useCallback(
+    (data: string) => {
+      // Check for buffer_end signal
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.type === 'buffer_end') {
+          setBufDone(true)
+          // Don't return — let useTerminalSocket handle the state transition,
+          // but still forward to the consumer
+          onMessage(data)
+          return
+        }
+      } catch {
+        /* not JSON, continue */
       }
-    } catch { /* not JSON, continue */ }
 
-    const rich = parseRichMessage(data)
-    if (rich) {
-      setMessages((prev) => [...prev, rich])
-    }
-    onMessage(data)
-  }, [onMessage])
+      const rich = parseRichMessage(data)
+      if (rich) {
+        setMessages((prev) => [...prev, rich])
+      }
+      onMessage(data)
+    },
+    [onMessage],
+  )
 
   // useTerminalSocket constructs: /api/live/sessions/${sessionId}/terminal
   // By embedding the subagent path IN the sessionId, the URL becomes:

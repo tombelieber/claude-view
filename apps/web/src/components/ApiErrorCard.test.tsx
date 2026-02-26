@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { ApiErrorCard } from './ApiErrorCard'
 
 describe('ApiErrorCard', () => {
@@ -73,7 +73,7 @@ describe('ApiErrorCard', () => {
           error={{ code: 500, message: 'Server error' }}
           retryAttempt={4}
           maxRetries={3}
-        />
+        />,
       )
       expect(screen.getByText(/retries exhausted/i)).toBeInTheDocument()
     })

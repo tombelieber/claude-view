@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Export Functionality', () => {
   test('export JSON download works from settings', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('Export Functionality', () => {
 
     // Intercept export API to delay response
     await page.route('/api/export*', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
       await route.continue()
     })
 
