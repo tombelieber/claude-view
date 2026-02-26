@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "version": "0.9.0",
-  "description": "Browse and search your Claude Code sessions in a beautiful local web UI",
+  "description": "Mission Control for Claude Code — live monitoring, cost tracking, session search, and agent visibility in one dashboard",
   "bin": {
     "claude-view": "./index.js"
   },
@@ -13,9 +13,19 @@
   "keywords": [
     "claude",
     "claude-code",
-    "sessions",
-    "viewer",
-    "browser"
+    "ai",
+    "dashboard",
+    "monitoring",
+    "session",
+    "mission-control",
+    "developer-tools",
+    "cli",
+    "anthropic",
+    "devtools",
+    "real-time",
+    "agent",
+    "mcp",
+    "cost-tracking"
   ],
   "engines": {
     "node": ">=16"
