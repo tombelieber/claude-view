@@ -25,6 +25,13 @@ echo "Generating TypeScript types from Rust structs..."
 cargo test -p claude-view-core export_bindings -- --nocapture 2>/dev/null || true
 cargo test -p claude-view-server export_bindings -- --nocapture 2>/dev/null || true
 
+# Post-process: fix cross-package JsonValue import that ts-rs generates
+# ts-rs resolves serde_json::Value to apps/web/... but we use a local shim
+AGENT_STATE="packages/shared/src/types/generated/AgentState.ts"
+if [ -f "$AGENT_STATE" ]; then
+  sed -i '' "s|import type { JsonValue } from '.*serde_json/JsonValue'|import type { JsonValue } from './JsonValue'|" "$AGENT_STATE"
+fi
+
 echo ""
 echo "=== Shared types (packages/shared/src/types/generated/) ==="
 if ls packages/shared/src/types/generated/*.ts 1>/dev/null 2>&1; then
