@@ -8,7 +8,7 @@
     "dev:clear": "expo start -c",
     "build:ios": "eas build --platform ios",
     "build:android": "eas build --platform android",
-    "lint": "echo 'no lint configured yet'",
+    "lint": "biome check .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
