@@ -197,7 +197,7 @@ pub fn cleanup(port: u16) -> Vec<String> {
                 hooks.values().any(|entries| {
                     entries
                         .as_array()
-                        .map(|arr| arr.iter().any(|e| matcher_group_has_sentinel(e)))
+                        .map(|arr| arr.iter().any(matcher_group_has_sentinel))
                         .unwrap_or(false)
                 })
             })
