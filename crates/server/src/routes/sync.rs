@@ -330,6 +330,7 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                 let hints = claude_view_db::indexer_parallel::build_index_hints(&claude_dir);
 
                 let indexing_cb = indexing.clone();
+                let indexing_total = indexing.clone();
                 let search_for_scan = search_holder.read().unwrap().clone();
                 let registry_for_scan = registry_holder
                     .read()
@@ -344,6 +345,9 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                     registry_for_scan,
                     move |_session_id| {
                         indexing_cb.increment_indexed();
+                    },
+                    move |total| {
+                        indexing_total.set_total(total);
                     },
                 )
                 .await;

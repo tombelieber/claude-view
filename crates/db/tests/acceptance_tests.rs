@@ -285,12 +285,19 @@ async fn ac9_callbacks_fire_correctly() {
     let fdc = file_done_count.clone();
 
     let hints = build_index_hints(&claude_dir);
-    let (indexed, _skipped) =
-        scan_and_index_all(&claude_dir, &db, &hints, None, None, move |_session_id| {
+    let (indexed, _skipped) = scan_and_index_all(
+        &claude_dir,
+        &db,
+        &hints,
+        None,
+        None,
+        move |_session_id| {
             fdc.fetch_add(1, Ordering::Relaxed);
-        })
-        .await
-        .unwrap();
+        },
+        |_| {},
+    )
+    .await
+    .unwrap();
 
     assert_eq!(indexed, 1, "Should index 1 session");
     assert!(
