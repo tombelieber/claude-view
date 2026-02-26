@@ -53,6 +53,17 @@ temp/
 
 # Screenshots (temporary verification artifacts)
 *.png
+!apps/mobile/assets/images/*.png
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
 
 # Git worktrees
 .worktrees/
