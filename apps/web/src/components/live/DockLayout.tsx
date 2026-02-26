@@ -125,21 +125,29 @@ export function DockLayout({
       const currentSessions = sessionsRef.current
       const currentVerbose = verboseModeRef.current
 
+      let restored = false
       if (initialLayout) {
-        // Restore saved layout
-        event.api.fromJSON(initialLayout)
-        // Update panel params with current verboseMode
-        for (const panel of event.api.panels) {
-          const session = currentSessions.find((s) => s.id === panel.id)
-          if (session) {
-            panel.api.updateParameters({
-              sessionId: session.id,
-              verboseMode: currentVerbose,
-              status: session.status,
-            })
+        try {
+          // Restore saved layout
+          event.api.fromJSON(initialLayout)
+          restored = true
+          // Update panel params with current verboseMode
+          for (const panel of event.api.panels) {
+            const session = currentSessions.find((s) => s.id === panel.id)
+            if (session) {
+              panel.api.updateParameters({
+                sessionId: session.id,
+                verboseMode: currentVerbose,
+                status: session.status,
+              })
+            }
           }
+        } catch {
+          // Corrupt or incompatible layout — fall through to auto-build
+          event.api.clear()
         }
-      } else {
+      }
+      if (!restored) {
         // Build initial layout from current sessions
         const ids = currentSessions.map((s) => s.id)
         for (const [i, id] of ids.entries()) {
@@ -225,13 +233,15 @@ export function DockLayout({
   }, [sessions, verboseMode])
 
   return (
-    <DockviewReact
-      className="dockview-theme-dark"
-      components={components}
-      tabComponents={{ session: SessionTabRenderer }}
-      defaultTabComponent={SessionTabRenderer}
-      onReady={onReady}
-      watermarkComponent={EmptyWatermark}
-    />
+    <div className="h-full w-full">
+      <DockviewReact
+        className="dockview-theme-dark"
+        components={components}
+        tabComponents={{ session: SessionTabRenderer }}
+        defaultTabComponent="session"
+        onReady={onReady}
+        watermarkComponent={EmptyWatermark}
+      />
+    </div>
   )
 }
