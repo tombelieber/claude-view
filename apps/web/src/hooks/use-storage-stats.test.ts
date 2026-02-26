@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatBytes, formatTimestamp, formatDurationMs } from './use-storage-stats'
+import { describe, expect, it } from 'vitest'
+import { formatBytes, formatDurationMs, formatTimestamp } from './use-storage-stats'
 
 describe('use-storage-stats', () => {
   describe('formatBytes', () => {

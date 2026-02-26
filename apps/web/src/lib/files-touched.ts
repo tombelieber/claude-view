@@ -21,7 +21,7 @@ export interface FileTouched {
 export function buildFilesTouched(
   filesRead: string[],
   filesEdited: string[],
-  reeditedFiles?: Set<string>
+  reeditedFiles?: Set<string>,
 ): FileTouched[] {
   const fileMap = new Map<string, FileTouched>()
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Settings Page', () => {
   test('settings page loads with all sections', async ({ page }) => {
@@ -38,9 +38,7 @@ test.describe('Settings Page', () => {
     const successMessage = page.locator('text=Sync started successfully')
 
     // Wait for either syncing state or success
-    await expect(
-      syncingButton.or(successMessage)
-    ).toBeVisible({ timeout: 10000 })
+    await expect(syncingButton.or(successMessage)).toBeVisible({ timeout: 10000 })
   })
 
   test('keyboard shortcuts section is visible', async ({ page }) => {

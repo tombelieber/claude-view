@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { SwimLanes } from './SwimLanes'
+import { describe, expect, it, vi } from 'vitest'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { SwimLanes } from './SwimLanes'
 
 // Helper to create minimal SubAgentInfo fixture
 function makeSubAgent(overrides?: Partial<SubAgentInfo>): SubAgentInfo {
@@ -24,9 +24,7 @@ function makeSubAgent(overrides?: Partial<SubAgentInfo>): SubAgentInfo {
 describe('SwimLanes', () => {
   describe('empty state', () => {
     it('returns null when no sub-agents', () => {
-      const { container } = render(
-        <SwimLanes subAgents={[]} sessionActive={true} />
-      )
+      const { container } = render(<SwimLanes subAgents={[]} sessionActive={true} />)
       expect(container.firstChild).toBeNull()
     })
   })
@@ -144,8 +142,18 @@ describe('SwimLanes', () => {
   describe('sorting', () => {
     it('sorts running agents before completed', () => {
       const agents = [
-        makeSubAgent({ toolUseId: '1', status: 'complete', completedAt: Date.now(), description: 'Completed first' }),
-        makeSubAgent({ toolUseId: '2', status: 'running', startedAt: Date.now(), description: 'Running second' }),
+        makeSubAgent({
+          toolUseId: '1',
+          status: 'complete',
+          completedAt: Date.now(),
+          description: 'Completed first',
+        }),
+        makeSubAgent({
+          toolUseId: '2',
+          status: 'running',
+          startedAt: Date.now(),
+          description: 'Running second',
+        }),
       ]
       render(<SwimLanes subAgents={agents} sessionActive={true} />)
 
@@ -157,8 +165,18 @@ describe('SwimLanes', () => {
     it('sorts completed agents by completedAt desc', () => {
       const now = Date.now()
       const agents = [
-        makeSubAgent({ toolUseId: '1', status: 'complete', completedAt: now - 2000, description: 'Older' }),
-        makeSubAgent({ toolUseId: '2', status: 'complete', completedAt: now, description: 'Newer' }),
+        makeSubAgent({
+          toolUseId: '1',
+          status: 'complete',
+          completedAt: now - 2000,
+          description: 'Older',
+        }),
+        makeSubAgent({
+          toolUseId: '2',
+          status: 'complete',
+          completedAt: now,
+          description: 'Newer',
+        }),
       ]
       render(<SwimLanes subAgents={agents} sessionActive={false} />)
 
@@ -170,8 +188,18 @@ describe('SwimLanes', () => {
     it('sorts running agents by startedAt asc', () => {
       const now = Date.now()
       const agents = [
-        makeSubAgent({ toolUseId: '1', status: 'running', startedAt: now, description: 'Started later' }),
-        makeSubAgent({ toolUseId: '2', status: 'running', startedAt: now - 2000, description: 'Started earlier' }),
+        makeSubAgent({
+          toolUseId: '1',
+          status: 'running',
+          startedAt: now,
+          description: 'Started later',
+        }),
+        makeSubAgent({
+          toolUseId: '2',
+          status: 'running',
+          startedAt: now - 2000,
+          description: 'Started earlier',
+        }),
       ]
       render(<SwimLanes subAgents={agents} sessionActive={true} />)
 
@@ -208,11 +236,9 @@ describe('SwimLanes', () => {
   describe('scrolling behavior', () => {
     it('enables scroll when more than 5 agents', () => {
       const agents = Array.from({ length: 6 }, (_, i) =>
-        makeSubAgent({ toolUseId: `${i}`, description: `Agent ${i}` })
+        makeSubAgent({ toolUseId: `${i}`, description: `Agent ${i}` }),
       )
-      const { container } = render(
-        <SwimLanes subAgents={agents} sessionActive={true} />
-      )
+      const { container } = render(<SwimLanes subAgents={agents} sessionActive={true} />)
 
       const wrapper = container.firstElementChild
       expect(wrapper?.className).toContain('overflow-y-auto')
@@ -220,11 +246,9 @@ describe('SwimLanes', () => {
 
     it('does not enable scroll when 5 or fewer agents', () => {
       const agents = Array.from({ length: 5 }, (_, i) =>
-        makeSubAgent({ toolUseId: `${i}`, description: `Agent ${i}` })
+        makeSubAgent({ toolUseId: `${i}`, description: `Agent ${i}` }),
       )
-      const { container } = render(
-        <SwimLanes subAgents={agents} sessionActive={true} />
-      )
+      const { container } = render(<SwimLanes subAgents={agents} sessionActive={true} />)
 
       const wrapper = container.firstElementChild
       expect(wrapper?.className).not.toContain('overflow-y-auto')

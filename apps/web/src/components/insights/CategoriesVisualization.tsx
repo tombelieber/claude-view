@@ -1,9 +1,9 @@
+import { BarChart3, LayoutGrid, Table } from 'lucide-react'
 import { useState } from 'react'
-import { LayoutGrid, BarChart3, Table } from 'lucide-react'
-import { CategoryTreemap } from './CategoryTreemap'
+import type { CategoryNode } from '../../types/generated/CategoryNode'
 import { CategoryBarChart } from './CategoryBarChart'
 import { CategoryTable } from './CategoryTable'
-import type { CategoryNode } from '../../types/generated/CategoryNode'
+import { CategoryTreemap } from './CategoryTreemap'
 
 type ViewMode = 'treemap' | 'bar' | 'table'
 

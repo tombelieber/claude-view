@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 import type { ClassifySingleResponse } from '../types/generated/ClassifySingleResponse'
 
 export interface UseClassifySingleResult {
@@ -70,7 +70,7 @@ export function useClassifySingle(): UseClassifySingleResult {
 
         // Track classify count and notify banner via CustomEvent (instant, same-tab)
         const countKey = 'classify-single-count'
-        const prev = parseInt(localStorage.getItem(countKey) || '0', 10)
+        const prev = Number.parseInt(localStorage.getItem(countKey) || '0', 10)
         const newCount = prev + 1
         localStorage.setItem(countKey, String(newCount))
         window.dispatchEvent(new CustomEvent('classify-single-done', { detail: newCount }))

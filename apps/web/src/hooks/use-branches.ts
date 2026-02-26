@@ -1,6 +1,6 @@
 // src/hooks/use-branches.ts
-import { useQuery } from '@tanstack/react-query';
-import type { BranchesResponse } from '../types/generated/BranchesResponse';
+import { useQuery } from '@tanstack/react-query'
+import type { BranchesResponse } from '../types/generated/BranchesResponse'
 
 /**
  * Fetch distinct branches with session counts for a specific project.
@@ -9,9 +9,9 @@ import type { BranchesResponse } from '../types/generated/BranchesResponse';
  * @returns Promise resolving to BranchesResponse
  */
 async function fetchProjectBranches(projectId: string): Promise<BranchesResponse> {
-  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/branches`);
-  if (!response.ok) throw new Error('Failed to fetch project branches');
-  return response.json();
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/branches`)
+  if (!response.ok) throw new Error('Failed to fetch project branches')
+  return response.json()
 }
 
 /**
@@ -20,9 +20,9 @@ async function fetchProjectBranches(projectId: string): Promise<BranchesResponse
  * @returns Promise resolving to array of branch name strings
  */
 async function fetchAllBranches(): Promise<string[]> {
-  const response = await fetch('/api/branches');
-  if (!response.ok) throw new Error('Failed to fetch branches');
-  return response.json();
+  const response = await fetch('/api/branches')
+  if (!response.ok) throw new Error('Failed to fetch branches')
+  return response.json()
 }
 
 /**
@@ -45,7 +45,7 @@ export function useBranches() {
     queryFn: fetchAllBranches,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-  });
+  })
 }
 
 /**
@@ -73,5 +73,5 @@ export function useProjectBranches(projectId: string | undefined) {
     // Branches don't change frequently, so we can cache for longer
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
-  });
+  })
 }

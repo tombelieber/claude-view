@@ -1,5 +1,5 @@
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
 import { GROUP_ORDER } from './types'
+import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 export type LiveSortField = 'status' | 'last_active' | 'cost' | 'turns' | 'context' | 'project'
 export type LiveSortDirection = 'asc' | 'desc'
@@ -25,7 +25,7 @@ export const DEFAULT_LIVE_FILTERS: LiveSessionFilters = {
 export function sortLiveSessions(
   sessions: LiveSession[],
   field: LiveSortField,
-  dir: LiveSortDirection
+  dir: LiveSortDirection,
 ): LiveSession[] {
   return [...sessions].sort((a, b) => {
     let cmp = 0
@@ -50,9 +50,7 @@ export function sortLiveSessions(
         cmp = a.contextWindowTokens - b.contextWindowTokens
         break
       case 'project':
-        cmp = (a.projectDisplayName || a.project).localeCompare(
-          b.projectDisplayName || b.project
-        )
+        cmp = (a.projectDisplayName || a.project).localeCompare(b.projectDisplayName || b.project)
         break
     }
 
@@ -67,29 +65,23 @@ export function sortLiveSessions(
 
 export function filterLiveSessions(
   sessions: LiveSession[],
-  filters: LiveSessionFilters
+  filters: LiveSessionFilters,
 ): LiveSession[] {
   let result = sessions
 
   // Status filter
   if (filters.statuses.length > 0) {
-    result = result.filter((s) =>
-      filters.statuses.includes(s.agentState.group)
-    )
+    result = result.filter((s) => filters.statuses.includes(s.agentState.group))
   }
 
   // Project filter
   if (filters.projects.length > 0) {
-    result = result.filter((s) =>
-      filters.projects.includes(s.projectDisplayName || s.project)
-    )
+    result = result.filter((s) => filters.projects.includes(s.projectDisplayName || s.project))
   }
 
   // Branch filter
   if (filters.branches.length > 0) {
-    result = result.filter(
-      (s) => s.gitBranch !== null && filters.branches.includes(s.gitBranch)
-    )
+    result = result.filter((s) => s.gitBranch !== null && filters.branches.includes(s.gitBranch))
   }
 
   // Text search
@@ -99,11 +91,7 @@ export function filterLiveSessions(
       const project = (s.projectDisplayName || s.project).toLowerCase()
       const branch = (s.gitBranch ?? '').toLowerCase()
       const message = s.lastUserMessage.toLowerCase()
-      return (
-        project.includes(query) ||
-        branch.includes(query) ||
-        message.includes(query)
-      )
+      return project.includes(query) || branch.includes(query) || message.includes(query)
     })
   }
 

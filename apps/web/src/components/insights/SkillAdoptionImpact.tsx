@@ -1,6 +1,6 @@
+import { Zap } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
-import { Zap } from 'lucide-react'
 import type { SkillAdoption } from '../../types/generated/SkillAdoption'
 
 interface SkillAdoptionImpactProps {
@@ -60,7 +60,7 @@ function generateSkillInsight(skill: SkillAdoption): string {
 
 export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactProps) {
   const [selectedSkill, setSelectedSkill] = useState<string | null>(
-    skills.length > 0 ? skills[0].skill : null
+    skills.length > 0 ? skills[0].skill : null,
   )
 
   // Sort by impact (most beneficial first = most negative)
@@ -76,7 +76,7 @@ export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactPr
       <div
         className={cn(
           'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-          className
+          className,
         )}
       >
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -96,7 +96,7 @@ export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactPr
     <div
       className={cn(
         'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-        className
+        className,
       )}
     >
       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -122,7 +122,7 @@ export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactPr
                   'cursor-pointer transition-colors',
                   selectedSkill === skill.skill
                     ? 'bg-blue-50 dark:bg-blue-900/20'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-800',
                 )}
                 onClick={() => setSelectedSkill(skill.skill)}
                 role="button"
@@ -152,7 +152,7 @@ export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactPr
                         'text-sm font-mono min-w-[3.5rem] text-right',
                         skill.impactOnReedit < 0
                           ? 'text-green-600 dark:text-green-400'
-                          : 'text-amber-600 dark:text-amber-400'
+                          : 'text-amber-600 dark:text-amber-400',
                       )}
                     >
                       {skill.impactOnReedit > 0 ? '+' : ''}
@@ -162,7 +162,7 @@ export function SkillAdoptionImpact({ skills, className }: SkillAdoptionImpactPr
                       <div
                         className={cn(
                           'h-full rounded',
-                          skill.impactOnReedit < 0 ? 'bg-green-500' : 'bg-amber-500'
+                          skill.impactOnReedit < 0 ? 'bg-green-500' : 'bg-amber-500',
                         )}
                         style={{
                           width: `${Math.min(Math.abs(skill.impactOnReedit) * barScale, 100)}%`,
@@ -227,9 +227,7 @@ function LearningCurveChart({
   const viewBoxWidth = 100
   const viewBoxHeight = chartHeight
 
-  const pathD = points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-    .join(' ')
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
 
   return (
     <div className="relative" style={{ height: chartHeight }}>
@@ -283,14 +281,7 @@ function LearningCurveChart({
 
         {/* Points */}
         {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r="1.2"
-            fill="currentColor"
-            className="text-blue-500"
-          >
+          <circle key={i} cx={p.x} cy={p.y} r="1.2" fill="currentColor" className="text-blue-500">
             <title>
               Session {p.session}: {p.label.toFixed(2)}
             </title>

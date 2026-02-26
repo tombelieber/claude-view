@@ -1,9 +1,18 @@
+import { AlertTriangle, Check, ChevronRight, Zap } from 'lucide-react'
 import { useMemo } from 'react'
-import { Zap, Check, AlertTriangle, ChevronRight } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
+import {
+  Bar,
+  BarChart,
+  Cell,
+  LabelList,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { cn } from '../../lib/utils'
-import { InsightLine } from './InsightLine'
 import type { SkillStats } from '../../types/generated'
+import { InsightLine } from './InsightLine'
 import { MetricTooltip } from './MetricTooltip'
 
 interface SkillEffectivenessProps {
@@ -40,17 +49,18 @@ function formatPercent(rate: number): string {
  */
 export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectivenessProps) {
   // Sort skills by sessions descending for chart
-  const chartData = useMemo(() =>
-    [...bySkill]
-      .sort((a, b) => b.sessions - a.sessions)
-      .map(s => ({
-        skill: s.skill,
-        sessions: s.sessions,
-        commitRate: s.commitRate,
-        avgLoc: s.avgLoc,
-        reeditRate: s.reeditRate,
-      })),
-    [bySkill]
+  const chartData = useMemo(
+    () =>
+      [...bySkill]
+        .sort((a, b) => b.sessions - a.sessions)
+        .map((s) => ({
+          skill: s.skill,
+          sessions: s.sessions,
+          commitRate: s.commitRate,
+          avgLoc: s.avgLoc,
+          reeditRate: s.reeditRate,
+        })),
+    [bySkill],
   )
 
   if (bySkill.length === 0) {
@@ -75,7 +85,8 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
   const sortedByReedit = [...comparableSkills].sort((a, b) => a.reeditRate - b.reeditRate)
   // Best = lowest non-zero re-edit rate; worst = highest re-edit rate (need at least 2 skills to compare)
   const bestReedit = sortedByReedit.length > 0 ? sortedByReedit[0].reeditRate : null
-  const worstReedit = sortedByReedit.length > 1 ? sortedByReedit[sortedByReedit.length - 1].reeditRate : bestReedit
+  const worstReedit =
+    sortedByReedit.length > 1 ? sortedByReedit[sortedByReedit.length - 1].reeditRate : bestReedit
 
   // Create insight object
   const insight = {
@@ -95,9 +106,18 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
       {/* Horizontal Bar Chart */}
       <div style={{ height: `${chartData.length * 40 + 32}px` }} className="mb-4 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 80, left: 0, bottom: 5 }}>
+          <BarChart
+            data={chartData}
+            layout="vertical"
+            margin={{ top: 5, right: 80, left: 0, bottom: 5 }}
+          >
             <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }} />
-            <YAxis type="category" dataKey="skill" tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }} width={180} />
+            <YAxis
+              type="category"
+              dataKey="skill"
+              tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+              width={180}
+            />
             <RechartsTooltip
               contentStyle={{
                 backgroundColor: 'var(--tooltip-bg, #fff)',
@@ -155,10 +175,19 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                   <span className="inline-flex items-center">
                     Re-edit
                     <MetricTooltip>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">Re-edit rate</span> measures how often AI-generated files need further editing after the initial write.
-                      <br /><br />
-                      <span className="font-medium text-gray-900 dark:text-gray-100">Lower is better.</span> 0 = no re-edits needed.
-                      <br /><br />
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        Re-edit rate
+                      </span>{' '}
+                      measures how often AI-generated files need further editing after the initial
+                      write.
+                      <br />
+                      <br />
+                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                        Lower is better.
+                      </span>{' '}
+                      0 = no re-edits needed.
+                      <br />
+                      <br />
                       Formula: files re-edited / total files edited
                     </MetricTooltip>
                   </span>
@@ -167,9 +196,14 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
             </thead>
             <tbody>
               {bySkill.map((skill) => {
-                const isBest = bestReedit !== null && skill.reeditRate === bestReedit && skill.reeditRate > 0
+                const isBest =
+                  bestReedit !== null && skill.reeditRate === bestReedit && skill.reeditRate > 0
                 // Only mark as worst if there are multiple comparable skills and this is the highest re-edit rate (not same as best)
-                const isWorst = worstReedit !== null && skill.reeditRate === worstReedit && worstReedit !== bestReedit && comparableSkills.length > 1
+                const isWorst =
+                  worstReedit !== null &&
+                  skill.reeditRate === worstReedit &&
+                  worstReedit !== bestReedit &&
+                  comparableSkills.length > 1
                 const isNoSkill = skill.skill === '(no skill)'
 
                 return (
@@ -177,7 +211,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                     key={skill.skill}
                     className={cn(
                       'border-b border-gray-100 dark:border-gray-800 last:border-0',
-                      isNoSkill && 'opacity-75'
+                      isNoSkill && 'opacity-75',
                     )}
                   >
                     <td className="py-3 pr-4">
@@ -186,7 +220,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                           'font-medium',
                           isNoSkill
                             ? 'text-gray-500 dark:text-gray-400 italic'
-                            : 'text-gray-900 dark:text-gray-100'
+                            : 'text-gray-900 dark:text-gray-100',
                         )}
                       >
                         {skill.skill}
@@ -208,7 +242,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                             'tabular-nums',
                             isBest && 'text-green-600 dark:text-green-400 font-medium',
                             isWorst && 'text-amber-600 dark:text-amber-400',
-                            !isBest && !isWorst && 'text-gray-700 dark:text-gray-300'
+                            !isBest && !isWorst && 'text-gray-700 dark:text-gray-300',
                           )}
                         >
                           {skill.reeditRate > 0 ? skill.reeditRate.toFixed(2) : '--'}

@@ -9,27 +9,34 @@
  * Supports dense conversations while maintaining clarity.
  */
 
-import { useState, useCallback, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import {
-  User, Copy, Check, MessageSquare, Wrench, CheckCircle,
-  AlertCircle, Zap, BookOpen
+  AlertCircle,
+  BookOpen,
+  Check,
+  CheckCircle,
+  Copy,
+  MessageSquare,
+  User,
+  Wrench,
+  Zap,
 } from 'lucide-react'
-import type { Message as MessageType } from '../hooks/use-session'
-import { CodeBlock } from './CodeBlock'
-import { XmlCard, extractXmlBlocks } from './XmlCard'
-import { ThinkingBlock } from './ThinkingBlock'
-import { cn } from '../lib/utils'
+import { useCallback, useMemo, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
+import remarkGfm from 'remark-gfm'
 import { useThreadHighlight } from '../contexts/ThreadHighlightContext'
+import type { Message as MessageType } from '../hooks/use-session'
+import { cn } from '../lib/utils'
+import { CodeBlock } from './CodeBlock'
+import { ThinkingBlock } from './ThinkingBlock'
+import { XmlCard, extractXmlBlocks } from './XmlCard'
 
-// System event cards
-import { TurnDurationCard } from './TurnDurationCard'
 import { ApiErrorCard } from './ApiErrorCard'
 import { CompactBoundaryCard } from './CompactBoundaryCard'
 import { HookSummaryCard } from './HookSummaryCard'
 import { LocalCommandEventCard } from './LocalCommandEventCard'
+// System event cards
+import { TurnDurationCard } from './TurnDurationCard'
 
 // Progress event cards
 import { AgentProgressCard } from './AgentProgressCard'
@@ -39,9 +46,9 @@ import { McpProgressCard } from './McpProgressCard'
 import { TaskQueueCard } from './TaskQueueCard'
 import { HookEventRow } from './live/action-log/HookEventRow'
 
+import { FileSnapshotCard } from './FileSnapshotCard'
 // Track 4: Queue, Snapshot, Summary cards
 import { MessageQueueEventCard } from './MessageQueueEventCard'
-import { FileSnapshotCard } from './FileSnapshotCard'
 import { SessionSummaryCard } from './SessionSummaryCard'
 
 /** Maximum nesting depth for thread indentation */
@@ -52,7 +59,14 @@ const INDENT_PX = 12
 interface MessageTypedProps {
   message: MessageType
   messageIndex?: number
-  messageType?: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress' | 'summary'
+  messageType?:
+    | 'user'
+    | 'assistant'
+    | 'tool_use'
+    | 'tool_result'
+    | 'system'
+    | 'progress'
+    | 'summary'
   metadata?: Record<string, any>
   /** Parent message UUID for threading */
   parentUuid?: string
@@ -71,44 +85,44 @@ const TYPE_CONFIG = {
     accent: 'border-blue-300 dark:border-blue-700',
     badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
     icon: User,
-    label: 'You'
+    label: 'You',
   },
   assistant: {
     accent: 'border-orange-300 dark:border-orange-700',
     badge: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
     icon: MessageSquare,
-    label: 'Claude'
+    label: 'Claude',
   },
   tool_use: {
     accent: 'border-purple-300 dark:border-purple-700',
     badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
     icon: Wrench,
-    label: 'Tool'
+    label: 'Tool',
   },
   tool_result: {
     accent: 'border-green-300 dark:border-green-700',
     badge: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
     icon: CheckCircle,
-    label: 'Result'
+    label: 'Result',
   },
   system: {
     accent: 'border-amber-300 dark:border-amber-700',
     badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
     icon: AlertCircle,
-    label: 'System'
+    label: 'System',
   },
   progress: {
     accent: 'border-indigo-300 dark:border-indigo-700',
     badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
     icon: Zap,
-    label: 'Progress'
+    label: 'Progress',
   },
   summary: {
     accent: 'border-rose-300 dark:border-rose-700',
     badge: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300',
     icon: BookOpen,
-    label: 'Summary'
-  }
+    label: 'Summary',
+  },
 }
 
 function formatTime(timestamp?: string | null): string | null {
@@ -124,14 +138,34 @@ function formatTime(timestamp?: string | null): string | null {
 function processContent(content: string): Array<{
   type: 'text' | 'xml'
   content: string
-  xmlType?: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown'
+  xmlType?:
+    | 'observed_from_primary_session'
+    | 'observation'
+    | 'tool_call'
+    | 'local_command'
+    | 'task_notification'
+    | 'command'
+    | 'tool_error'
+    | 'untrusted_data'
+    | 'hidden'
+    | 'unknown'
 }> {
   const xmlBlocks = extractXmlBlocks(content)
   if (xmlBlocks.length === 0) return [{ type: 'text', content }]
 
   const blocksWithPositions: Array<{
     xml: string
-    type: 'observed_from_primary_session' | 'observation' | 'tool_call' | 'local_command' | 'task_notification' | 'command' | 'tool_error' | 'untrusted_data' | 'hidden' | 'unknown'
+    type:
+      | 'observed_from_primary_session'
+      | 'observation'
+      | 'tool_call'
+      | 'local_command'
+      | 'task_notification'
+      | 'command'
+      | 'tool_error'
+      | 'untrusted_data'
+      | 'hidden'
+      | 'unknown'
     index: number
   }> = []
   let searchOffset = 0
@@ -170,25 +204,34 @@ function processContent(content: string): Array<{
   return segments
 }
 
-function SystemMetadataCard({ metadata, type }: { metadata?: Record<string, any>, type: 'system' | 'progress' }) {
+function SystemMetadataCard({
+  metadata,
+  type,
+}: { metadata?: Record<string, any>; type: 'system' | 'progress' }) {
   if (!metadata || Object.keys(metadata).length === 0) return null
 
   return (
-    <div className={cn(
-      'mt-3 p-3 rounded-sm text-sm',
-      type === 'system'
-        ? 'bg-amber-100/30 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-700/30'
-        : 'bg-indigo-100/30 dark:bg-indigo-900/20 border border-indigo-200/50 dark:border-indigo-700/30'
-    )}>
+    <div
+      className={cn(
+        'mt-3 p-3 rounded-sm text-sm',
+        type === 'system'
+          ? 'bg-amber-100/30 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-700/30'
+          : 'bg-indigo-100/30 dark:bg-indigo-900/20 border border-indigo-200/50 dark:border-indigo-700/30',
+      )}
+    >
       <div className="space-y-1 font-mono text-xs">
         {Object.entries(metadata).map(([key, value]) => {
           const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value)
           return (
             <div key={key} className="flex items-start gap-2">
-              <span className={cn(
-                'font-semibold flex-shrink-0',
-                type === 'system' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'
-              )}>
+              <span
+                className={cn(
+                  'font-semibold flex-shrink-0',
+                  type === 'system'
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : 'text-indigo-700 dark:text-indigo-300',
+                )}
+              >
                 {key}:
               </span>
               <span className="text-gray-700 dark:text-gray-300 break-all">{displayValue}</span>
@@ -204,21 +247,61 @@ function renderSystemSubtype(metadata: Record<string, any>): React.ReactNode | n
   const subtype = metadata?.type ?? metadata?.subtype
   switch (subtype) {
     case 'turn_duration':
-      return <TurnDurationCard durationMs={metadata.durationMs} startTime={metadata.startTime} endTime={metadata.endTime} />
+      return (
+        <TurnDurationCard
+          durationMs={metadata.durationMs}
+          startTime={metadata.startTime}
+          endTime={metadata.endTime}
+        />
+      )
     case 'api_error':
-      return <ApiErrorCard error={metadata.error} retryAttempt={metadata.retryAttempt} maxRetries={metadata.maxRetries} retryInMs={metadata.retryInMs} />
+      return (
+        <ApiErrorCard
+          error={metadata.error}
+          retryAttempt={metadata.retryAttempt}
+          maxRetries={metadata.maxRetries}
+          retryInMs={metadata.retryInMs}
+        />
+      )
     case 'compact_boundary':
-      return <CompactBoundaryCard trigger={metadata.trigger} preTokens={metadata.preTokens} postTokens={metadata.postTokens} />
+      return (
+        <CompactBoundaryCard
+          trigger={metadata.trigger}
+          preTokens={metadata.preTokens}
+          postTokens={metadata.postTokens}
+        />
+      )
     case 'hook_summary':
-      return <HookSummaryCard hookCount={metadata.hookCount} hookInfos={metadata.hookInfos} hookErrors={metadata.hookErrors} durationMs={metadata.durationMs} preventedContinuation={metadata.preventedContinuation} />
+      return (
+        <HookSummaryCard
+          hookCount={metadata.hookCount}
+          hookInfos={metadata.hookInfos}
+          hookErrors={metadata.hookErrors}
+          durationMs={metadata.durationMs}
+          preventedContinuation={metadata.preventedContinuation}
+        />
+      )
     case 'local_command':
       return <LocalCommandEventCard content={metadata.content} />
     case 'queue-operation':
-      return <MessageQueueEventCard operation={metadata.operation} timestamp={metadata.timestamp || ''} content={metadata.content} />
+      return (
+        <MessageQueueEventCard
+          operation={metadata.operation}
+          timestamp={metadata.timestamp || ''}
+          content={metadata.content}
+        />
+      )
     case 'file-history-snapshot': {
       const snapshot = metadata.snapshot || {}
       const files = Object.keys(snapshot.trackedFileBackups || {})
-      return <FileSnapshotCard fileCount={files.length} timestamp={snapshot.timestamp || ''} files={files} isIncremental={metadata.isSnapshotUpdate || false} />
+      return (
+        <FileSnapshotCard
+          fileCount={files.length}
+          timestamp={snapshot.timestamp || ''}
+          files={files}
+          isIncremental={metadata.isSnapshotUpdate || false}
+        />
+      )
     }
     default:
       return null
@@ -229,30 +312,70 @@ function renderProgressSubtype(metadata: Record<string, any>): React.ReactNode |
   const subtype = metadata?.type
   switch (subtype) {
     case 'agent_progress':
-      return <AgentProgressCard agentId={metadata.agentId} prompt={metadata.prompt} model={metadata.model} tokens={metadata.tokens} normalizedMessages={metadata.normalizedMessages} indent={metadata.indent} />
+      return (
+        <AgentProgressCard
+          agentId={metadata.agentId}
+          prompt={metadata.prompt}
+          model={metadata.model}
+          tokens={metadata.tokens}
+          normalizedMessages={metadata.normalizedMessages}
+          indent={metadata.indent}
+        />
+      )
     case 'bash_progress':
-      return <BashProgressCard command={metadata.command} output={metadata.output} exitCode={metadata.exitCode} duration={metadata.duration} blockId={`bash-${metadata.command?.slice(0, 40) ?? ''}`} />
+      return (
+        <BashProgressCard
+          command={metadata.command}
+          output={metadata.output}
+          exitCode={metadata.exitCode}
+          duration={metadata.duration}
+          blockId={`bash-${metadata.command?.slice(0, 40) ?? ''}`}
+        />
+      )
     case 'hook_progress':
-      return <HookProgressCard hookEvent={metadata.hookEvent} hookName={metadata.hookName} command={metadata.command} output={metadata.output} />
+      return (
+        <HookProgressCard
+          hookEvent={metadata.hookEvent}
+          hookName={metadata.hookName}
+          command={metadata.command}
+          output={metadata.output}
+        />
+      )
     case 'mcp_progress':
-      return <McpProgressCard server={metadata.server} method={metadata.method} params={metadata.params} result={metadata.result} />
+      return (
+        <McpProgressCard
+          server={metadata.server}
+          method={metadata.method}
+          params={metadata.params}
+          result={metadata.result}
+        />
+      )
     case 'waiting_for_task':
-      return <TaskQueueCard waitDuration={metadata.waitDuration} position={metadata.position} queueLength={metadata.queueLength} />
+      return (
+        <TaskQueueCard
+          waitDuration={metadata.waitDuration}
+          position={metadata.position}
+          queueLength={metadata.queueLength}
+        />
+      )
     case 'hook_event':
-      return metadata._hookEvent
-        ? <HookEventRow event={metadata._hookEvent} />
-        : null
+      return metadata._hookEvent ? <HookEventRow event={metadata._hookEvent} /> : null
     default:
       return null
   }
 }
 
-function TypeBadge({ type, label }: { type: keyof typeof TYPE_CONFIG, label: string }) {
+function TypeBadge({ type, label }: { type: keyof typeof TYPE_CONFIG; label: string }) {
   const config = TYPE_CONFIG[type]
   const Icon = config.icon
 
   return (
-    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium', config.badge)}>
+    <div
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium',
+        config.badge,
+      )}
+    >
       <Icon className="w-3.5 h-3.5" />
       {label}
     </div>
@@ -279,7 +402,9 @@ export function MessageTyped({
   // Cap indent at MAX_INDENT_LEVEL
   const clampedIndent = Math.min(Math.max(indent, 0), MAX_INDENT_LEVEL)
   if (indent > MAX_INDENT_LEVEL) {
-    console.warn(`Max nesting depth (${MAX_INDENT_LEVEL}) exceeded: indent=${indent}, clamped to ${clampedIndent}`)
+    console.warn(
+      `Max nesting depth (${MAX_INDENT_LEVEL}) exceeded: indent=${indent}, clamped to ${clampedIndent}`,
+    )
   }
   const indentPx = clampedIndent * INDENT_PX
 
@@ -325,12 +450,16 @@ export function MessageTyped({
         config.accent,
         'bg-white dark:bg-gray-900 hover:bg-gray-50/50 dark:hover:bg-gray-800/50',
         isHighlighted && 'bg-indigo-50/60 dark:bg-indigo-950/30',
-        isChildMessage && 'thread-child'
+        isChildMessage && 'thread-child',
       )}
       style={{
         paddingLeft: indentPx > 0 ? `${indentPx}px` : undefined,
         ...(isChildMessage
-          ? { borderLeftWidth: '4px', borderLeftStyle: 'dashed' as const, borderLeftColor: '#9CA3AF' }
+          ? {
+              borderLeftWidth: '4px',
+              borderLeftStyle: 'dashed' as const,
+              borderLeftColor: '#9CA3AF',
+            }
           : {}),
       }}
     >
@@ -338,10 +467,12 @@ export function MessageTyped({
         {/* Header */}
         <div className="flex items-start gap-3 mb-3">
           {/* Icon */}
-          <div className={cn(
-            'w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0',
-            config.badge
-          )}>
+          <div
+            className={cn(
+              'w-8 h-8 rounded-sm flex items-center justify-center flex-shrink-0',
+              config.badge,
+            )}
+          >
             <Icon className="w-4 h-4" />
           </div>
 
@@ -352,9 +483,7 @@ export function MessageTyped({
                 <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                   {config.label}
                 </span>
-                {type !== message.role && (
-                  <TypeBadge type={type} label={config.label} />
-                )}
+                {type !== message.role && <TypeBadge type={type} label={config.label} />}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -365,7 +494,9 @@ export function MessageTyped({
                   {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 {time && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{time}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {time}
+                  </span>
                 )}
               </div>
             </div>
@@ -375,25 +506,20 @@ export function MessageTyped({
         {/* Content */}
         <div className="pl-11 space-y-3">
           {/* Thinking block */}
-          {showThinking && message.thinking && (
-            <ThinkingBlock thinking={message.thinking} />
-          )}
+          {showThinking && message.thinking && <ThinkingBlock thinking={message.thinking} />}
 
           {/* Main content */}
           {message.content && (
             <div className="space-y-3">
               {contentSegments.map((segment, i) => {
                 if (segment.type === 'xml' && segment.xmlType) {
-                  return (
-                    <XmlCard
-                      key={i}
-                      content={segment.content}
-                      type={segment.xmlType}
-                    />
-                  )
+                  return <XmlCard key={i} content={segment.content} type={segment.xmlType} />
                 }
                 return (
-                  <div key={i} className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words text-sm">
+                  <div
+                    key={i}
+                    className="prose prose-sm prose-gray dark:prose-invert max-w-none break-words text-sm"
+                  >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeRaw]}
@@ -415,9 +541,10 @@ export function MessageTyped({
                               )
                             }
 
-                            const blockId = messageIndex !== undefined
-                              ? `${messageIndex}-${blockCounter++}`
-                              : undefined
+                            const blockId =
+                              messageIndex !== undefined
+                                ? `${messageIndex}-${blockCounter++}`
+                                : undefined
 
                             return (
                               <CodeBlock
@@ -482,19 +609,25 @@ export function MessageTyped({
           )}
 
           {/* System/Progress metadata — dispatch to specialized cards */}
-          {type === 'system' && metadata && (
-            renderSystemSubtype(metadata) ?? <SystemMetadataCard metadata={metadata} type="system" />
-          )}
-          {type === 'progress' && metadata && (
-            renderProgressSubtype(metadata) ?? <SystemMetadataCard metadata={metadata} type="progress" />
-          )}
+          {type === 'system' &&
+            metadata &&
+            (renderSystemSubtype(metadata) ?? (
+              <SystemMetadataCard metadata={metadata} type="system" />
+            ))}
+          {type === 'progress' &&
+            metadata &&
+            (renderProgressSubtype(metadata) ?? (
+              <SystemMetadataCard metadata={metadata} type="progress" />
+            ))}
 
           {/* Summary card */}
           {type === 'summary' && metadata && (
             <SessionSummaryCard
               summary={metadata.summary || message.content}
               leafUuid={metadata.leafUuid || ''}
-              wordCount={(metadata.summary || message.content || '').split(/\s+/).filter(Boolean).length}
+              wordCount={
+                (metadata.summary || message.content || '').split(/\s+/).filter(Boolean).length
+              }
             />
           )}
 

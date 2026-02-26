@@ -60,14 +60,14 @@ export function formatCostUsd(usd: number): string {
  * @param value - If 0-1 range, pass asRatio=true. If already percentage (0-100), pass asRatio=false.
  * @param asRatio - If true, value is treated as 0-1 ratio and multiplied by 100
  */
-export function formatPercent(value: number | null, asRatio: boolean = false): string {
+export function formatPercent(value: number | null, asRatio = false): string {
   if (value === null) return '--'
   const percent = asRatio ? value * 100 : value
   return `${percent.toFixed(1)}%`
 }
 
 /** Truncate commit message to specified length, taking first line only */
-export function truncateMessage(message: string, maxLength: number = 60): string {
+export function truncateMessage(message: string, maxLength = 60): string {
   const firstLine = message.split('\n')[0]
   if (firstLine.length <= maxLength) return firstLine
   return firstLine.slice(0, maxLength - 3) + '...'

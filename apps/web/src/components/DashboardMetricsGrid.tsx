@@ -1,6 +1,6 @@
-import { MetricCard } from './ui'
 import { formatNumber } from '../lib/format-utils'
 import type { DashboardTrends, TrendMetric } from '../types/generated'
+import { MetricCard } from './ui'
 
 export interface DashboardMetricsGridProps {
   /** Period-over-period trends data from dashboard API */
@@ -75,7 +75,9 @@ export function DashboardMetricsGrid({ trends, comparisonLabel }: DashboardMetri
       <MetricCard
         label="Files Edited"
         value={formatNumber(trends.filesEdited?.current || 0)}
-        trend={trends.filesEdited ? extractTrend(trends.filesEdited) : { delta: 0, deltaPercent: null }}
+        trend={
+          trends.filesEdited ? extractTrend(trends.filesEdited) : { delta: 0, deltaPercent: null }
+        }
         footer={footer}
       />
       <MetricCard
@@ -87,13 +89,21 @@ export function DashboardMetricsGrid({ trends, comparisonLabel }: DashboardMetri
       <MetricCard
         label="Tokens/Prompt"
         value={formatNumber(trends.avgTokensPerPrompt?.current || 0)}
-        trend={trends.avgTokensPerPrompt ? extractTrend(trends.avgTokensPerPrompt) : { delta: 0, deltaPercent: null }}
+        trend={
+          trends.avgTokensPerPrompt
+            ? extractTrend(trends.avgTokensPerPrompt)
+            : { delta: 0, deltaPercent: null }
+        }
         footer={footer}
       />
       <MetricCard
         label="Re-edit Rate"
         value={`${trends.avgReeditRate?.current || 0}%`}
-        trend={trends.avgReeditRate ? extractTrend(trends.avgReeditRate) : { delta: 0, deltaPercent: null }}
+        trend={
+          trends.avgReeditRate
+            ? extractTrend(trends.avgReeditRate)
+            : { delta: 0, deltaPercent: null }
+        }
         footer={footer}
       />
     </section>

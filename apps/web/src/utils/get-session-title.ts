@@ -41,10 +41,7 @@ export function cleanPreviewText(text: string): string {
  * 2. Summary (if non-empty)
  * 3. 'Untitled session' fallback
  */
-export function getSessionTitle(
-  preview?: string,
-  summary?: string | null,
-): string {
+export function getSessionTitle(preview?: string, summary?: string | null): string {
   // Try preview first (with cleaning)
   if (preview) {
     const cleaned = cleanPreviewText(preview)

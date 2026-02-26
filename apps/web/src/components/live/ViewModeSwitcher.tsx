@@ -1,4 +1,4 @@
-import { LayoutGrid, List, Columns3, Monitor } from 'lucide-react'
+import { Columns3, LayoutGrid, List, Monitor } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { LiveViewMode } from './types'
 import { LIVE_VIEW_MODES } from './types'
@@ -30,7 +30,7 @@ export function ViewModeSwitcher({ mode, onChange }: ViewModeSwitcherProps) {
               'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors',
               isActive
                 ? 'bg-indigo-500/10 text-indigo-400 border-b-2 border-indigo-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
             )}
             aria-pressed={isActive}
           >

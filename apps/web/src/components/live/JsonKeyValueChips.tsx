@@ -41,51 +41,50 @@ export function JsonKeyValueChips({
 
   return (
     <Tooltip.Provider delayDuration={200}>
-    <span className="inline-flex items-center gap-1 flex-wrap">
-      {visible.map(([key, value]) => {
-        const shortVal = formatChipValue(value, effectiveMaxLen)
-        const fullVal = formatFullValue(value)
-        const needsTooltip = !verboseMode && fullVal !== shortVal
+      <span className="inline-flex items-center gap-1 flex-wrap">
+        {visible.map(([key, value]) => {
+          const shortVal = formatChipValue(value, effectiveMaxLen)
+          const fullVal = formatFullValue(value)
+          const needsTooltip = !verboseMode && fullVal !== shortVal
 
-        const chip = (
-          <span
-            key={key}
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono max-w-[200px]"
+          const chip = (
+            <span
+              key={key}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono max-w-[200px]"
+            >
+              <span className="text-sky-600 dark:text-sky-400 flex-shrink-0">{key}:</span>
+              <span className="text-gray-500 dark:text-gray-400 truncate">{shortVal}</span>
+            </span>
+          )
+
+          if (!needsTooltip) return chip
+
+          return (
+            <Tooltip.Root key={key} delayDuration={200}>
+              <Tooltip.Trigger asChild>{chip}</Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="bottom"
+                  align="start"
+                  className="z-50 max-w-sm px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-[10px] font-mono whitespace-pre-wrap break-all shadow-lg"
+                  sideOffset={4}
+                >
+                  <span className="text-sky-300 dark:text-sky-600">{key}:</span> {fullVal}
+                  <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          )
+        })}
+        {remaining > 0 && (
+          <button
+            onClick={onExpand}
+            className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
-            <span className="text-sky-600 dark:text-sky-400 flex-shrink-0">{key}:</span>
-            <span className="text-gray-500 dark:text-gray-400 truncate">{shortVal}</span>
-          </span>
-        )
-
-        if (!needsTooltip) return chip
-
-        return (
-          <Tooltip.Root key={key} delayDuration={200}>
-            <Tooltip.Trigger asChild>{chip}</Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                side="bottom"
-                align="start"
-                className="z-50 max-w-sm px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-[10px] font-mono whitespace-pre-wrap break-all shadow-lg"
-                sideOffset={4}
-              >
-                <span className="text-sky-300 dark:text-sky-600">{key}:</span>{' '}
-                {fullVal}
-                <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        )
-      })}
-      {remaining > 0 && (
-        <button
-          onClick={onExpand}
-          className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          +{remaining} more
-        </button>
-      )}
-    </span>
+            +{remaining} more
+          </button>
+        )}
+      </span>
     </Tooltip.Provider>
   )
 }

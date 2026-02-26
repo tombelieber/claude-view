@@ -1,19 +1,19 @@
+import { ArrowRight, DollarSign } from 'lucide-react'
 import { useState } from 'react'
-import { DollarSign, ArrowRight } from 'lucide-react'
-import { formatNumber, formatCostUsd } from '../../lib/format-utils'
 import {
-  AreaChart,
   Area,
-  XAxis,
-  YAxis,
+  AreaChart,
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  XAxis,
+  YAxis,
 } from 'recharts'
+import { formatCostUsd, formatNumber } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
-import { InsightLine } from './InsightLine'
 import type { EfficiencyMetrics as EfficiencyMetricsType } from '../../types/generated'
 import type { DailyTrendPoint } from '../../types/generated'
+import { InsightLine } from './InsightLine'
 
 type CostMetric = 'commit' | 'session' | 'line'
 
@@ -44,14 +44,7 @@ export function EfficiencyMetricsSection({
 }: EfficiencyMetricsSectionProps) {
   const [metric, setMetric] = useState<CostMetric>('commit')
 
-  const {
-    totalCost,
-    totalLines,
-    costPerLine,
-    costPerCommit,
-    costIsEstimated,
-    insight,
-  } = efficiency
+  const { totalCost, totalLines, costPerLine, costPerCommit, costIsEstimated, insight } = efficiency
 
   const costPerSession = sessionCount > 0 ? totalCost / sessionCount : null
 
@@ -69,17 +62,23 @@ export function EfficiencyMetricsSection({
 
   const heroLabel = (() => {
     switch (metric) {
-      case 'commit': return 'per commit'
-      case 'session': return 'per session'
-      case 'line': return 'per line of AI output'
+      case 'commit':
+        return 'per commit'
+      case 'session':
+        return 'per session'
+      case 'line':
+        return 'per line of AI output'
     }
   })()
 
   const heroDenominator = (() => {
     switch (metric) {
-      case 'commit': return commitsCount > 0 ? `${commitsCount} commits` : null
-      case 'session': return sessionCount > 0 ? `${sessionCount} sessions` : null
-      case 'line': return totalLines > 0 ? `${formatNumber(totalLines)} lines` : null
+      case 'commit':
+        return commitsCount > 0 ? `${commitsCount} commits` : null
+      case 'session':
+        return sessionCount > 0 ? `${sessionCount} sessions` : null
+      case 'line':
+        return totalLines > 0 ? `${formatNumber(totalLines)} lines` : null
     }
   })()
 
@@ -105,7 +104,7 @@ export function EfficiencyMetricsSection({
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset',
                 option.value === metric
                   ? 'bg-emerald-500 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
               )}
             >
               {option.label}
@@ -119,7 +118,9 @@ export function EfficiencyMetricsSection({
         <span className="font-semibold text-gray-900 dark:text-gray-100">
           {formatCostUsd(totalCost)} spent
           {costIsEstimated && (
-            <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">(estimated)</span>
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">
+              (estimated)
+            </span>
           )}
         </span>
         <ArrowRight className="w-4 h-4 text-gray-400" aria-hidden="true" />
@@ -186,14 +187,17 @@ function CostTrendChart({
   metric: CostMetric
 }) {
   const chartData = trendData
-    .filter(d => {
+    .filter((d) => {
       switch (metric) {
-        case 'line': return (d.linesAdded + d.linesRemoved) > 0
-        case 'commit': return d.commits > 0
-        case 'session': return d.sessions > 0
+        case 'line':
+          return d.linesAdded + d.linesRemoved > 0
+        case 'commit':
+          return d.commits > 0
+        case 'session':
+          return d.sessions > 0
       }
     })
-    .map(d => {
+    .map((d) => {
       const cost = d.costCents / 100
       let value: number
       switch (metric) {
@@ -212,16 +216,17 @@ function CostTrendChart({
 
   if (chartData.length < 2) return null
 
-  const maxVal = Math.max(...chartData.map(d => d.value))
-  const precision = metric === 'line'
-    ? (maxVal >= 0.1 ? 2 : maxVal >= 0.01 ? 3 : 4)
-    : 2
+  const maxVal = Math.max(...chartData.map((d) => d.value))
+  const precision = metric === 'line' ? (maxVal >= 0.1 ? 2 : maxVal >= 0.01 ? 3 : 4) : 2
 
   const chartLabel = (() => {
     switch (metric) {
-      case 'commit': return 'Cost per Commit'
-      case 'session': return 'Cost per Session'
-      case 'line': return 'Cost per Line'
+      case 'commit':
+        return 'Cost per Commit'
+      case 'session':
+        return 'Cost per Session'
+      case 'line':
+        return 'Cost per Line'
     }
   })()
 
@@ -290,4 +295,3 @@ function formatChartDate(dateStr: string): string {
   }
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
-

@@ -1,4 +1,4 @@
-import { YStack, Text, H1 } from 'tamagui';
+import { H1, Text, YStack } from 'tamagui'
 
 export default function SessionsScreen() {
   return (
@@ -8,5 +8,5 @@ export default function SessionsScreen() {
         Session monitoring coming soon
       </Text>
     </YStack>
-  );
+  )
 }

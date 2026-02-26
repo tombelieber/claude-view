@@ -1,29 +1,42 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import {
+  Check,
+  Clock,
+  Copy,
+  DollarSign,
+  GitBranch,
+  LayoutDashboard,
+  ScrollText,
+  Terminal,
+  Timer,
+  Users,
+  X,
+  Zap,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Terminal, Users, DollarSign, GitBranch, LayoutDashboard, Clock, Zap, Copy, Check, ScrollText, Timer } from 'lucide-react'
-import { type LiveSession } from './use-live-sessions'
+import { useHookEvents } from '../../hooks/use-hook-events'
+import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { computeCategoryCounts } from '../../lib/compute-category-counts'
+import { formatCostUsd } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
+import { cleanPreviewText } from '../../utils/get-session-title'
+import { CommitsPanel } from '../CommitsPanel'
+import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
+import { SessionMetricsBar } from '../SessionMetricsBar'
+import { CacheCountdownBar } from './CacheCountdownBar'
+import { ContextGauge } from './ContextGauge'
+import { CostBreakdown } from './CostBreakdown'
+import { RichPane } from './RichPane'
+import { SubAgentDrillDown } from './SubAgentDrillDown'
+import { SubAgentPills } from './SubAgentPills'
+import { SwimLanes } from './SwimLanes'
+import { TimelineView } from './TimelineView'
+import { ViewModeControls } from './ViewModeControls'
+import { ActionLogTab } from './action-log'
 import type { SessionPanelData } from './session-panel-data'
 import { liveSessionToPanelData } from './session-panel-data'
-import { SessionMetricsBar } from '../SessionMetricsBar'
-import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
-import { CommitsPanel } from '../CommitsPanel'
-import { RichPane } from './RichPane'
-import { formatCostUsd } from '../../lib/format-utils'
-import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
-import { useHookEvents } from '../../hooks/use-hook-events'
-import { ActionLogTab } from './action-log'
-import { SwimLanes } from './SwimLanes'
-import { SubAgentDrillDown } from './SubAgentDrillDown'
-import { TimelineView } from './TimelineView'
-import { CostBreakdown } from './CostBreakdown'
-import { SubAgentPills } from './SubAgentPills'
-import { ContextGauge } from './ContextGauge'
-import { CacheCountdownBar } from './CacheCountdownBar'
-import { ViewModeControls } from './ViewModeControls'
-import { useMonitorStore } from '../../store/monitor-store'
-import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { cn } from '../../lib/utils'
-import { cleanPreviewText } from '../../utils/get-session-title'
+import type { LiveSession } from './use-live-sessions'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,7 +70,6 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // Helpers
 // ---------------------------------------------------------------------------
 
-
 /** Format model name for display (strip long prefixes) */
 function formatModel(model: string | null): string {
   if (!model) return 'unknown'
@@ -86,10 +98,12 @@ function getStoredPanelWidth(isInline: boolean): number {
   try {
     const stored = localStorage.getItem(key)
     if (stored) {
-      const w = parseInt(stored, 10)
+      const w = Number.parseInt(stored, 10)
       if (w >= MIN_PANEL_WIDTH && !isNaN(w)) return w
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return fallback
 }
 
@@ -97,7 +111,12 @@ function getStoredPanelWidth(isInline: boolean): number {
 // Component
 // ---------------------------------------------------------------------------
 
-export function SessionDetailPanel({ session, panelData: panelDataProp, onClose, inline }: SessionDetailPanelProps) {
+export function SessionDetailPanel({
+  session,
+  panelData: panelDataProp,
+  onClose,
+  inline,
+}: SessionDetailPanelProps) {
   // Resolve to unified data shape
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
@@ -108,7 +127,11 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   const verboseMode = useMonitorStore((s) => s.verboseMode)
 
   // Live mode: WebSocket messages; History mode: pre-loaded messages
-  const { messages: liveMessages, hookEvents: liveHookEvents, bufferDone: liveBufferDone } = useLiveSessionMessages(
+  const {
+    messages: liveMessages,
+    hookEvents: liveHookEvents,
+    bufferDone: liveBufferDone,
+  } = useLiveSessionMessages(
     data.id,
     isLive, // only connect WebSocket for live sessions
   )
@@ -116,16 +139,15 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   const bufferDone = isLive ? liveBufferDone : true // history messages are always fully loaded
 
   // Shared category counts — computed once, passed to both Terminal and Log tabs
-  const categoryCounts = useMemo(
-    () => computeCategoryCounts(richMessages),
-    [richMessages]
-  )
+  const categoryCounts = useMemo(() => computeCategoryCounts(richMessages), [richMessages])
 
   // Historical hook events (REST fetch for non-live sessions)
   const historicalHookEvents = useHookEvents(data.id, !isLive)
 
   const [drillDownAgent, setDrillDownAgent] = useState<{
-    agentId: string; agentType: string; description: string
+    agentId: string
+    agentType: string
+    description: string
   } | null>(null)
 
   // Resizable width (persisted to localStorage)
@@ -196,7 +218,14 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
       setIsResizing(false)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      try { localStorage.setItem(inline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY, String(panelWidthRef.current)) } catch { /* ignore */ }
+      try {
+        localStorage.setItem(
+          inline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY,
+          String(panelWidthRef.current),
+        )
+      } catch {
+        /* ignore */
+      }
     }
 
     window.addEventListener('pointermove', onMove)
@@ -204,13 +233,16 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
   }, [])
 
   // ---- Derived values ----
-  const statusLabel = data.status === 'working' ? 'Running' : data.status === 'paused' ? 'Paused' : 'Done'
-  const statusColor = data.status === 'working'
-    ? 'text-green-600 dark:text-green-400'
-    : data.status === 'paused'
-      ? 'text-amber-600 dark:text-amber-400'
-      : 'text-gray-500 dark:text-gray-400'
-  const totalCostUsd = data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
+  const statusLabel =
+    data.status === 'working' ? 'Running' : data.status === 'paused' ? 'Paused' : 'Done'
+  const statusColor =
+    data.status === 'working'
+      ? 'text-green-600 dark:text-green-400'
+      : data.status === 'paused'
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-gray-500 dark:text-gray-400'
+  const totalCostUsd =
+    data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
   const estimatedPrefix = data.cost?.isEstimated ? '~' : ''
 
   // ---- Render ----
@@ -285,7 +317,8 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
           <div className="flex-1" />
 
           <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-            {estimatedPrefix}{formatCostUsd(totalCostUsd)}
+            {estimatedPrefix}
+            {formatCostUsd(totalCostUsd)}
           </span>
           <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
             Turn {data.turnCount}
@@ -296,7 +329,10 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
       {/* ---------------------------------------------------------------- */}
       {/* Tab bar                                                         */}
       {/* ---------------------------------------------------------------- */}
-      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 flex-shrink-0 overflow-x-auto" role="tablist">
+      <div
+        className="flex items-center border-b border-gray-200 dark:border-gray-800 flex-shrink-0 overflow-x-auto"
+        role="tablist"
+      >
         {TABS.map((tab) => {
           const Icon = tab.icon
           return (
@@ -304,7 +340,10 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
               key={tab.id}
               role="tab"
               aria-selected={activeTab === tab.id}
-              onClick={() => { setActiveTab(tab.id); setDrillDownAgent(null) }}
+              onClick={() => {
+                setActiveTab(tab.id)
+                setDrillDownAgent(null)
+              }}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
                 activeTab === tab.id
@@ -331,24 +370,30 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
       {/* Tab content                                                     */}
       {/* ---------------------------------------------------------------- */}
       <div className="flex-1 min-h-0 overflow-hidden">
-
         {/* ---- Overview tab ---- */}
         {activeTab === 'overview' && (
           <div className="p-4 overflow-y-auto h-full space-y-3">
-
             {/* ── Quick status (lightweight metadata → inline strip, not card-worthy) ── */}
             <div className="flex items-center gap-2 text-xs">
               <span className={cn('inline-flex items-center gap-1.5 font-medium', statusColor)}>
-                <span className={cn(
-                  'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                  data.status === 'working' && 'bg-green-500 animate-pulse',
-                  data.status === 'paused' && 'bg-amber-500',
-                  data.status !== 'working' && data.status !== 'paused' && 'bg-gray-400 dark:bg-gray-500',
-                )} />
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                    data.status === 'working' && 'bg-green-500 animate-pulse',
+                    data.status === 'paused' && 'bg-amber-500',
+                    data.status !== 'working' &&
+                      data.status !== 'paused' &&
+                      'bg-gray-400 dark:bg-gray-500',
+                  )}
+                />
                 {statusLabel}
               </span>
-              <span className="text-gray-300 dark:text-gray-600 select-none" aria-hidden>·</span>
-              <span className="font-mono text-gray-600 dark:text-gray-400">{formatModel(data.model)}</span>
+              <span className="text-gray-300 dark:text-gray-600 select-none" aria-hidden>
+                ·
+              </span>
+              <span className="font-mono text-gray-600 dark:text-gray-400">
+                {formatModel(data.model)}
+              </span>
             </div>
 
             {/* ── Cost + Cache (similar density — pair at wider widths, stack at narrow) ── */}
@@ -360,10 +405,13 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
               >
                 <div className="flex items-center gap-1.5 mb-2">
                   <DollarSign className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Cost</span>
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                    Cost
+                  </span>
                 </div>
                 <div className="text-xl font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
-                  {estimatedPrefix}{formatCostUsd(totalCostUsd)}
+                  {estimatedPrefix}
+                  {formatCostUsd(totalCostUsd)}
                 </div>
                 <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
                   <span>In: ${(data.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
@@ -381,7 +429,9 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
                     <Timer className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Prompt Cache</span>
+                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                      Prompt Cache
+                    </span>
                   </div>
                   <CacheCountdownBar
                     lastCacheHitAt={data.lastCacheHitAt ?? null}
@@ -395,7 +445,9 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
               <div className="flex items-center gap-1.5 mb-2">
                 <Zap className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Context Window</span>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                  Context Window
+                </span>
               </div>
               <ContextGauge
                 contextWindowTokens={data.contextWindowTokens}
@@ -408,27 +460,31 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             </div>
 
             {/* ── Session metrics (history-only) ── */}
-            {data.historyExtras?.sessionInfo && data.historyExtras.sessionInfo.userPromptCount > 0 && (
-              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                <SessionMetricsBar
-                  prompts={data.historyExtras.sessionInfo.userPromptCount}
-                  tokens={
-                    data.historyExtras.sessionInfo.totalInputTokens != null && data.historyExtras.sessionInfo.totalOutputTokens != null
-                      ? BigInt(data.historyExtras.sessionInfo.totalInputTokens) + BigInt(data.historyExtras.sessionInfo.totalOutputTokens)
-                      : null
-                  }
-                  filesRead={data.historyExtras.sessionInfo.filesReadCount}
-                  filesEdited={data.historyExtras.sessionInfo.filesEditedCount}
-                  reeditRate={
-                    data.historyExtras.sessionInfo.filesEditedCount > 0
-                      ? data.historyExtras.sessionInfo.reeditedFilesCount / data.historyExtras.sessionInfo.filesEditedCount
-                      : null
-                  }
-                  commits={data.historyExtras.sessionInfo.commitCount}
-                  variant="vertical"
-                />
-              </div>
-            )}
+            {data.historyExtras?.sessionInfo &&
+              data.historyExtras.sessionInfo.userPromptCount > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                  <SessionMetricsBar
+                    prompts={data.historyExtras.sessionInfo.userPromptCount}
+                    tokens={
+                      data.historyExtras.sessionInfo.totalInputTokens != null &&
+                      data.historyExtras.sessionInfo.totalOutputTokens != null
+                        ? BigInt(data.historyExtras.sessionInfo.totalInputTokens) +
+                          BigInt(data.historyExtras.sessionInfo.totalOutputTokens)
+                        : null
+                    }
+                    filesRead={data.historyExtras.sessionInfo.filesReadCount}
+                    filesEdited={data.historyExtras.sessionInfo.filesEditedCount}
+                    reeditRate={
+                      data.historyExtras.sessionInfo.filesEditedCount > 0
+                        ? data.historyExtras.sessionInfo.reeditedFilesCount /
+                          data.historyExtras.sessionInfo.filesEditedCount
+                        : null
+                    }
+                    commits={data.historyExtras.sessionInfo.commitCount}
+                    variant="vertical"
+                  />
+                </div>
+              )}
 
             {/* ── Sub-agents (clickable → Sub-Agents tab) ── */}
             {hasSubAgents && (
@@ -454,7 +510,9 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
               >
                 <div className="flex items-center gap-1.5 mb-2">
                   <Clock className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Timeline</span>
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                    Timeline
+                  </span>
                 </div>
                 <TimelineView
                   subAgents={data.subAgents!}
@@ -471,8 +529,12 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             {/* ── Last user message ── */}
             {data.lastUserMessage && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">Last Prompt</span>
-                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">{cleanPreviewText(data.lastUserMessage)}</p>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                  Last Prompt
+                </span>
+                <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">
+                  {cleanPreviewText(data.lastUserMessage)}
+                </p>
               </div>
             )}
 
@@ -481,7 +543,7 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
               <FilesTouchedPanel
                 files={buildFilesTouched(
                   data.historyExtras.sessionDetail.filesRead ?? [],
-                  data.historyExtras.sessionDetail.filesEdited ?? []
+                  data.historyExtras.sessionDetail.filesEdited ?? [],
                 )}
               />
             )}
@@ -490,7 +552,6 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
             {data.historyExtras?.sessionDetail && (
               <CommitsPanel commits={data.historyExtras.sessionDetail.commits ?? []} />
             )}
-
           </div>
         )}
 
@@ -554,7 +615,9 @@ export function SessionDetailPanel({ session, panelData: panelDataProp, onClose,
               </>
             ) : (
               <div className="flex items-center justify-center h-full">
-                <p className="text-sm text-gray-500 dark:text-gray-400">No sub-agents in this session</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No sub-agents in this session
+                </p>
               </div>
             )}
           </div>

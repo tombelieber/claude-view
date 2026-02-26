@@ -1,13 +1,22 @@
-import { Terminal, Pencil, Eye, MessageSquare, GitCommit, GitBranch, FileEdit, Code2 } from 'lucide-react'
-import { cn } from '../lib/utils'
+import {
+  Code2,
+  Eye,
+  FileEdit,
+  GitBranch,
+  GitCommit,
+  MessageSquare,
+  Pencil,
+  Terminal,
+} from 'lucide-react'
+import type { SessionInfo } from '../hooks/use-projects'
 import { formatNumber } from '../lib/format-utils'
 import { computeWeight, weightBorderClass } from '../lib/session-weight'
-import type { SessionInfo } from '../hooks/use-projects'
+import { cn } from '../lib/utils'
+import { cleanPreviewText, getSessionTitle } from '../utils/get-session-title'
+import { CategoryBadge } from './CategoryBadge'
 import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
-import { CategoryBadge } from './CategoryBadge'
-import { getSessionTitle, cleanPreviewText } from '../utils/get-session-title'
-import { SessionSpinner, pickPastVerb, formatDurationCompact } from './spinner'
+import { SessionSpinner, formatDurationCompact, pickPastVerb } from './spinner'
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -24,7 +33,6 @@ interface SessionCardProps {
   isSelected?: boolean
   projectDisplayName?: string | null
 }
-
 
 /**
  * Format time for session card display.
@@ -123,10 +131,12 @@ function formatRelativeTime(timestamp: number): string {
     const dayName = date.toLocaleDateString('en-US', { weekday: 'long' })
     return `${dayName}, ${timeStr}`
   } else {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }) + `, ${timeStr}`
+    return (
+      date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }) + `, ${timeStr}`
+    )
   }
 }
 
@@ -202,8 +212,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
           : cn(
               'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
-              weightBorderClass(weightTier)
-            )
+              weightBorderClass(weightTier),
+            ),
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
@@ -231,7 +241,9 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
             <>
               <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
               <span className="text-gray-300 dark:text-gray-600">|</span>
-              <span className="font-medium text-gray-500 dark:text-gray-400">{formatDuration(durationSeconds)}</span>
+              <span className="font-medium text-gray-500 dark:text-gray-400">
+                {formatDuration(durationSeconds)}
+              </span>
             </>
           ) : (
             <span>{formatRelativeTime(Number(session.modifiedAt))}</span>
@@ -248,7 +260,8 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         {/* Last message if different from first */}
         {cleanLast && cleanLast !== cleanPreview && (
           <p className="text-[13px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
-            <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>{cleanLast}
+            <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>
+            {cleanLast}
           </p>
         )}
       </div>
@@ -272,33 +285,48 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           {(prompts > 0 || hasTokens || longestTaskSeconds > 0) && (
             <div className="flex items-center gap-3">
               {prompts > 0 && (
-                <span className="tabular-nums">{prompts} prompt{prompts !== 1 ? 's' : ''}</span>
+                <span className="tabular-nums">
+                  {prompts} prompt{prompts !== 1 ? 's' : ''}
+                </span>
               )}
               {hasTokens && (
                 <span className="tabular-nums">{formatNumber(totalTokens)} tokens</span>
               )}
               {longestTaskSeconds > 0 && (
-                <span className="tabular-nums">longest {formatDurationCompact(longestTaskSeconds)}</span>
+                <span className="tabular-nums">
+                  longest {formatDurationCompact(longestTaskSeconds)}
+                </span>
               )}
             </div>
           )}
           {/* Row 2: Output — files, re-edits, LOC */}
-          {(filesEdited > 0 || reeditedFiles > 0 || session.linesAdded > 0 || session.linesRemoved > 0) && (
+          {(filesEdited > 0 ||
+            reeditedFiles > 0 ||
+            session.linesAdded > 0 ||
+            session.linesRemoved > 0) && (
             <div className="flex items-center gap-3 mt-1">
               {filesEdited > 0 && (
-                <span className="tabular-nums">{filesEdited} file{filesEdited !== 1 ? 's' : ''}</span>
+                <span className="tabular-nums">
+                  {filesEdited} file{filesEdited !== 1 ? 's' : ''}
+                </span>
               )}
               {reeditedFiles > 0 && (
-                <span className="tabular-nums">{reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}</span>
+                <span className="tabular-nums">
+                  {reeditedFiles} re-edit{reeditedFiles !== 1 ? 's' : ''}
+                </span>
               )}
               {(session.linesAdded > 0 || session.linesRemoved > 0) && (
                 <span className="inline-flex items-center gap-1.5 tabular-nums">
                   {session.locSource === 2 && (
                     <GitCommit className="w-3 h-3 text-gray-400 dark:text-gray-500" />
                   )}
-                  <span className="text-green-600 dark:text-green-400">+{formatNumber(session.linesAdded)}</span>
+                  <span className="text-green-600 dark:text-green-400">
+                    +{formatNumber(session.linesAdded)}
+                  </span>
                   <span className="text-gray-300 dark:text-gray-600">/</span>
-                  <span className="text-red-600 dark:text-red-400">-{formatNumber(session.linesRemoved)}</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    -{formatNumber(session.linesRemoved)}
+                  </span>
                 </span>
               )}
             </div>
@@ -337,13 +365,13 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
             {topFiles.map((file, idx) => (
               <span key={idx} className="font-mono">
                 {basename(file)}
-                {idx < topFiles.length - 1 && <span className="text-gray-300 dark:text-gray-600 ml-1">·</span>}
+                {idx < topFiles.length - 1 && (
+                  <span className="text-gray-300 dark:text-gray-600 ml-1">·</span>
+                )}
               </span>
             ))}
             {remainingFiles > 0 && (
-              <span className="text-gray-400 dark:text-gray-500 ml-1">
-                +{remainingFiles} more
-              </span>
+              <span className="text-gray-400 dark:text-gray-500 ml-1">+{remainingFiles} more</span>
             )}
           </div>
         </div>
@@ -354,7 +382,11 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
         <div className="flex items-center gap-2">
           {/* AI classification badge → rule-based WorkType */}
           {session.categoryL2 ? (
-            <CategoryBadge l1={session.categoryL1} l2={session.categoryL2} l3={session.categoryL3} />
+            <CategoryBadge
+              l1={session.categoryL1}
+              l2={session.categoryL2}
+              l3={session.categoryL3}
+            />
           ) : workType ? (
             <WorkTypeBadge workType={workType} />
           ) : null}
@@ -372,10 +404,14 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded border border-gray-200 dark:border-gray-700 tabular-nums">
               <Code2 className="w-3 h-3" />
               {aiLinesAdded !== null && aiLinesAdded > 0 && (
-                <span className="text-green-600 dark:text-green-400">+{formatNumber(aiLinesAdded)}</span>
+                <span className="text-green-600 dark:text-green-400">
+                  +{formatNumber(aiLinesAdded)}
+                </span>
               )}
               {aiLinesRemoved !== null && aiLinesRemoved > 0 && (
-                <span className="text-red-600 dark:text-red-400">-{formatNumber(aiLinesRemoved)}</span>
+                <span className="text-red-600 dark:text-red-400">
+                  -{formatNumber(aiLinesRemoved)}
+                </span>
               )}
             </span>
           )}
@@ -383,7 +419,7 @@ export function SessionCard({ session, isSelected = false, projectDisplayName }:
           {/* Skills used */}
           {(session.skillsUsed?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1">
-              {session.skillsUsed?.slice(0, 2).map(skill => (
+              {session.skillsUsed?.slice(0, 2).map((skill) => (
                 <span
                   key={skill}
                   className="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded font-mono"

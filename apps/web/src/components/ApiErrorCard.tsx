@@ -1,5 +1,5 @@
+import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { AlertTriangle, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface ApiErrorCardProps {
   error: Record<string, unknown>
@@ -9,7 +9,13 @@ interface ApiErrorCardProps {
   verboseMode?: boolean
 }
 
-export function ApiErrorCard({ error, retryAttempt, maxRetries, retryInMs, verboseMode }: ApiErrorCardProps) {
+export function ApiErrorCard({
+  error,
+  retryAttempt,
+  maxRetries,
+  retryInMs,
+  verboseMode,
+}: ApiErrorCardProps) {
   const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const errorCode = error.code ?? null

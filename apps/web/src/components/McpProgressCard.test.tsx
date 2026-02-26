@@ -1,10 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { McpProgressCard } from './McpProgressCard'
 
 vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({ code, language, blockId }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>{code}</pre>
+  CompactCodeBlock: ({
+    code,
+    language,
+    blockId,
+  }: { code: string; language: string; blockId?: string }) => (
+    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+      {code}
+    </pre>
   ),
 }))
 
@@ -16,24 +22,20 @@ describe('McpProgressCard', () => {
           server="filesystem"
           method="readFile"
           params={{ path: '/tmp/test.txt' }}
-        />
+        />,
       )
 
       expect(screen.getByText(/filesystem\.readFile/)).toBeInTheDocument()
     })
 
     it('should show "(no params)" when params is undefined', () => {
-      render(
-        <McpProgressCard server="memory" method="search" />
-      )
+      render(<McpProgressCard server="memory" method="search" />)
 
       expect(screen.getByText(/\(no params\)/)).toBeInTheDocument()
     })
 
     it('should have purple left border', () => {
-      const { container } = render(
-        <McpProgressCard server="fs" method="read" />
-      )
+      const { container } = render(<McpProgressCard server="fs" method="read" />)
 
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toContain('border-l-purple')
@@ -48,7 +50,7 @@ describe('McpProgressCard', () => {
           method="readFile"
           params={{ path: '/tmp/test.txt' }}
           result={{ content: 'file contents here' }}
-        />
+        />,
       )
 
       fireEvent.click(screen.getByRole('button'))
@@ -57,13 +59,7 @@ describe('McpProgressCard', () => {
     })
 
     it('should show params in expanded view', () => {
-      render(
-        <McpProgressCard
-          server="fs"
-          method="read"
-          params={{ path: '/tmp/test.txt' }}
-        />
-      )
+      render(<McpProgressCard server="fs" method="read" params={{ path: '/tmp/test.txt' }} />)
 
       fireEvent.click(screen.getByRole('button'))
 

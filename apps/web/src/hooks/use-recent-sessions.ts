@@ -51,10 +51,7 @@ async function fetchRecentSessions(
  * - When `branch` is set it is appended as a query param to scope the results.
  * - Results are defensively sliced to at most 5 items.
  */
-export function useRecentSessions(
-  project: string | null,
-  branch: string | null,
-) {
+export function useRecentSessions(project: string | null, branch: string | null) {
   return useQuery<RecentSession[]>({
     queryKey: ['recent-sessions', project, branch],
     queryFn: () => fetchRecentSessions(project!, branch),

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { QuestionCard } from './QuestionCard'
 
 const singleQuestion = {
@@ -19,8 +19,21 @@ const singleQuestion = {
 
 const multiQuestion = {
   questions: [
-    { question: 'First question?', header: 'Q1', options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }], multiSelect: false },
-    { question: 'Second question?', header: 'Q2', options: [{ label: 'C', description: 'c' }], multiSelect: false },
+    {
+      question: 'First question?',
+      header: 'Q1',
+      options: [
+        { label: 'A', description: 'a' },
+        { label: 'B', description: 'b' },
+      ],
+      multiSelect: false,
+    },
+    {
+      question: 'Second question?',
+      header: 'Q2',
+      options: [{ label: 'C', description: 'c' }],
+      multiSelect: false,
+    },
   ],
 }
 
@@ -64,18 +77,20 @@ describe('QuestionCard', () => {
 
   it('limits displayed options to 4', () => {
     const manyOptions = {
-      questions: [{
-        question: 'Pick one?',
-        header: 'Test',
-        options: [
-          { label: 'Opt1', description: '' },
-          { label: 'Opt2', description: '' },
-          { label: 'Opt3', description: '' },
-          { label: 'Opt4', description: '' },
-          { label: 'Opt5', description: '' },
-        ],
-        multiSelect: false,
-      }],
+      questions: [
+        {
+          question: 'Pick one?',
+          header: 'Test',
+          options: [
+            { label: 'Opt1', description: '' },
+            { label: 'Opt2', description: '' },
+            { label: 'Opt3', description: '' },
+            { label: 'Opt4', description: '' },
+            { label: 'Opt5', description: '' },
+          ],
+          multiSelect: false,
+        },
+      ],
     }
     render(<QuestionCard context={manyOptions} />)
     expect(screen.getByText('Opt1')).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LiveSession } from '../components/live/use-live-sessions'
 
 // ---------------------------------------------------------------------------
@@ -64,11 +64,7 @@ function saveSettings(settings: NotificationSoundSettings): void {
 // Sound engine — Web Audio API presets
 // ---------------------------------------------------------------------------
 
-function playPreset(
-  ctx: AudioContext,
-  preset: SoundPreset,
-  volume: number,
-): void {
+function playPreset(ctx: AudioContext, preset: SoundPreset, volume: number): void {
   const now = ctx.currentTime
 
   switch (preset) {
@@ -133,11 +129,8 @@ function playPreset(
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useNotificationSound(
-  sessions: LiveSession[],
-): UseNotificationSoundResult {
-  const [settings, setSettings] =
-    useState<NotificationSoundSettings>(loadSettings)
+export function useNotificationSound(sessions: LiveSession[]): UseNotificationSoundResult {
+  const [settings, setSettings] = useState<NotificationSoundSettings>(loadSettings)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
 
   // Lazy AudioContext — created on first play attempt
@@ -160,15 +153,12 @@ export function useNotificationSound(
     return audioCtxRef.current
   }, [])
 
-  const ensureResumed = useCallback(
-    async (ctx: AudioContext): Promise<void> => {
-      if (ctx.state === 'suspended') {
-        await ctx.resume()
-      }
-      setAudioUnlocked(true)
-    },
-    [],
-  )
+  const ensureResumed = useCallback(async (ctx: AudioContext): Promise<void> => {
+    if (ctx.state === 'suspended') {
+      await ctx.resume()
+    }
+    setAudioUnlocked(true)
+  }, [])
 
   // -----------------------------------------------------------------------
   // Play sound with debounce
@@ -193,16 +183,13 @@ export function useNotificationSound(
   // Settings persistence
   // -----------------------------------------------------------------------
 
-  const updateSettings = useCallback(
-    (patch: Partial<NotificationSoundSettings>) => {
-      setSettings((prev) => {
-        const next = { ...prev, ...patch }
-        saveSettings(next)
-        return next
-      })
-    },
-    [],
-  )
+  const updateSettings = useCallback((patch: Partial<NotificationSoundSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch }
+      saveSettings(next)
+      return next
+    })
+  }, [])
 
   // -----------------------------------------------------------------------
   // Preview — plays the current (or newly-set) preset, ignoring debounce

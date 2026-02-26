@@ -29,12 +29,20 @@ export function SessionResultCard({
   return (
     <div className="py-0.5 border-l-2 border-l-green-400 pl-1 my-1">
       <div className="flex items-center gap-1.5">
-        <Flag className={`w-3 h-3 flex-shrink-0 ${isError ? 'text-red-500' : 'text-green-500'}`} aria-hidden="true" />
-        <span className={`text-[10px] font-mono ${isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+        <Flag
+          className={`w-3 h-3 flex-shrink-0 ${isError ? 'text-red-500' : 'text-green-500'}`}
+          aria-hidden="true"
+        />
+        <span
+          className={`text-[10px] font-mono ${isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}
+        >
           Session {isError ? 'error' : 'completed'}: {parts.join(' | ')}
         </span>
         {durationApiMs !== undefined && durationMs !== undefined && (
-          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600" title={`API: ${formatDuration(durationApiMs)} of ${formatDuration(durationMs)} total`}>
+          <span
+            className="text-[9px] font-mono text-gray-400 dark:text-gray-600"
+            title={`API: ${formatDuration(durationApiMs)} of ${formatDuration(durationMs)} total`}
+          >
             (API {formatDuration(durationApiMs)})
           </span>
         )}

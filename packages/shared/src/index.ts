@@ -1,2 +1,2 @@
-export * from './types/relay';
-export * from './theme';
+export * from './types/relay'
+export * from './theme'

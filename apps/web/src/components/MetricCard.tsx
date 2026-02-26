@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown } from 'lucide-react'
+import { TrendingDown, TrendingUp } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 export interface MetricCardProps {
@@ -41,26 +41,31 @@ export function MetricCard({ label, value, trend, className }: MetricCardProps) 
     <div
       className={cn(
         'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4',
-        className
+        className,
       )}
       role="group"
       aria-label={`${label}: ${value}${trendText ? `, ${trendText}` : ''}`}
     >
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider font-metric-label mb-2" aria-hidden="true">
+      <p
+        className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider font-metric-label mb-2"
+        aria-hidden="true"
+      >
         {label}
       </p>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-2xl font-semibold text-blue-900 dark:text-blue-300 font-metric-value tabular-nums" aria-hidden="true">
+        <span
+          className="text-2xl font-semibold text-blue-900 dark:text-blue-300 font-metric-value tabular-nums"
+          aria-hidden="true"
+        >
           {value}
         </span>
         {hasTrend && (
-          <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400" aria-hidden="true">
-            {isPositive && (
-              <TrendingUp className="w-4 h-4" />
-            )}
-            {isNegative && (
-              <TrendingDown className="w-4 h-4" />
-            )}
+          <div
+            className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400"
+            aria-hidden="true"
+          >
+            {isPositive && <TrendingUp className="w-4 h-4" />}
+            {isNegative && <TrendingDown className="w-4 h-4" />}
             <span className="font-metric-value tabular-nums">
               {trend.deltaPercent !== null
                 ? `${trend.deltaPercent > 0 ? '+' : ''}${trend.deltaPercent.toFixed(1)}%`

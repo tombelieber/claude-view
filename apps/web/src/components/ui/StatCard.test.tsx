@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { StatCard } from './StatCard'
 
 describe('StatCard', () => {
@@ -42,9 +42,7 @@ describe('StatCard', () => {
     })
 
     it('should have aria-hidden on visual elements', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const ariaHiddenElements = container.querySelectorAll('[aria-hidden="true"]')
       expect(ariaHiddenElements.length).toBe(2) // label and value
@@ -54,52 +52,42 @@ describe('StatCard', () => {
   describe('styling', () => {
     it('should apply custom className', () => {
       const { container } = render(
-        <StatCard label="Sessions" value="6,742" className="custom-class" />
+        <StatCard label="Sessions" value="6,742" className="custom-class" />,
       )
 
       expect(container.firstChild).toHaveClass('custom-class')
     })
 
     it('should have centered text', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const card = container.firstChild as HTMLElement
       expect(card.className).toMatch(/text-center/)
     })
 
     it('should have rounded corners', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const card = container.firstChild as HTMLElement
       expect(card.className).toMatch(/rounded-lg/)
     })
 
     it('should have gray background', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const card = container.firstChild as HTMLElement
       expect(card.className).toMatch(/bg-gray-50/)
     })
 
     it('should have tabular-nums on value', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const valueElement = container.querySelector('.tabular-nums')
       expect(valueElement).toBeInTheDocument()
     })
 
     it('should have uppercase tracking-wider on label', () => {
-      const { container } = render(
-        <StatCard label="Sessions" value="6,742" />
-      )
+      const { container } = render(<StatCard label="Sessions" value="6,742" />)
 
       const labelElement = container.querySelector('.uppercase')
       expect(labelElement).toBeInTheDocument()
@@ -124,12 +112,7 @@ describe('StatCard', () => {
     })
 
     it('should handle very long labels', () => {
-      render(
-        <StatCard
-          label="Very Long Label That Might Need Wrapping"
-          value="123"
-        />
-      )
+      render(<StatCard label="Very Long Label That Might Need Wrapping" value="123" />)
 
       expect(screen.getByText('Very Long Label That Might Need Wrapping')).toBeInTheDocument()
     })

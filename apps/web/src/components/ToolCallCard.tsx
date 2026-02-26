@@ -1,5 +1,5 @@
+import { Check, ChevronDown, ChevronRight, Copy, Wrench } from 'lucide-react'
 import { useState } from 'react'
-import { Wrench, ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 interface ToolCallCardProps {
@@ -31,13 +31,7 @@ function getInputSummary(input: Record<string, unknown>): string {
   return ''
 }
 
-export function ToolCallCard({
-  name,
-  input,
-  description,
-  parameters,
-  icon,
-}: ToolCallCardProps) {
+export function ToolCallCard({ name, input, description, parameters, icon }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -63,7 +57,7 @@ export function ToolCallCard({
         className={cn(
           'w-full flex flex-col gap-1 px-3 py-2 text-left',
           'hover:bg-purple-50 transition-colors',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-1'
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-1',
         )}
       >
         <div className="flex items-center gap-2 w-full">
@@ -76,9 +70,7 @@ export function ToolCallCard({
 
           {/* Tool name */}
           {name && (
-            <span className="text-sm font-semibold text-purple-700 flex-shrink-0">
-              {name}
-            </span>
+            <span className="text-sm font-semibold text-purple-700 flex-shrink-0">{name}</span>
           )}
 
           {/* Input summary - truncated */}
@@ -101,9 +93,7 @@ export function ToolCallCard({
 
         {/* Description - always visible as subtitle */}
         {description && (
-          <span className="text-xs text-purple-600 break-words pl-6">
-            {description}
-          </span>
+          <span className="text-xs text-purple-600 break-words pl-6">{description}</span>
         )}
       </button>
 
@@ -132,7 +122,7 @@ export function ToolCallCard({
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-xs rounded',
                 'text-purple-600 hover:bg-purple-200 transition-colors',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400'
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400',
               )}
             >
               {copied ? (

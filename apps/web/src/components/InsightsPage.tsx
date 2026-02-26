@@ -1,19 +1,19 @@
+import { AlertTriangle, BarChart3, Lightbulb, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
-import { Lightbulb, AlertTriangle, RefreshCw, BarChart3 } from 'lucide-react'
-import { useInsights, type TimeRange, type TabId } from '../hooks/use-insights'
-import { HeroInsight } from './insights/HeroInsight'
-import { QuickStatsRow } from './insights/QuickStatsRow'
-import { PatternsTabs } from './insights/PatternsTabs'
-import { PatternsTab } from './insights/PatternsTab'
-import { CategoriesTab } from './insights/CategoriesTab'
-import { TrendsTab } from './insights/TrendsTab'
-import { BenchmarksTab } from './insights/BenchmarksTab'
-import { QualityTab } from './insights/QualityTab'
-import { TimeRangeFilter } from './insights/TimeRangeFilter'
-import { InsightsSkeleton } from './insights/InsightsSkeleton'
-import { ExperimentalBanner } from './ExperimentalBanner'
+import { Link, useSearchParams } from 'react-router-dom'
+import { type TabId, type TimeRange, useInsights } from '../hooks/use-insights'
 import { ExperimentalBadge } from './ExperimentalBadge'
+import { ExperimentalBanner } from './ExperimentalBanner'
+import { BenchmarksTab } from './insights/BenchmarksTab'
+import { CategoriesTab } from './insights/CategoriesTab'
+import { HeroInsight } from './insights/HeroInsight'
+import { InsightsSkeleton } from './insights/InsightsSkeleton'
+import { PatternsTab } from './insights/PatternsTab'
+import { PatternsTabs } from './insights/PatternsTabs'
+import { QualityTab } from './insights/QualityTab'
+import { QuickStatsRow } from './insights/QuickStatsRow'
+import { TimeRangeFilter } from './insights/TimeRangeFilter'
+import { TrendsTab } from './insights/TrendsTab'
 
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
 const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks', 'quality']
@@ -110,7 +110,8 @@ export function InsightsPage() {
               We need at least {data.meta.minSessionsRequired} sessions to detect patterns.
             </p>
             <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
-              You have {data.meta.totalSessions} session{data.meta.totalSessions !== 1 ? 's' : ''} indexed.
+              You have {data.meta.totalSessions} session{data.meta.totalSessions !== 1 ? 's' : ''}{' '}
+              indexed.
             </p>
             <Link
               to="/history"
@@ -145,31 +146,18 @@ export function InsightsPage() {
           />
 
           {/* Tab Navigation */}
-          <PatternsTabs
-            activeTab={activeTab}
-            onTabChange={handleTabChange}
-          />
+          <PatternsTabs activeTab={activeTab} onTabChange={handleTabChange} />
 
           {/* Tab Content */}
-          {activeTab === 'patterns' && data && (
-            <PatternsTab groups={data.patternGroups} />
-          )}
+          {activeTab === 'patterns' && data && <PatternsTab groups={data.patternGroups} />}
 
-          {activeTab === 'categories' && (
-            <CategoriesTab timeRange={timeRange} />
-          )}
+          {activeTab === 'categories' && <CategoriesTab timeRange={timeRange} />}
 
-          {activeTab === 'trends' && (
-            <TrendsTab timeRange={timeRange} />
-          )}
+          {activeTab === 'trends' && <TrendsTab timeRange={timeRange} />}
 
-          {activeTab === 'benchmarks' && (
-            <BenchmarksTab timeRange={timeRange} />
-          )}
+          {activeTab === 'benchmarks' && <BenchmarksTab timeRange={timeRange} />}
 
-          {activeTab === 'quality' && (
-            <QualityTab />
-          )}
+          {activeTab === 'quality' && <QualityTab />}
         </div>
       </div>
     </div>
@@ -191,9 +179,7 @@ function PageHeader({
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-2">
         <Lightbulb className="w-5 h-5 text-amber-500" />
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Insights
-        </h1>
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Insights</h1>
         <ExperimentalBadge />
       </div>
       <TimeRangeFilter value={timeRange} onChange={onTimeRangeChange} />

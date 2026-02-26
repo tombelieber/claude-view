@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../../lib/utils'
 import type { HeatmapCell } from '../../types/generated/HeatmapCell'
@@ -26,23 +26,14 @@ interface TooltipState {
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 const HOURS = [6, 9, 12, 15, 18, 21, 0] as const
-const HOUR_LABELS = [
-  '6 AM',
-  '9 AM',
-  '12 PM',
-  '3 PM',
-  '6 PM',
-  '9 PM',
-  '12 AM',
-] as const
+const HOUR_LABELS = ['6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM', '12 AM'] as const
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
 function getIntensityClasses(sessions: number, max: number): string {
-  if (sessions === 0 || max === 0)
-    return 'bg-gray-100 dark:bg-gray-800'
+  if (sessions === 0 || max === 0) return 'bg-gray-100 dark:bg-gray-800'
   const ratio = sessions / max
   if (ratio < 0.25) return 'bg-blue-100 dark:bg-blue-900/50'
   if (ratio < 0.5) return 'bg-blue-300 dark:bg-blue-800'
@@ -75,7 +66,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
     (day: number, hour: number): HeatmapCell | undefined => {
       return grid.get(`${day}-${hour}`)
     },
-    [grid]
+    [grid],
   )
 
   const handleCellClick = useCallback(
@@ -83,7 +74,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
       const dayName = DAYS[day].toLowerCase()
       navigate(`/sessions?day=${dayName}&hour=${hour}`)
     },
-    [navigate]
+    [navigate],
   )
 
   const handleMouseEnter = useCallback(
@@ -97,7 +88,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
         y: rect.top,
       })
     },
-    []
+    [],
   )
 
   const handleMouseLeave = useCallback(() => {
@@ -124,11 +115,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
       </h3>
 
       <div className="overflow-x-auto">
-        <table
-          className="w-full"
-          role="grid"
-          aria-label="Activity heatmap by day and hour"
-        >
+        <table className="w-full" role="grid" aria-label="Activity heatmap by day and hour">
           <thead>
             <tr>
               <th className="w-16" />
@@ -169,7 +156,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
                                   avgReeditRate: 0,
                                 },
                                 dayIdx,
-                                hourIdx
+                                hourIdx,
                               )
                         }
                         onMouseLeave={handleMouseLeave}
@@ -177,7 +164,7 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
                           'w-full aspect-square min-w-[28px] min-h-[28px] rounded-sm cursor-pointer transition-all',
                           'hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 dark:hover:ring-offset-gray-900',
                           'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900',
-                          getIntensityClasses(sessions, maxSessions)
+                          getIntensityClasses(sessions, maxSessions),
                         )}
                         aria-label={`${DAYS[dayIdx]} ${HOUR_LABELS[hourIdx]}: ${sessions} sessions, ${(reeditRate * 100).toFixed(0)}% re-edit rate`}
                       />
@@ -202,17 +189,14 @@ export function ActivityHeatmapGrid({ data, insight }: ActivityHeatmapGridProps)
         >
           <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg text-sm">
             <div className="font-medium">
-              {DAYS[tooltip.dayIdx]},{' '}
-              {HOUR_LABELS[tooltip.hourIdx]} -{' '}
+              {DAYS[tooltip.dayIdx]}, {HOUR_LABELS[tooltip.hourIdx]} -{' '}
               {HOUR_LABELS[tooltip.hourIdx + 1] ?? '6 AM'}
             </div>
             <div>
               {tooltip.cell.sessions} session
               {tooltip.cell.sessions !== 1 ? 's' : ''}
             </div>
-            <div>
-              {(tooltip.cell.avgReeditRate * 100).toFixed(0)}% avg re-edit rate
-            </div>
+            <div>{(tooltip.cell.avgReeditRate * 100).toFixed(0)}% avg re-edit rate</div>
             <div className="text-gray-400 text-xs mt-1">Click to filter</div>
             {/* Arrow */}
             <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-gray-900" />

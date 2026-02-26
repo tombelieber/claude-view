@@ -1,14 +1,14 @@
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { RefreshCw, AlertTriangle } from 'lucide-react'
-import {
-  useTrendsData,
-  type TrendsMetric,
-  type TrendsGranularity,
-} from '../../hooks/use-trends-data'
 import type { TimeRange } from '../../hooks/use-insights'
-import { TrendsChart } from './TrendsChart'
-import { CategoryEvolutionChart } from './CategoryEvolutionChart'
+import {
+  type TrendsGranularity,
+  type TrendsMetric,
+  useTrendsData,
+} from '../../hooks/use-trends-data'
 import { ActivityHeatmapGrid } from './ActivityHeatmapGrid'
+import { CategoryEvolutionChart } from './CategoryEvolutionChart'
+import { TrendsChart } from './TrendsChart'
 
 // ============================================================================
 // Types
@@ -41,9 +41,7 @@ function mapTimeRange(timeRange: TimeRange): '3mo' | '6mo' | '1yr' | 'all' {
 /**
  * Pick a default granularity based on time range.
  */
-function defaultGranularity(
-  timeRange: TimeRange
-): TrendsGranularity {
+function defaultGranularity(timeRange: TimeRange): TrendsGranularity {
   switch (timeRange) {
     case '7d':
       return 'day'
@@ -97,9 +95,7 @@ function TrendsSkeleton() {
 
 export function TrendsTab({ timeRange }: TrendsTabProps) {
   const [metric, setMetric] = useState<TrendsMetric>('reedit_rate')
-  const [granularity, setGranularity] = useState<TrendsGranularity>(
-    defaultGranularity(timeRange)
-  )
+  const [granularity, setGranularity] = useState<TrendsGranularity>(defaultGranularity(timeRange))
 
   const apiRange = mapTimeRange(timeRange)
 
@@ -159,10 +155,7 @@ export function TrendsTab({ timeRange }: TrendsTabProps) {
       />
 
       {/* 7.4 Activity Heatmap */}
-      <ActivityHeatmapGrid
-        data={data.activityHeatmap}
-        insight={data.heatmapInsight}
-      />
+      <ActivityHeatmapGrid data={data.activityHeatmap} insight={data.heatmapInsight} />
 
       {/* Summary footer */}
       <div className="text-center text-xs text-gray-400 dark:text-gray-500 pb-2">

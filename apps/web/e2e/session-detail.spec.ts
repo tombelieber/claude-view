@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Session Detail', () => {
   test('shows session detail with conversation', async ({ page }) => {
@@ -40,7 +40,7 @@ test.describe('Session Detail', () => {
 
     // Intercept session API to delay response
     await page.route('**/api/session/**', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 500))
       await route.continue()
     })
 

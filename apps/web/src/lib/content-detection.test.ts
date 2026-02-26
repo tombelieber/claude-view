@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  tryParseJson,
-  isJsonContent,
-  isDiffContent,
-  isCodeLikeContent,
-  stripLineNumbers,
   detectCodeLanguage,
+  isCodeLikeContent,
+  isDiffContent,
+  isJsonContent,
   shortenToolName,
+  stripLineNumbers,
   toolChipColor,
+  tryParseJson,
 } from './content-detection'
 
 describe('tryParseJson', () => {
@@ -79,7 +79,9 @@ describe('isDiffContent', () => {
   })
 
   it('rejects normal text', () => {
-    expect(isDiffContent('This is just normal text.\nNothing special here.\nAnother line.')).toBe(false)
+    expect(isDiffContent('This is just normal text.\nNothing special here.\nAnother line.')).toBe(
+      false,
+    )
   })
 
   it('rejects text with too few lines', () => {
@@ -99,11 +101,7 @@ describe('isCodeLikeContent', () => {
   })
 
   it('detects tab-separated line numbers', () => {
-    const content = [
-      '1\timport foo',
-      '2\timport bar',
-      '3\tconst x = 1',
-    ].join('\n')
+    const content = ['1\timport foo', '2\timport bar', '3\tconst x = 1'].join('\n')
     expect(isCodeLikeContent(content)).toBe(true)
   })
 
@@ -145,7 +143,9 @@ describe('detectCodeLanguage', () => {
   })
 
   it('detects TypeScript code', () => {
-    expect(detectCodeLanguage('import { foo } from "bar"\nexport const x: string = "hello"')).toBe('typescript')
+    expect(detectCodeLanguage('import { foo } from "bar"\nexport const x: string = "hello"')).toBe(
+      'typescript',
+    )
   })
 
   it('returns text for unrecognized content', () => {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Accessibility', () => {
   test('skip to content link works', async ({ page }) => {
@@ -7,7 +7,7 @@ test.describe('Accessibility', () => {
 
     // Blur any focused element and reset focus to the document body
     await page.evaluate(() => {
-      (document.activeElement as HTMLElement)?.blur()
+      ;(document.activeElement as HTMLElement)?.blur()
       document.body.focus()
     })
 
@@ -17,7 +17,7 @@ test.describe('Accessibility', () => {
     // The skip link should now be focused. In some cases, another element
     // may receive focus first, so press Tab again if needed.
     const skipLink = page.locator('a[href="#main"]')
-    const isFocused = await skipLink.evaluate(el => document.activeElement === el)
+    const isFocused = await skipLink.evaluate((el) => document.activeElement === el)
     if (!isFocused) {
       // If another element got focus first, try one more Tab
       await page.keyboard.press('Tab')
@@ -85,7 +85,7 @@ test.describe('Accessibility', () => {
     // Intercept the dashboard stats API to slow down loading
     // The dashboard fetches from /api/stats/dashboard, not /api/projects
     await page.route('**/api/stats/dashboard**', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
       await route.continue()
     })
 
@@ -130,7 +130,11 @@ test.describe('Accessibility', () => {
       await page.waitForLoadState('domcontentloaded')
 
       // Verify page is never completely blank - either content or loading state is shown
-      const hasContent = await page.locator('[role="status"], main, h1, article, footer').first().isVisible({ timeout: 5000 }).catch(() => false)
+      const hasContent = await page
+        .locator('[role="status"], main, h1, article, footer')
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false)
       expect(hasContent).toBeTruthy()
     }
   })

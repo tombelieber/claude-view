@@ -1,5 +1,14 @@
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FolderSearch,
+  Pencil,
+  Search,
+  Terminal,
+  Wrench,
+} from 'lucide-react'
 import { useState } from 'react'
-import { FileText, Pencil, Wrench, Terminal, Search, FolderSearch, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ToolCall } from '../hooks/use-session'
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -43,7 +52,11 @@ export function ToolBadge({ toolCalls }: ToolBadgeProps) {
         aria-label={`Tool calls: ${totalCount} total`}
       >
         <span className="mr-2 inline-flex" aria-hidden="true">
-          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          {isExpanded ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
         </span>
         <span className="inline-flex items-center gap-1.5">
           {aggregated.map((tc) => (
@@ -53,7 +66,9 @@ export function ToolBadge({ toolCalls }: ToolBadgeProps) {
             </span>
           ))}
         </span>
-        <span className="text-gray-400 ml-2">({totalCount} {totalCount === 1 ? 'call' : 'calls'})</span>
+        <span className="text-gray-400 ml-2">
+          ({totalCount} {totalCount === 1 ? 'call' : 'calls'})
+        </span>
       </button>
 
       {isExpanded && (

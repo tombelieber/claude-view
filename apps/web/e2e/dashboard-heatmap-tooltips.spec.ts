@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
   /**
@@ -18,7 +18,9 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 }).catch(() => null)
 
     // Wait for sidebar tree to populate with project treeitems
-    const projectItem = page.locator('[role="tree"][aria-label="Projects"] [role="treeitem"]').first()
+    const projectItem = page
+      .locator('[role="tree"][aria-label="Projects"] [role="treeitem"]')
+      .first()
     const hasProject = await projectItem.isVisible({ timeout: 10000 }).catch(() => false)
     if (!hasProject) {
       // Projects may not be indexed yet; will be caught by individual test skip logic
@@ -31,18 +33,29 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
 
     // Wait for the project page to finish loading (skeleton disappears)
     // The ActivityCalendar only renders when sessions are loaded and non-empty
-    await page.waitForSelector('[role="grid"][aria-label="Activity calendar showing sessions per day"]', { timeout: 60000 }).catch(() => {
-      // Grid may not appear if the project has no sessions or indexing hasn't completed
-    })
+    await page
+      .waitForSelector('[role="grid"][aria-label="Activity calendar showing sessions per day"]', {
+        timeout: 60000,
+      })
+      .catch(() => {
+        // Grid may not appear if the project has no sessions or indexing hasn't completed
+      })
   }
 
-  test('TC-2B-01: tooltip appears on hover with date, session count, and click hint', async ({ page }) => {
+  test('TC-2B-01: tooltip appears on hover with date, session count, and click hint', async ({
+    page,
+  }) => {
     await navigateToProject(page)
 
-    const grid = page.locator('[role="grid"][aria-label="Activity calendar showing sessions per day"]')
+    const grid = page.locator(
+      '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+    )
     const gridVisible = await grid.isVisible().catch(() => false)
     if (!gridVisible) {
-      test.skip(true, 'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)')
+      test.skip(
+        true,
+        'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)',
+      )
       return
     }
 
@@ -105,10 +118,15 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
   test('TC-2B-03: keyboard navigation with arrow keys (ARIA grid pattern)', async ({ page }) => {
     await navigateToProject(page)
 
-    const grid = page.locator('[role="grid"][aria-label="Activity calendar showing sessions per day"]')
+    const grid = page.locator(
+      '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+    )
     const gridVisible = await grid.isVisible().catch(() => false)
     if (!gridVisible) {
-      test.skip(true, 'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)')
+      test.skip(
+        true,
+        'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)',
+      )
       return
     }
 
@@ -126,7 +144,9 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     // Helper: get aria-label of the cell with tabindex="0" (roving tabindex active cell)
     async function getActiveCellLabel(): Promise<string | null> {
       return page.evaluate(() => {
-        const grid = document.querySelector('[role="grid"][aria-label="Activity calendar showing sessions per day"]')
+        const grid = document.querySelector(
+          '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+        )
         const active = grid?.querySelector('[role="gridcell"][aria-label][tabindex="0"]')
         return active?.getAttribute('aria-label') || null
       })
@@ -184,10 +204,15 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     await navigateToProject(page)
 
     // Verify the grid container has role="grid" and proper aria-label
-    const grid = page.locator('[role="grid"][aria-label="Activity calendar showing sessions per day"]')
+    const grid = page.locator(
+      '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+    )
     const gridVisible = await grid.isVisible().catch(() => false)
     if (!gridVisible) {
-      test.skip(true, 'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)')
+      test.skip(
+        true,
+        'ActivityCalendar grid not rendered (project may have no sessions or indexing incomplete)',
+      )
       return
     }
 
@@ -248,18 +273,27 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
 
     if (zeroCount === 0) {
       // Try the project page ActivityCalendar instead
-      const projectItem = page.locator('[role="tree"][aria-label="Projects"] [role="treeitem"]').first()
+      const projectItem = page
+        .locator('[role="tree"][aria-label="Projects"] [role="treeitem"]')
+        .first()
       const hasProject = await projectItem.isVisible({ timeout: 5000 }).catch(() => false)
       if (hasProject) {
         await projectItem.click()
         await page.waitForLoadState('domcontentloaded')
-        const gridAppeared = await page.waitForSelector('[role="grid"][aria-label="Activity calendar showing sessions per day"]', { timeout: 60000 }).catch(() => null)
+        const gridAppeared = await page
+          .waitForSelector(
+            '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+            { timeout: 60000 },
+          )
+          .catch(() => null)
         if (!gridAppeared) {
           test.skip(true, 'ActivityCalendar grid not rendered on project page')
           return
         }
 
-        const grid = page.locator('[role="grid"][aria-label="Activity calendar showing sessions per day"]')
+        const grid = page.locator(
+          '[role="grid"][aria-label="Activity calendar showing sessions per day"]',
+        )
         const gridCells = grid.locator('[role="gridcell"]')
         const gridCellCount = await gridCells.count()
         let zeroCellFound = false
@@ -301,7 +335,10 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     const calendarContainer = page.locator('.activity-calendar')
     const calendarVisible = await calendarContainer.isVisible().catch(() => false)
     if (!calendarVisible) {
-      test.skip(true, 'ActivityCalendar not rendered (project may have no sessions or indexing incomplete)')
+      test.skip(
+        true,
+        'ActivityCalendar not rendered (project may have no sessions or indexing incomplete)',
+      )
       return
     }
 
@@ -314,7 +351,9 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     await expect(moreLabel).toBeVisible()
 
     // Verify the legend has the color scale image with proper aria-label
-    const colorScale = calendarContainer.locator('[role="img"][aria-label="Activity intensity scale from low to high"]')
+    const colorScale = calendarContainer.locator(
+      '[role="img"][aria-label="Activity intensity scale from low to high"]',
+    )
     await expect(colorScale).toBeVisible()
 
     // Verify exactly 5 color swatch divs inside the legend scale

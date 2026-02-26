@@ -1,28 +1,39 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
-import { useProjectSummaries } from './hooks/use-projects'
-import { useAppStore } from './store/app-store'
-import { useTheme } from './hooks/use-theme'
-import { useIndexingProgress } from './hooks/use-indexing-progress'
-import { useLiveSessions } from './components/live/use-live-sessions'
-import { useNotificationSound } from './hooks/use-notification-sound'
+import { AuthBanner } from './components/AuthBanner'
+import { ColdStartOverlay } from './components/ColdStartOverlay'
+import { CommandPalette } from './components/CommandPalette'
 import { Header } from './components/Header'
+import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
+import { PatternAlert } from './components/PatternAlert'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
-import { CommandPalette } from './components/CommandPalette'
-import { LiveMonitorSkeleton, ErrorState } from './components/LoadingStates'
-import { ColdStartOverlay } from './components/ColdStartOverlay'
-import { AuthBanner } from './components/AuthBanner'
-import { PatternAlert } from './components/PatternAlert'
+import { useLiveSessions } from './components/live/use-live-sessions'
+import { useIndexingProgress } from './hooks/use-indexing-progress'
+import { useNotificationSound } from './hooks/use-notification-sound'
+import { useProjectSummaries } from './hooks/use-projects'
+import { useTheme } from './hooks/use-theme'
+import { useAppStore } from './store/app-store'
 import { useLiveCommandStore } from './store/live-command-context'
 
 export default function App() {
   const { data: summaries, isLoading, error, refetch } = useProjectSummaries()
-  const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, sidebarCollapsed, toggleSidebar } = useAppStore()
+  const {
+    isCommandPaletteOpen,
+    openCommandPalette,
+    closeCommandPalette,
+    sidebarCollapsed,
+    toggleSidebar,
+  } = useAppStore()
   useTheme() // Apply dark class to <html>
   const indexingProgress = useIndexingProgress()
   const liveSessions = useLiveSessions()
-  const { settings: soundSettings, updateSettings: updateSoundSettings, previewSound, audioUnlocked } = useNotificationSound(liveSessions.sessions)
+  const {
+    settings: soundSettings,
+    updateSettings: updateSoundSettings,
+    previewSound,
+    audioUnlocked,
+  } = useNotificationSound(liveSessions.sessions)
   const liveContext = useLiveCommandStore((s) => s.context)
 
   // Global keyboard shortcut: Cmd+K
@@ -44,7 +55,12 @@ export default function App() {
   // Loading state - show live monitor skeleton (home page is mission control)
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950" role="status" aria-busy="true" aria-label="Loading application">
+      <div
+        className="min-h-screen bg-gray-50 dark:bg-gray-950"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading application"
+      >
         <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 animate-pulse" />
         <LiveMonitorSkeleton />
       </div>
@@ -55,17 +71,16 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <ErrorState
-          message={error.message}
-          onRetry={() => refetch()}
-        />
+        <ErrorState message={error.message} onRetry={() => refetch()} />
       </div>
     )
   }
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
-      <a href="#main" className="skip-to-content">Skip to content</a>
+      <a href="#main" className="skip-to-content">
+        Skip to content
+      </a>
       <Header
         soundSettings={soundSettings}
         onSoundSettingsChange={updateSoundSettings}

@@ -14,7 +14,11 @@ export type { TimeRangeParams } from '../types/time-range'
  * - tokensByModel: Token breakdown by AI model
  * - tokensByProject: Top 5 projects by token usage + "Others"
  */
-async function fetchAIGenerationStats(params?: TimeRangeParams, project?: string, branch?: string): Promise<AIGenerationStats> {
+async function fetchAIGenerationStats(
+  params?: TimeRangeParams,
+  project?: string,
+  branch?: string,
+): Promise<AIGenerationStats> {
   let url = '/api/stats/ai-generation'
   const searchParams = new URLSearchParams()
 
@@ -55,7 +59,11 @@ async function fetchAIGenerationStats(params?: TimeRangeParams, project?: string
  * - tokensByModel (breakdown by model)
  * - tokensByProject (top 5 + "Others")
  */
-export function useAIGenerationStats(timeRange?: TimeRangeParams | null, project?: string, branch?: string) {
+export function useAIGenerationStats(
+  timeRange?: TimeRangeParams | null,
+  project?: string,
+  branch?: string,
+) {
   return useQuery({
     queryKey: ['ai-generation-stats', timeRange?.from, timeRange?.to, project, branch],
     queryFn: () => fetchAIGenerationStats(timeRange ?? undefined, project, branch),

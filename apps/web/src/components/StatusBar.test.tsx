@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StatusBar } from './StatusBar'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectSummary } from '../hooks/use-projects'
+import { StatusBar } from './StatusBar'
 
 // Mock sonner
 const mockToastSuccess = vi.fn()
@@ -24,7 +24,7 @@ vi.mock('sonner', () => ({
 const mockUseStatus = vi.fn()
 vi.mock('../hooks/use-status', () => ({
   useStatus: () => mockUseStatus(),
-  formatRelativeTime: (ts: bigint | null) => ts ? '5 minutes ago' : null,
+  formatRelativeTime: (ts: bigint | null) => (ts ? '5 minutes ago' : null),
   useTick: () => 0,
 }))
 
@@ -55,11 +55,7 @@ const createWrapper = () => {
   })
 
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    )
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
 
@@ -238,13 +234,16 @@ describe('StatusBar', () => {
       render(<StatusBar projects={mockProjects} />, { wrapper: createWrapper() })
 
       await waitFor(() => {
-        expect(mockToastError).toHaveBeenCalledWith('Sync failed', expect.objectContaining({
-          description: 'Network error',
-          duration: 6000,
-          action: expect.objectContaining({
-            label: 'Retry',
+        expect(mockToastError).toHaveBeenCalledWith(
+          'Sync failed',
+          expect.objectContaining({
+            description: 'Network error',
+            duration: 6000,
+            action: expect.objectContaining({
+              label: 'Retry',
+            }),
           }),
-        }))
+        )
       })
     })
 
@@ -260,7 +259,9 @@ describe('StatusBar', () => {
         errorMessage: 'Network error',
       })
 
-      const { rerender } = render(<StatusBar projects={mockProjects} />, { wrapper: createWrapper() })
+      const { rerender } = render(<StatusBar projects={mockProjects} />, {
+        wrapper: createWrapper(),
+      })
 
       await waitFor(() => {
         expect(mockToastError).toHaveBeenCalledTimes(1)
@@ -312,10 +313,13 @@ describe('StatusBar', () => {
       render(<StatusBar projects={mockProjects} />, { wrapper: createWrapper() })
 
       await waitFor(() => {
-        expect(mockToastInfo).toHaveBeenCalledWith('Sync already in progress', expect.objectContaining({
-          description: 'Please wait for the current sync to complete.',
-          duration: 3000,
-        }))
+        expect(mockToastInfo).toHaveBeenCalledWith(
+          'Sync already in progress',
+          expect.objectContaining({
+            description: 'Please wait for the current sync to complete.',
+            duration: 3000,
+          }),
+        )
       })
     })
   })

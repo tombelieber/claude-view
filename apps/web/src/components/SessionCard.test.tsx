@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { createElement } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { SessionCard } from './SessionCard'
+import { describe, expect, it } from 'vitest'
 import type { SessionInfo } from '../types/generated/SessionInfo'
+import { SessionCard } from './SessionCard'
 
 // Create a QueryClient wrapper for tests (ClassifyButton uses useQueryClient)
 function createWrapper() {
@@ -156,11 +156,7 @@ describe('SessionCard', () => {
   describe('Phase A: Session Card Enhancement - AC-3: Top Files Display', () => {
     it('3.1: should show all 3 files when exactly 3 files edited', () => {
       const session = createMockSession({
-        filesEdited: [
-          '/src/auth.ts',
-          '/src/middleware.ts',
-          '/test/auth.test.ts',
-        ],
+        filesEdited: ['/src/auth.ts', '/src/middleware.ts', '/test/auth.test.ts'],
         filesEditedCount: 3,
       })
 

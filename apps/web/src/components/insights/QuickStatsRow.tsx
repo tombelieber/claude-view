@@ -1,7 +1,7 @@
-import { BarChart3, Gauge, Clock } from 'lucide-react'
-import { QuickStatCard } from './QuickStatCard'
+import { BarChart3, Clock, Gauge } from 'lucide-react'
+import type { EfficiencyData, PatternStatsData, WorkBreakdownData } from '../../hooks/use-insights'
 import { cn } from '../../lib/utils'
-import type { WorkBreakdownData, EfficiencyData, PatternStatsData } from '../../hooks/use-insights'
+import { QuickStatCard } from './QuickStatCard'
 
 interface QuickStatsRowProps {
   workBreakdown: WorkBreakdownData | null
@@ -67,11 +67,7 @@ export function QuickStatsRow({
       </QuickStatCard>
 
       {/* Efficiency Card */}
-      <QuickStatCard
-        title="Efficiency"
-        icon={<Gauge className="w-4 h-4" />}
-        isLoading={isLoading}
-      >
+      <QuickStatCard title="Efficiency" icon={<Gauge className="w-4 h-4" />} isLoading={isLoading}>
         {efficiency && (
           <div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">
@@ -79,10 +75,7 @@ export function QuickStatsRow({
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">edits/file</div>
             <div className="space-y-1">
-              <TrendIndicator
-                direction={efficiency.trendDirection}
-                value={efficiency.trend}
-              />
+              <TrendIndicator direction={efficiency.trendDirection} value={efficiency.trend} />
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 {efficiency.reeditRate.toFixed(2)} re-edit rate
               </div>
@@ -92,11 +85,7 @@ export function QuickStatsRow({
       </QuickStatCard>
 
       {/* Peak Time Card */}
-      <QuickStatCard
-        title="Peak Time"
-        icon={<Clock className="w-4 h-4" />}
-        isLoading={isLoading}
-      >
+      <QuickStatCard title="Peak Time" icon={<Clock className="w-4 h-4" />} isLoading={isLoading}>
         {patterns ? (
           <div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">

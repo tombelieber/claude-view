@@ -1,26 +1,49 @@
-import { Link, useSearchParams } from 'react-router-dom'
 import {
+  AlertTriangle,
+  Archive,
+  Bell,
+  CheckCircle,
+  CirclePause,
+  Clock,
+  FileCheck,
   GitBranch,
-  MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
+  Loader,
+  MessageCircle,
+  Power,
+  Shield,
+  Sparkles,
+  Terminal,
 } from 'lucide-react'
-import { sessionTotalCost, type LiveSession } from './use-live-sessions'
-import type { AgentState } from './types'
-import { KNOWN_STATES, GROUP_DEFAULTS } from './types'
+import { Link, useSearchParams } from 'react-router-dom'
 import { formatCostUsd } from '../../lib/format-utils'
-import { ContextGauge } from './ContextGauge'
-import { CostTooltip } from './CostTooltip'
-import { SubAgentPills } from './SubAgentPills'
-import { SessionToolChips } from './SessionToolChips'
-import { TaskProgressList } from './TaskProgressList'
-import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SessionSpinner, pickVerb } from '../spinner'
+import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
+import { ContextGauge } from './ContextGauge'
+import { CostTooltip } from './CostTooltip'
+import { SessionToolChips } from './SessionToolChips'
+import { SubAgentPills } from './SubAgentPills'
+import { TaskProgressList } from './TaskProgressList'
+import type { AgentState } from './types'
+import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
+import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  MessageCircle, FileCheck, Shield, AlertTriangle, Clock,
-  Sparkles, Terminal, GitBranch, CheckCircle, Power, Bell, Loader, Archive, CirclePause,
+  MessageCircle,
+  FileCheck,
+  Shield,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Terminal,
+  GitBranch,
+  CheckCircle,
+  Power,
+  Bell,
+  Loader,
+  Archive,
+  CirclePause,
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -29,7 +52,6 @@ const COLOR_MAP: Record<string, string> = {
   red: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 }
-
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
   const known = KNOWN_STATES[agentState.state]
@@ -40,7 +62,9 @@ function StateBadge({ agentState }: { agentState: AgentState }) {
   const colorClass = COLOR_MAP[config.color] ?? COLOR_MAP.gray
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}
+    >
       <Icon className="h-3 w-3" />
       {agentState.label}
     </span>
@@ -57,7 +81,12 @@ interface SessionCardProps {
   onClickOverride?: () => void
 }
 
-export function SessionCard({ session, stalledSessions, currentTime, onClickOverride }: SessionCardProps) {
+export function SessionCard({
+  session,
+  stalledSessions,
+  currentTime,
+  onClickOverride,
+}: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
@@ -67,7 +96,7 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
   const rawTitle = session.title || ''
   const cleanedLastMessage = rawLastMessage ? cleanPreviewText(rawLastMessage) : ''
   const cleanedTitle = rawTitle ? cleanPreviewText(rawTitle) : ''
-  const title = cleanedLastMessage || cleanedTitle || (session.projectDisplayName || session.project)
+  const title = cleanedLastMessage || cleanedTitle || session.projectDisplayName || session.project
 
   // Show "last message" only when different from title
   const lastMsg = cleanedLastMessage
@@ -75,7 +104,8 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
   const totalCost = sessionTotalCost(session)
   const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
-  const cardClassName = "group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors"
+  const cardClassName =
+    'group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors'
 
   const cardContent = (
     <>
@@ -106,9 +136,14 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <CostTooltip cost={session.cost} cacheStatus={session.cacheStatus} subAgents={session.subAgents}>
+          <CostTooltip
+            cost={session.cost}
+            cacheStatus={session.cacheStatus}
+            subAgents={session.subAgents}
+          >
             <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-              {estimatedPrefix}{formatCostUsd(totalCost)}
+              {estimatedPrefix}
+              {formatCostUsd(totalCost)}
             </span>
           </CostTooltip>
         </div>
@@ -122,7 +157,8 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
       {/* Last user message (if different from title) */}
       {showLastMsg && (
         <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mb-1">
-          <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>{lastMsg}
+          <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>
+          {lastMsg}
         </p>
       )}
 
@@ -190,11 +226,19 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
   if (onClickOverride) {
     return (
       <div
-        onClick={(e) => { e.stopPropagation(); onClickOverride() }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClickOverride()
+        }}
         className={cardClassName}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickOverride() } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClickOverride()
+          }
+        }}
       >
         {cardContent}
       </div>
@@ -202,7 +246,11 @@ export function SessionCard({ session, stalledSessions, currentTime, onClickOver
   }
 
   return (
-    <Link to={buildSessionUrl(session.id, searchParams)} className={cardClassName} style={{ cursor: 'pointer' }}>
+    <Link
+      to={buildSessionUrl(session.id, searchParams)}
+      className={cardClassName}
+      style={{ cursor: 'pointer' }}
+    >
       {cardContent}
     </Link>
   )

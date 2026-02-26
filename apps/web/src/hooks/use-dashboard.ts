@@ -14,7 +14,11 @@ export type { TimeRangeParams } from '../types/time-range'
  * - periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
  * - dataStartDate: earliest session in database
  */
-async function fetchDashboardStats(project?: string, branch?: string, timeRange?: TimeRangeParams): Promise<ExtendedDashboardStats> {
+async function fetchDashboardStats(
+  project?: string,
+  branch?: string,
+  timeRange?: TimeRangeParams,
+): Promise<ExtendedDashboardStats> {
   const params = new URLSearchParams()
   if (project) params.set('project', project)
   if (branch) params.set('branch', branch)
@@ -50,7 +54,11 @@ async function fetchDashboardStats(project?: string, branch?: string, timeRange?
  * - periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
  * - dataStartDate - earliest session date ("since [date]")
  */
-export function useDashboardStats(project?: string, branch?: string, timeRange?: TimeRangeParams | null) {
+export function useDashboardStats(
+  project?: string,
+  branch?: string,
+  timeRange?: TimeRangeParams | null,
+) {
   return useQuery({
     queryKey: ['dashboard-stats', project, branch, timeRange?.from, timeRange?.to],
     queryFn: () => fetchDashboardStats(project, branch, timeRange ?? undefined),
@@ -59,4 +67,9 @@ export function useDashboardStats(project?: string, branch?: string, timeRange?:
 }
 
 // Re-export types for convenience
-export type { ExtendedDashboardStats, CurrentWeekMetrics, DashboardTrends, TrendMetric } from '../types/generated'
+export type {
+  ExtendedDashboardStats,
+  CurrentWeekMetrics,
+  DashboardTrends,
+  TrendMetric,
+} from '../types/generated'

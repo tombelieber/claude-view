@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { MonitorPane, type MonitorPaneProps } from './MonitorPane'
 import type { LiveSession } from './use-live-sessions'
 
@@ -238,7 +238,7 @@ describe('MonitorPane', () => {
           onContextMenu={vi.fn()}
         >
           <div data-testid="custom-child">Custom content</div>
-        </MonitorPane>
+        </MonitorPane>,
       )
 
       expect(screen.getByTestId('custom-child')).toBeInTheDocument()

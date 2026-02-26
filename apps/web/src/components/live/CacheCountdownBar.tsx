@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '../../lib/utils'
 
 const CACHE_TTL_SECONDS = 300
@@ -17,7 +17,9 @@ interface CacheCountdownBarProps {
  */
 export function CacheCountdownBar({ lastCacheHitAt, cacheStatus }: CacheCountdownBarProps) {
   const hasCacheHit = lastCacheHitAt != null && lastCacheHitAt > 0
-  const [remaining, setRemaining] = useState(() => hasCacheHit ? computeRemaining(lastCacheHitAt) : 0)
+  const [remaining, setRemaining] = useState(() =>
+    hasCacheHit ? computeRemaining(lastCacheHitAt) : 0,
+  )
 
   useEffect(() => {
     if (!hasCacheHit) {
@@ -61,10 +63,12 @@ export function CacheCountdownBar({ lastCacheHitAt, cacheStatus }: CacheCountdow
     <div className="space-y-2">
       {/* Time + percentage */}
       <div className="flex items-center justify-between">
-        <span className={cn(
-          'text-xs font-mono tabular-nums font-medium',
-          isExpired ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100',
-        )}>
+        <span
+          className={cn(
+            'text-xs font-mono tabular-nums font-medium',
+            isExpired ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100',
+          )}
+        >
           {timeLabel}
         </span>
         <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
@@ -83,10 +87,12 @@ export function CacheCountdownBar({ lastCacheHitAt, cacheStatus }: CacheCountdow
       </div>
 
       {/* Hint */}
-      <p className={cn(
-        'text-[11px] leading-relaxed',
-        isExpired ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400',
-      )}>
+      <p
+        className={cn(
+          'text-[11px] leading-relaxed',
+          isExpired ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400',
+        )}
+      >
         {statusText}
       </p>
     </div>

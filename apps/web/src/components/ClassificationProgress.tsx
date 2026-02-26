@@ -1,7 +1,7 @@
-import { Loader2, X, Minimize2 } from 'lucide-react'
+import { Loader2, Minimize2, X } from 'lucide-react'
 import { useClassification } from '../hooks/use-classification'
-import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { cn } from '../lib/utils'
 
 interface ClassificationProgressProps {
   isOpen: boolean
@@ -25,16 +25,13 @@ export function ClassificationProgress({
   onClose,
   onRunInBackground,
 }: ClassificationProgressProps) {
-  const {
-    status,
-    sseProgress,
-    cancelClassification,
-  } = useClassification()
+  const { status, sseProgress, cancelClassification } = useClassification()
 
   if (!isOpen) return null
 
   const isRunning = status?.status === 'running'
-  const isDone = status?.status === 'completed' || status?.status === 'cancelled' || status?.status === 'failed'
+  const isDone =
+    status?.status === 'completed' || status?.status === 'cancelled' || status?.status === 'failed'
 
   const progress = sseProgress ?? status?.progress
   const classified = progress?.classified ?? 0
@@ -50,17 +47,21 @@ export function ClassificationProgress({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onRunInBackground}
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={onRunInBackground} />
 
       {/* Modal */}
       <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Classification {isDone ? (status?.status === 'completed' ? 'Complete' : status?.status === 'cancelled' ? 'Cancelled' : 'Failed') : 'in Progress'}
+            Classification{' '}
+            {isDone
+              ? status?.status === 'completed'
+                ? 'Complete'
+                : status?.status === 'cancelled'
+                  ? 'Cancelled'
+                  : 'Failed'
+              : 'in Progress'}
           </h3>
           <button
             type="button"
@@ -90,12 +91,12 @@ export function ClassificationProgress({
               {isRunning
                 ? `Classifying ${formatNumber(total)} sessions with Claude haiku`
                 : isDone && status?.status === 'completed'
-                ? `Successfully classified ${formatNumber(classified)} sessions`
-                : isDone && status?.status === 'cancelled'
-                ? `Cancelled after classifying ${formatNumber(classified)} sessions`
-                : isDone && status?.status === 'failed'
-                ? `Classification failed: ${status?.error?.message ?? 'Unknown error'}`
-                : 'Preparing classification...'}
+                  ? `Successfully classified ${formatNumber(classified)} sessions`
+                  : isDone && status?.status === 'cancelled'
+                    ? `Cancelled after classifying ${formatNumber(classified)} sessions`
+                    : isDone && status?.status === 'failed'
+                      ? `Classification failed: ${status?.error?.message ?? 'Unknown error'}`
+                      : 'Preparing classification...'}
             </p>
           </div>
 
@@ -108,8 +109,8 @@ export function ClassificationProgress({
                   status?.status === 'failed'
                     ? 'bg-red-500'
                     : status?.status === 'cancelled'
-                    ? 'bg-amber-500'
-                    : 'bg-blue-500'
+                      ? 'bg-amber-500'
+                      : 'bg-blue-500',
                 )}
                 style={{ width: `${Math.min(percentage, 100)}%` }}
               />
@@ -128,8 +129,12 @@ export function ClassificationProgress({
           {isRunning && (
             <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
               <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                <span className="text-gray-500 dark:text-gray-400 block mb-0.5">Estimated remaining</span>
-                <span className="text-gray-900 dark:text-gray-100 font-medium tabular-nums">{eta}</span>
+                <span className="text-gray-500 dark:text-gray-400 block mb-0.5">
+                  Estimated remaining
+                </span>
+                <span className="text-gray-900 dark:text-gray-100 font-medium tabular-nums">
+                  {eta}
+                </span>
               </div>
               <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                 <span className="text-gray-500 dark:text-gray-400 block mb-0.5">Current batch</span>
@@ -164,7 +169,7 @@ export function ClassificationProgress({
                   'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer',
                   'border border-gray-300 dark:border-gray-600',
                   'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
-                  'transition-colors duration-150'
+                  'transition-colors duration-150',
                 )}
               >
                 <Minimize2 className="w-3.5 h-3.5" />
@@ -176,7 +181,7 @@ export function ClassificationProgress({
                 className={cn(
                   'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer',
                   'bg-red-600 text-white hover:bg-red-700',
-                  'transition-colors duration-150'
+                  'transition-colors duration-150',
                 )}
               >
                 Cancel
@@ -191,7 +196,7 @@ export function ClassificationProgress({
                 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer',
                 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
                 'hover:bg-gray-800 dark:hover:bg-gray-200',
-                'transition-colors duration-150'
+                'transition-colors duration-150',
               )}
             >
               Close

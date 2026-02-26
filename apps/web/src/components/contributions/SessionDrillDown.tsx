@@ -1,9 +1,17 @@
-import { X, Clock, MessageSquare, FileCode2, GitCommit, ArrowLeft, ExternalLink } from 'lucide-react'
-import { cn } from '../../lib/utils'
-import { formatNumber } from '../../lib/format-utils'
-import { InsightLine } from './InsightLine'
+import {
+  ArrowLeft,
+  Clock,
+  ExternalLink,
+  FileCode2,
+  GitCommit,
+  MessageSquare,
+  X,
+} from 'lucide-react'
 import { useSessionContribution } from '../../hooks/use-contributions'
+import { formatNumber } from '../../lib/format-utils'
+import { cn } from '../../lib/utils'
 import type { FileImpact, LinkedCommit } from '../../types/generated'
+import { InsightLine } from './InsightLine'
 
 interface SessionDrillDownProps {
   sessionId: string
@@ -97,9 +105,13 @@ export function SessionDrillDown({
                 label="AI Lines"
                 value={
                   <span>
-                    <span className="text-green-600 dark:text-green-400">+{formatNumber(data.aiLinesAdded)}</span>
+                    <span className="text-green-600 dark:text-green-400">
+                      +{formatNumber(data.aiLinesAdded)}
+                    </span>
                     {' / '}
-                    <span className="text-red-500 dark:text-red-400">-{formatNumber(data.aiLinesRemoved)}</span>
+                    <span className="text-red-500 dark:text-red-400">
+                      -{formatNumber(data.aiLinesRemoved)}
+                    </span>
                   </span>
                 }
               />
@@ -192,7 +204,7 @@ export function SessionDrillDown({
                     'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg',
                     'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                    'transition-colors cursor-pointer'
+                    'transition-colors cursor-pointer',
                   )}
                 >
                   Open Full Session
@@ -242,9 +254,7 @@ function FileImpactRow({ file }: { file: FileImpact }) {
   return (
     <div className="flex items-center gap-3 py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-          {file.path}
-        </p>
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{file.path}</p>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-green-600 dark:text-green-400 tabular-nums">
             +{formatNumber(file.linesAdded)}
@@ -256,14 +266,8 @@ function FileImpactRow({ file }: { file: FileImpact }) {
       </div>
       <div className="w-24 flex items-center gap-2">
         <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
-          <div
-            className="h-full bg-green-500"
-            style={{ width: `${addedPercent}%` }}
-          />
-          <div
-            className="h-full bg-red-500"
-            style={{ width: `${100 - addedPercent}%` }}
-          />
+          <div className="h-full bg-green-500" style={{ width: `${addedPercent}%` }} />
+          <div className="h-full bg-red-500" style={{ width: `${100 - addedPercent}%` }} />
         </div>
         <span className="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">
           {file.action}
@@ -314,4 +318,3 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60)
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
-

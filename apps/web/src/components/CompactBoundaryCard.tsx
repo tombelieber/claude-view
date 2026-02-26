@@ -15,9 +15,12 @@ export function CompactBoundaryCard({ trigger, preTokens, postTokens }: CompactB
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
           Context compacted: {formatNumber(preTokens)}
           {postTokens !== undefined && (
-            <> {'\u2192'} {formatNumber(postTokens)}</>
-          )}
-          {' '}tokens ({trigger})
+            <>
+              {' '}
+              {'\u2192'} {formatNumber(postTokens)}
+            </>
+          )}{' '}
+          tokens ({trigger})
         </span>
       </div>
     </div>

@@ -1,5 +1,5 @@
+import { Bookmark, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { Bookmark, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface SavedHookContextCardProps {
   content: unknown[]
@@ -11,11 +11,12 @@ export function SavedHookContextCard({ content, verboseMode }: SavedHookContextC
 
   const count = content.length
   const firstItem = count > 0 ? String(content[0]).slice(0, 80) : ''
-  const summary = count === 0
-    ? 'Hook context (empty)'
-    : count === 1
-      ? `Hook context: ${firstItem}${String(content[0]).length > 80 ? '...' : ''}`
-      : `Hook context: ${count} entries`
+  const summary =
+    count === 0
+      ? 'Hook context (empty)'
+      : count === 1
+        ? `Hook context: ${firstItem}${String(content[0]).length > 80 ? '...' : ''}`
+        : `Hook context: ${count} entries`
 
   return (
     <div className="py-0.5 border-l-2 border-l-emerald-400 pl-1 my-1">
@@ -38,7 +39,10 @@ export function SavedHookContextCard({ content, verboseMode }: SavedHookContextC
       {expanded && count > 0 && (
         <ul className="ml-4 mt-0.5 space-y-0.5">
           {content.map((item, i) => (
-            <li key={i} className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-all">
+            <li
+              key={i}
+              className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-all"
+            >
               {typeof item === 'string' ? item : JSON.stringify(item, null, 2)}
             </li>
           ))}

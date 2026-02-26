@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import type { SessionInfo } from '../types/generated/SessionInfo'
 import {
+  type ActivitySummary,
+  type DayActivity,
+  type ProjectActivity,
   aggregateByDay,
   aggregateByProject,
   computeSummary,
-  type DayActivity,
-  type ProjectActivity,
-  type ActivitySummary,
 } from '../lib/activity-utils'
+import type { SessionInfo } from '../types/generated/SessionInfo'
 
 const PAGE_SIZE = 200
 const MAX_PAGES = 50 // Safety limit: 50 * 200 = 10,000 sessions max
@@ -82,7 +82,16 @@ export function useActivityData(
   const totalCount = query.data?.total ?? 0
   const firstTs = query.data?.sessions[0]?.modifiedAt ?? 0
   const lastTs = query.data?.sessions[sessionCount - 1]?.modifiedAt ?? 0
-  const memoKey = JSON.stringify([sessionCount, totalCount, firstTs, lastTs, timeAfter, timeBefore, sidebarProject, sidebarBranch])
+  const memoKey = JSON.stringify([
+    sessionCount,
+    totalCount,
+    firstTs,
+    lastTs,
+    timeAfter,
+    timeBefore,
+    sidebarProject,
+    sidebarBranch,
+  ])
 
   const activity = useMemo<ActivityData | null>(() => {
     if (!query.data) return null
@@ -91,7 +100,9 @@ export function useActivityData(
 
     // Client-side project filter (API has no `project` param)
     if (sidebarProject) {
-      sessions = sessions.filter(s => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === sidebarProject)
+      sessions = sessions.filter(
+        (s) => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === sidebarProject,
+      )
     }
 
     const days = aggregateByDay(sessions)

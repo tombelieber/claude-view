@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { DashboardMetricsGrid } from './DashboardMetricsGrid'
+import { describe, expect, it } from 'vitest'
 import type { DashboardTrends } from '../types/generated'
+import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 
 function makeTrends(overrides: Partial<DashboardTrends> = {}): DashboardTrends {
   const metric = (current: number) => ({
@@ -95,10 +95,25 @@ describe('DashboardMetricsGrid', () => {
       const zeroTrends = makeTrends({
         sessions: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
         tokens: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
-        filesEdited: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
+        filesEdited: {
+          current: BigInt(0),
+          previous: BigInt(0),
+          delta: BigInt(0),
+          deltaPercent: null,
+        },
         commits: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
-        avgTokensPerPrompt: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
-        avgReeditRate: { current: BigInt(0), previous: BigInt(0), delta: BigInt(0), deltaPercent: null },
+        avgTokensPerPrompt: {
+          current: BigInt(0),
+          previous: BigInt(0),
+          delta: BigInt(0),
+          deltaPercent: null,
+        },
+        avgReeditRate: {
+          current: BigInt(0),
+          previous: BigInt(0),
+          delta: BigInt(0),
+          deltaPercent: null,
+        },
       })
       render(<DashboardMetricsGrid trends={zeroTrends} />)
 
@@ -110,7 +125,12 @@ describe('DashboardMetricsGrid', () => {
 
     it('should handle large values with formatting', () => {
       const largeTrends = makeTrends({
-        tokens: { current: BigInt(2500000), previous: BigInt(0), delta: BigInt(2500000), deltaPercent: 100 },
+        tokens: {
+          current: BigInt(2500000),
+          previous: BigInt(0),
+          delta: BigInt(2500000),
+          deltaPercent: 100,
+        },
       })
       render(<DashboardMetricsGrid trends={largeTrends} />)
       expect(screen.getByText('2.5M')).toBeInTheDocument()

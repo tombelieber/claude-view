@@ -1,4 +1,4 @@
-import { Info, CheckCircle, AlertTriangle, Lightbulb } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Info, Lightbulb } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { Insight, InsightKind } from '../../types/generated'
 
@@ -40,18 +40,11 @@ export function InsightLine({ insight, className }: InsightLineProps) {
 
   return (
     <div
-      className={cn(
-        'flex items-start gap-2 px-3 py-2 rounded-lg text-sm',
-        bgColor,
-        className
-      )}
+      className={cn('flex items-start gap-2 px-3 py-2 rounded-lg text-sm', bgColor, className)}
       role="status"
       aria-label={`${insight.kind}: ${insight.text}`}
     >
-      <Icon
-        className={cn('w-4 h-4 flex-shrink-0 mt-0.5', iconColor)}
-        aria-hidden="true"
-      />
+      <Icon className={cn('w-4 h-4 flex-shrink-0 mt-0.5', iconColor)} aria-hidden="true" />
       <p className="text-gray-700 dark:text-gray-300">{insight.text}</p>
     </div>
   )
@@ -66,10 +59,7 @@ export function InsightLineCompact({ insight, className }: InsightLineProps) {
 
   return (
     <div
-      className={cn(
-        'flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400',
-        className
-      )}
+      className={cn('flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400', className)}
       aria-label={insight.text}
     >
       <Icon className={cn('w-3 h-3 flex-shrink-0 mt-0.5', iconColor)} aria-hidden="true" />

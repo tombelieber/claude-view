@@ -1,5 +1,5 @@
+import { Check, Copy, Download } from 'lucide-react'
 import { useCallback } from 'react'
-import { Copy, Check, Download } from 'lucide-react'
 import { useState } from 'react'
 
 interface ReportContentProps {
@@ -20,10 +20,12 @@ function renderSimpleMarkdown(md: string): string {
 
   return md
     .split('\n')
-    .map(line => {
+    .map((line) => {
       // Headers
-      if (line.startsWith('### ')) return `<h3 class="text-sm font-semibold mt-3 mb-1 text-gray-900 dark:text-gray-100">${escape(line.slice(4))}</h3>`
-      if (line.startsWith('## ')) return `<h2 class="text-base font-semibold mt-4 mb-1 text-gray-900 dark:text-gray-100">${escape(line.slice(3))}</h2>`
+      if (line.startsWith('### '))
+        return `<h3 class="text-sm font-semibold mt-3 mb-1 text-gray-900 dark:text-gray-100">${escape(line.slice(4))}</h3>`
+      if (line.startsWith('## '))
+        return `<h2 class="text-base font-semibold mt-4 mb-1 text-gray-900 dark:text-gray-100">${escape(line.slice(3))}</h2>`
       // Bullets
       if (line.startsWith('- ') || line.startsWith('* ')) {
         const content = escape(line.slice(2))
@@ -66,9 +68,7 @@ export function ReportContent({ markdown, streaming = false }: ReportContentProp
         className="prose prose-sm dark:prose-invert max-w-none"
         dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(markdown) }}
       />
-      {streaming && (
-        <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />
-      )}
+      {streaming && <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5" />}
       {!streaming && markdown && (
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
           <button
@@ -76,7 +76,11 @@ export function ReportContent({ markdown, streaming = false }: ReportContentProp
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-green-500" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
             {copied ? 'Copied' : 'Copy'}
           </button>
           <button

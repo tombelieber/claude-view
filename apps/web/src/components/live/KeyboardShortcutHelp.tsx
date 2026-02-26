@@ -1,6 +1,6 @@
+import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
 
 interface KeyboardShortcutHelpProps {
   isOpen: boolean
@@ -55,9 +55,7 @@ function ShortcutRow({ entry }: { entry: ShortcutEntry }) {
             <Kbd>{entry.keys[2]}</Kbd>
           </>
         ) : (
-          entry.keys.map((key, i) => (
-            <Kbd key={i}>{key}</Kbd>
-          ))
+          entry.keys.map((key, i) => <Kbd key={i}>{key}</Kbd>)
         )}
       </div>
       <span className="text-sm text-gray-500 dark:text-gray-400">{entry.description}</span>
@@ -108,7 +106,9 @@ export function KeyboardShortcutHelp({ isOpen, onClose }: KeyboardShortcutHelpPr
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Keyboard Shortcuts
+          </h2>
           <button
             onClick={onClose}
             className="p-1 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -124,6 +124,6 @@ export function KeyboardShortcutHelp({ isOpen, onClose }: KeyboardShortcutHelpPr
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   )
 }

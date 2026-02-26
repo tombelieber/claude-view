@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
-import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
+import { useCallback, useMemo, useState } from 'react'
+import { ResponsiveContainer, Tooltip, Treemap } from 'recharts'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
 
 // Color mapping for L1 categories
@@ -21,11 +21,7 @@ function getRootId(id: string): string {
   return id.split('/')[0]
 }
 
-export function CategoryTreemap({
-  data,
-  onCategoryClick,
-  selectedCategory,
-}: TreemapProps) {
+export function CategoryTreemap({ data, onCategoryClick, selectedCategory }: TreemapProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   // Transform data for Recharts treemap format
@@ -36,14 +32,15 @@ export function CategoryTreemap({
       size: l1.count,
       percentage: l1.percentage,
       fill: CATEGORY_COLORS[l1.id]?.fill ?? '#6B7280',
-      children: l1.children?.map((l2) => ({
-        name: l2.name,
-        id: l2.id,
-        size: l2.count,
-        percentage: l2.percentage,
-        parentId: l1.id,
-        fill: CATEGORY_COLORS[l1.id]?.fill ?? '#6B7280',
-      })) ?? [],
+      children:
+        l1.children?.map((l2) => ({
+          name: l2.name,
+          id: l2.id,
+          size: l2.count,
+          percentage: l2.percentage,
+          parentId: l1.id,
+          fill: CATEGORY_COLORS[l1.id]?.fill ?? '#6B7280',
+        })) ?? [],
     }))
   }, [data])
 
@@ -79,13 +76,8 @@ export function CategoryTreemap({
             width={width}
             height={height}
             style={{
-              fill:
-                CATEGORY_COLORS[rootId]?.fill ?? '#6B7280',
-              stroke: isSelected
-                ? '#FFF'
-                : isHovered
-                  ? '#FFF'
-                  : '#1F2937',
+              fill: CATEGORY_COLORS[rootId]?.fill ?? '#6B7280',
+              stroke: isSelected ? '#FFF' : isHovered ? '#FFF' : '#1F2937',
               strokeWidth: isSelected ? 3 : isHovered ? 2 : 1,
               opacity: isHovered || isSelected ? 1 : 0.85,
               cursor: 'pointer',
@@ -157,9 +149,7 @@ export function CategoryTreemap({
                   <div className="text-gray-300">
                     {d.size as number} sessions ({(d.percentage as number).toFixed(1)}%)
                   </div>
-                  <div className="text-gray-400 text-xs mt-1">
-                    Click to drill down
-                  </div>
+                  <div className="text-gray-400 text-xs mt-1">Click to drill down</div>
                 </div>
               )
             }}

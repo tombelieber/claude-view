@@ -1,5 +1,5 @@
+import { AlertTriangle, ArrowRight, Check } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { Check, ArrowRight, AlertTriangle } from 'lucide-react'
 import type { CategoryPerformance } from '../../types/generated/CategoryPerformance'
 import type { CategoryVerdict } from '../../types/generated/CategoryVerdict'
 
@@ -50,7 +50,7 @@ export function CategoryPerformanceTable({
       <div
         className={cn(
           'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-          className
+          className,
         )}
       >
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -67,7 +67,7 @@ export function CategoryPerformanceTable({
     <div
       className={cn(
         'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6',
-        className
+        className,
       )}
     >
       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">

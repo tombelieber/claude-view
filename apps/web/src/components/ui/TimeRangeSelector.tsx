@@ -1,7 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import { useIsMobile } from '../../hooks/use-media-query'
-import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl'
 import { cn } from '../../lib/utils'
+import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl'
 
 export interface TimeRangeSelectorProps<T extends string> {
   /** Currently selected value */
@@ -64,7 +64,7 @@ export function TimeRangeSelector<T extends string>({
             // Focus state
             'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
             // Transitions
-            'transition-colors duration-150'
+            'transition-colors duration-150',
           )}
         >
           {options.map((option) => (

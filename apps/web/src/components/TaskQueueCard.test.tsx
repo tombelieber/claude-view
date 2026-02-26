@@ -1,13 +1,11 @@
-import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { TaskQueueCard } from './TaskQueueCard'
 
 describe('TaskQueueCard', () => {
   describe('Title and status rendering', () => {
     it('should display waiting info with position and duration', () => {
-      render(
-        <TaskQueueCard waitDuration={1.2} position={3} queueLength={8} />
-      )
+      render(<TaskQueueCard waitDuration={1.2} position={3} queueLength={8} />)
 
       expect(screen.getByText(/Waiting for task/)).toBeInTheDocument()
       expect(screen.getByText(/position 3\/8/)).toBeInTheDocument()

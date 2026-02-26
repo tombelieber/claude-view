@@ -43,10 +43,10 @@ function fileTier(files: number): WeightTier {
 }
 
 function durationTier(seconds: number): WeightTier {
-  if (seconds >= 18000) return 4  // 5+ hours
-  if (seconds >= 7200) return 3   // 2+ hours
-  if (seconds >= 1800) return 2   // 30+ min
-  if (seconds >= 300) return 1    // 5+ min
+  if (seconds >= 18000) return 4 // 5+ hours
+  if (seconds >= 7200) return 3 // 2+ hours
+  if (seconds >= 1800) return 2 // 30+ min
+  if (seconds >= 300) return 1 // 5+ min
   return 0
 }
 

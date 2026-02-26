@@ -12,7 +12,8 @@ interface SessionToolChipsProps {
 
 const MAX_VISIBLE = 4
 
-const TOOLTIP_CONTENT_CLASS = 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
+const TOOLTIP_CONTENT_CLASS =
+  'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
 const TOOLTIP_ARROW_CLASS = 'fill-gray-200 dark:fill-gray-700'
 
 export function SessionToolChips({ tools }: SessionToolChipsProps) {
@@ -30,9 +31,7 @@ export function SessionToolChips({ tools }: SessionToolChipsProps) {
         {displayTools.map((tool) => (
           <ToolChip key={`${tool.kind}-${tool.name}`} tool={tool} />
         ))}
-        {hasMore && (
-          <OverflowChip tools={overflowTools} />
-        )}
+        {hasMore && <OverflowChip tools={overflowTools} />}
       </div>
     </Tooltip.Provider>
   )
@@ -51,22 +50,19 @@ function ToolChip({ tool }: { tool: ToolUsed }) {
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs font-medium cursor-default bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700"
           aria-label={`${isMcp ? 'MCP' : 'Skill'}: ${tool.name}`}
         >
-          {isMcp
-            ? <Plug2 className="h-2.5 w-2.5 flex-shrink-0" />
-            : <Zap className="h-2.5 w-2.5 flex-shrink-0" />
-          }
+          {isMcp ? (
+            <Plug2 className="h-2.5 w-2.5 flex-shrink-0" />
+          ) : (
+            <Zap className="h-2.5 w-2.5 flex-shrink-0" />
+          )}
           <span className="truncate max-w-[120px]">{displayName}</span>
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
           <div className="space-y-1">
-            <div className="font-medium text-gray-900 dark:text-gray-100">
-              {tool.name}
-            </div>
-            <div className="text-gray-500 dark:text-gray-400">
-              {isMcp ? 'MCP Server' : 'Skill'}
-            </div>
+            <div className="font-medium text-gray-900 dark:text-gray-100">{tool.name}</div>
+            <div className="text-gray-500 dark:text-gray-400">{isMcp ? 'MCP Server' : 'Skill'}</div>
           </div>
           <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
         </Tooltip.Content>
@@ -90,13 +86,12 @@ function OverflowChip({ tools }: { tools: ToolUsed[] }) {
               const isMcp = tool.kind === 'mcp'
               return (
                 <div key={`${tool.kind}-${tool.name}`} className="flex items-center gap-2">
-                  {isMcp
-                    ? <Plug2 className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
-                    : <Zap className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
-                  }
-                  <span className="text-gray-900 dark:text-gray-100">
-                    {tool.name}
-                  </span>
+                  {isMcp ? (
+                    <Plug2 className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                  ) : (
+                    <Zap className="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                  )}
+                  <span className="text-gray-900 dark:text-gray-100">{tool.name}</span>
                 </div>
               )
             })}

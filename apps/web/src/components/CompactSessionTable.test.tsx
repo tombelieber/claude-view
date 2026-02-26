@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within, fireEvent } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { CompactSessionTable } from './CompactSessionTable'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { BrowserRouter } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionInfo } from '../hooks/use-projects'
+import { CompactSessionTable } from './CompactSessionTable'
 
 const mockSession: SessionInfo = {
   id: 'test-session-1',
@@ -91,9 +91,14 @@ function renderTable(sessions: SessionInfo[] = mockSessions, onSort?: (column: s
   return render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <CompactSessionTable sessions={sessions} onSort={onSort || vi.fn()} sortColumn="time" sortDirection="desc" />
+        <CompactSessionTable
+          sessions={sessions}
+          onSort={onSort || vi.fn()}
+          sortColumn="time"
+          sortDirection="desc"
+        />
       </BrowserRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -139,7 +144,7 @@ describe('CompactSessionTable', () => {
 
       const links = within(firstDataRow).getAllByRole('link')
       expect(links.length).toBeGreaterThan(0)
-      links.forEach(link => {
+      links.forEach((link) => {
         expect(link).toHaveAttribute('href', expect.stringContaining('/sessions/'))
       })
     })
@@ -178,7 +183,7 @@ describe('CompactSessionTable', () => {
               sortDirection="asc"
             />
           </BrowserRouter>
-        </QueryClientProvider>
+        </QueryClientProvider>,
       )
 
       const activityHeader = screen.getByRole('columnheader', { name: /activity/i })
@@ -288,7 +293,8 @@ describe('CompactSessionTable', () => {
     })
 
     it('truncates long preview text', () => {
-      const longPreview = 'This is a very long preview text that should be truncated to fit within the table cell without breaking the layout or causing overflow issues'
+      const longPreview =
+        'This is a very long preview text that should be truncated to fit within the table cell without breaking the layout or causing overflow issues'
       renderTable([{ ...mockSession, preview: longPreview }])
 
       const rows = screen.getAllByRole('row')

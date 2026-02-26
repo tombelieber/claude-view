@@ -1,17 +1,17 @@
-import { useState } from 'react'
 import {
+  AlertCircle,
   Brain,
+  CheckCircle2,
+  FlaskConical,
   Loader2,
   Settings2,
-  CheckCircle2,
-  AlertCircle,
   XCircle,
-  FlaskConical,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useClassification } from '../hooks/use-classification'
-import { ClassificationProgress } from './ClassificationProgress'
-import { cn } from '../lib/utils'
 import { formatNumber } from '../lib/format-utils'
+import { cn } from '../lib/utils'
+import { ClassificationProgress } from './ClassificationProgress'
 
 interface ClassificationStatusProps {
   onConfigure?: () => void
@@ -27,11 +27,7 @@ interface ClassificationStatusProps {
  * - Read-only hint to classify from Sessions list
  */
 export function ClassificationStatus({ onConfigure }: ClassificationStatusProps) {
-  const {
-    status,
-    error,
-    sseProgress,
-  } = useClassification()
+  const { status, error, sseProgress } = useClassification()
 
   const [showProgress, setShowProgress] = useState(false)
 
@@ -45,7 +41,8 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
   // Use SSE progress when streaming, otherwise use status
   const currentProgress = sseProgress ?? status?.progress
   const displayPercentage = isRunning && currentProgress ? currentProgress.percentage : percentage
-  const displayClassified = isRunning && currentProgress ? currentProgress.classified : classifiedSessions
+  const displayClassified =
+    isRunning && currentProgress ? currentProgress.classified : classifiedSessions
   const displayTotal = isRunning && currentProgress ? currentProgress.total : totalSessions
 
   return (
@@ -78,7 +75,9 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               {isRunning ? (
                 <>
                   <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Classifying...</span>
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    Classifying...
+                  </span>
                 </>
               ) : status?.status === 'failed' ? (
                 <>
@@ -88,7 +87,9 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               ) : classifiedSessions === totalSessions && totalSessions > 0 ? (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">All classified</span>
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                    All classified
+                  </span>
                 </>
               ) : (
                 <span className="text-sm text-gray-500 dark:text-gray-400">Ready</span>
@@ -104,18 +105,17 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
           {/* Progress bar */}
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Sessions classified
-              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Sessions classified</span>
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300 tabular-nums">
-                {formatNumber(displayClassified)} / {formatNumber(displayTotal)} ({displayPercentage.toFixed(1)}%)
+                {formatNumber(displayClassified)} / {formatNumber(displayTotal)} (
+                {displayPercentage.toFixed(1)}%)
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div
                 className={cn(
                   'h-2 rounded-full transition-all duration-300',
-                  isRunning ? 'bg-blue-500' : 'bg-green-500'
+                  isRunning ? 'bg-blue-500' : 'bg-green-500',
                 )}
                 style={{ width: `${Math.min(displayPercentage, 100)}%` }}
               />
@@ -136,8 +136,7 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               <div className="flex items-center justify-between">
                 <span>Last run</span>
                 <span className="tabular-nums">
-                  {status.lastRun.completedAt &&
-                  !status.lastRun.completedAt.startsWith('1970')
+                  {status.lastRun.completedAt && !status.lastRun.completedAt.startsWith('1970')
                     ? new Date(status.lastRun.completedAt).toLocaleDateString(undefined, {
                         month: 'short',
                         day: 'numeric',
@@ -149,7 +148,9 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
               </div>
               <div className="flex items-center justify-between">
                 <span>Sessions classified</span>
-                <span className="tabular-nums">{formatNumber(status.lastRun.sessionsClassified)}</span>
+                <span className="tabular-nums">
+                  {formatNumber(status.lastRun.sessionsClassified)}
+                </span>
               </div>
               {status.lastRun.errorCount > 0 && (
                 <div className="flex items-center justify-between text-amber-600 dark:text-amber-400">

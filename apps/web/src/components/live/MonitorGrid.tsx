@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { LiveSession } from './use-live-sessions'
 
@@ -20,7 +20,13 @@ interface MonitorGridProps {
  * Tracks which panes are visible via IntersectionObserver so consumers can
  * optimize WebSocket connect/disconnect for off-screen panes.
  */
-export function MonitorGrid({ sessions, gridOverride, compactHeaders, children, onVisibilityChange }: MonitorGridProps) {
+export function MonitorGrid({
+  sessions,
+  gridOverride,
+  compactHeaders,
+  children,
+  onVisibilityChange,
+}: MonitorGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [visiblePanes, setVisiblePanes] = useState<Set<string>>(new Set())
   const [activeMobileIndex, setActiveMobileIndex] = useState(0)
@@ -58,7 +64,7 @@ export function MonitorGrid({ sessions, gridOverride, compactHeaders, children, 
           return next
         })
       },
-      { root: container, threshold: 0.1 }
+      { root: container, threshold: 0.1 },
     )
 
     // Observe all pane children
@@ -146,7 +152,7 @@ export function MonitorGrid({ sessions, gridOverride, compactHeaders, children, 
                   'h-1.5 rounded-full transition-all',
                   idx === activeMobileIndex
                     ? 'w-4 bg-indigo-500'
-                    : 'w-1.5 bg-gray-400 dark:bg-gray-600'
+                    : 'w-1.5 bg-gray-400 dark:bg-gray-600',
                 )}
                 onClick={() => {
                   const container = containerRef.current
@@ -170,10 +176,7 @@ export function MonitorGrid({ sessions, gridOverride, compactHeaders, children, 
     <div
       ref={containerRef}
       style={gridStyle}
-      className={cn(
-        'w-full',
-        compactHeaders && 'monitor-grid--compact'
-      )}
+      className={cn('w-full', compactHeaders && 'monitor-grid--compact')}
     >
       {children}
     </div>

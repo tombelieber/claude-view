@@ -1,13 +1,5 @@
-import { useMemo, useCallback } from 'react'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts'
+import { useCallback, useMemo } from 'react'
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
 
 // Color mapping for L1 categories
@@ -31,11 +23,7 @@ interface FlatCategory {
   percentage: number
 }
 
-export function CategoryBarChart({
-  data,
-  onCategoryClick,
-  selectedCategory,
-}: BarChartProps) {
+export function CategoryBarChart({ data, onCategoryClick, selectedCategory }: BarChartProps) {
   // Flatten L1 -> L2 for bar chart
   const flatData = useMemo((): FlatCategory[] => {
     const result: FlatCategory[] = []
@@ -83,12 +71,7 @@ export function CategoryBarChart({
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={flatData} layout="vertical" margin={{ left: 20 }}>
           <XAxis type="number" hide />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={160}
-            tick={{ fontSize: 12 }}
-          />
+          <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 12 }} />
           <Tooltip
             content={({ payload }) => {
               if (!payload?.[0]) return null
