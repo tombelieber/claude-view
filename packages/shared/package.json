@@ -9,6 +9,9 @@
     ".": "./src/index.ts",
     "./*": "./src/*.ts"
   },
+  "dependencies": {
+    "@claude-view/design-tokens": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured yet'"
