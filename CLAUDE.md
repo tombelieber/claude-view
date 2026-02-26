@@ -120,6 +120,21 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 | `cd apps/web && bunx vitest run` | Run web frontend tests only |
 | `cargo test -p claude-view-server` | Run Rust server tests only |
 
+## Git Discipline — Dirty Working Tree
+
+**NEVER `git add` a file that has pre-existing unstaged modifications unless you are ONLY committing your own changes.** When `git status` shows ` M` (unstaged) files at session start, those are the user's in-progress work — not yours to commit.
+
+Before ANY `git add`:
+1. Run `git status` and note all pre-existing ` M` files
+2. If a file you need to edit is already modified, **STOP and warn the user**: "This file has uncommitted changes. Should I commit your work first, or isolate my changes?"
+3. Never commit the user's WIP under your commit message — it destroys git history and makes the user think their work was reverted
+4. If you must edit a file with pre-existing changes, either:
+   - Ask the user to commit their work first, OR
+   - Use `git stash` before starting, make your changes on a clean tree, commit, then `git stash pop`
+5. After `git add`, verify the diff size makes sense — if your change was 7 lines but the staged diff is 500+ lines, something is wrong
+
+**The golden rule:** Your commit should contain ONLY your changes. The user's uncommitted work is sacred — don't touch it, don't commit it, don't mix it with yours.
+
 ## Hard Rules
 
 > Detailed code examples: `docs/claude-rules-reference.md`
@@ -167,6 +182,10 @@ Never trust a single external data source. Cross-check indexes against filesyste
 ### SSE / Vite Dev Proxy
 
 Vite buffers SSE. In dev mode, connect `EventSource` directly to Rust server at `:47892`. Test SSE with `cd apps/web && bun run preview`.
+
+### Frontend Changes Require `bun run build`
+
+`cargo run` only rebuilds the Rust server binary. The frontend JS bundle in `dist/` is a **separate build artifact**. After editing any `.ts`/`.tsx`/`.css` file, you MUST run `bun run build` before restarting the server — otherwise the browser serves the stale old bundle and your changes are invisible. **Always `bun run build` after frontend changes.**
 
 ### Release Process
 
