@@ -1,4 +1,6 @@
 // Audit gap #3: verbatimModuleSyntax requires namespace imports for CJS modules
+import { hmac } from '@noble/hashes/hmac'
+import { sha256 } from '@noble/hashes/sha256'
 import * as nacl from 'tweetnacl'
 import { decodeBase64, decodeUTF8, encodeBase64 } from 'tweetnacl-util'
 import type { KeyStorage } from './storage'
@@ -95,20 +97,14 @@ export interface ClaimPairingParams {
 }
 
 /**
- * Compute HMAC-SHA256(secret, data) using Web Crypto API.
+ * Compute HMAC-SHA256(secret, data) using @noble/hashes (pure JS).
+ * Works in all JS runtimes including React Native Hermes.
  * Returns the HMAC as a base64 string.
  */
-async function computeHmacSha256(secretB64: string, data: Uint8Array): Promise<string> {
+function computeHmacSha256(secretB64: string, data: Uint8Array): string {
   const secretBytes = decodeBase64(secretB64)
-  const key = await crypto.subtle.importKey(
-    'raw',
-    secretBytes,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, data)
-  return encodeBase64(new Uint8Array(sig))
+  const mac = hmac(sha256, secretBytes, data)
+  return encodeBase64(mac)
 }
 
 /** Claim a pairing offer at the relay. Stores keys and relay URL in secure storage. */
@@ -127,7 +123,7 @@ export async function claimPairing(params: ClaimPairingParams): Promise<void> {
   // The verification secret came from the QR code (never sent to relay).
   let verificationHmac: string | undefined
   if (verificationSecret) {
-    verificationHmac = await computeHmacSha256(verificationSecret, keys.boxKeyPair.publicKey)
+    verificationHmac = computeHmacSha256(verificationSecret, keys.boxKeyPair.publicKey)
   }
 
   // Audit gap #30: Use regex to strip only trailing /ws
