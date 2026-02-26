@@ -1,5 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 interface QrPayload {
   url: string
@@ -22,7 +22,7 @@ export function PairingQrCode() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchQr = async () => {
+  const fetchQr = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -40,11 +40,11 @@ export function PairingQrCode() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchQr()
-  }, [])
+  }, [fetchQr])
 
   if (loading) {
     return (
