@@ -13,6 +13,7 @@
     "@claude-view/design-tokens": "workspace:*"
   },
   "scripts": {
+    "build": "echo 'No build step — consumed as TypeScript source'",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured yet'"
   }

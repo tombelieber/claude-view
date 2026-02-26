@@ -10,6 +10,7 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "build": "echo 'No build step — consumed as TypeScript source'",
     "typecheck": "tsc --noEmit"
   }
 }
