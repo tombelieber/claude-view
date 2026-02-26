@@ -3,6 +3,7 @@
 pub mod classify;
 pub mod coaching;
 pub mod contributions;
+pub mod control;
 pub mod export;
 pub mod facets;
 pub mod health;
@@ -107,6 +108,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", system::router())
         .nest("/api", classify::router())
         .nest("/api", coaching::router())
+        .nest("/api", control::router())
         .nest("/api", insights::router())
         .nest("/api", contributions::router())
         .nest("/api", score::router())
