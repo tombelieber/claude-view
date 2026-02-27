@@ -13,11 +13,11 @@ export const colors = {
     900: '#1e3a8a',
   },
   status: {
-    active: '#22c55e',
-    waiting: '#f59e0b',
-    idle: '#3b82f6',
-    done: '#6b7280',
-    error: '#ef4444',
+    Active: '#22c55e',
+    Warning: '#f59e0b',
+    Idle: '#3b82f6',
+    Done: '#6b7280',
+    Error: '#ef4444',
   },
   gray: {
     50: '#f9fafb',
