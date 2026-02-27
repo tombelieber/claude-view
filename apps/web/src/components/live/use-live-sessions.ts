@@ -47,6 +47,7 @@ export interface LiveSession {
   progressItems?: ProgressItem[]
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
+  compactCount?: number
 }
 
 export interface LiveSummary {

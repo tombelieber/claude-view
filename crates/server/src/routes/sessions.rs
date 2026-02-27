@@ -639,6 +639,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            display_name: project.to_string(),
             git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
@@ -1649,6 +1650,7 @@ mod tests {
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
+            compact_count: 0,
             hook_events: Vec::new(),
         };
         session.hook_events.push(HookEvent {
