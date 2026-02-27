@@ -9,6 +9,7 @@ const mockSession: SessionInfo = {
   id: 'test-session-1',
   project: 'test-project',
   projectPath: '/test/path',
+  displayName: 'test-project',
   filePath: '/test/path/session.jsonl',
   modifiedAt: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
   sizeBytes: 1024,

@@ -14,6 +14,7 @@ function makeSession(i: number): SessionInfo {
     id: `session-${i}`,
     project: `project-${i % 5}`,
     projectPath: `/test/project-${i % 5}`,
+    displayName: `project-${i % 5}`,
     filePath: `/test/file-${i}.jsonl`,
     modifiedAt: baseTime,
     sizeBytes: 1024 * (i + 1),
