@@ -364,6 +364,7 @@ mod tests {
             id: id.to_string(),
             project: "test-project".to_string(),
             project_path: "/home/user/test-project".to_string(),
+            display_name: "test-project".to_string(),
             git_root: None,
             file_path: file_path.to_string(),
             modified_at: 1700000000,

@@ -163,6 +163,7 @@ mod tests {
             id: "sess-1".to_string(),
             project: "project-a".to_string(),
             project_path: "/home/user/project-a".to_string(),
+            display_name: "project-a".to_string(),
             git_root: None,
             file_path: "/home/user/.claude/projects/project-a/sess-1.jsonl".to_string(),
             modified_at: 1000,

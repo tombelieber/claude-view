@@ -593,6 +593,7 @@ impl SessionRow {
             id: self.id,
             project: project_encoded.to_string(),
             project_path: self.project_path,
+            display_name: self.project_display_name.clone(),
             git_root: self.git_root,
             file_path: self.file_path,
             modified_at: self.last_message_at.unwrap_or(0),
