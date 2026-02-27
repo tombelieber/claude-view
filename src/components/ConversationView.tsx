@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { FindProvider } from '../contexts/FindContext'
+import { SearchInput } from './SearchInput'
 import { ArrowLeft, ChevronDown, Copy, Download, MessageSquare, FileX, Terminal, PanelRight } from 'lucide-react'
 import { useParams, useNavigate, useOutletContext, Link, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
@@ -88,6 +90,11 @@ export function ConversationView() {
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
   const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
+
+  // In-session find (Cmd+F / Ctrl+F)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const findInputRef = useRef<HTMLInputElement>(null)
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
   const backUrl = useMemo(() => {
@@ -217,6 +224,23 @@ export function ConversationView() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf, handleResume])
+
+  // In-session find: Cmd+F / Ctrl+F to open, Escape to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        setFindOpen(true)
+        requestAnimationFrame(() => findInputRef.current?.focus())
+      }
+      if (e.key === 'Escape' && findOpen) {
+        setFindOpen(false)
+        setFindQuery('')
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [findOpen])
 
   // Close export menu on outside click
   useEffect(() => {
@@ -611,8 +635,27 @@ export function ConversationView() {
       {/* Two-column: Conversation + Sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* In-session find bar (Cmd+F) */}
+          {findOpen && (
+            <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
+              <SearchInput
+                ref={findInputRef}
+                value={findQuery}
+                onChange={setFindQuery}
+                placeholder="Find in conversation..."
+                autoFocus
+                shortcutHint="Cmd+F"
+                onClose={() => { setFindOpen(false); setFindQuery('') }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { setFindOpen(false); setFindQuery('') }
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
           {!verboseMode ? (
+            <FindProvider value={findQuery}>
             <ThreadHighlightProvider>
             <ExpandProvider>
               <Virtuoso
@@ -676,9 +719,11 @@ export function ConversationView() {
               />
             </ExpandProvider>
             </ThreadHighlightProvider>
+            </FindProvider>
           ) : (
             <HistoryRichPane messages={richMessagesWithHookEvents} categoryCounts={historyCategoryCounts} />
           )}
+          </div>
         </div>
 
         {/* Right: Detail panel (inline) */}

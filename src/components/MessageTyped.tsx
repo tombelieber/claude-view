@@ -13,6 +13,8 @@ import { useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import { useFindQuery } from '../contexts/FindContext'
+import { highlightText } from '../lib/highlight-text'
 import {
   User, Copy, Check, MessageSquare, Wrench, CheckCircle,
   AlertCircle, Zap, BookOpen
@@ -275,6 +277,7 @@ export function MessageTyped({
   const Icon = config.icon
   const time = formatTime(message.timestamp)
   const [copied, setCopied] = useState(false)
+  const findQuery = useFindQuery()
 
   // Cap indent at MAX_INDENT_LEVEL
   const clampedIndent = Math.min(Math.max(indent, 0), MAX_INDENT_LEVEL)
@@ -308,6 +311,17 @@ export function MessageTyped({
 
   // Memoize content processing to avoid re-running XML extraction on every render
   const contentSegments = useMemo(() => processContent(message.content), [message.content])
+
+  /** Recursively highlight string children for in-session find */
+  const highlightChildren = useCallback((children: React.ReactNode): React.ReactNode => {
+    if (!findQuery.trim()) return children
+    if (typeof children === 'string') return highlightText(children, findQuery)
+    if (Array.isArray(children)) return children.map((child, i) => {
+      if (typeof child === 'string') return <span key={i}>{highlightText(child, findQuery)}</span>
+      return child
+    })
+    return children
+  }, [findQuery])
 
   if ((type === 'system' || type === 'progress') && !message.content && !message.thinking) {
     if (!metadata || Object.keys(metadata).length === 0) return null
@@ -432,7 +446,7 @@ export function MessageTyped({
                           return <>{children}</>
                         },
                         p({ children }) {
-                          return <p className="mb-2 last:mb-0">{children}</p>
+                          return <p className="mb-2 last:mb-0">{highlightChildren(children)}</p>
                         },
                         ul({ children }) {
                           return <ul className="list-disc pl-4 mb-2">{children}</ul>
@@ -441,7 +455,7 @@ export function MessageTyped({
                           return <ol className="list-decimal pl-4 mb-2">{children}</ol>
                         },
                         li({ children }) {
-                          return <li className="mb-1">{children}</li>
+                          return <li className="mb-1">{highlightChildren(children)}</li>
                         },
                         a({ href, children }) {
                           return (
@@ -451,7 +465,7 @@ export function MessageTyped({
                               target="_blank"
                               rel="noopener noreferrer"
                             >
-                              {children}
+                              {highlightChildren(children)}
                             </a>
                           )
                         },
@@ -463,13 +477,13 @@ export function MessageTyped({
                           )
                         },
                         h1({ children }) {
-                          return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
+                          return <h1 className="text-lg font-bold mt-3 mb-2">{highlightChildren(children)}</h1>
                         },
                         h2({ children }) {
-                          return <h2 className="text-base font-bold mt-2 mb-2">{children}</h2>
+                          return <h2 className="text-base font-bold mt-2 mb-2">{highlightChildren(children)}</h2>
                         },
                         h3({ children }) {
-                          return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
+                          return <h3 className="text-sm font-bold mt-2 mb-1">{highlightChildren(children)}</h3>
                         },
                       }}
                     >
