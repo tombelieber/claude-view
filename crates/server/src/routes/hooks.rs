@@ -153,6 +153,7 @@ async fn handle_hook(
                 progress_items: Vec::new(),
                 tools_used: Vec::new(),
                 last_cache_hit_at: None,
+                compact_count: 0,
                 hook_events: Vec::new(),
             };
             let mut sessions = state.live_sessions.write().await;
@@ -227,6 +228,7 @@ async fn handle_hook(
                     progress_items: Vec::new(),
                     tools_used: Vec::new(),
                     last_cache_hit_at: None,
+                    compact_count: 0,
                     hook_events: Vec::new(),
                 };
                 sessions.insert(session.id.clone(), session.clone());
@@ -900,6 +902,7 @@ mod tests {
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
+            compact_count: 0,
             hook_events: Vec::new(),
         }
     }

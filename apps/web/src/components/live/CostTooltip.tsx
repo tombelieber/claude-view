@@ -1,3 +1,4 @@
+import { Minimize2 } from 'lucide-react'
 import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCostUsd } from '../../lib/format-utils'
@@ -15,13 +16,20 @@ interface CostTooltipProps {
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
   subAgents?: SubAgentInfo[]
+  compactCount?: number
   children: ReactNode
 }
 
 const TOOLTIP_W = 224 // w-56
 const MARGIN = 8
 
-export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTooltipProps) {
+export function CostTooltip({
+  cost,
+  cacheStatus,
+  subAgents,
+  compactCount,
+  children,
+}: CostTooltipProps) {
   const [isOpen, setIsOpen] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const triggerRef = useRef<HTMLDivElement>(null)
@@ -143,6 +151,21 @@ export function CostTooltip({ cost, cacheStatus, subAgents, children }: CostTool
                 </div>
               )}
               <div className={`pt-1 ${cacheStatusColor}`}>Cache: {cacheStatusLabel}</div>
+              {compactCount != null && compactCount > 0 && (
+                <div
+                  className={`pt-1 ${
+                    compactCount >= 4
+                      ? 'text-red-500'
+                      : compactCount >= 2
+                        ? 'text-amber-500 dark:text-amber-400'
+                        : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                >
+                  <Minimize2 className="inline h-3 w-3 mr-0.5" />
+                  {compactCount} {compactCount === 1 ? 'compaction' : 'compactions'} — context was
+                  full {compactCount}×
+                </div>
+              )}
               {cost.isEstimated && (
                 <div className="text-amber-500 dark:text-amber-400 pt-1 text-[10px]">
                   Estimated - model not in pricing table

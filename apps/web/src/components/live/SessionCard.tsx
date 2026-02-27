@@ -9,6 +9,7 @@ import {
   GitBranch,
   Loader,
   MessageCircle,
+  Minimize2,
   Power,
   Shield,
   Sparkles,
@@ -140,6 +141,7 @@ export function SessionCard({
             cost={session.cost}
             cacheStatus={session.cacheStatus}
             subAgents={session.subAgents}
+            compactCount={session.compactCount}
           >
             <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
               {estimatedPrefix}
@@ -214,11 +216,26 @@ export function SessionCard({
         turnCount={session.turnCount}
         agentLabel={session.agentState.label}
         agentStateKey={session.agentState.state}
+        compactCount={session.compactCount}
       />
 
-      {/* Footer: turns */}
+      {/* Footer: turns + compactions */}
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
+        {(session.compactCount ?? 0) > 0 && (
+          <span
+            className={`inline-flex items-center gap-0.5 ${
+              (session.compactCount ?? 0) >= 4
+                ? 'text-red-500'
+                : (session.compactCount ?? 0) >= 2
+                  ? 'text-amber-500'
+                  : 'text-gray-400 dark:text-gray-500'
+            }`}
+          >
+            <Minimize2 className="h-3 w-3" />
+            {session.compactCount} {session.compactCount === 1 ? 'compact' : 'compacts'}
+          </span>
+        )}
       </div>
     </>
   )

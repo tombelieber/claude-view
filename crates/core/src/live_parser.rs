@@ -110,6 +110,8 @@ pub struct LiveLine {
     pub task_id_assignments: Vec<RawTaskIdAssignment>,
     /// Skill names extracted from Skill tool_use blocks (from `input.skill`).
     pub skill_names: Vec<String>,
+    /// Whether this is a system message with subtype "compact_boundary".
+    pub is_compact_boundary: bool,
 }
 
 /// Broad classification of a JSONL line.
@@ -146,6 +148,7 @@ pub struct TailFinders {
     pub task_create_key: memmem::Finder<'static>,
     pub task_update_key: memmem::Finder<'static>,
     pub task_notification_key: memmem::Finder<'static>,
+    pub compact_boundary_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -171,6 +174,7 @@ impl TailFinders {
             task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
+            compact_boundary_key: memmem::Finder::new(b"\"compact_boundary\""),
         }
     }
 }
@@ -309,6 +313,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 task_updates: Vec::new(),
                 task_id_assignments: Vec::new(),
                 skill_names: Vec::new(),
+                is_compact_boundary: false,
             };
         }
     };
@@ -721,6 +726,10 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         }
     }
 
+    // --- Compact boundary detection (system lines with subtype "compact_boundary") ---
+    let is_compact_boundary =
+        line_type == LineType::System && finders.compact_boundary_key.find(raw).is_some();
+
     LiveLine {
         line_type,
         role,
@@ -749,6 +758,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         task_updates,
         task_id_assignments,
         skill_names,
+        is_compact_boundary,
     }
 }
 

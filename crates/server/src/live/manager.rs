@@ -82,6 +82,8 @@ struct SessionAccumulator {
     tool_counts_read: u32,
     tool_counts_bash: u32,
     tool_counts_write: u32,
+    /// Number of compact_boundary system messages seen.
+    compact_count: u32,
 }
 
 impl SessionAccumulator {
@@ -111,6 +113,7 @@ impl SessionAccumulator {
             tool_counts_read: 0,
             tool_counts_bash: 0,
             tool_counts_write: 0,
+            compact_count: 0,
         }
     }
 }
@@ -135,6 +138,7 @@ struct JsonlMetadata {
     progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
     tools_used: Vec<super::state::ToolUsed>,
+    compact_count: u32,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -180,6 +184,7 @@ fn build_recovered_session(
         progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
+        compact_count: 0,
         hook_events: Vec::new(),
     }
 }
@@ -309,6 +314,7 @@ fn apply_jsonl_metadata(
     session.progress_items = m.progress_items.clone();
     session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;
+    session.compact_count = m.compact_count;
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -588,6 +594,7 @@ impl LiveSessionManager {
                                         tools
                                     },
                                     last_cache_hit_at: acc.last_cache_hit_at,
+                                    compact_count: acc.compact_count,
                                 };
                                 drop(accumulators);
 
@@ -1015,6 +1022,7 @@ impl LiveSessionManager {
             acc.tool_counts_read = 0;
             acc.tool_counts_bash = 0;
             acc.tool_counts_write = 0;
+            acc.compact_count = 0;
         }
 
         for line in &new_lines {
@@ -1255,6 +1263,11 @@ impl LiveSessionManager {
                 }
             }
 
+            // Track compaction events
+            if line.is_compact_boundary {
+                acc.compact_count += 1;
+            }
+
             // --- TodoWrite: full replacement ---
             if let Some(ref todos) = line.todo_write {
                 use claude_view_core::progress::{ProgressItem, ProgressSource, ProgressStatus};
@@ -1409,6 +1422,7 @@ impl LiveSessionManager {
                 tools
             },
             last_cache_hit_at: acc.last_cache_hit_at,
+            compact_count: acc.compact_count,
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
