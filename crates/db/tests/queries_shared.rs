@@ -7,6 +7,7 @@ pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
         id: id.to_string(),
         project: project.to_string(),
         project_path: format!("/home/user/{}", project),
+        display_name: project.to_string(),
         git_root: None,
         file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
         modified_at,
