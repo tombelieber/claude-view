@@ -5,6 +5,7 @@ fn main() {
         id: "test".to_string(),
         project: "test".to_string(),
         project_path: "/test".to_string(),
+        display_name: "test".to_string(),
         git_root: None,
         file_path: "/test/session.jsonl".to_string(),
         modified_at: 1769482232,
