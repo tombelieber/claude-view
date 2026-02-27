@@ -39,6 +39,8 @@ interface ContextGaugeProps {
   agentLabel?: string
   /** The raw agent state key (e.g. "acting", "compacting"). Used for precise state detection. */
   agentStateKey?: string
+  /** Number of context compactions in this session. */
+  compactCount?: number
 }
 
 const formatTokens = (n: number) => {
@@ -69,6 +71,7 @@ export function ContextGauge({
   expanded = false,
   agentLabel: _agentLabel,
   agentStateKey,
+  compactCount,
 }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model)
   const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
@@ -317,6 +320,20 @@ export function ContextGauge({
                 <span className="tabular-nums font-mono">{turnCount}</span>
               </div>
             )}
+            {compactCount != null && compactCount > 0 && (
+              <div
+                className={`flex justify-between ${
+                  compactCount >= 4
+                    ? 'text-red-500'
+                    : compactCount >= 2
+                      ? 'text-amber-500 dark:text-amber-400'
+                      : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                <span>Compactions</span>
+                <span className="tabular-nums font-mono">{compactCount}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -461,6 +478,20 @@ export function ContextGauge({
                   <div className="flex justify-between text-gray-500 dark:text-gray-400">
                     <span>Turns</span>
                     <span className="tabular-nums font-mono">{turnCount}</span>
+                  </div>
+                )}
+                {compactCount != null && compactCount > 0 && (
+                  <div
+                    className={`flex justify-between ${
+                      compactCount >= 4
+                        ? 'text-red-500'
+                        : compactCount >= 2
+                          ? 'text-amber-500 dark:text-amber-400'
+                          : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    <span>Compactions</span>
+                    <span className="tabular-nums font-mono">{compactCount}</span>
                   </div>
                 )}
               </div>
