@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
+use tantivy::query::{BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, TermQuery};
 use tantivy::schema::IndexRecordOption;
 use tantivy::snippet::SnippetGenerator;
 use tantivy::schema::Value;
@@ -24,6 +24,13 @@ fn truncate_utf8(s: &str, max_bytes: usize) -> String {
     }
     format!("{}...", &s[..end])
 }
+
+/// Boost weights for multi-signal scoring.
+/// Invariant: PHRASE > EXACT > FUZZY (verified by integration tests).
+/// These are starting values — tune based on real session data.
+const PHRASE_BOOST: f32 = 3.0;
+const EXACT_BOOST: f32 = 1.5;
+const FUZZY_BOOST: f32 = 0.5;
 
 /// A parsed qualifier extracted from the query string.
 #[derive(Debug, Clone)]
@@ -272,38 +279,71 @@ impl SearchIndex {
         // Build the combined query
         let mut sub_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-        // Text query (the main BM25-scored part)
+        // Text query (the main BM25-scored part) — multi-signal: phrase + exact + fuzzy
         if !text_query.trim().is_empty() {
-            // Check if the query is a quoted phrase
             let trimmed = text_query.trim();
-            if trimmed.starts_with('"') && trimmed.ends_with('"') {
-                // Quoted phrase: use standard query parser (exact phrase match)
-                let query_parser =
-                    tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-                let parsed = query_parser.parse_query(trimmed)?;
-                sub_queries.push((Occur::Must, parsed));
+            // Preserve quoted phrase syntax — strip wrapping quotes before tokenizing
+            let trimmed = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+                &trimmed[1..trimmed.len() - 1]
             } else {
-                // Unquoted: apply fuzzy matching per term (Levenshtein distance=1)
-                let tokens: Vec<&str> = trimmed.split_whitespace()
-                    .filter(|t| !t.is_empty())
-                    .collect();
+                trimmed
+            };
+            let tokens: Vec<String> = trimmed
+                .split_whitespace()
+                .map(|t| t.to_lowercase())
+                .collect();
 
-                if tokens.len() == 1 {
-                    // Single term: fuzzy match
-                    let term = Term::from_field_text(self.content_field, &tokens[0].to_lowercase());
-                    let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
-                    sub_queries.push((Occur::Must, Box::new(fuzzy_query)));
-                } else {
-                    // Multiple terms: each must match (fuzzy), combined with Must
-                    let mut term_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
-                    for token in &tokens {
-                        let term = Term::from_field_text(self.content_field, &token.to_lowercase());
-                        let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
-                        term_queries.push((Occur::Must, Box::new(fuzzy_query)));
-                    }
-                    sub_queries.push((Occur::Must, Box::new(BooleanQuery::new(term_queries))));
-                }
+            // Build multi-signal query: phrase + exact + fuzzy, all as Should.
+            // At least one signal must match (BooleanQuery with only Should = OR semantics).
+            let mut text_signals: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+            // Signal 1: Exact phrase (highest weight, only for 2+ terms)
+            if tokens.len() >= 2 {
+                let phrase_terms: Vec<Term> = tokens
+                    .iter()
+                    .map(|t| Term::from_field_text(self.content_field, t))
+                    .collect();
+                let phrase_query = PhraseQuery::new(phrase_terms);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(phrase_query), PHRASE_BOOST)),
+                ));
             }
+
+            // Signal 2: All exact terms present (BM25 scored)
+            {
+                let exact_term_queries: Vec<(Occur, Box<dyn Query>)> = tokens
+                    .iter()
+                    .map(|t| {
+                        let term = Term::from_field_text(self.content_field, t);
+                        (Occur::Must, Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs)) as Box<dyn Query>)
+                    })
+                    .collect();
+                let exact_query = BooleanQuery::new(exact_term_queries);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(exact_query), EXACT_BOOST)),
+                ));
+            }
+
+            // Signal 3: Fuzzy terms (typo tolerance, lowest weight)
+            {
+                let fuzzy_term_queries: Vec<(Occur, Box<dyn Query>)> = tokens
+                    .iter()
+                    .map(|t| {
+                        let term = Term::from_field_text(self.content_field, t);
+                        (Occur::Must, Box::new(FuzzyTermQuery::new(term, 1, true)) as Box<dyn Query>)
+                    })
+                    .collect();
+                let fuzzy_query = BooleanQuery::new(fuzzy_term_queries);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(fuzzy_query), FUZZY_BOOST)),
+                ));
+            }
+
+            let text_query_combined = BooleanQuery::new(text_signals);
+            sub_queries.push((Occur::Must, Box::new(text_query_combined)));
         }
 
         // Qualifier term queries
@@ -693,5 +733,72 @@ mod tests {
         assert_eq!(quals[1].key, "branch");
         assert_eq!(quals[2].key, "model");
         assert_eq!(quals[3].key, "role");
+    }
+
+    #[test]
+    fn test_multi_signal_ranks_phrase_above_fuzzy() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session("session-a", &[crate::indexer::SearchDocument {
+            session_id: "session-a".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "we need to deploy to production tonight".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.index_session("session-b", &[crate::indexer::SearchDocument {
+            session_id: "session-b".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "production environment deploy scripts to run".to_string(),
+            turn_number: 1,
+            timestamp: 2000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx.search("deploy to production", None, 10, 0).unwrap();
+        assert!(result.total_sessions >= 2, "both sessions should match");
+
+        // Session A (exact phrase) must rank above Session B (scattered terms)
+        assert_eq!(result.sessions[0].session_id, "session-a",
+            "exact phrase match should rank first");
+        assert!(result.sessions[0].best_score > result.sessions[1].best_score,
+            "phrase match score ({}) should exceed term match score ({})",
+            result.sessions[0].best_score, result.sessions[1].best_score);
+    }
+
+    #[test]
+    fn test_fuzzy_catches_typos() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session("session-typo", &[crate::indexer::SearchDocument {
+            session_id: "session-typo".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "the deployment pipeline failed with timeout".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // "deploymnt" (typo) should still find "deployment" via fuzzy
+        let result = idx.search("deploymnt", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1, "fuzzy should catch single-char typo");
+        assert_eq!(result.sessions[0].session_id, "session-typo");
     }
 }
