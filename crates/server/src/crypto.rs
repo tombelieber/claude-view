@@ -48,9 +48,19 @@ pub fn load_or_create_identity() -> Result<DeviceIdentity, String> {
     // Try to load existing
     if path.exists() {
         let data = fs::read(&path).map_err(|e| format!("read identity: {e}"))?;
-        if let Ok(identity) = serde_json::from_slice::<DeviceIdentity>(&data) {
-            info!("loaded device identity from {}", path.display());
-            return Ok(identity);
+        match serde_json::from_slice::<DeviceIdentity>(&data) {
+            Ok(identity) => {
+                info!("loaded device identity from {}", path.display());
+                return Ok(identity);
+            }
+            Err(e) => {
+                return Err(format!(
+                    "identity.json exists but is corrupt ({}). \
+                     Remove {} manually to regenerate keys (WARNING: this invalidates all pairings).",
+                    e,
+                    path.display()
+                ));
+            }
         }
     }
 

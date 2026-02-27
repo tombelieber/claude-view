@@ -80,7 +80,7 @@ async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPaylo
         verifying_key_bytes(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let client = reqwest::Client::new();
-    let _ = client
+    let resp = client
         .post(format!("{relay_http}/pair"))
         .json(&serde_json::json!({
             "device_id": identity.device_id,
@@ -88,7 +88,15 @@ async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPaylo
             "one_time_token": &token,
         }))
         .send()
-        .await;
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to register pairing offer with relay: {e}");
+            StatusCode::BAD_GATEWAY
+        })?;
+    if !resp.status().is_success() {
+        tracing::error!("Relay rejected pairing offer: HTTP {}", resp.status());
+        return Err(StatusCode::BAD_GATEWAY);
+    }
 
     let k_b64 = STANDARD.encode(box_public.as_bytes());
     // Include verification secret in QR URL so phone can compute HMAC binding.
