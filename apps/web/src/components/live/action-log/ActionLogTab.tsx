@@ -1,6 +1,7 @@
 import { ArrowDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { useMonitorStore } from '../../../store/monitor-store'
 import type { RichMessage } from '../RichPane'
 import { ActionFilterChips } from './ActionFilterChips'
 import { ActionRow } from './ActionRow'
@@ -22,7 +23,8 @@ export function ActionLogTab({
   categoryCounts: countsProp,
 }: ActionLogTabProps) {
   const allItems = useActionItems(messages)
-  const [activeFilter, setActiveFilter] = useState<ActionCategory | 'all'>('all')
+  const activeFilter = useMonitorStore((s) => s.verboseFilter)
+  const setActiveFilter = useMonitorStore((s) => s.setVerboseFilter)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
   const [showNewIndicator, setShowNewIndicator] = useState(false)
