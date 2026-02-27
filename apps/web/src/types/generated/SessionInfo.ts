@@ -6,6 +6,12 @@ import type { ToolCounts } from "./ToolCounts";
  */
 export type SessionInfo = { id: string, project: string, projectPath: string, 
 /**
+ * Human-readable project name (e.g. "claude-backup"), derived from CWD
+ * evidence at index time. When no CWD is available, falls back to the
+ * raw encoded directory name (no guessing).
+ */
+displayName: string, 
+/**
  * Canonical git repository root resolved from session_cwd at index time.
  * None for non-git directories or sessions indexed before this field existed.
  */
