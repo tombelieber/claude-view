@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { useColorScheme } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { TamaguiProvider } from 'tamagui'
+import { usePushNotifications } from '../hooks/use-push-notifications'
 import config from '../tamagui.config'
 
 SplashScreen.preventAutoHideAsync()
@@ -16,6 +17,7 @@ export default function RootLayout() {
     Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
     InterBold: require('@tamagui/font-inter/otf/Inter-Bold.otf'),
   })
+  usePushNotifications()
 
   useEffect(() => {
     if (fontsLoaded) {
