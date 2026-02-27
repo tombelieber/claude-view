@@ -12,6 +12,7 @@
 //! - **Read path**: `SearchIndex::search` -> qualifier parsing -> BooleanQuery -> snippets
 //! - **Storage**: On-disk at `<cache_dir>/claude-view/search-index/` or in-RAM for tests
 
+pub mod grep_types;
 pub mod indexer;
 pub mod query;
 pub mod types;
@@ -22,6 +23,7 @@ use std::sync::Mutex;
 use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
 
+pub use grep_types::{GrepLineMatch, GrepResponse, GrepSessionHit};
 pub use indexer::SearchDocument;
 pub use types::{MatchHit, SearchResponse, SessionHit};
 
