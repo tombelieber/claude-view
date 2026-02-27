@@ -1,7 +1,10 @@
 import { X } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo } from 'react'
+import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { cn } from '../../lib/utils'
+import { useMonitorStore } from '../../store/monitor-store'
 import { RichPane } from './RichPane'
+import { ViewModeControls } from './ViewModeControls'
 import { useSubAgentStream } from './use-subagent-stream'
 
 interface SubAgentDrillDownProps {
@@ -19,7 +22,7 @@ export function SubAgentDrillDown({
   description,
   onClose,
 }: SubAgentDrillDownProps) {
-  const [verboseMode, setVerboseMode] = useState(false)
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
 
   const noop = useCallback(() => {}, [])
 
@@ -34,22 +37,28 @@ export function SubAgentDrillDown({
     onMessage: noop,
   })
 
+  const categoryCounts = useMemo(() => computeCategoryCounts(streamMessages), [streamMessages])
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header — same density as SessionDetailPanel tab bar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wide flex-shrink-0">
           {agentType}
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">id:{agentId}</span>
-        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
+          {agentId}
+        </span>
+        <span className="text-xs text-gray-700 dark:text-gray-300 truncate min-w-0">
           {description}
         </span>
+
+        <div className="flex-1" />
 
         {/* Connection status */}
         <span
           className={cn(
-            'text-[10px] font-mono',
+            'text-[10px] font-mono flex-shrink-0',
             connectionState === 'connected' && 'text-green-600 dark:text-green-400',
             connectionState === 'connecting' && 'text-yellow-600 dark:text-yellow-400',
             connectionState === 'disconnected' && 'text-gray-400 dark:text-gray-500',
@@ -59,36 +68,28 @@ export function SubAgentDrillDown({
           {connectionState}
         </span>
 
-        {/* Verbose toggle */}
-        <button
-          onClick={() => setVerboseMode(!verboseMode)}
-          className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded border',
-            verboseMode
-              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-              : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
-          )}
-        >
-          {verboseMode ? 'verbose' : 'compact'}
-        </button>
+        {/* Same Chat/Debug + Rich/JSON controls as Terminal tab */}
+        <ViewModeControls />
 
         {/* Close button */}
         <button
+          type="button"
           onClick={onClose}
           aria-label="Close sub-agent drill-down"
-          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-0.5 flex-shrink-0"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Conversation */}
+      {/* Conversation — identical to Terminal tab */}
       <div className="flex-1 min-h-0">
         <RichPane
           messages={streamMessages}
           isVisible={true}
           verboseMode={verboseMode}
           bufferDone={bufferDone}
+          categoryCounts={categoryCounts}
         />
       </div>
     </div>

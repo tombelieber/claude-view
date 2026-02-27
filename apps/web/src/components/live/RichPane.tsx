@@ -915,14 +915,9 @@ export function RichPane({
     // Verbose mode: apply category filter
     if (verboseFilter === 'all') return messages
     return messages.filter((m) => {
-      // Always show conversation backbone
-      if (m.type === 'user' || m.type === 'assistant' || m.type === 'thinking') return true
-      // Structural types: show if their category matches the filter
-      if (m.type === 'system' || m.type === 'progress' || m.type === 'summary') {
-        return !m.category || m.category === verboseFilter
-      }
-      // Filter by category
-      return m.category === verboseFilter
+      // Messages without a category (user, assistant, thinking) are excluded when filtering
+      if (!m.category) return false
+      return verboseFilter.includes(m.category)
     })
   }, [messages, verboseMode, verboseFilter])
 
@@ -1002,14 +997,6 @@ export function RichPane({
 
   if (!isVisible) return null
 
-  if (displayItems.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-gray-500 dark:text-gray-600">
-        No messages yet
-      </div>
-    )
-  }
-
   return (
     <ExpandProvider>
       <div className="relative h-full w-full flex flex-col">
@@ -1017,30 +1004,36 @@ export function RichPane({
           <ActionFilterChips
             counts={categoryCounts}
             activeFilter={verboseFilter}
-            onFilterChange={setVerboseFilter as (filter: ActionCategory | 'all') => void}
+            onFilterChange={setVerboseFilter}
           />
         )}
-        <Virtuoso
-          ref={virtuosoRef}
-          data={displayItems}
-          initialTopMostItemIndex={displayItems.length - 1}
-          alignToBottom
-          followOutput={'smooth'}
-          atBottomStateChange={handleAtBottomStateChange}
-          atBottomThreshold={30}
-          itemContent={renderItem}
-          className="h-full flex-1 min-h-0"
-        />
-
-        {/* "New messages" floating pill — click to scroll to latest */}
-        {hasNewMessages && !isAtBottom && (
-          <button
-            onClick={scrollToBottom}
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded-full shadow-lg transition-colors z-10"
-          >
-            <ArrowDown className="w-3 h-3" />
-            New messages
-          </button>
+        {displayItems.length === 0 ? (
+          <div className="flex items-center justify-center flex-1 text-xs text-gray-500 dark:text-gray-600">
+            No messages yet
+          </div>
+        ) : (
+          <>
+            <Virtuoso
+              ref={virtuosoRef}
+              data={displayItems}
+              initialTopMostItemIndex={displayItems.length - 1}
+              alignToBottom
+              followOutput={'smooth'}
+              atBottomStateChange={handleAtBottomStateChange}
+              atBottomThreshold={30}
+              itemContent={renderItem}
+              className="h-full flex-1 min-h-0"
+            />
+            {hasNewMessages && !isAtBottom && (
+              <button
+                onClick={scrollToBottom}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded-full shadow-lg transition-colors z-10"
+              >
+                <ArrowDown className="w-3 h-3" />
+                New messages
+              </button>
+            )}
+          </>
         )}
       </div>
     </ExpandProvider>

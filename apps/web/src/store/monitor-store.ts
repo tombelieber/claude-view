@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { type StorageValue, persist } from 'zustand/middleware'
 import type { ActionCategory } from '../components/live/action-log/types'
 
-export type VerboseFilter = ActionCategory | 'all'
+export type VerboseFilter = ActionCategory[] | 'all'
 
 interface MonitorState {
   // Grid layout
@@ -28,13 +28,13 @@ interface MonitorState {
   hidePane: (id: string) => void
   showPane: (id: string) => void
   toggleVerbose: () => void
-  setVerboseFilter: (filter: VerboseFilter) => void
+  setVerboseFilter: (category: ActionCategory | 'all') => void
   setRichRenderMode: (mode: 'rich' | 'json') => void
 }
 
 export const useMonitorStore = create<MonitorState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       gridOverride: null,
       compactHeaders: false,
       selectedPaneId: null,
@@ -80,7 +80,24 @@ export const useMonitorStore = create<MonitorState>()(
         }),
 
       toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
-      setVerboseFilter: (filter) => set({ verboseFilter: filter }),
+      setVerboseFilter: (category) => {
+        if (category === 'all') {
+          set({ verboseFilter: 'all' })
+          return
+        }
+        const current = get().verboseFilter
+        // From "all" → start fresh with just this category
+        if (current === 'all') {
+          set({ verboseFilter: [category] })
+          return
+        }
+        // Toggle: remove if present, add if absent
+        const next = current.includes(category)
+          ? current.filter((c) => c !== category)
+          : [...current, category]
+        // Empty → revert to all
+        set({ verboseFilter: next.length === 0 ? 'all' : next })
+      },
       setRichRenderMode: (mode) => set({ richRenderMode: mode }),
     }),
     {
@@ -106,6 +123,13 @@ export const useMonitorStore = create<MonitorState>()(
             }
             if (Array.isArray(parsed.state.hiddenPaneIds)) {
               parsed.state.hiddenPaneIds = new Set(parsed.state.hiddenPaneIds as string[])
+            }
+            // Migrate old single-string verboseFilter to new format
+            const vf = parsed.state.verboseFilter
+            if (typeof vf === 'string' && vf !== 'all') {
+              parsed.state.verboseFilter = [vf] as unknown as VerboseFilter
+            } else if (Array.isArray(vf) && vf.length === 0) {
+              parsed.state.verboseFilter = 'all'
             }
           }
           return parsed as StorageValue<Partial<MonitorState>>
