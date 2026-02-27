@@ -78,8 +78,20 @@ jobs:
       - name: Build frontend
         run: cd apps/web && bun run build
 
+      - name: Build sidecar
+        run: |
+          cd sidecar
+          npm install --omit=dev
+          npm run build
+
       - name: Build Rust binary
         run: cargo build --release -p claude-view-server
+
+      - name: Stage sidecar
+        run: |
+          mkdir -p staging/sidecar
+          cp -r sidecar/dist staging/sidecar/
+          cp sidecar/package.json staging/sidecar/
 
       - name: Package (unix)
         if: runner.os != 'Windows'
