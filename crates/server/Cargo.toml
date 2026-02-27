@@ -74,6 +74,8 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
 base64 = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
+hmac = "0.12"
+sha2 = "0.10"
 dotenvy = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true }
