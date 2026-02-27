@@ -59,70 +59,75 @@ async fn grep_handler(
     let case_sensitive = params.case_sensitive.unwrap_or(false);
     let whole_word = params.whole_word.unwrap_or(false);
 
-    let projects_dir = claude_projects_dir()?;
+    let project_filter = params.project;
 
-    // Collect JSONL files to search
-    let mut files: Vec<JsonlFile> = Vec::new();
+    // Move all blocking filesystem I/O into spawn_blocking to avoid blocking
+    // the Tokio event loop (directory scan + grep search).
+    let result = spawn_blocking(move || {
+        let projects_dir = claude_projects_dir()
+            .map_err(|e| ApiError::Internal(format!("Projects dir: {e}")))?;
 
-    if let Ok(entries) = std::fs::read_dir(&projects_dir) {
-        for entry in entries.flatten() {
-            let project_dir = entry.path();
-            if !project_dir.is_dir() {
-                continue;
-            }
+        let mut files: Vec<JsonlFile> = Vec::new();
 
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            let resolved = resolve_project_path_with_cwd(&dir_name, None);
-
-            // Filter by project if specified
-            if let Some(ref proj) = params.project {
-                if resolved.display_name != *proj {
+        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+            for entry in entries.flatten() {
+                let project_dir = entry.path();
+                if !project_dir.is_dir() {
                     continue;
                 }
-            }
 
-            if let Ok(sessions) = std::fs::read_dir(&project_dir) {
-                for session in sessions.flatten() {
-                    let path = session.path();
-                    if path.extension().is_some_and(|e| e == "jsonl") {
-                        let session_id = path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let modified_at = path
-                            .metadata()
-                            .and_then(|m| m.modified())
-                            .map(|t| {
-                                t.duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs() as i64
-                            })
-                            .unwrap_or(0);
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                let resolved = resolve_project_path_with_cwd(&dir_name, None);
 
-                        files.push(JsonlFile {
-                            path,
-                            session_id,
-                            project: resolved.display_name.clone(),
-                            project_path: resolved.full_path.clone(),
-                            modified_at,
-                        });
+                if let Some(ref proj) = project_filter {
+                    if resolved.display_name != *proj {
+                        continue;
+                    }
+                }
+
+                if let Ok(sessions) = std::fs::read_dir(&project_dir) {
+                    for session in sessions.flatten() {
+                        let path = session.path();
+                        if path.extension().is_some_and(|e| e == "jsonl") {
+                            let session_id = path
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            let modified_at = path
+                                .metadata()
+                                .and_then(|m| m.modified())
+                                .map(|t| {
+                                    t.duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs() as i64
+                                })
+                                .unwrap_or(0);
+
+                            files.push(JsonlFile {
+                                path,
+                                session_id,
+                                project: resolved.display_name.clone(),
+                                project_path: resolved.full_path.clone(),
+                                modified_at,
+                            });
+                        }
                     }
                 }
             }
         }
-    }
 
-    let opts = GrepOptions {
-        pattern,
-        case_sensitive,
-        whole_word,
-        limit,
-    };
+        let opts = GrepOptions {
+            pattern,
+            case_sensitive,
+            whole_word,
+            limit,
+        };
 
-    let result = spawn_blocking(move || grep_files(&files, &opts))
-        .await
-        .map_err(|e| ApiError::Internal(format!("Grep task failed: {e}")))?
-        .map_err(|e| ApiError::BadRequest(format!("{e}")))?;
+        grep_files(&files, &opts).map_err(|e| ApiError::BadRequest(format!("{e}")))
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("Grep task failed: {e}")))?
+    ?;
 
     Ok(Json(result))
 }

@@ -226,21 +226,24 @@ export function ConversationView() {
   }, [handleExportHtml, handleExportPdf, handleResume])
 
   // In-session find: Cmd+F / Ctrl+F to open, Escape to close
+  // Use ref to avoid re-registering the handler on every findOpen change
+  const findOpenRef = useRef(findOpen)
+  useEffect(() => { findOpenRef.current = findOpen }, [findOpen])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
         setFindOpen(true)
-        requestAnimationFrame(() => findInputRef.current?.focus())
       }
-      if (e.key === 'Escape' && findOpen) {
+      if (e.key === 'Escape' && findOpenRef.current) {
         setFindOpen(false)
         setFindQuery('')
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [findOpen])
+  }, [])
 
   // Close export menu on outside click
   useEffect(() => {

@@ -19,8 +19,9 @@ export function highlightText(text: string, query: string): ReactNode {
   // If only one part, no match was found
   if (parts.length === 1) return text
 
+  // With a single capturing group, split places captured fragments at odd indices
   return parts.map((part, i) =>
-    regex.test(part)
+    i % 2 === 1
       ? <mark key={i} className="bg-amber-200 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 rounded-sm">{part}</mark>
       : part
   )
