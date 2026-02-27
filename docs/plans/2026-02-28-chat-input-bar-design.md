@@ -511,14 +511,36 @@ interface ElicitationMsg {
 
 These require sidecar updates to forward Agent SDK events → WebSocket. Currently only `permission_request` flows through the sidecar.
 
-### 7.3 Future "Start Session" flow
+### 7.3 Four Integration Points
 
-Same `<ChatInputBar>` reused in a new-session context (could be a dockview panel or a top-level prompt):
+Same `<ChatInputBar>` component, 4 different wiring contexts:
 
-- `onSend` triggers session creation flow (calls `/api/control/start` or similar)
-- No `contextPercent` (new session = 0%)
-- `estimatedCost` shows first-message estimate
-- Mode defaults to "code"
+**1. Monitor panels (`MonitorPane`)**
+
+- Session is already live — send directly via `useControlSession(controlId).sendMessage`
+- ChatInputBar appears at the bottom of MonitorPane when `controlId` exists
+- This is the primary interaction point
+
+**2. Expanded session detail tabs (`SessionDetailPanel` → terminal tab)**
+
+- Same as #1 — session is live, `controlId` already available
+- ChatInputBar appears below the RichPane in the terminal tab
+- User expands a session panel → sees full terminal + input bar
+
+**3. Session history detail (`ConversationView` → `/sessions/:sessionId`)**
+
+- Session is historical — needs resume first
+- ChatInputBar shows with a "Resume & Send" button on first message
+- `onSend` calls `/api/control/resume` → gets `controlId` → transitions to live mode
+- Once resumed, behaves like #1 (direct WebSocket send)
+- If session can't be resumed (too old, different machine), show disabled state with tooltip
+
+**4. New session spawn**
+
+- No session yet — user starts from scratch
+- ChatInputBar appears as a "new session" panel or top-level prompt (e.g., "+" button in monitor toolbar → empty panel with ChatInputBar)
+- `onSend` calls `/api/control/start` with the message → creates session → panel transitions to live monitoring
+- No `contextPercent` (new session = 0%), `estimatedCost` shows first-message estimate
 - Once session starts, it appears as a new panel in the monitor view automatically
 
 ---

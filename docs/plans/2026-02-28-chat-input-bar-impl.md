@@ -1188,13 +1188,140 @@ git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
 
 ---
 
-## Task 17: Delete DashboardChat + ControlPage
+## Task 17: Wire ChatInputBar into SessionDetailPanel terminal tab
+
+**Files:**
+
+- Modify: `apps/web/src/components/live/SessionDetailPanel.tsx`
+
+**Step 1: Add ChatInputBar to the terminal tab**
+
+`SessionDetailPanel` has tabs: overview, terminal, log, sub-agents, cost. The terminal tab renders `RichPane`. Add ChatInputBar below the RichPane when the session is live and controllable.
+
+```tsx
+// In the terminal tab content, after RichPane:
+{session?.controlId && (
+  <ChatInputBar
+    onSend={controlSession.sendMessage}
+    isStreaming={!!controlSession?.streamingContent}
+    disabled={!controlSession || controlSession.status === 'completed'}
+    contextPercent={contextPercent(session)}
+  />
+)}
+```
+
+Same wiring as MonitorPane — session is already live, `controlId` available.
+
+**Step 2: Commit**
+
+```bash
+git add apps/web/src/components/live/SessionDetailPanel.tsx
+git commit -m "feat(chat): wire ChatInputBar into SessionDetailPanel terminal tab"
+```
+
+---
+
+## Task 18: Wire ChatInputBar into ConversationView (history resume)
+
+**Files:**
+
+- Modify: `apps/web/src/components/ConversationView.tsx`
+
+**Step 1: Add ChatInputBar with resume-on-first-send**
+
+ConversationView renders session history at `/sessions/:sessionId`. Add ChatInputBar at the bottom. On first send:
+
+1. Call `/api/control/resume` with `sessionId` → get `controlId`
+2. Transition to live mode (establish `useControlSession`)
+3. Send the message via the new control connection
+
+```tsx
+// State for resume flow
+const [controlId, setControlId] = useState<string | null>(null)
+const controlSession = controlId ? useControlSession(controlId) : null
+
+const handleSend = useCallback(async (message: string) => {
+  if (!controlId) {
+    // Resume first, then send
+    const res = await fetch(`/api/control/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
+    const data = await res.json()
+    setControlId(data.controlId)
+    // sendMessage will be available on next render via controlSession
+  } else {
+    controlSession?.sendMessage(message)
+  }
+}, [controlId, controlSession, sessionId])
+```
+
+ChatInputBar shows placeholder: "Resume this session..." when no controlId. Shows normal "Send a message..." after resumed.
+
+**Step 2: Commit**
+
+```bash
+git add apps/web/src/components/ConversationView.tsx
+git commit -m "feat(chat): add resume-and-send to ConversationView"
+```
+
+---
+
+## Task 19: New session spawn UI
+
+**Files:**
+
+- Create: `apps/web/src/components/chat/NewSessionInput.tsx`
+- Modify: `apps/web/src/components/live/MonitorView.tsx` (add "+" button)
+
+**Step 1: Create NewSessionInput wrapper**
+
+Thin wrapper around ChatInputBar for the "new session" context:
+
+```tsx
+// NewSessionInput.tsx
+export function NewSessionInput({ onSessionCreated }: { onSessionCreated: (sessionId: string) => void }) {
+  const handleSend = useCallback(async (message: string) => {
+    const res = await fetch('/api/control/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+    const data = await res.json()
+    onSessionCreated(data.sessionId)
+  }, [onSessionCreated])
+
+  return (
+    <ChatInputBar
+      onSend={handleSend}
+      placeholder="What do you want to build?"
+      mode="code"
+    />
+  )
+}
+```
+
+**Step 2: Add "+" button to MonitorView toolbar**
+
+Add a button in MonitorView's header that opens a new empty dockview panel containing `NewSessionInput`. When the user sends a message, the panel transitions to a live session panel.
+
+**Step 3: Commit**
+
+```bash
+git add apps/web/src/components/chat/NewSessionInput.tsx apps/web/src/components/live/MonitorView.tsx
+git commit -m "feat(chat): add new session spawn via ChatInputBar"
+```
+
+---
+
+## Task 20: Delete DashboardChat + ControlPage
 
 **Files:**
 
 - Delete: `apps/web/src/components/live/DashboardChat.tsx`
 - Modify: `apps/web/src/pages/ControlPage.tsx` (redirect to monitor or delete)
-- Modify: router config (remove `/control/:controlId` route or redirect)
+- Modify: `apps/web/src/router.tsx` (remove `/control/:controlId` route or redirect)
 
 **Step 1: Delete DashboardChat**
 
@@ -1209,7 +1336,7 @@ Replace the component body with a redirect to the monitor view:
 import { Navigate } from 'react-router-dom'
 
 export function ControlPage() {
-  return <Navigate to="/monitor" replace />
+  return <Navigate to="/" replace />
 }
 ```
 
@@ -1227,7 +1354,7 @@ git commit -m "refactor: delete DashboardChat, redirect ControlPage to monitor"
 
 ---
 
-## Task 18: Build Verification + Visual Check
+## Task 21: Build Verification + Visual Check
 
 **Step 1: Run all web tests**
 
@@ -1246,13 +1373,15 @@ Expected: Successful build
 
 **Step 4: Visual verification (manual)**
 
-Start the dev server and verify:
+Start the dev server and verify across all 4 integration points:
 
-1. Monitor view panels render normally (no regressions)
-2. ChatInputBar appears at bottom of panels with control connections
-3. Interactive cards render inline in RichPane when interactive messages arrive
-4. Slash command popover opens on `/` and navigates with arrow keys
-5. Mode switch and model selector dropdowns work
+1. **Monitor panels:** ChatInputBar at bottom of panels with control connections
+2. **Session detail panel:** ChatInputBar in terminal tab for live sessions
+3. **History detail:** ChatInputBar at bottom, "Resume & Send" flow works
+4. **New session:** "+" button opens empty panel, typing creates new session
+5. **Interactive cards:** render inline in RichPane when interactive messages arrive
+6. **Slash commands:** popover opens on `/` and navigates with arrow keys
+7. **No regressions:** monitor view panels render normally
 
 **Step 5: Final commit if any fixes needed**
 
@@ -1283,11 +1412,15 @@ git commit -m "fix(chat): address build/type issues from integration"
 | 14 | Cards barrel export | ~6 lines | Cards |
 | 15 | RichPane card wiring | ~40 lines changed | Cards |
 | 16 | MonitorPane input wiring | ~20 lines changed | ChatInputBar |
-| 17 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
-| 18 | Build verification | 0 lines | All tasks |
+| 17 | SessionDetailPanel terminal tab | ~15 lines changed | ChatInputBar |
+| 18 | ConversationView resume + input | ~40 lines changed | ChatInputBar, resume API |
+| 19 | New session spawn UI | ~30 lines + toolbar button | ChatInputBar, start API |
+| 20 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
+| 21 | Build verification | 0 lines | All tasks |
 
-**Total new code:** ~900 lines across 15 files
+**Total new code:** ~1,000 lines across 17 files
 **Code deleted:** ~270 lines (DashboardChat + ControlPage)
-**Net change:** ~630 lines
+**Net change:** ~730 lines
 **New dependencies:** 0 (all Radix + Lucide already installed)
 **Test coverage:** commands.ts has unit tests. UI components verified via type-check + build.
+**Backend prerequisite:** Tasks 18-19 need `/api/control/resume` and `/api/control/start` endpoints (sidecar work, separate plan).
