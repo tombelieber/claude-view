@@ -7,6 +7,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ControlPage } from './pages/ControlPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { ReportsPage } from './pages/ReportsPage'
 
@@ -57,6 +58,7 @@ export const router = createBrowserRouter([
       { path: 'activity', element: <ActivityPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'control/:controlId', element: <ControlPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
         path: 'project/:projectId',
