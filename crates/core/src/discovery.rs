@@ -53,19 +53,14 @@ pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> R
         };
     }
 
-    // No cwd available — show encoded name as-is. Per design: "show errors,
-    // not guesses." The naive `-` split produces wrong paths for directories
-    // with `@` or `-` in names (e.g. @acme-corp → /@acme/corp).
-    let display = encoded_name
-        .strip_prefix('-')
-        .unwrap_or(encoded_name)
-        .rsplit('-')
-        .next()
-        .unwrap_or(encoded_name);
-
+    // No cwd available — return encoded name verbatim as both fields.
+    // Per design: "no heuristic / guessing, all evidence based."
+    // The naive `-` split produces wrong paths for directories with `@` or
+    // `-` in names (e.g. @acme-corp → /@acme/corp). Without CWD evidence
+    // we show the raw encoded string rather than guessing wrong.
     ResolvedProject {
         full_path: encoded_name.to_string(),
-        display_name: display.to_string(),
+        display_name: encoded_name.to_string(),
     }
 }
 
@@ -374,6 +369,7 @@ async fn get_project_sessions(
             id: session_id,
             project: encoded_name.to_string(),
             project_path: resolved.full_path.clone(),
+            display_name: resolved.display_name.clone(),
             git_root: None,
             file_path: path.to_string_lossy().to_string(),
             modified_at,
@@ -734,10 +730,10 @@ mod tests {
 
     #[test]
     fn test_resolve_project_path_with_cwd_none_returns_encoded_name() {
-        // Without cwd, returns encoded name as-is (no guessing)
+        // Without cwd, returns encoded name verbatim as both fields (no guessing)
         let result = resolve_project_path_with_cwd("-Users-dev-my-project", None);
         assert_eq!(result.full_path, "-Users-dev-my-project");
-        assert_eq!(result.display_name, "project");
+        assert_eq!(result.display_name, "-Users-dev-my-project");
     }
 
     #[test]
@@ -1108,6 +1104,7 @@ mod tests {
             id: "test".to_string(),
             project: "test".to_string(),
             project_path: "/test".to_string(),
+            display_name: "test".to_string(),
             git_root: None,
             file_path: "/test/session.jsonl".to_string(),
             modified_at,
