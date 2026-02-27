@@ -24,8 +24,7 @@ if (fs.existsSync(SOCKET_PATH)) {
   fs.unlinkSync(SOCKET_PATH)
 }
 
-// Create HTTP server using createAdaptorServer (audit fix H4)
-// This correctly wraps the Hono app into a Node.js http.Server
+// Create HTTP server — createAdaptorServer accepts app directly or { fetch: app.fetch }
 const server = createAdaptorServer(app)
 
 server.listen(SOCKET_PATH, () => {
