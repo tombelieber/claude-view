@@ -28,8 +28,8 @@ const CATEGORIES: { id: ActionCategory | 'all'; label: string; color: string }[]
 
 interface ActionFilterChipsProps {
   counts: Record<ActionCategory, number>
-  activeFilter: ActionCategory | 'all'
-  onFilterChange: (filter: ActionCategory | 'all') => void
+  activeFilter: ActionCategory[] | 'all'
+  onFilterChange: (category: ActionCategory | 'all') => void
 }
 
 export function ActionFilterChips({
@@ -43,7 +43,10 @@ export function ActionFilterChips({
     <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto flex-shrink-0">
       {CATEGORIES.map((cat) => {
         const count = cat.id === 'all' ? total : (counts[cat.id] ?? 0)
-        const isActive = activeFilter === cat.id
+        const isActive =
+          activeFilter === 'all'
+            ? cat.id === 'all'
+            : cat.id !== 'all' && activeFilter.includes(cat.id)
         return (
           <button
             key={cat.id}

@@ -47,6 +47,8 @@ export interface SessionPanelData {
   // Sub-agents
   subAgents?: SubAgentInfo[]
 
+  compactCount?: number
+
   // Live-only fields (optional)
   startedAt?: number | null
   lastActivityAt?: number
@@ -84,6 +86,7 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     cost: session.cost,
     cacheStatus: session.cacheStatus,
     subAgents: session.subAgents,
+    compactCount: session.compactCount,
     startedAt: session.startedAt,
     lastActivityAt: session.lastActivityAt,
     lastUserMessage: session.lastUserMessage,
