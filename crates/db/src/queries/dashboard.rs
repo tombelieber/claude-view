@@ -979,6 +979,7 @@ mod filtered_query_tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            display_name: project.to_string(),
             git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,

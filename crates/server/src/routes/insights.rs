@@ -225,7 +225,6 @@ struct LightSession {
     id: String,
     project_id: String,
     project_path: String,
-    #[allow(dead_code)]
     project_display_name: String,
     file_path: String,
     last_message_at: Option<i64>,
@@ -304,6 +303,7 @@ impl LightSession {
             id: self.id,
             project: self.project_id.clone(),
             project_path: self.project_path,
+            display_name: self.project_display_name,
             git_root: None,
             file_path: self.file_path,
             modified_at: self.last_message_at.filter(|&ts| ts > 0).unwrap_or(0),
