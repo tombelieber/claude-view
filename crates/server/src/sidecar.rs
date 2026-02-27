@@ -85,9 +85,15 @@ impl SidecarManager {
             // Clean up stale socket
             let _ = std::fs::remove_file(&self.socket_path);
 
-            // Spawn sidecar
+            // CLAUDE.md HARD RULE: Strip ALL `CLAUDE*` env vars when spawning
+            // child processes. Use env_clear() then re-add safe vars only.
+            let filtered_env: Vec<(String, String)> = std::env::vars()
+                .filter(|(k, _)| !k.starts_with("CLAUDE") && k != "ANTHROPIC_API_KEY")
+                .collect();
             let child = Command::new("node")
                 .arg(&entry_point)
+                .env_clear()
+                .envs(filtered_env)
                 .env("SIDECAR_SOCKET", &self.socket_path)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
@@ -116,13 +122,19 @@ impl SidecarManager {
         Err(SidecarError::HealthCheckTimeout)
     }
 
-    /// Send SIGTERM, wait briefly, then SIGKILL if needed.
+    /// Kill the sidecar child process and wait for it to exit.
+    ///
+    /// NOTE: `child.wait()` is a blocking call (std::process::Child::wait).
+    /// This is acceptable here because:
+    /// 1. It's called from Drop and from the shutdown path (not hot path)
+    /// 2. The child is already killed, so wait() returns almost immediately
+    /// 3. Making this async would require spawn_blocking and complicate Drop
     pub fn shutdown(&self) {
         let mut guard = self.child.lock().unwrap();
         if let Some(ref mut child) = *guard {
             tracing::info!(pid = child.id(), "Shutting down sidecar");
             let _ = child.kill();
-            let _ = child.wait();
+            let _ = child.wait(); // blocking but brief — child already killed
         }
         *guard = None;
 
@@ -142,7 +154,7 @@ impl SidecarManager {
 
     /// HTTP health check over Unix socket using raw hyper 1.x client.
     ///
-    /// Replaces hyperlocal (incompatible with hyper 1.x — audit fix B3).
+    /// Replaces hyperlocal (incompatible with hyper 1.x -- audit fix B3).
     /// Uses tokio::net::UnixStream + hyper::client::conn::http1 directly.
     async fn health_check(&self) -> Result<(), SidecarError> {
         use http_body_util::Empty;
@@ -258,11 +270,7 @@ mod tests {
 
     #[test]
     fn test_find_sidecar_dir_returns_error_when_not_found() {
-        // With no SIDECAR_DIR and no sidecar/ in CWD or binary-relative
         let result = SidecarManager::find_sidecar_dir();
-        // In test environment, sidecar/dist/index.js likely doesn't exist
-        // (unless tests run from repo root with sidecar built)
-        // This test just verifies it doesn't panic
         let _ = result;
     }
 }
