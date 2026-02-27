@@ -626,7 +626,7 @@ import type { SlashCommand } from './commands'
 type Mode = 'plan' | 'code' | 'ask'
 
 /** Dormant state machine: dormant → resuming → active → streaming → completed */
-type InputBarState = 'dormant' | 'resuming' | 'active' | 'streaming' | 'completed'
+type InputBarState = 'dormant' | 'resuming' | 'active' | 'streaming' | 'completed' | 'controlled_elsewhere'
 
 interface ChatInputBarProps {
   onSend: (message: string) => void
@@ -653,7 +653,8 @@ const STATE_CONFIG: Record<InputBarState, { placeholder: string; disabled: boole
   resuming:  { placeholder: 'Resuming session...', disabled: true, muted: true },
   active:    { placeholder: 'Send a message... (or type / for commands)', disabled: false, muted: false },
   streaming: { placeholder: 'Claude is responding...', disabled: true, muted: false },
-  completed: { placeholder: 'Session ended', disabled: true, muted: true },
+  completed:              { placeholder: 'Session ended', disabled: true, muted: true },
+  controlled_elsewhere:   { placeholder: 'Controlled in another tab', disabled: true, muted: true },
 }
 
 export function ChatInputBar({
@@ -1203,7 +1204,99 @@ git commit -m "feat(chat): add ControlCallbacks type and useControlCallbacks hoo
 
 ---
 
-## Task 16: Wire interactive cards into RichPane
+## Task 16: TakeoverConfirmDialog + Session Origin Check
+
+**Files:**
+
+- Create: `apps/web/src/components/chat/TakeoverConfirmDialog.tsx`
+- Modify: `apps/web/src/types/control.ts` (add `origin` field to `ControlSessionInfo`)
+
+**Step 1: Add `origin` field to control types**
+
+```ts
+// In apps/web/src/types/control.ts — add to existing ControlSessionInfo or ServerMessage types:
+interface ControlSessionInfo {
+  sessionId: string
+  controlId: string
+  status: 'idle' | 'running' | 'completed'
+  origin: 'claude-view' | 'external'  // NEW
+}
+```
+
+**Step 2: Write TakeoverConfirmDialog**
+
+Radix `AlertDialog` (already available) for confirming takeover of external sessions.
+
+```tsx
+// TakeoverConfirmDialog.tsx
+import * as AlertDialog from '@radix-ui/react-alert-dialog'
+import { AlertTriangle } from 'lucide-react'
+
+interface TakeoverConfirmDialogProps {
+  open: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverConfirmDialogProps) {
+  return (
+    <AlertDialog.Root open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+        <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] bg-gray-900 border border-gray-700 rounded-xl p-6 z-50 shadow-xl">
+          <div className="flex items-start gap-3 mb-4">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <AlertDialog.Title className="text-sm font-medium text-gray-100">
+              Take Control?
+            </AlertDialog.Title>
+          </div>
+          <AlertDialog.Description className="text-xs text-gray-400 leading-relaxed mb-6 ml-8">
+            This session was started outside claude-view (CLI / VS Code).
+            Taking control will disconnect any active terminal input and
+            route all interaction through this panel.
+            The session's work will continue unaffected.
+          </AlertDialog.Description>
+          <div className="flex justify-end gap-2">
+            <AlertDialog.Cancel asChild>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-xs text-gray-400 border border-gray-700 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="px-3 py-1.5 text-xs text-white bg-amber-600 hover:bg-amber-700 rounded-lg cursor-pointer transition-colors"
+              >
+                Take Control
+              </button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  )
+}
+```
+
+**Step 3: Type-check**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
+Expected: 0 errors
+
+**Step 4: Commit**
+
+```bash
+git add apps/web/src/components/chat/TakeoverConfirmDialog.tsx apps/web/src/types/control.ts
+git commit -m "feat(chat): add TakeoverConfirmDialog for external session takeover"
+```
+
+---
+
+## Task 17: Wire interactive cards into RichPane (with controlCallbacks prop)
 
 **Files:**
 
@@ -1241,7 +1334,7 @@ git commit -m "feat(chat): wire interactive cards into RichPane with ControlCall
 
 ---
 
-## Task 17: Wire ChatInputBar into MonitorPane
+## Task 18: Wire ChatInputBar into MonitorPane
 
 **Files:**
 
@@ -1285,7 +1378,7 @@ git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
 
 ---
 
-## Task 18: Wire ChatInputBar into SessionDetailPanel terminal tab
+## Task 19: Wire ChatInputBar into SessionDetailPanel terminal tab
 
 **Files:**
 
@@ -1318,7 +1411,7 @@ git commit -m "feat(chat): wire ChatInputBar into SessionDetailPanel terminal ta
 
 ---
 
-## Task 19: Wire ChatInputBar into ConversationView (history resume)
+## Task 20: Wire ChatInputBar into ConversationView (history resume)
 
 **Files:**
 
@@ -1365,7 +1458,7 @@ git commit -m "feat(chat): add resume-and-send to ConversationView"
 
 ---
 
-## Task 20: New session spawn UI
+## Task 21: New session spawn UI
 
 **Files:**
 
@@ -1412,7 +1505,7 @@ git commit -m "feat(chat): add new session spawn via ChatInputBar"
 
 ---
 
-## Task 21: Delete DashboardChat + ControlPage
+## Task 22: Delete DashboardChat + ControlPage
 
 **Files:**
 
@@ -1451,7 +1544,7 @@ git commit -m "refactor: delete DashboardChat, redirect ControlPage to monitor"
 
 ---
 
-## Task 22: Build Verification + Visual Check
+## Task 23: Build Verification + Visual Check
 
 **Step 1: Run all web tests**
 
@@ -1508,19 +1601,21 @@ git commit -m "fix(chat): address build/type issues from integration"
 | 13 | ElicitationCard | ~40 lines | InteractiveCardShell |
 | 14 | Cards barrel export | ~6 lines | Cards |
 | 15 | ControlCallbacks type + useControlCallbacks hook | ~50 lines | useControlSession |
-| 16 | RichPane card wiring (with controlCallbacks prop) | ~50 lines changed | Cards, ControlCallbacks |
-| 17 | MonitorPane input + callbacks wiring | ~30 lines changed | ChatInputBar, useControlCallbacks |
-| 18 | SessionDetailPanel terminal tab | ~20 lines changed | ChatInputBar |
-| 19 | ConversationView resume + dormant input | ~50 lines changed | ChatInputBar, resume API |
-| 20 | New session spawn UI | ~30 lines + toolbar button | ChatInputBar, start API |
-| 21 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
-| 22 | Build verification | 0 lines | All tasks |
+| 16 | TakeoverConfirmDialog + session origin check | ~70 lines | @radix-ui/react-alert-dialog |
+| 17 | RichPane card wiring (with controlCallbacks prop) | ~50 lines changed | Cards, ControlCallbacks |
+| 18 | MonitorPane input + callbacks wiring | ~30 lines changed | ChatInputBar, useControlCallbacks |
+| 19 | SessionDetailPanel terminal tab | ~20 lines changed | ChatInputBar |
+| 20 | ConversationView resume + dormant input | ~50 lines changed | ChatInputBar, resume API, TakeoverConfirmDialog |
+| 21 | New session spawn UI | ~30 lines + toolbar button | ChatInputBar, start API |
+| 22 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
+| 23 | Build verification | 0 lines | All tasks |
 
-**Total new code:** ~1,100 lines across 19 files
+**Total new code:** ~1,170 lines across 20 files
 **Code deleted:** ~270 lines (DashboardChat + ControlPage)
-**Net change:** ~830 lines
+**Net change:** ~900 lines
 **New dependencies:** 0 (all Radix + Lucide already installed)
 **Test coverage:** commands.ts has unit tests. UI components verified via type-check + build.
 **Interaction binding:** Task 15 provides the ControlCallbacks plumbing — card button clicks → hook → WebSocket → sidecar → Claude. Read-only sessions get display-only cards (no action buttons).
-**Dormant input bar:** Task 8 implements 5-state machine (dormant/resuming/active/streaming/completed). Every session shows input bar; first send triggers resume.
-**Backend prerequisite:** Tasks 19-20 need `/api/control/resume` and `/api/control/start` endpoints (already implemented in sidecar).
+**Dormant input bar:** Task 8 implements 6-state machine (dormant/resuming/active/streaming/completed/controlled_elsewhere). Every session shows input bar; first send triggers resume.
+**External session safety:** Task 16 adds TakeoverConfirmDialog — external sessions (CLI/VS Code) require confirmation before takeover; claude-view-spawned sessions resume directly.
+**Backend prerequisite:** Tasks 20-21 need `/api/control/resume` and `/api/control/start` endpoints (already implemented in sidecar). Sidecar needs `origin` field in session info response.

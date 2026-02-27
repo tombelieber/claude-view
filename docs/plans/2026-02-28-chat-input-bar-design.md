@@ -550,6 +550,7 @@ These require sidecar updates to forward Agent SDK events → WebSocket. Current
 | **Active** | Full color, placeholder "Send a message..." | Direct send via WebSocket |
 | **Streaming** | Stop button visible, input disabled | Claude is responding |
 | **Completed** | Muted bg, placeholder "Session ended" | No interaction possible |
+| **Controlled elsewhere** | Muted bg, placeholder "Controlled in another tab" | Disabled until other connection drops |
 
 **Session header indicator:**
 
@@ -561,6 +562,73 @@ These require sidecar updates to forward Agent SDK events → WebSocket. Current
 **Safety rule:** Input bar is dormant when session `agentState.group === 'autonomous'` (Claude mid-turn). Activatable only when session is idle/waiting/completed. This sidesteps concurrent access issues entirely.
 
 **Exception — new session spawn:** Input bar starts in `ACTIVE` state (no session to resume). First send calls `/api/control/start` instead of `/api/control/resume`.
+
+### 7.5 Single-Writer Enforcement + External Session Confirmation
+
+**Problem:** Two tabs (or a tab + CLI terminal) could try to control the same session simultaneously, causing interleaved JSONL writes and undefined behavior.
+
+**Solution:** One control connection per session at a time. The sidecar enforces this — a new `resume` call for an already-controlled session either rejects or transfers control (existing connection gets disconnected).
+
+**Session origin distinction:**
+
+| Session origin | On first send | Rationale |
+|---|---|---|
+| **Spawned by claude-view** (sidecar's `SessionManager` created it) | Direct resume — no confirmation | You started it, you own it |
+| **External** (CLI, VS Code, another tool) | "Take Control?" confirmation dialog | Disruptive — user may not realize they're hijacking a live terminal |
+
+**Detection mechanism:**
+
+The sidecar tracks which sessions it spawned via `SessionManager.spawnedSessionIds: Set<string>`. The existing `GET /api/control/sessions` response includes each session's origin:
+
+```ts
+interface ControlSessionInfo {
+  sessionId: string
+  controlId: string
+  status: 'idle' | 'running' | 'completed'
+  origin: 'claude-view' | 'external'  // NEW field
+}
+```
+
+Frontend checks `origin` before first send. If `external` → show confirmation dialog. If `claude-view` → proceed directly.
+
+**Confirmation dialog (external sessions only):**
+
+```text
+┌─────────────────────────────────────────────────┐
+│  ⚠ Take Control?                                │
+│                                                  │
+│  This session was started outside claude-view    │
+│  (CLI / VS Code). Taking control will:          │
+│                                                  │
+│  • Disconnect any active terminal input          │
+│  • Route all interaction through this panel      │
+│                                                  │
+│  The session's work will continue unaffected.    │
+│                                                  │
+│                      [Cancel]  [Take Control]    │
+└─────────────────────────────────────────────────┘
+```
+
+**Integration into dormant state machine:**
+
+```text
+DORMANT → user sends first message
+  → check origin
+    → 'claude-view' → RESUMING (direct)
+    → 'external' → show TakeoverConfirmDialog
+      → user confirms → RESUMING
+      → user cancels → stay DORMANT
+```
+
+**`controlled_elsewhere` state:**
+
+When another tab/window already has an active control connection for this session, the input bar enters a 6th state:
+
+| State | Appearance | Behavior |
+|---|---|---|
+| **controlled_elsewhere** | Muted bg, placeholder "Controlled in another tab" | Disabled — no input possible until other connection drops |
+
+The sidecar broadcasts a `control_taken` event via SSE when control transfers. Frontend uses this to transition between `controlled_elsewhere` ↔ `dormant`.
 
 ### 7.4 Four Integration Points
 
