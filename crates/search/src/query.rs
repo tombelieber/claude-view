@@ -470,15 +470,31 @@ impl SearchIndex {
             None
         };
 
-        // Sort sessions by best score descending
+        // Sort sessions: primary by best_score descending, tiebreak by recency.
+        // When scores are within 10% of each other, newer session wins.
         let mut session_entries: Vec<(String, Vec<(f32, DocAddress)>)> =
             session_groups.into_iter().collect();
         session_entries.sort_by(|a, b| {
             let best_a = a.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
             let best_b = b.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
-            best_b
-                .partial_cmp(&best_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
+
+            let (hi, lo) = if best_a >= best_b { (best_a, best_b) } else { (best_b, best_a) };
+            let scores_close = hi == 0.0 || (lo / hi) > 0.9;
+
+            if scores_close {
+                // Tiebreak by timestamp: find max timestamp per session
+                let ts_a = a.1.iter().filter_map(|(_, addr)| {
+                    let d: TantivyDocument = searcher.doc(*addr).ok()?;
+                    d.get_first(self.timestamp_field)?.as_i64()
+                }).max().unwrap_or(0);
+                let ts_b = b.1.iter().filter_map(|(_, addr)| {
+                    let d: TantivyDocument = searcher.doc(*addr).ok()?;
+                    d.get_first(self.timestamp_field)?.as_i64()
+                }).max().unwrap_or(0);
+                ts_b.cmp(&ts_a) // newer first
+            } else {
+                best_b.partial_cmp(&best_a).unwrap_or(std::cmp::Ordering::Equal)
+            }
         });
 
         // Apply offset and limit at the session level
@@ -917,5 +933,45 @@ mod tests {
         let result = idx.search("hello", Some("session:aaa-111"), 10, 0).unwrap();
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "aaa-111");
+    }
+
+    #[test]
+    fn test_recency_tiebreaks_equal_scores() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        // Two sessions with identical content (identical BM25 scores)
+        // but different timestamps
+        idx.index_session("old", &[crate::indexer::SearchDocument {
+            session_id: "old".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "identical content for scoring".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.index_session("new", &[crate::indexer::SearchDocument {
+            session_id: "new".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "identical content for scoring".to_string(),
+            turn_number: 1,
+            timestamp: 9999,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx.search("identical content scoring", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 2);
+        // With identical scores, newer session should rank first
+        assert_eq!(result.sessions[0].session_id, "new",
+            "recency should tiebreak equal scores — newer first");
     }
 }
