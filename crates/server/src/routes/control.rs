@@ -105,17 +105,13 @@ async fn estimate_cost(
         )
     };
 
-    // Derive project_name: use the project field (project_id / display name),
-    // falling back to last path component of project_path.
-    let project_name = {
-        let name = &session.project;
-        if name.is_empty() {
-            std::path::Path::new(&session.project_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-        } else {
-            Some(name.clone())
-        }
+    // Use display_name (short human-readable project name, e.g. "claude-backup")
+    // derived from CWD evidence at index time. Falls back to the raw encoded
+    // directory name when no CWD is available — never guesses.
+    let project_name = if session.display_name.is_empty() {
+        None
+    } else {
+        Some(session.display_name.clone())
     };
 
     Ok(Json(CostEstimate {
