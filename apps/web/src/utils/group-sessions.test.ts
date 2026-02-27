@@ -17,6 +17,7 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     id: 'test-id',
     project: 'test-project',
     projectPath: '/test/path',
+    displayName: 'test-project',
     filePath: '/test/file.jsonl',
     modifiedAt: Math.floor(Date.now() / 1000),
     sizeBytes: 1024,
