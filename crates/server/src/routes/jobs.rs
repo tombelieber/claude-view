@@ -96,6 +96,7 @@ mod tests {
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
         });
 
         let app = Router::new()

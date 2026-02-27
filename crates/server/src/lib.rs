@@ -129,6 +129,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         search_index: Arc::new(std::sync::RwLock::new(None)),
         shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        sidecar: Arc::new(sidecar::SidecarManager::new()),
     });
     api_routes(state)
 }
@@ -145,6 +146,7 @@ pub fn create_app_full(
     search_index: SearchIndexHolder,
     shutdown: tokio::sync::watch::Receiver<bool>,
     static_dir: Option<PathBuf>,
+    sidecar: Arc<sidecar::SidecarManager>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
@@ -186,6 +188,7 @@ pub fn create_app_full(
         search_index,
         shutdown,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        sidecar,
     });
 
     // Refresh pricing table from litellm on startup and every 24h.

@@ -1170,6 +1170,7 @@ mod tests {
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
         });
 
         // Register the session in the live sessions map
@@ -1349,6 +1350,7 @@ mod tests {
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

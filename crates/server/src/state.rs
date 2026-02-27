@@ -8,6 +8,7 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
+use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
 use claude_view_core::Registry;
 use claude_view_db::{Database, ModelPricing};
@@ -78,6 +79,9 @@ pub struct AppState {
             HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
         >,
     >,
+    /// Node.js sidecar manager for Phase F interactive control.
+    /// Lazy-started on first `/api/control/*` request.
+    pub sidecar: Arc<SidecarManager>,
 }
 
 impl AppState {
@@ -111,6 +115,7 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
         })
     }
 
@@ -143,6 +148,7 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
         })
     }
 
@@ -178,6 +184,7 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
         })
     }
 
