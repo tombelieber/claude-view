@@ -625,11 +625,14 @@ import type { SlashCommand } from './commands'
 
 type Mode = 'plan' | 'code' | 'ask'
 
+/** Dormant state machine: dormant → resuming → active → streaming → completed */
+type InputBarState = 'dormant' | 'resuming' | 'active' | 'streaming' | 'completed'
+
 interface ChatInputBarProps {
   onSend: (message: string) => void
   onStop?: () => void
-  isStreaming?: boolean
-  disabled?: boolean
+  /** Current state in the dormant → active lifecycle */
+  state?: InputBarState
   placeholder?: string
   // Mode
   mode?: Mode
@@ -645,12 +648,19 @@ interface ChatInputBarProps {
   onCommand?: (command: string) => void
 }
 
+const STATE_CONFIG: Record<InputBarState, { placeholder: string; disabled: boolean; muted: boolean }> = {
+  dormant:   { placeholder: 'Resume this session...', disabled: false, muted: true },
+  resuming:  { placeholder: 'Resuming session...', disabled: true, muted: true },
+  active:    { placeholder: 'Send a message... (or type / for commands)', disabled: false, muted: false },
+  streaming: { placeholder: 'Claude is responding...', disabled: true, muted: false },
+  completed: { placeholder: 'Session ended', disabled: true, muted: true },
+}
+
 export function ChatInputBar({
   onSend,
   onStop,
-  isStreaming = false,
-  disabled = false,
-  placeholder = 'Send a message... (or type / for commands)',
+  state = 'active',
+  placeholder: customPlaceholder,
   mode = 'code',
   onModeChange,
   model = 'claude-sonnet-4-6',
@@ -660,6 +670,10 @@ export function ChatInputBar({
   commands,
   onCommand,
 }: ChatInputBarProps) {
+  const config = STATE_CONFIG[state]
+  const isStreaming = state === 'streaming'
+  const disabled = config.disabled
+  const placeholder = customPlaceholder ?? config.placeholder
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<File[]>([])
   const [slashOpen, setSlashOpen] = useState(false)
@@ -749,7 +763,9 @@ export function ChatInputBar({
   const canSend = input.trim().length > 0 && !disabled
 
   return (
-    <div className="relative border-t border-gray-800 bg-gray-950 px-4 py-3">
+    <div className={`relative border-t px-4 py-3 transition-colors ${
+      config.muted ? 'border-gray-800/50 bg-gray-950/50' : 'border-gray-800 bg-gray-950'
+    }`}>
       {/* Slash command popover (positioned above) */}
       <SlashCommandPopover
         input={input}
@@ -1113,38 +1129,119 @@ git commit -m "feat(chat): add cards barrel export"
 
 ---
 
-## Task 15: Wire interactive cards into RichPane
+## Task 15: ControlCallbacks type + useControlCallbacks hook
+
+**Files:**
+
+- Create: `apps/web/src/types/control-callbacks.ts`
+- Create: `apps/web/src/hooks/use-control-callbacks.ts`
+
+**Step 1: Define ControlCallbacks type**
+
+This is the bridge between interactive cards (inside RichPane) and the sidecar (via useControlSession).
+
+```ts
+// control-callbacks.ts
+export interface ControlCallbacks {
+  /** Respond to AskUserQuestion card */
+  answerQuestion: (requestId: string, answers: Record<string, string>) => void
+  /** Respond to permission request (allow/deny) */
+  respondPermission: (requestId: string, allowed: boolean) => void
+  /** Respond to plan approval (approve/reject with optional feedback) */
+  approvePlan: (requestId: string, approved: boolean, feedback?: string) => void
+  /** Respond to elicitation dialog */
+  submitElicitation: (requestId: string, response: string) => void
+}
+```
+
+**Step 2: Create hook that builds ControlCallbacks from useControlSession**
+
+```ts
+// use-control-callbacks.ts
+import { useMemo } from 'react'
+import type { ControlCallbacks } from '../types/control-callbacks'
+
+/**
+ * Builds a ControlCallbacks object from a control session's WebSocket send.
+ * Returns undefined when no control session exists (read-only mode).
+ */
+export function useControlCallbacks(
+  sendWsMessage: ((msg: Record<string, unknown>) => void) | undefined,
+  respondPermission: ((requestId: string, allowed: boolean) => void) | undefined,
+): ControlCallbacks | undefined {
+  return useMemo(() => {
+    if (!sendWsMessage) return undefined
+    return {
+      answerQuestion: (requestId, answers) =>
+        sendWsMessage({ type: 'question_response', requestId, answers }),
+      respondPermission: (requestId, allowed) =>
+        respondPermission?.(requestId, allowed),
+      approvePlan: (requestId, approved, feedback) =>
+        sendWsMessage({ type: 'plan_response', requestId, approved, feedback }),
+      submitElicitation: (requestId, response) =>
+        sendWsMessage({ type: 'elicitation_response', requestId, response }),
+    }
+  }, [sendWsMessage, respondPermission])
+}
+```
+
+**Step 3: Extend useControlSession to expose raw sendWsMessage**
+
+In `apps/web/src/hooks/use-control-session.ts`, expose a `send` method that sends arbitrary JSON over the WebSocket. This is needed for the new card response types.
+
+**Step 4: Type-check**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
+Expected: 0 errors
+
+**Step 5: Commit**
+
+```bash
+git add apps/web/src/types/control-callbacks.ts apps/web/src/hooks/use-control-callbacks.ts apps/web/src/hooks/use-control-session.ts
+git commit -m "feat(chat): add ControlCallbacks type and useControlCallbacks hook"
+```
+
+---
+
+## Task 16: Wire interactive cards into RichPane
 
 **Files:**
 
 - Modify: `apps/web/src/components/live/RichPane.tsx`
 
-**Step 1: Add interactive card rendering to RichPane's message dispatch**
+**Step 1: Add `controlCallbacks` prop to RichPane**
 
-RichPane already special-cases `AskUserQuestion` at lines 905-909 (compact mode detection). Extend the render dispatch to detect interactive message types and render the corresponding card:
+```ts
+// Add to RichPane's props interface
+controlCallbacks?: ControlCallbacks  // undefined = read-only (display-only cards)
+```
 
-- `tool_use` with `toolName === 'AskUserQuestion'` → `<AskUserQuestionCard>`
-- `tool_use` with `toolName === 'ExitPlanMode'` → `<PlanApprovalCard>`
-- Messages with `metadata.interactive === 'permission'` → `<PermissionCard>`
-- Messages with `metadata.interactive === 'elicitation'` → `<ElicitationCard>`
+**Step 2: Add interactive card rendering to message dispatch**
 
-Cards receive an `onRespond` callback prop wired to the control session WebSocket.
+RichPane already special-cases `AskUserQuestion` at lines 905-909 (compact mode detection). Extend the render dispatch:
 
-**Step 2: Type-check**
+- `tool_use` with `toolName === 'AskUserQuestion'` → `<AskUserQuestionCard onAnswer={controlCallbacks?.answerQuestion} />`
+- `tool_use` with `toolName === 'ExitPlanMode'` → `<PlanApprovalCard onApprove={controlCallbacks?.approvePlan} />`
+- Messages with `metadata.interactive === 'permission'` → `<PermissionCard onRespond={controlCallbacks?.respondPermission} />`
+- Messages with `metadata.interactive === 'elicitation'` → `<ElicitationCard onSubmit={controlCallbacks?.submitElicitation} />`
+
+When `controlCallbacks` is undefined (read-only), cards render without action buttons (display-only, showing the question/permission but no way to respond).
+
+**Step 3: Type-check**
 
 Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
 Expected: 0 errors
 
-**Step 3: Commit**
+**Step 4: Commit**
 
 ```bash
 git add apps/web/src/components/live/RichPane.tsx
-git commit -m "feat(chat): wire interactive cards into RichPane message rendering"
+git commit -m "feat(chat): wire interactive cards into RichPane with ControlCallbacks"
 ```
 
 ---
 
-## Task 16: Wire ChatInputBar into MonitorPane
+## Task 17: Wire ChatInputBar into MonitorPane
 
 **Files:**
 
@@ -1188,7 +1285,7 @@ git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
 
 ---
 
-## Task 17: Wire ChatInputBar into SessionDetailPanel terminal tab
+## Task 18: Wire ChatInputBar into SessionDetailPanel terminal tab
 
 **Files:**
 
@@ -1221,7 +1318,7 @@ git commit -m "feat(chat): wire ChatInputBar into SessionDetailPanel terminal ta
 
 ---
 
-## Task 18: Wire ChatInputBar into ConversationView (history resume)
+## Task 19: Wire ChatInputBar into ConversationView (history resume)
 
 **Files:**
 
@@ -1268,7 +1365,7 @@ git commit -m "feat(chat): add resume-and-send to ConversationView"
 
 ---
 
-## Task 19: New session spawn UI
+## Task 20: New session spawn UI
 
 **Files:**
 
@@ -1315,7 +1412,7 @@ git commit -m "feat(chat): add new session spawn via ChatInputBar"
 
 ---
 
-## Task 20: Delete DashboardChat + ControlPage
+## Task 21: Delete DashboardChat + ControlPage
 
 **Files:**
 
@@ -1354,7 +1451,7 @@ git commit -m "refactor: delete DashboardChat, redirect ControlPage to monitor"
 
 ---
 
-## Task 21: Build Verification + Visual Check
+## Task 22: Build Verification + Visual Check
 
 **Step 1: Run all web tests**
 
@@ -1403,24 +1500,27 @@ git commit -m "fix(chat): address build/type issues from integration"
 | 5 | ModelSelector | ~50 lines | @radix-ui/react-popover |
 | 6 | AttachButton | ~60 lines | lucide-react |
 | 7 | SlashCommandPopover | ~90 lines | commands.ts |
-| 8 | ChatInputBar | ~150 lines | All sub-components |
+| 8 | ChatInputBar (with dormant state machine) | ~170 lines | All sub-components |
 | 9 | InteractiveCardShell | ~100 lines | None |
 | 10 | AskUserQuestionCard | ~100 lines | InteractiveCardShell |
 | 11 | PermissionCard | ~80 lines | InteractiveCardShell, PermissionDialog pattern |
 | 12 | PlanApprovalCard | ~60 lines | InteractiveCardShell |
 | 13 | ElicitationCard | ~40 lines | InteractiveCardShell |
 | 14 | Cards barrel export | ~6 lines | Cards |
-| 15 | RichPane card wiring | ~40 lines changed | Cards |
-| 16 | MonitorPane input wiring | ~20 lines changed | ChatInputBar |
-| 17 | SessionDetailPanel terminal tab | ~15 lines changed | ChatInputBar |
-| 18 | ConversationView resume + input | ~40 lines changed | ChatInputBar, resume API |
-| 19 | New session spawn UI | ~30 lines + toolbar button | ChatInputBar, start API |
-| 20 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
-| 21 | Build verification | 0 lines | All tasks |
+| 15 | ControlCallbacks type + useControlCallbacks hook | ~50 lines | useControlSession |
+| 16 | RichPane card wiring (with controlCallbacks prop) | ~50 lines changed | Cards, ControlCallbacks |
+| 17 | MonitorPane input + callbacks wiring | ~30 lines changed | ChatInputBar, useControlCallbacks |
+| 18 | SessionDetailPanel terminal tab | ~20 lines changed | ChatInputBar |
+| 19 | ConversationView resume + dormant input | ~50 lines changed | ChatInputBar, resume API |
+| 20 | New session spawn UI | ~30 lines + toolbar button | ChatInputBar, start API |
+| 21 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
+| 22 | Build verification | 0 lines | All tasks |
 
-**Total new code:** ~1,000 lines across 17 files
+**Total new code:** ~1,100 lines across 19 files
 **Code deleted:** ~270 lines (DashboardChat + ControlPage)
-**Net change:** ~730 lines
+**Net change:** ~830 lines
 **New dependencies:** 0 (all Radix + Lucide already installed)
 **Test coverage:** commands.ts has unit tests. UI components verified via type-check + build.
-**Backend prerequisite:** Tasks 18-19 need `/api/control/resume` and `/api/control/start` endpoints (sidecar work, separate plan).
+**Interaction binding:** Task 15 provides the ControlCallbacks plumbing — card button clicks → hook → WebSocket → sidecar → Claude. Read-only sessions get display-only cards (no action buttons).
+**Dormant input bar:** Task 8 implements 5-state machine (dormant/resuming/active/streaming/completed). Every session shows input bar; first send triggers resume.
+**Backend prerequisite:** Tasks 19-20 need `/api/control/resume` and `/api/control/start` endpoints (already implemented in sidecar).

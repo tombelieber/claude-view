@@ -511,7 +511,58 @@ interface ElicitationMsg {
 
 These require sidecar updates to forward Agent SDK events → WebSocket. Currently only `permission_request` flows through the sidecar.
 
-### 7.3 Four Integration Points
+### 7.3 Dormant Input Bar — Every Session is Resumable
+
+**Key design decision:** There is no "read-only vs interactive" distinction. Every session is viewable, every session is resumable. The input bar handles the transition seamlessly.
+
+**Philosophy:** The input bar IS the affordance. Users see it, they understand they can type. No hidden "take control" button to discover. The pre-flight gate (cost estimate) prevents accidental billing.
+
+**State machine:**
+
+```text
+┌─────────┐  user focuses   ┌──────────┐  first send   ┌───────────┐
+│ DORMANT │ ──────────────→ │ DORMANT  │ ────────────→ │ RESUMING  │
+│ (muted) │  (still muted)  │ (typing) │  (pre-flight) │ (spinner) │
+└─────────┘                  └──────────┘               └─────┬─────┘
+                                                              │
+                              ┌────────────────────────────────┘
+                              │ resume success
+                              ▼
+                        ┌──────────┐  send   ┌───────────┐
+                        │  ACTIVE  │ ──────→ │ STREAMING │
+                        │ (ready)  │ ←────── │ (waiting) │
+                        └──────────┘  done   └───────────┘
+                              │
+                              │ session ends
+                              ▼
+                        ┌───────────┐
+                        │ COMPLETED │
+                        │ (disabled)│
+                        └───────────┘
+```
+
+**Visual states:**
+
+| State | Appearance | Input bar behavior |
+|-------|-----------|-------------------|
+| **Dormant** | Muted bg (`bg-gray-800/30`), placeholder "Resume this session..." | First send → pre-flight dialog → resume |
+| **Resuming** | Spinner in send button area, input disabled | Waiting for sidecar to start + resume |
+| **Active** | Full color, placeholder "Send a message..." | Direct send via WebSocket |
+| **Streaming** | Stop button visible, input disabled | Claude is responding |
+| **Completed** | Muted bg, placeholder "Session ended" | No interaction possible |
+
+**Session header indicator:**
+
+| State | Badge |
+|-------|-------|
+| No control connection | (none — default viewing state) |
+| Active control | Green dot + "LIVE" text in header |
+
+**Safety rule:** Input bar is dormant when session `agentState.group === 'autonomous'` (Claude mid-turn). Activatable only when session is idle/waiting/completed. This sidesteps concurrent access issues entirely.
+
+**Exception — new session spawn:** Input bar starts in `ACTIVE` state (no session to resume). First send calls `/api/control/start` instead of `/api/control/resume`.
+
+### 7.4 Four Integration Points
 
 Same `<ChatInputBar>` component, 4 different wiring contexts:
 
@@ -542,6 +593,106 @@ Same `<ChatInputBar>` component, 4 different wiring contexts:
 - `onSend` calls `/api/control/start` with the message → creates session → panel transitions to live monitoring
 - No `contextPercent` (new session = 0%), `estimatedCost` shows first-message estimate
 - Once session starts, it appears as a new panel in the monitor view automatically
+
+### 7.6 Interaction Binding — Card Callbacks to Sidecar
+
+**The problem:** Interactive cards (AskUserQuestion, Permission, PlanApproval, Elicitation) render inside RichPane. RichPane is a display component — it doesn't own `useControlSession`. How do button clicks in cards reach the sidecar?
+
+**Solution: Callback context via `ControlCallbacks` prop on RichPane.**
+
+RichPane already receives many props. Add one more — an optional `controlCallbacks` object that threads response functions from the parent component (which owns `useControlSession`) down to the cards.
+
+```ts
+// New type — passed from parent to RichPane to interactive cards
+interface ControlCallbacks {
+  /** Respond to AskUserQuestion card */
+  answerQuestion: (requestId: string, answers: Record<string, string>) => void
+  /** Respond to permission request (allow/deny) */
+  respondPermission: (requestId: string, allowed: boolean) => void
+  /** Respond to plan approval (approve/reject with feedback) */
+  approvePlan: (requestId: string, approved: boolean, feedback?: string) => void
+  /** Respond to elicitation dialog */
+  submitElicitation: (requestId: string, response: string) => void
+}
+```
+
+**Threading path:**
+
+```text
+MonitorPane (owns useControlSession)
+  │
+  │  controlCallbacks={{
+  │    answerQuestion: (id, answers) => controlSession.send({ type: 'question_response', requestId: id, answers }),
+  │    respondPermission: (id, allowed) => controlSession.respondPermission(id, allowed),
+  │    approvePlan: (id, ok, fb) => controlSession.send({ type: 'plan_response', requestId: id, approved: ok, feedback: fb }),
+  │    submitElicitation: (id, text) => controlSession.send({ type: 'elicitation_response', requestId: id, response: text }),
+  │  }}
+  │
+  ▼
+RichPane (receives controlCallbacks prop, passes to card components)
+  │
+  ▼
+InteractiveCard (calls controlCallbacks.answerQuestion/respondPermission/etc.)
+```
+
+**When `controlCallbacks` is undefined** (read-only session, no control connection), RichPane renders display-only versions of the cards (existing behavior — shows the question/permission but no action buttons).
+
+**WebSocket message types (client → sidecar):**
+
+```ts
+// Sent by frontend when user interacts with a card
+type ClientCardResponse =
+  | { type: 'question_response'; requestId: string; answers: Record<string, string> }
+  | { type: 'permission_response'; requestId: string; allowed: boolean }
+  | { type: 'plan_response'; requestId: string; approved: boolean; feedback?: string }
+  | { type: 'elicitation_response'; requestId: string; response: string }
+```
+
+**WebSocket message types (sidecar → frontend):**
+
+These already partially exist. Extend `ServerMessage` union:
+
+```ts
+// New server → client messages (add to existing union in control.ts)
+interface AskUserQuestionMsg {
+  type: 'ask_user_question'
+  requestId: string
+  questions: { question: string; header: string; options: { label: string; description: string; markdown?: string }[]; multiSelect: boolean }[]
+}
+
+interface PlanApprovalMsg {
+  type: 'plan_approval'
+  requestId: string
+  planContent: string  // markdown
+}
+
+interface ElicitationMsg {
+  type: 'elicitation'
+  requestId: string
+  prompt: string
+}
+```
+
+**Sidecar handling (session-manager.ts):**
+
+The sidecar's WebSocket handler already processes `permission_response`. Extend to handle all 4 response types:
+
+```ts
+// ws-handler.ts — extend incoming message handling
+case 'question_response':
+  sessions.resolveQuestion(msg.requestId, msg.answers)
+  break
+case 'plan_response':
+  sessions.resolvePlan(msg.requestId, msg.approved, msg.feedback)
+  break
+case 'elicitation_response':
+  sessions.resolveElicitation(msg.requestId, msg.response)
+  break
+```
+
+Each `resolve*` method in SessionManager calls the corresponding Agent SDK callback to send the user's response back to Claude.
+
+**Status: Permission is the only one fully wired today.** The other 3 (question, plan, elicitation) need sidecar-side handlers + SDK callbacks. The SDK V2 `canUseTool` callback exists for permissions; the other interactive types may need different SDK hooks (or fall back to sending a user message with structured metadata).
 
 ---
 
