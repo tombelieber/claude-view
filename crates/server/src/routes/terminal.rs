@@ -1209,6 +1209,7 @@ mod tests {
                 progress_items: Vec::new(),
                 tools_used: Vec::new(),
                 last_cache_hit_at: None,
+                compact_count: 0,
                 hook_events: Vec::new(),
             };
             map.insert(session_id.to_string(), session);

@@ -143,6 +143,8 @@ pub struct LiveSession {
     /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
     pub last_cache_hit_at: Option<i64>,
+    /// Number of context compactions in this session (compact_boundary system messages).
+    pub compact_count: u32,
     /// Hook lifecycle events captured for the event log.
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]

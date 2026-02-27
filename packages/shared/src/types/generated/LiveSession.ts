@@ -126,6 +126,10 @@ export type LiveSession = {
    */
   lastCacheHitAt: bigint | null
   /**
+   * Number of context compactions in this session (compact_boundary system messages).
+   */
+  compactCount: number
+  /**
    * Hook lifecycle events captured for the event log.
    * Skipped in SSE serialization (too large); streamed via WS only.
    */
