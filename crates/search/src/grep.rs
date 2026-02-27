@@ -147,7 +147,7 @@ impl<'a, M: Matcher> Sink for MatchCollector<'a, M> {
 
         let line_content = String::from_utf8_lossy(mat.bytes());
         // UTF-8 safe truncation
-        let truncated = if line_content.len() > 500 {
+        let content = if line_content.len() > 500 {
             let end = line_content
                 .char_indices()
                 .nth(500)
@@ -158,17 +158,21 @@ impl<'a, M: Matcher> Sink for MatchCollector<'a, M> {
             line_content.trim_end().to_string()
         };
 
-        // Find match positions within the line
+        // Find match positions within the line — convert byte offsets to char
+        // offsets so the frontend (JS String.slice on UTF-16 code units) highlights
+        // correctly for non-ASCII content.
         let mut match_start = 0;
         let mut match_end = 0;
         if let Ok(Some(m)) = self.matcher.find(mat.bytes()) {
-            match_start = m.start();
-            match_end = m.end();
+            let byte_start = m.start().min(content.len());
+            let byte_end = m.end().min(content.len());
+            match_start = content[..byte_start].chars().count();
+            match_end = content[..byte_end].chars().count();
         }
 
         self.matches.push(GrepLineMatch {
             line_number: mat.line_number().unwrap_or(0) as usize,
-            content: truncated,
+            content,
             match_start,
             match_end,
         });
