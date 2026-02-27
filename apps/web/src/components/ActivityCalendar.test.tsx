@@ -9,6 +9,7 @@ function createMockSession(id: string, modifiedAt: number): SessionInfo {
     id,
     project: 'test-project',
     projectPath: '/test/project',
+    displayName: 'test-project',
     filePath: '/test/file.jsonl',
     modifiedAt,
     sizeBytes: 0,
