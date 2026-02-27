@@ -860,110 +860,246 @@ git commit -m "feat(chat): add ChatInputBar main component composing all sub-com
 
 ---
 
-## Task 9: PermissionCard (inline version)
+## Task 9: InteractiveCardShell (shared wrapper)
 
 **Files:**
-- Create: `apps/web/src/components/chat/cards/PermissionCard.tsx`
 
-Refactor of `PermissionDialog.tsx` logic into an inline card. Reuses `getToolDisplay()` pattern. Keeps the existing modal `PermissionDialog` untouched — this is an alternative inline rendering.
+- Create: `apps/web/src/components/chat/cards/InteractiveCardShell.tsx`
 
 **Step 1: Write the component**
 
-Extract the tool display logic, countdown timer, and Allow/Deny buttons into a card (not modal). Use the same timer pattern from `apps/web/src/components/live/PermissionDialog.tsx:21-41`.
+Shared wrapper for all 4 interactive card types. Provides consistent:
 
-Key differences from the modal:
-- No Radix Dialog overlay — rendered inline in the message stream
-- Same countdown logic (useEffect + setInterval)
-- Same `getToolDisplay()` function
-- Shows "Allowed"/"Denied" badge after decision
+- Color-coded header with icon + type badge
+- Content area (children)
+- Action bar (children)
+- Resolved state: `opacity-60`, `pointer-events-none`, result badge in header
+
+```tsx
+// InteractiveCardShell.tsx
+import type { ReactNode } from 'react'
+
+type CardVariant = 'question' | 'permission' | 'plan' | 'elicitation'
+
+interface InteractiveCardShellProps {
+  variant: CardVariant
+  header: string
+  icon?: ReactNode
+  resolved?: { label: string; variant: 'success' | 'denied' | 'neutral' }
+  children: ReactNode
+  actions?: ReactNode
+}
+
+const VARIANT_COLORS: Record<CardVariant, {
+  border: string; bg: string; headerBg: string; headerText: string; icon: string
+}> = {
+  question: {
+    border: 'border-purple-500/20',
+    bg: 'bg-purple-900/10',
+    headerBg: 'bg-purple-900/20',
+    headerText: 'text-purple-400',
+    icon: 'text-purple-400',
+  },
+  permission: {
+    border: 'border-amber-500/20',
+    bg: 'bg-amber-900/10',
+    headerBg: 'bg-amber-900/20',
+    headerText: 'text-amber-400',
+    icon: 'text-amber-400',
+  },
+  plan: {
+    border: 'border-blue-500/20',
+    bg: 'bg-blue-900/10',
+    headerBg: 'bg-blue-900/20',
+    headerText: 'text-blue-400',
+    icon: 'text-blue-400',
+  },
+  elicitation: {
+    border: 'border-gray-700/50',
+    bg: 'bg-gray-800/30',
+    headerBg: 'bg-gray-800/40',
+    headerText: 'text-gray-400',
+    icon: 'text-gray-400',
+  },
+}
+
+const RESOLVED_BADGE: Record<string, string> = {
+  success: 'bg-green-500/20 text-green-400 border-green-500/30',
+  denied: 'bg-red-500/20 text-red-400 border-red-500/30',
+  neutral: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+}
+
+export function InteractiveCardShell({
+  variant,
+  header,
+  icon,
+  resolved,
+  children,
+  actions,
+}: InteractiveCardShellProps) {
+  const c = VARIANT_COLORS[variant]
+  const isResolved = !!resolved
+
+  return (
+    <div
+      className={`rounded-lg border ${c.border} ${c.bg} overflow-hidden transition-opacity duration-200 motion-reduce:transition-none ${
+        isResolved ? 'opacity-60' : ''
+      }`}
+    >
+      {/* Header */}
+      <div className={`px-3 py-2 border-b ${c.border} ${c.headerBg} flex items-center gap-2`}>
+        {icon && <span className={`${c.icon} flex-shrink-0`}>{icon}</span>}
+        <span className={`text-[10px] font-mono ${c.headerText} uppercase tracking-wide`}>
+          {header}
+        </span>
+        <div className="flex-1" />
+        {resolved && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded border ${RESOLVED_BADGE[resolved.variant]}`}
+          >
+            {resolved.label}
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className={isResolved ? 'pointer-events-none' : ''}>
+        {children}
+      </div>
+
+      {/* Action bar */}
+      {actions && !isResolved && (
+        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-gray-700/30">
+          {actions}
+        </div>
+      )}
+    </div>
+  )
+}
+```
 
 **Step 2: Commit**
 
 ```bash
-git add apps/web/src/components/chat/cards/PermissionCard.tsx
-git commit -m "feat(chat): add inline PermissionCard for message stream"
+git add apps/web/src/components/chat/cards/InteractiveCardShell.tsx
+git commit -m "feat(chat): add InteractiveCardShell shared wrapper"
 ```
 
 ---
 
-## Task 10: AskUserQuestionCard
+## Task 10: AskUserQuestionCard (evolve existing display)
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/cards/AskUserQuestionCard.tsx`
+- Reference: `apps/web/src/components/live/AskUserQuestionDisplay.tsx` (existing, display-only)
 
 **Step 1: Write the component**
 
-Renders a question with radio/checkbox options and optional markdown preview panel. Shows "Other" free-text input. After submission, grays out and shows the selected answer.
+Builds on the visual pattern from `AskUserQuestionDisplay` but adds interactivity. Uses `InteractiveCardShell` for consistent wrapper.
 
 Key features:
+
 - Single-select: radio buttons (controlled via `useState`)
 - Multi-select: checkboxes (controlled via `useState<Set<number>>`)
 - Optional markdown preview: shown to the right when any option has `markdown` field
-- "Other" option: text input that appears at bottom of option list
+- "Other" option: text input at bottom of option list
 - Submit button: calls `onAnswer` with the selected option label(s)
-- Answered state: entire card becomes `opacity-60`, shows selected answer badge, non-interactive
+- After submission: card resolves via `InteractiveCardShell` (grayed out, badge shown)
 
 **Step 2: Commit**
 
 ```bash
 git add apps/web/src/components/chat/cards/AskUserQuestionCard.tsx
-git commit -m "feat(chat): add AskUserQuestionCard with single/multi-select and markdown preview"
+git commit -m "feat(chat): add interactive AskUserQuestionCard"
 ```
 
 ---
 
-## Task 11: PlanApprovalCard
+## Task 11: PermissionCard (inline version)
 
 **Files:**
+
+- Create: `apps/web/src/components/chat/cards/PermissionCard.tsx`
+- Reference: `apps/web/src/components/live/PermissionDialog.tsx` (existing modal)
+
+**Step 1: Write the component**
+
+Inline card version of `PermissionDialog`. Uses `InteractiveCardShell` with `variant="permission"`. Reuses `getToolDisplay()` pattern from the modal.
+
+Key differences from the modal:
+
+- Uses `InteractiveCardShell` instead of Radix Dialog overlay
+- Same countdown logic (useEffect + setInterval)
+- Same `getToolDisplay()` function for tool-specific previews
+- Actions: Allow (green) + Deny (red) buttons
+- After decision: resolves with "Allowed" (success) or "Denied" (denied) badge
+
+**Step 2: Commit**
+
+```bash
+git add apps/web/src/components/chat/cards/PermissionCard.tsx
+git commit -m "feat(chat): add inline PermissionCard"
+```
+
+---
+
+## Task 12: PlanApprovalCard
+
+**Files:**
+
 - Create: `apps/web/src/components/chat/cards/PlanApprovalCard.tsx`
 
 **Step 1: Write the component**
 
-Renders plan markdown content with Approve/Reject buttons. "Request Changes" opens a textarea for feedback.
+Uses `InteractiveCardShell` with `variant="plan"`. Plan content rendered as `<pre>` with `whitespace-pre-wrap`.
 
 Key features:
-- Plan content rendered as `<pre>` with `whitespace-pre-wrap` (or use existing markdown renderer if available)
-- Two buttons: "Approve Plan" (green) and "Request Changes" (gray)
+
+- Actions: "Approve Plan" (blue) + "Request Changes" (gray)
 - "Request Changes" expands a textarea for feedback text
-- After decision: shows "Approved" or "Changes Requested" badge, non-interactive
+- After decision: resolves with "Approved" or "Changes Requested" badge
 
 **Step 2: Commit**
 
 ```bash
 git add apps/web/src/components/chat/cards/PlanApprovalCard.tsx
-git commit -m "feat(chat): add PlanApprovalCard with approve/reject and feedback"
+git commit -m "feat(chat): add PlanApprovalCard"
 ```
 
 ---
 
-## Task 12: ElicitationCard
+## Task 13: ElicitationCard
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/cards/ElicitationCard.tsx`
 
 **Step 1: Write the component**
 
-Simple: prompt text + text input + submit button. After submission, shows the submitted text grayed out.
+Uses `InteractiveCardShell` with `variant="elicitation"`. Simple: prompt text + text input + submit button. After submission, resolves with "Submitted" badge.
 
 **Step 2: Commit**
 
 ```bash
 git add apps/web/src/components/chat/cards/ElicitationCard.tsx
-git commit -m "feat(chat): add ElicitationCard for generic dialog prompts"
+git commit -m "feat(chat): add ElicitationCard"
 ```
 
 ---
 
-## Task 13: Cards barrel export
+## Task 14: Cards barrel export
 
 **Files:**
+
 - Create: `apps/web/src/components/chat/cards/index.ts`
 
 **Step 1: Write barrel export**
 
 ```ts
-export { PermissionCard } from './PermissionCard'
+export { InteractiveCardShell } from './InteractiveCardShell'
 export { AskUserQuestionCard } from './AskUserQuestionCard'
+export { PermissionCard } from './PermissionCard'
 export { PlanApprovalCard } from './PlanApprovalCard'
 export { ElicitationCard } from './ElicitationCard'
 ```
@@ -977,123 +1113,121 @@ git commit -m "feat(chat): add cards barrel export"
 
 ---
 
-## Task 14: Unify DashboardChat — RichPane + ChatInputBar
-
-**Key decision:** Reuse RichPane (1,042 lines, battle-tested) for ALL message rendering. Delete DashboardChat's duplicate renderers. Users get the same rich rendering (markdown, Shiki code blocks, tool cards, thinking blocks) whether monitoring or chatting.
+## Task 15: Wire interactive cards into RichPane
 
 **Files:**
-- Modify: `apps/web/src/components/live/DashboardChat.tsx`
-- Create: `apps/web/src/lib/control-to-rich-message.ts` (adapter)
 
-**Step 1: Write the message adapter**
+- Modify: `apps/web/src/components/live/RichPane.tsx`
 
-RichPane expects `RichMessage[]`. Control session messages arrive as `ChatMessage[]` from `useControlSession`. Create an adapter function:
+**Step 1: Add interactive card rendering to RichPane's message dispatch**
 
-```ts
-// control-to-rich-message.ts
-import type { RichMessage } from '../components/live/RichPane'
-import type { ChatMessage, PermissionRequestMsg, ToolUseStartMsg } from '../types/control'
+RichPane already special-cases `AskUserQuestion` at lines 905-909 (compact mode detection). Extend the render dispatch to detect interactive message types and render the corresponding card:
 
-export function controlMessageToRich(msg: ChatMessage): RichMessage {
-  switch (msg.role) {
-    case 'user':
-      return { type: 'user', content: msg.content ?? '' }
-    case 'assistant':
-      return { type: 'assistant', content: msg.content ?? '' }
-    case 'tool_use':
-      return {
-        type: 'tool_use',
-        content: '',
-        name: msg.toolName,
-        input: msg.toolInput ? JSON.stringify(msg.toolInput, null, 2) : undefined,
-        inputData: msg.toolInput,
-      }
-    case 'tool_result':
-      return {
-        type: 'tool_result',
-        content: msg.output ?? '',
-        metadata: msg.isError ? { isError: true } : undefined,
-      }
-    default:
-      return { type: 'system', content: msg.content ?? '' }
-  }
-}
+- `tool_use` with `toolName === 'AskUserQuestion'` → `<AskUserQuestionCard>`
+- `tool_use` with `toolName === 'ExitPlanMode'` → `<PlanApprovalCard>`
+- Messages with `metadata.interactive === 'permission'` → `<PermissionCard>`
+- Messages with `metadata.interactive === 'elicitation'` → `<ElicitationCard>`
+
+Cards receive an `onRespond` callback prop wired to the control session WebSocket.
+
+**Step 2: Type-check**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
+Expected: 0 errors
+
+**Step 3: Commit**
+
+```bash
+git add apps/web/src/components/live/RichPane.tsx
+git commit -m "feat(chat): wire interactive cards into RichPane message rendering"
 ```
 
-**Step 2: Rewrite DashboardChat as thin wrapper**
+---
 
-Delete `HistoryMessage`, `ControlMessage`, `ToolCallBlock` components (lines 170-260).
-Delete the plain `<textarea>` + send button (lines 140-165).
-Replace with:
+## Task 16: Wire ChatInputBar into MonitorPane
+
+**Files:**
+
+- Modify: `apps/web/src/components/live/MonitorPane.tsx`
+
+**Step 1: Add ChatInputBar to MonitorPane**
+
+ChatInputBar appears at the bottom of MonitorPane, between the content area and footer, when the session has a control connection.
 
 ```tsx
-export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
-  const session = useControlSession(controlId)
-  const historyQuery = useSessionMessages(sessionId)
-  const [mode, setMode] = useState<'plan' | 'code' | 'ask'>('code')
-  const [model, setModel] = useState('claude-sonnet-4-6')
-
-  // Flatten paginated history into RichMessage[]
-  const historyMessages = useMemo(() =>
-    (historyQuery.data?.pages.flatMap(p => p.messages) ?? [])
-      .map(msg => historyMessageToRich(msg)),
-    [historyQuery.data]
-  )
-
-  // Convert control messages to RichMessage[]
-  const controlMessages = useMemo(() =>
-    session.messages.map(controlMessageToRich),
-    [session.messages]
-  )
-
-  // Merge: history + divider + control messages
-  const allMessages = useMemo(() => [
-    ...historyMessages,
-    ...controlMessages,
-  ], [historyMessages, controlMessages])
-
-  const isDisabled = session.status === 'completed' || session.status === 'error'
-
-  return (
-    <div className="flex flex-col h-full bg-gray-950">
-      <ChatStatusBar ... />
-      <div className="flex-1 overflow-hidden">
-        <RichPane messages={allMessages} />
-      </div>
-      <PermissionDialog request={session.permissionRequest} onRespond={session.respondPermission} />
-      <ChatInputBar
-        onSend={session.sendMessage}
-        isStreaming={!!session.streamingContent}
-        disabled={isDisabled}
-        mode={mode}
-        onModeChange={setMode}
-        model={model}
-        onModelChange={setModel}
-        contextPercent={session.contextUsage}
-      />
-    </div>
-  )
-}
+// In MonitorPane, after the content area, before Footer:
+{controlSession && (
+  <ChatInputBar
+    onSend={controlSession.sendMessage}
+    onStop={controlSession.stop}
+    isStreaming={!!controlSession.streamingContent}
+    disabled={controlSession.status === 'completed' || controlSession.status === 'error'}
+    mode={mode}
+    onModeChange={setMode}
+    model={model}
+    onModelChange={setModel}
+    contextPercent={session.contextWindowTokens ? contextPercent(session) : undefined}
+  />
+)}
 ```
 
-~30 lines of glue. RichPane handles all rendering. ChatInputBar handles all input.
+MonitorPane needs a new optional `controlSession` prop (or accesses it via hook/context based on `session.controlId`).
 
-**Step 3: Type-check and build**
+**Step 2: Type-check and build**
 
 Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
 Run: `bun run build 2>&1 | tail -15`
 Expected: 0 errors, successful build
 
-**Step 4: Commit**
+**Step 3: Commit**
 
 ```bash
-git add apps/web/src/components/live/DashboardChat.tsx apps/web/src/lib/control-to-rich-message.ts
-git commit -m "feat(chat): unify DashboardChat with RichPane + ChatInputBar"
+git add apps/web/src/components/live/MonitorPane.tsx
+git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
 ```
 
 ---
 
-## Task 15: Build Verification + Visual Check
+## Task 17: Delete DashboardChat + ControlPage
+
+**Files:**
+
+- Delete: `apps/web/src/components/live/DashboardChat.tsx`
+- Modify: `apps/web/src/pages/ControlPage.tsx` (redirect to monitor or delete)
+- Modify: router config (remove `/control/:controlId` route or redirect)
+
+**Step 1: Delete DashboardChat**
+
+Remove `apps/web/src/components/live/DashboardChat.tsx` (261 lines of duplicate renderers).
+
+**Step 2: Update ControlPage to redirect**
+
+Replace the component body with a redirect to the monitor view:
+
+```tsx
+// ControlPage.tsx — redirect to monitor
+import { Navigate } from 'react-router-dom'
+
+export function ControlPage() {
+  return <Navigate to="/monitor" replace />
+}
+```
+
+**Step 3: Verify no broken imports**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
+Expected: 0 errors (no file imports DashboardChat)
+
+**Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: delete DashboardChat, redirect ControlPage to monitor"
+```
+
+---
+
+## Task 18: Build Verification + Visual Check
 
 **Step 1: Run all web tests**
 
@@ -1112,11 +1246,13 @@ Expected: Successful build
 
 **Step 4: Visual verification (manual)**
 
-The ChatInputBar cannot be fully verified without the Rust backend running (needs WebSocket + control session). However, the component should render correctly in isolation:
+Start the dev server and verify:
 
-1. Check that the chat directory exists with all expected files
-2. Verify no import errors in the build output
-3. Verify the component tree is correct via type-checking
+1. Monitor view panels render normally (no regressions)
+2. ChatInputBar appears at bottom of panels with control connections
+3. Interactive cards render inline in RichPane when interactive messages arrive
+4. Slash command popover opens on `/` and navigates with arrow keys
+5. Mode switch and model selector dropdowns work
 
 **Step 5: Final commit if any fixes needed**
 
@@ -1130,7 +1266,7 @@ git commit -m "fix(chat): address build/type issues from integration"
 ## Summary
 
 | Task | Component | Est. Size | Dependencies |
-|------|-----------|-----------|-------------|
+| --- | --- | --- | --- |
 | 1 | commands.ts + test | ~50 lines | None |
 | 2 | ContextGauge | ~30 lines | @radix-ui/react-tooltip |
 | 3 | CostPreview | ~25 lines | @radix-ui/react-tooltip |
@@ -1139,14 +1275,19 @@ git commit -m "fix(chat): address build/type issues from integration"
 | 6 | AttachButton | ~60 lines | lucide-react |
 | 7 | SlashCommandPopover | ~90 lines | commands.ts |
 | 8 | ChatInputBar | ~150 lines | All sub-components |
-| 9 | PermissionCard | ~80 lines | PermissionDialog pattern |
-| 10 | AskUserQuestionCard | ~120 lines | None |
-| 11 | PlanApprovalCard | ~60 lines | None |
-| 12 | ElicitationCard | ~40 lines | None |
-| 13 | Cards barrel export | ~5 lines | Cards |
-| 14 | DashboardChat wiring | ~50 lines changed | ChatInputBar + cards |
-| 15 | Build verification | 0 lines | All tasks |
+| 9 | InteractiveCardShell | ~100 lines | None |
+| 10 | AskUserQuestionCard | ~100 lines | InteractiveCardShell |
+| 11 | PermissionCard | ~80 lines | InteractiveCardShell, PermissionDialog pattern |
+| 12 | PlanApprovalCard | ~60 lines | InteractiveCardShell |
+| 13 | ElicitationCard | ~40 lines | InteractiveCardShell |
+| 14 | Cards barrel export | ~6 lines | Cards |
+| 15 | RichPane card wiring | ~40 lines changed | Cards |
+| 16 | MonitorPane input wiring | ~20 lines changed | ChatInputBar |
+| 17 | Delete DashboardChat + ControlPage | ~270 lines deleted | None |
+| 18 | Build verification | 0 lines | All tasks |
 
-**Total new code:** ~850 lines across 14 files
+**Total new code:** ~900 lines across 15 files
+**Code deleted:** ~270 lines (DashboardChat + ControlPage)
+**Net change:** ~630 lines
 **New dependencies:** 0 (all Radix + Lucide already installed)
 **Test coverage:** commands.ts has unit tests. UI components verified via type-check + build.

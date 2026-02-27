@@ -1,15 +1,19 @@
 # ChatInputBar + Interactive Message Cards — Design
 
 > **Date:** 2026-02-28
-> **Status:** Approved
-> **Scope:** Shared chat input component + interactive message cards for Mission Control
-> **Approach:** Hybrid — plain textarea + Radix UI popovers (matches Claude Code VSCode extension architecture)
+> **Status:** Approved (v2 — monitor-integrated)
+> **Scope:** Chat input + interactive cards integrated into existing monitor panels
+> **Approach:** Hybrid — plain textarea + Radix UI popovers, embedded in MonitorPane
 
 ---
 
 ## 1. Motivation
 
-Phase F shipped a basic `DashboardChat.tsx` with a plain `<textarea>` and send button. The Claude Code VSCode extension has a significantly richer input experience that our target users already know and love. This design upgrades the chat input to match (and exceed) the VSCode extension, while also adding interactive message cards that were missing.
+The monitor view already has dockview panels with RichPane rendering messages for every session. Users can arrange panels however they want (tabs, splits, stacks). Instead of building a separate chat page, we add input and interactivity directly into these existing panels.
+
+**Key insight:** No new pages. No new chat UI. Just add input + interactive cards to the panels users already use. Dockview gives them workspace mode for free.
+
+**What gets deleted:** `DashboardChat.tsx` (261 lines, duplicate renderers), `ControlPage.tsx` route.
 
 **Vision alignment:** The chat input IS the product for Stage 3 (Mission Control) and Stage 4 (clawmini). The "What do you want to build?" prompt in the vision doc is literally this component.
 
@@ -19,7 +23,8 @@ Phase F shipped a basic `DashboardChat.tsx` with a plain `<textarea>` and send b
 
 ### In scope (V1)
 
-**ChatInputBar** — shared input component:
+**ChatInputBar** — added to existing MonitorPane panels:
+
 - Auto-growing textarea (plain `<textarea>`, auto-grow via `scrollHeight`)
 - Slash command popover (Radix UI, full Claude Code command list)
 - File/image attachments (file picker + clipboard paste)
@@ -28,17 +33,24 @@ Phase F shipped a basic `DashboardChat.tsx` with a plain `<textarea>` and send b
 - Context gauge (% used, color-coded bar) — **claude-view addition**
 - Cost estimate preview (~$X cached) — **claude-view addition**
 
-**Interactive message cards** — inline in the chat stream:
-- `AskUserQuestionCard` — multiple choice with options, optional markdown preview
-- `PermissionCard` — refactored from existing `PermissionDialog.tsx` to also render inline
-- `PlanApprovalCard` — rendered plan markdown + Approve/Reject
+**Interactive message cards** — inline in RichPane message stream:
+
+- `InteractiveCardShell` — shared wrapper (header + content + action bar + resolved state)
+- Evolve existing `AskUserQuestionDisplay` → interactive (add click handlers + submit)
+- `PermissionCard` — inline version (refactored from existing `PermissionDialog.tsx`)
+- `PlanApprovalCard` — plan markdown + Approve/Reject
 - `ElicitationCard` — generic dialog prompt (text input + submit)
 
+**Cleanup** — delete duplicate code:
+
+- Delete `DashboardChat.tsx` (261 lines — duplicate renderers)
+- Delete or redirect `ControlPage.tsx` route
+
 ### Out of scope (V1)
+
 - Current file reference toggle (no open file concept in web dashboard)
-- Project/session picker (future)
+- New "Start Session" page (future — same ChatInputBar, different wiring)
 - Todo list rendering from `todos` field (optional, deferred)
-- Full message stream redesign (keep existing rendering, just add input bar + cards)
 - Mobile version (shared types via `@claude-view/shared` enable this later)
 
 ---
@@ -67,19 +79,20 @@ Phase F shipped a basic `DashboardChat.tsx` with a plain `<textarea>` and send b
 
 ### 3.2 Interactive Message Cards
 
-```
+```text
 apps/web/src/components/chat/cards/
-├── AskUserQuestionCard.tsx       ← multiple choice question
-├── PermissionCard.tsx            ← tool approval (refactored from PermissionDialog)
+├── InteractiveCardShell.tsx      ← shared wrapper (header + actions + resolved state)
+├── AskUserQuestionCard.tsx       ← evolve existing AskUserQuestionDisplay → interactive
+├── PermissionCard.tsx            ← inline version (refactored from PermissionDialog)
 ├── PlanApprovalCard.tsx          ← plan approval
 └── ElicitationCard.tsx           ← generic dialog prompt
 ```
 
 ### 3.3 Full File Structure
 
-```
+```text
 apps/web/src/components/chat/
-├── ChatInputBar.tsx              ← main shared input component
+├── ChatInputBar.tsx              ← main input component (embedded in MonitorPane)
 ├── ModeSwitch.tsx                ← plan/code/ask dropdown badge
 ├── ModelSelector.tsx             ← model picker chip
 ├── SlashCommandPopover.tsx       ← "/" command menu
@@ -88,6 +101,7 @@ apps/web/src/components/chat/
 ├── AttachButton.tsx              ← file/image picker
 ├── commands.ts                   ← slash command definitions
 └── cards/
+    ├── InteractiveCardShell.tsx   ← shared card wrapper
     ├── AskUserQuestionCard.tsx
     ├── PermissionCard.tsx
     ├── PlanApprovalCard.tsx
@@ -223,6 +237,61 @@ interface SlashCommand {
 
 ## 6. Interactive Message Cards
 
+### 6.0 InteractiveCardShell (shared wrapper)
+
+All 4 card types share a common shell for consistent visual language.
+
+**Layout:**
+
+```text
+┌─ [icon] TYPE BADGE ──── color-coded header ──────────────┐
+│                                                           │
+│  [card-specific content area — children]                  │
+│                                                           │
+│  ─────────────────────── action bar ──────────────────── │
+│                              [Secondary]  [Primary]       │
+└───────────────────────────────────────────────────────────┘
+```
+
+**After resolution:**
+
+```text
+┌─ [icon] TYPE BADGE ──── grayed header ── [✓ Approved] ──┐
+│                                                           │
+│  [content, opacity-60, non-interactive]                   │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Props:**
+
+```ts
+interface InteractiveCardShellProps {
+  variant: 'question' | 'permission' | 'plan' | 'elicitation'
+  header: string
+  icon?: React.ReactNode
+  resolved?: { label: string; variant: 'success' | 'denied' | 'neutral' }
+  children: React.ReactNode
+  actions?: React.ReactNode
+}
+```
+
+**Color system** (extends `AskUserQuestionDisplay.COLORS` pattern):
+
+| Variant | Border | Header BG | Icon color |
+| --- | --- | --- | --- |
+| question | purple | purple-900/20 | purple-400 |
+| permission | amber | amber-900/20 | amber-400 |
+| plan | blue | blue-900/20 | blue-400 |
+| elicitation | gray | gray-800/30 | gray-400 |
+
+**Shared behaviors:**
+
+- Resolved state: `opacity-60` on entire card, `pointer-events-none` on content + actions, result badge in header
+- Transition: `transition-opacity duration-200`
+- Border radius: `rounded-lg`
+- `prefers-reduced-motion`: respects via `motion-reduce:transition-none`
+
 ### 6.1 AskUserQuestionCard
 
 Renders when Claude uses the `AskUserQuestion` tool. Displayed inline in the message stream.
@@ -354,44 +423,66 @@ Renders for `elicitation_dialog` notification type. Generic dialog prompt.
 
 ## 7. Integration Points
 
-### 7.1 Unified Chat: RichPane + ChatInputBar
+### 7.1 Monitor-Integrated: MonitorPane + RichPane + ChatInputBar
 
-**Key decision:** Reuse RichPane (1,042 lines, battle-tested) for ALL message rendering. Delete DashboardChat's duplicate renderers (`HistoryMessage`, `ControlMessage`, `ToolCallBlock`).
+**Key decision:** No new pages. Add ChatInputBar to existing MonitorPane. Interactive cards render inline in existing RichPane. Users arrange panels however they want via dockview.
 
-DashboardChat becomes a thin wrapper (~30 lines):
+**Current architecture (read-only monitoring):**
 
-```tsx
-<div className="flex flex-col h-full">
-  <ChatStatusBar ... />            {/* existing, keep */}
-  <RichPane messages={messages} /> {/* REUSE for all rendering */}
-  <ChatInputBar onSend={...} />    {/* NEW for all input */}
-</div>
+```text
+MonitorPane
+├── Header (project name, branch, cost, context %, status)
+├── Content: RichTerminalPane → RichPane (message stream)
+└── Footer (activity, turn count, sub-agents)
 ```
 
-**Message normalization required:** RichPane expects `RichMessage[]`. Control session messages come from `useControlSession` in `ChatMessage` format. A new adapter function `controlMessageToRichMessage()` converts:
-- `ChatMessage { role: 'assistant', content }` → `RichMessage { type: 'assistant', content }`
-- `ChatMessage { role: 'tool_use', toolName, toolInput }` → `RichMessage { type: 'tool_use', name, input }`
-- `ChatMessage { role: 'tool_result', output }` → `RichMessage { type: 'tool_result', content }`
-- `PermissionRequestMsg` → `RichMessage { type: 'system', content, metadata: { interactive: 'permission', ... } }`
-- `ToolUseStartMsg` with `AskUserQuestion` → `RichMessage { type: 'system', metadata: { interactive: 'ask_question', ... } }`
+**New architecture (monitoring + interaction):**
 
-RichPane's render dispatch checks `metadata.interactive` to render the appropriate interactive card instead of a normal message bubble.
+```text
+MonitorPane
+├── Header (unchanged)
+├── Content: RichTerminalPane → RichPane (messages + interactive cards inline)
+├── ChatInputBar (conditional — only when session has control connection)
+└── Footer (unchanged)
+```
+
+**How messages flow:**
+
+- **Reading (existing, no changes):** SSE stream → `useTerminalSocket` → `RichPane` renders messages
+- **Writing (new):** `ChatInputBar` → `useControlSession.sendMessage()` → control WebSocket → sidecar → Claude
+- **Response appears naturally:** sidecar writes to JSONL → SSE picks up new messages → RichPane renders them
+- **Interactive cards (new):** RichPane detects interactive message types → renders card instead of normal bubble
+
+**When does ChatInputBar appear?**
+
+A session panel shows the input bar when:
+
+1. Session has a control connection (sidecar is running, `controlId` exists)
+2. Session status is not `completed` or `error`
+
+Most sessions are read-only (monitoring). Input appears only for sessions the user is actively controlling.
+
+**Interactive card rendering in RichPane:**
+
+RichPane already special-cases `AskUserQuestion` (lines 905-909). Extend this pattern:
+
+- `AskUserQuestion` tool_use → render interactive `AskUserQuestionCard` (evolve existing display-only component)
+- `PermissionRequestMsg` → render inline `PermissionCard`
+- `ExitPlanMode` tool_use → render `PlanApprovalCard`
+- `elicitation_dialog` notification → render `ElicitationCard`
 
 **What gets deleted:**
-- `DashboardChat.tsx` lines 170-260: `HistoryMessage`, `ControlMessage`, `ToolCallBlock` components
-- The plain `<textarea>` + send button (lines 140-165)
 
-**What stays:**
+- `DashboardChat.tsx` (261 lines — all duplicate renderers: `HistoryMessage`, `ControlMessage`, `ToolCallBlock`, plain textarea)
+- `ControlPage.tsx` route (redirect to monitor view, or remove entirely)
+
+**What stays unchanged:**
+
+- `MonitorPane` layout (header, content, footer)
+- `RichPane` message rendering (1,042 lines, battle-tested)
+- `DockLayout` panel management
 - `useControlSession` hook (WebSocket state management)
-- `useSessionMessages` hook (historical JSONL fetch)
-- `ChatStatusBar` (status display)
-- `PermissionDialog` modal (as fallback for urgent interrupts; inline PermissionCard is primary)
-
-Add interactive cards in the message stream:
-- When `PermissionRequestMsg` arrives → render `<PermissionCard>` inline
-- When `tool_use_start` with `toolName === "AskUserQuestion"` → render `<AskUserQuestionCard>`
-- When `tool_use_start` with `toolName === "ExitPlanMode"` → render `<PlanApprovalCard>`
-- When `session_status` with `status === "waiting_input"` from elicitation → render `<ElicitationCard>`
+- `PermissionDialog` modal (kept as fallback for urgent interrupts)
 
 ### 7.2 WebSocket Protocol Extensions
 
@@ -420,13 +511,15 @@ interface ElicitationMsg {
 
 These require sidecar updates to forward Agent SDK events → WebSocket. Currently only `permission_request` flows through the sidecar.
 
-### 7.3 Future "Start Session" page
+### 7.3 Future "Start Session" flow
 
-Same `<ChatInputBar>` but:
+Same `<ChatInputBar>` reused in a new-session context (could be a dockview panel or a top-level prompt):
+
 - `onSend` triggers session creation flow (calls `/api/control/start` or similar)
 - No `contextPercent` (new session = 0%)
 - `estimatedCost` shows first-message estimate
 - Mode defaults to "code"
+- Once session starts, it appears as a new panel in the monitor view automatically
 
 ---
 
@@ -484,9 +577,10 @@ Mirroring the Claude Code VSCode extension command list:
 
 ## 11. Migration Path
 
-1. Build `ChatInputBar` as a new shared component (no changes to existing code)
-2. Build interactive cards in `chat/cards/` (no changes to existing code)
-3. Replace `DashboardChat.tsx` textarea with `<ChatInputBar>` (single integration point)
-4. Add card rendering to `DashboardChat.tsx` message stream
-5. Extend sidecar WebSocket protocol for new interactive message types
-6. Future: Create "Start Session" page reusing `<ChatInputBar>`
+1. Build `InteractiveCardShell` shared wrapper + 4 card types (no changes to existing code)
+2. Build `ChatInputBar` as a new component with sub-components (no changes to existing code)
+3. Wire interactive cards into `RichPane` message rendering (detect interactive types → render cards)
+4. Wire `ChatInputBar` into `MonitorPane` (conditional on control connection)
+5. Delete `DashboardChat.tsx` and `ControlPage.tsx`
+6. Extend sidecar WebSocket protocol for new interactive message types
+7. Future: "Start Session" flow reusing `<ChatInputBar>` in a new-session context
