@@ -20,12 +20,17 @@ export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
   // Flatten paginated history
   const history = historyQuery.data?.pages.flatMap((p) => p.messages) ?? []
 
-  // Auto-scroll to bottom unless user scrolled up
+  // Auto-scroll to bottom when new messages arrive or streaming content changes.
+  // messageCount and streamingLen are intentional trigger deps — they aren't
+  // referenced in the body but the effect must re-run when they change.
+  const messageCount = session.messages.length
+  const streamingLen = session.streamingContent.length
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messageCount and streamingLen are intentional trigger deps for scroll
   useEffect(() => {
     if (autoScroll && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [session.messages, session.streamingContent, autoScroll])
+  }, [messageCount, streamingLen, autoScroll])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -117,34 +122,15 @@ export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
 
         {/* Permission request banner */}
         {session.permissionRequest && (
-          <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
-              Permission required
-            </p>
-            <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
-              {session.permissionRequest.description}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  session.respondPermission(session.permissionRequest!.requestId, true)
-                }
-                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
-              >
-                Allow
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  session.respondPermission(session.permissionRequest!.requestId, false)
-                }
-                className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700"
-              >
-                Deny
-              </button>
-            </div>
-          </div>
+          <PermissionBanner
+            description={session.permissionRequest.description}
+            onAllow={() =>
+              session.respondPermission(session.permissionRequest?.requestId ?? '', true)
+            }
+            onDeny={() =>
+              session.respondPermission(session.permissionRequest?.requestId ?? '', false)
+            }
+          />
         )}
 
         {/* Session completed banner */}
@@ -220,6 +206,38 @@ function statusLabel(status: string): string {
     reconnecting: 'Reconnecting...',
   }
   return labels[status] ?? status
+}
+
+/** Permission request banner — extracted to avoid non-null assertions */
+function PermissionBanner({
+  description,
+  onAllow,
+  onDeny,
+}: { description: string; onAllow: () => void; onDeny: () => void }) {
+  return (
+    <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
+      <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">
+        Permission required
+      </p>
+      <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">{description}</p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onAllow}
+          className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
+        >
+          Allow
+        </button>
+        <button
+          type="button"
+          onClick={onDeny}
+          className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700"
+        >
+          Deny
+        </button>
+      </div>
+    </div>
+  )
 }
 
 /** Render a historical message from the session's JSONL history */
