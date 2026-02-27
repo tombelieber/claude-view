@@ -178,3 +178,8 @@ export type { RichSessionData } from './RichSessionData'
 export type { SearchResponse } from './SearchResponse'
 export type { SessionHit } from './SessionHit'
 export type { MatchHit } from './MatchHit'
+
+// Grep search types
+export type { GrepResponse } from './GrepResponse'
+export type { GrepSessionHit } from './GrepSessionHit'
+export type { GrepLineMatch } from './GrepLineMatch'
