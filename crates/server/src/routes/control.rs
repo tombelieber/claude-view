@@ -7,8 +7,15 @@
 
 use std::sync::Arc;
 
+use axum::body::Body;
+use axum::response::Response;
 use axum::{extract::State, routing::post, Json, Router};
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::client::conn::http1;
+use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
+use tokio::net::UnixStream;
 
 use crate::{error::ApiError, state::AppState};
 
@@ -124,8 +131,119 @@ async fn estimate_cost(
     }))
 }
 
+/// Proxy a request to the sidecar, ensuring it's running first.
+///
+/// Uses raw `tokio::net::UnixStream` + `hyper::client::conn::http1` instead of
+/// `hyperlocal` (which is incompatible with hyper 1.x).
+///
+/// Returns `Result<Response, ApiError>` so error cases return JSON error bodies
+/// that the frontend can parse — not bare StatusCode with empty body.
+async fn proxy_to_sidecar(
+    state: &AppState,
+    method: &str,
+    path: &str,
+    body: Option<String>,
+) -> Result<Response, ApiError> {
+    let socket_path = state.sidecar.ensure_running().await.map_err(|e| {
+        tracing::error!("Sidecar unavailable: {e}");
+        ApiError::Internal(format!("Sidecar unavailable: {e}"))
+    })?;
+
+    // Connect to sidecar Unix socket
+    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
+        tracing::error!("Failed to connect to sidecar socket: {e}");
+        ApiError::Internal(format!("Sidecar connection failed: {e}"))
+    })?;
+    let io = TokioIo::new(stream);
+
+    let (mut sender, conn) = http1::handshake(io).await.map_err(|e| {
+        tracing::error!("Sidecar HTTP handshake failed: {e}");
+        ApiError::Internal(format!("Sidecar handshake failed: {e}"))
+    })?;
+    tokio::spawn(async move {
+        if let Err(e) = conn.await {
+            tracing::error!("Sidecar HTTP connection driver error: {e}");
+        }
+    });
+
+    let req = hyper::Request::builder()
+        .method(method)
+        .uri(path)
+        .header("host", "localhost")
+        .header("content-type", "application/json");
+
+    let req = if let Some(body) = body {
+        req.body(Full::new(Bytes::from(body)))
+    } else {
+        req.body(Full::new(Bytes::new()))
+    }
+    .map_err(|e| ApiError::Internal(format!("Build request: {e}")))?;
+
+    let resp = sender.send_request(req).await.map_err(|e| {
+        tracing::error!("Sidecar request failed: {e}");
+        ApiError::Internal(format!("Sidecar request failed: {e}"))
+    })?;
+
+    // Convert hyper response to axum response
+    let status = resp.status();
+    let bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Read sidecar response: {e}")))?
+        .to_bytes();
+    Ok(Response::builder()
+        .status(status)
+        .header("content-type", "application/json")
+        .body(Body::from(bytes))
+        .unwrap())
+}
+
+/// POST /api/control/resume — proxy to sidecar
+async fn resume_session(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "POST", "/control/resume", Some(body)).await
+}
+
+/// POST /api/control/send — proxy to sidecar
+async fn send_message(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "POST", "/control/send", Some(body)).await
+}
+
+/// GET /api/control/sessions — list active control sessions
+async fn list_sessions(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "GET", "/control/sessions", None).await
+}
+
+/// DELETE /api/control/sessions/:id — terminate a control session
+async fn terminate_session(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(control_id): axum::extract::Path<String>,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(
+        &state,
+        "DELETE",
+        &format!("/control/sessions/{control_id}"),
+        None,
+    )
+    .await
+}
+
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/control/estimate", post(estimate_cost))
+    Router::new()
+        .route("/control/estimate", post(estimate_cost))
+        .route("/control/resume", post(resume_session))
+        .route("/control/send", post(send_message))
+        .route("/control/sessions", axum::routing::get(list_sessions))
+        .route(
+            "/control/sessions/{id}",
+            axum::routing::delete(terminate_session),
+        )
 }
 
 #[cfg(test)]
