@@ -77,7 +77,8 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
       ws.onmessage = (event) => {
         if (cancelled || wsRef.current !== ws) return
         try {
-          const data = JSON.parse(event.data as string)
+          const raw = typeof event.data === 'string' ? event.data : String(event.data)
+          const data = JSON.parse(raw)
 
           if (data.type === 'auth_ok') {
             setConnectionState('connected')
@@ -128,8 +129,8 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
               setSessions((prev) => ({ ...prev, [msg.id]: msg as RelaySession }))
             }
           }
-        } catch {
-          // Ignore parse errors
+        } catch (e) {
+          console.warn('Relay message parse error:', e)
         }
       }
 
