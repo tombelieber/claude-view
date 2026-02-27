@@ -1,14 +1,14 @@
-# Search Phase 2: Regex Grep + Remaining Search Features — Implementation Plan
+# ~~Search Phase 2: Regex Grep + Remaining Search Features — Implementation Plan~~
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **DEPRECATED:** Superseded by [Smart Search Implementation Plan](2026-02-28-smart-search-implementation.md) which uses a multi-signal BooleanQuery (phrase + BM25 + fuzzy) instead of a toggle-based regex approach.
 
-**Goal:** Add regex grep search (ripgrep engine) against raw JSONL files, `after:`/`before:` date qualifiers in Tantivy, and in-session Ctrl+F — completing all remaining Phase 2 search features.
+~~**Goal:** Add regex grep search (ripgrep engine) against raw JSONL files, `after:`/`before:` date qualifiers in Tantivy, and in-session Ctrl+F — completing all remaining Phase 2 search features.~~
 
-**Architecture:** Regex toggle in existing search bar switches between Tantivy (existing BM25 full-text) and a new `/api/grep` endpoint powered by the `grep` crate (ripgrep's core engine). Date qualifiers extend the existing Tantivy query parser. In-session search is client-side only.
+~~**Architecture:** Regex toggle in existing search bar switches between Tantivy (existing BM25 full-text) and a new `/api/grep` endpoint powered by the `grep` crate (ripgrep's core engine). Date qualifiers extend the existing Tantivy query parser. In-session search is client-side only.~~
 
-**Tech Stack:** `grep-regex` + `grep-searcher` + `grep-matcher` (ripgrep core crates), Tantivy `RangeQuery` for date filters, React hooks for in-session search.
+~~**Tech Stack:** `grep-regex` + `grep-searcher` + `grep-matcher` (ripgrep core crates), Tantivy `RangeQuery` for date filters, React hooks for in-session search.~~
 
-**Design doc:** `docs/plans/2026-02-27-search-phase2-regex-grep-design.md`
+~~**Design doc:** `docs/plans/2026-02-27-search-phase2-regex-grep-design.md`~~
 
 ---
 

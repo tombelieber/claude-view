@@ -1,12 +1,15 @@
 ---
-status: design-in-progress
+status: deprecated
 date: 2026-02-27
 theme: "Search & Discovery"
+superseded_by: 2026-02-28-smart-search-design.md
 ---
 
-# Search Phase 2: Regex Grep + Remaining Search Features
+# ~~Search Phase 2: Regex Grep + Remaining Search Features~~
 
-> **Context:** Shippable audit on 2026-02-27 confirmed the full-text search module (crates/search/) is production-grade with zero regressions after PR #14. This design covers all remaining Phase 2 search features, with regex grep as the primary new capability.
+> **DEPRECATED:** Superseded by [Smart Search Design](2026-02-28-smart-search-design.md) which replaces the toggle-based regex approach with a multi-signal Google-style search experience.
+
+**Context:** Shippable audit on 2026-02-27 confirmed the full-text search module (crates/search/) is production-grade with zero regressions after PR #14. This design covers all remaining Phase 2 search features, with regex grep as the primary new capability.
 
 ## Background — Audit Results
 
