@@ -373,6 +373,8 @@ impl SearchIndex {
                             Bound::Unbounded,
                         );
                         sub_queries.push((Occur::Must, Box::new(range)));
+                    } else {
+                        tracing::warn!(qualifier = "after", value = %qual.value, "invalid date format, expected YYYY-MM-DD");
                     }
                     continue;
                 }
@@ -387,6 +389,8 @@ impl SearchIndex {
                             Bound::Excluded(ts),
                         );
                         sub_queries.push((Occur::Must, Box::new(range)));
+                    } else {
+                        tracing::warn!(qualifier = "before", value = %qual.value, "invalid date format, expected YYYY-MM-DD");
                     }
                     continue;
                 }
@@ -464,18 +468,25 @@ impl SearchIndex {
         // SnippetGenerator calls query_terms() which is a no-op for FuzzyTermQuery
         // (inherits empty default from Query trait). Only exact terms highlight.
         let snippet_gen = if !text_query.trim().is_empty() {
-            let tokens: Vec<String> = text_query.trim()
+            let tokens: Vec<String> = text_query
                 .split_whitespace()
                 .map(|t| t.to_lowercase())
                 .collect();
 
             let snippet_query: Box<dyn Query> = if tokens.len() >= 2 {
-                // PhraseQuery highlights exact phrase occurrences
+                // Combine PhraseQuery + individual TermQueries so snippets
+                // highlight both exact phrases and scattered term matches.
+                let mut snippet_signals: Vec<(Occur, Box<dyn Query>)> = Vec::new();
                 let phrase_terms: Vec<Term> = tokens
                     .iter()
                     .map(|t| Term::from_field_text(self.content_field, t))
                     .collect();
-                Box::new(PhraseQuery::new(phrase_terms))
+                snippet_signals.push((Occur::Should, Box::new(PhraseQuery::new(phrase_terms))));
+                for t in &tokens {
+                    let term = Term::from_field_text(self.content_field, t);
+                    snippet_signals.push((Occur::Should, Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))));
+                }
+                Box::new(BooleanQuery::new(snippet_signals))
             } else {
                 // Single term
                 let term = Term::from_field_text(self.content_field, &tokens[0]);
@@ -491,6 +502,19 @@ impl SearchIndex {
         // When scores are within 10% of each other, newer session wins.
         let mut session_entries: Vec<(String, Vec<(f32, DocAddress)>)> =
             session_groups.into_iter().collect();
+
+        // Pre-compute max timestamps per session to avoid repeated doc reads
+        // inside the sort comparator (O(N*M) reads vs O(N*logN*M) in-sort reads).
+        let session_max_ts: HashMap<String, i64> = session_entries.iter()
+            .map(|(sid, docs)| {
+                let max_ts = docs.iter().filter_map(|(_, addr)| {
+                    let d: TantivyDocument = searcher.doc(*addr).ok()?;
+                    d.get_first(self.timestamp_field)?.as_i64()
+                }).max().unwrap_or(0);
+                (sid.clone(), max_ts)
+            })
+            .collect();
+
         session_entries.sort_by(|a, b| {
             let best_a = a.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
             let best_b = b.1.iter().map(|(s, _)| *s).fold(f32::NEG_INFINITY, f32::max);
@@ -499,15 +523,8 @@ impl SearchIndex {
             let scores_close = hi == 0.0 || (lo / hi) > 0.9;
 
             if scores_close {
-                // Tiebreak by timestamp: find max timestamp per session
-                let ts_a = a.1.iter().filter_map(|(_, addr)| {
-                    let d: TantivyDocument = searcher.doc(*addr).ok()?;
-                    d.get_first(self.timestamp_field)?.as_i64()
-                }).max().unwrap_or(0);
-                let ts_b = b.1.iter().filter_map(|(_, addr)| {
-                    let d: TantivyDocument = searcher.doc(*addr).ok()?;
-                    d.get_first(self.timestamp_field)?.as_i64()
-                }).max().unwrap_or(0);
+                let ts_a = session_max_ts.get(&a.0).copied().unwrap_or(0);
+                let ts_b = session_max_ts.get(&b.0).copied().unwrap_or(0);
                 ts_b.cmp(&ts_a) // newer first
             } else {
                 best_b.partial_cmp(&best_a).unwrap_or(std::cmp::Ordering::Equal)
