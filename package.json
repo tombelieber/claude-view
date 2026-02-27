@@ -6,7 +6,7 @@
   "packageManager": "bun@1.3.7",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "concurrently -n rust,web -c red,cyan \"bun run dev:server\" \"turbo dev --filter=@claude-view/web\"",
+    "dev": "bun run build:sidecar && concurrently -n rust,web -c red,cyan \"bun run dev:server\" \"turbo dev --filter=@claude-view/web\"",
     "dev:web": "turbo dev --filter=@claude-view/web",
     "dev:all": "turbo dev",
     "build": "turbo build",
@@ -21,6 +21,7 @@
     "ci:check": "turbo run lint typecheck test --affected",
     "check": "biome check .",
     "check:fix": "biome check --write .",
+    "build:sidecar": "cd sidecar && (bun install --frozen-lockfile 2>/dev/null || bun install) && bun run build",
     "fmt": "cargo fmt --all",
     "clean:db": "rm -f ~/Library/Caches/claude-view/claude-view.db*",
     "cleanupport": "PORTS='47892 5173'; for port in $PORTS; do pids=\"$(lsof -ti tcp:$port)\"; if [ -n \"$pids\" ]; then echo \"Killing $pids listening on port $port\"; kill -9 $pids; else echo \"No process found on port $port\"; fi; done",
@@ -35,6 +36,7 @@
     "release:bump": "node -e \"const v=process.argv[1]; const fs=require('fs'); const p=JSON.parse(fs.readFileSync('npx-cli/package.json','utf8')); p.version=v; fs.writeFileSync('npx-cli/package.json', JSON.stringify(p,null,2)+'\\n'); console.log('npx-cli/package.json -> '+v);\"",
     "release:tag": "node -e \"const v=require('./npx-cli/package.json').version; require('child_process').execFileSync('git',['tag','v'+v],{stdio:'inherit'}); console.log('Tagged v'+v);\"",
     "release:push": "git push && git push --tags",
+    "postinstall": "cd sidecar && bun install",
     "prepare": "node -e \"if(require('fs').statSync('.git').isFile())process.exit(0);require('child_process').execFileSync('lefthook',['install'],{stdio:'inherit'});\""
   },
   "devDependencies": {
