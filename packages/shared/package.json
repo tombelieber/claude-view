@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@claude-view/design-tokens": "workspace:*",
+    "@noble/hashes": "^2.0.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
   },
