@@ -7,9 +7,22 @@ import {
   type IWatermarkPanelProps,
   type SerializedDockview,
 } from 'dockview-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import { useMonitorStore } from '../../store/monitor-store'
+import { MonitorPane } from './MonitorPane'
 import { RichTerminalPane } from './RichTerminalPane'
 import type { LiveSession } from './use-live-sessions'
+
+// --- Context: provides session data + callbacks to dockview panel components ---
+
+interface DockPaneContextValue {
+  sessions: LiveSession[]
+  onExpandSession?: (id: string) => void
+}
+
+const DockPaneContext = createContext<DockPaneContextValue>({ sessions: [] })
+
+// --- Props ---
 
 interface DockLayoutProps {
   sessions: LiveSession[]
@@ -24,15 +37,9 @@ interface DockLayoutProps {
   onSelectSession?: (id: string) => void
 }
 
-/**
- * Panel component rendered inside each dockview panel.
- *
- * Params shape: { sessionId: string; verboseMode: boolean }
- * Matches RichTerminalPane props: sessionId, isVisible, verboseMode.
- */
+// --- Panel component rendered inside each dockview panel ---
+
 function SessionPanel({
-  api: _api,
-  containerApi: _containerApi,
   params,
 }: IDockviewPanelProps<{
   sessionId: string
@@ -40,12 +47,45 @@ function SessionPanel({
   status: string
 }>) {
   const sessionId = params.sessionId
-  if (!sessionId) return <div className="flex-1 bg-[#0D1117] p-4 text-[#8B949E]">Session ended</div>
+  const { sessions, onExpandSession } = useContext(DockPaneContext)
+  const session = sessions.find((s) => s.id === sessionId)
+
+  // Store state + actions — read directly so panels stay in sync
+  const compactHeaders = useMonitorStore((s) => s.compactHeaders)
+  const selectedPaneId = useMonitorStore((s) => s.selectedPaneId)
+  const pinnedPaneIds = useMonitorStore((s) => s.pinnedPaneIds)
+  const selectPane = useMonitorStore((s) => s.selectPane)
+  const pinPane = useMonitorStore((s) => s.pinPane)
+  const unpinPane = useMonitorStore((s) => s.unpinPane)
+  const hidePane = useMonitorStore((s) => s.hidePane)
+
+  if (!session) {
+    return (
+      <div className="flex-1 bg-white dark:bg-[#0D1117] p-4 text-gray-500 dark:text-[#8B949E]">
+        Session ended
+      </div>
+    )
+  }
+
+  const isPinned = pinnedPaneIds.has(sessionId)
 
   return (
-    <div className="flex flex-col h-full bg-[#0D1117]">
+    <MonitorPane
+      session={session}
+      isSelected={selectedPaneId === sessionId}
+      isExpanded={false}
+      isPinned={isPinned}
+      compactHeader={compactHeaders}
+      isVisible={true}
+      embedded
+      onSelect={() => selectPane(selectedPaneId === sessionId ? null : sessionId)}
+      onExpand={() => onExpandSession?.(sessionId)}
+      onPin={() => (isPinned ? unpinPane(sessionId) : pinPane(sessionId))}
+      onHide={() => hidePane(sessionId)}
+      onContextMenu={() => {}}
+    >
       <RichTerminalPane sessionId={sessionId} isVisible={true} verboseMode={params.verboseMode} />
-    </div>
+    </MonitorPane>
   )
 }
 
@@ -55,7 +95,7 @@ const components = { session: SessionPanel }
 
 function EmptyWatermark(_props: IWatermarkPanelProps) {
   return (
-    <div className="flex items-center justify-center h-full text-[#8B949E] text-sm">
+    <div className="flex items-center justify-center h-full text-gray-400 dark:text-[#8B949E] text-sm">
       No sessions. Start a Claude Code session to see it here.
     </div>
   )
@@ -104,7 +144,7 @@ export function DockLayout({
   onApiReady,
   compactHeaders: _compactHeaders,
   verboseMode,
-  onSelectSession: _onSelectSession,
+  onSelectSession,
 }: DockLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null)
   const sessionsRef = useRef(sessions)
@@ -232,16 +272,26 @@ export function DockLayout({
     }
   }, [sessions, verboseMode])
 
+  // Context value — memoized via ref to avoid unnecessary re-renders.
+  // Sessions array changes on every SSE tick but dockview panels read from
+  // context only on render (triggered by param updates above).
+  const contextValue: DockPaneContextValue = {
+    sessions,
+    onExpandSession: onSelectSession,
+  }
+
   return (
-    <div className="absolute inset-0">
-      <DockviewReact
-        className="dockview-theme-dark"
-        components={components}
-        tabComponents={{ session: SessionTabRenderer }}
-        defaultTabComponent={SessionTabRenderer}
-        onReady={onReady}
-        watermarkComponent={EmptyWatermark}
-      />
-    </div>
+    <DockPaneContext.Provider value={contextValue}>
+      <div className="absolute inset-0">
+        <DockviewReact
+          className="dockview-theme-cv"
+          components={components}
+          tabComponents={{ session: SessionTabRenderer }}
+          defaultTabComponent={SessionTabRenderer}
+          onReady={onReady}
+          watermarkComponent={EmptyWatermark}
+        />
+      </div>
+    </DockPaneContext.Provider>
   )
 }

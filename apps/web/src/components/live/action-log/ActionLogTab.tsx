@@ -60,9 +60,9 @@ export function ActionLogTab({
   const filteredItems = useMemo(() => {
     if (activeFilter === 'all') return allItems
     return allItems.filter((item) => {
-      if (isTurnSeparator(item)) return true // always show turn separators
-      if (isHookEvent(item)) return activeFilter === 'hook'
-      return item.category === activeFilter
+      if (isTurnSeparator(item)) return false // hide separators when filtering
+      if (isHookEvent(item)) return activeFilter.includes('hook')
+      return activeFilter.includes(item.category)
     })
   }, [allItems, activeFilter])
 

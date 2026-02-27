@@ -455,6 +455,7 @@ export function SessionDetailPanel({
                 group={data.agentState?.group ?? 'needs_you'}
                 tokens={data.tokens}
                 turnCount={data.turnCount}
+                compactCount={data.compactCount}
                 expanded
               />
             </div>

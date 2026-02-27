@@ -59,6 +59,8 @@ export interface MonitorPaneProps {
   isPinned: boolean
   compactHeader: boolean
   isVisible: boolean
+  /** When true, strips outer card border/rounded corners for embedding in dockview panels. */
+  embedded?: boolean
   onSelect: () => void
   onExpand: () => void
   onPin: () => void
@@ -76,6 +78,7 @@ export function MonitorPane({
   isPinned,
   compactHeader,
   isVisible,
+  embedded,
   onSelect,
   onExpand,
   onPin,
@@ -107,12 +110,16 @@ export function MonitorPane({
   return (
     <div
       className={cn(
-        'flex flex-col rounded-lg border overflow-hidden bg-white dark:bg-[#0D1117] transition-all duration-150 h-full',
-        isSelected
-          ? 'ring-2 ring-blue-500 dark:ring-[#1F6FEB] border-blue-500 dark:border-[#1F6FEB] shadow-lg shadow-blue-500/10 dark:shadow-[#1F6FEB]/10'
-          : isHovered
-            ? 'border-gray-300 dark:border-[#30363D] shadow-md shadow-black/10 dark:shadow-black/30'
-            : 'border-gray-200 dark:border-[#21262D]',
+        'flex flex-col overflow-hidden h-full bg-white dark:bg-[#0D1117]',
+        !embedded &&
+          cn(
+            'rounded-lg border transition-all duration-150',
+            isSelected
+              ? 'ring-2 ring-blue-500 dark:ring-[#1F6FEB] border-blue-500 dark:border-[#1F6FEB] shadow-lg shadow-blue-500/10 dark:shadow-[#1F6FEB]/10'
+              : isHovered
+                ? 'border-gray-300 dark:border-[#30363D] shadow-md shadow-black/10 dark:shadow-black/30'
+                : 'border-gray-200 dark:border-[#21262D]',
+          ),
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
