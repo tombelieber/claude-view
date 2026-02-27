@@ -5,9 +5,14 @@
 
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// The universal agent state — driven by hooks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentState {
     /// Which UI group: NeedsYou or Autonomous
@@ -21,7 +26,11 @@ pub struct AgentState {
     pub context: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentStateGroup {
     NeedsYou,
@@ -34,7 +43,11 @@ pub enum AgentStateGroup {
 ///
 /// 3-state model: Working (actively streaming/tool use), Paused (waiting for
 /// input, task complete, or idle), Done (session over).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
     /// Agent is actively streaming or using tools.
@@ -46,7 +59,11 @@ pub enum SessionStatus {
 }
 
 /// A tool integration (MCP server or skill) detected from actual usage in a session.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolUsed {
     /// Display name: "playwright", "chrome-devtools" for MCP; "commit", "review-pr" for skills.
@@ -56,7 +73,11 @@ pub struct ToolUsed {
 }
 
 /// A live session snapshot broadcast to connected SSE clients.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSession {
     /// Session UUID (filename without .jsonl extension).
@@ -129,7 +150,11 @@ pub struct LiveSession {
 }
 
 /// A single hook lifecycle event, captured for the event log.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct HookEvent {
     /// Unix timestamp (seconds).

@@ -4,7 +4,10 @@ use ts_rs::TS;
 
 /// Status of a sub-agent within a live session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub enum SubAgentStatus {
     Running,
@@ -14,7 +17,10 @@ pub enum SubAgentStatus {
 
 /// Information about a sub-agent spawned via the Task tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(
+    export,
+    export_to = "../../../../../packages/shared/src/types/generated/"
+)]
 #[serde(rename_all = "camelCase")]
 pub struct SubAgentInfo {
     /// The tool_use_id from the spawning Task call. Used to match
