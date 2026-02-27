@@ -3,8 +3,10 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Search, X, FolderOpen, Clock, Loader2, LayoutGrid, List, Columns3, Monitor, Filter, Trash2, HelpCircle } from 'lucide-react'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useAppStore } from '../store/app-store'
-import { useSearch } from '../hooks/use-search'
+import { useSearch, hasRegexMetacharacters } from '../hooks/use-search'
+import { useGrep } from '../hooks/use-grep'
 import { SearchResultCard } from './SearchResultCard'
+import { GrepResults } from './GrepResults'
 import { cn } from '../lib/utils'
 import { cleanPreviewText } from '../utils/get-session-title'
 import type { LiveSession } from './live/use-live-sessions'
@@ -66,10 +68,19 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const navigate = useNavigate()
   const { recentSearches, addRecentSearch } = useAppStore()
 
-  // Live search results from Tantivy backend
+  // Detect regex metacharacters for grep fallback
+  const isRegex = useMemo(() => hasRegexMetacharacters(query), [query])
+
+  // Live search results from Tantivy backend (disabled when regex mode)
   const { data: searchResults, isLoading: isSearching, isDebouncing } = useSearch(query, {
-    enabled: isOpen,
+    enabled: isOpen && !isRegex,
     limit: 5,
+  })
+
+  // Grep fallback for regex patterns
+  const { data: grepResults, isLoading: isGrepping, isDebouncing: isGrepDebouncing } = useGrep(query, {
+    enabled: isOpen && isRegex,
+    limit: 50,
   })
 
   // Reset when opened
@@ -316,8 +327,9 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
 
   if (!isOpen) return null
 
-  const hasLiveResults = query.trim().length > 0 && searchResults && searchResults.sessions.length > 0
-  const showLoading = query.trim().length > 0 && (isSearching || isDebouncing)
+  const hasLiveResults = query.trim().length > 0 && !isRegex && searchResults && searchResults.sessions.length > 0
+  const hasGrepResults = query.trim().length > 0 && isRegex && grepResults && grepResults.results.length > 0
+  const showLoading = query.trim().length > 0 && (isRegex ? (isGrepping || isGrepDebouncing) : (isSearching || isDebouncing))
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]">
@@ -346,6 +358,11 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
               spellCheck={false}
               autoComplete="off"
             />
+            {isRegex && query.trim().length > 0 && (
+              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200/80 dark:border-amber-500/20 flex-shrink-0">
+                Regex
+              </span>
+            )}
             {showLoading && (
               <Loader2 className="w-4 h-4 text-slate-400 dark:text-slate-500 animate-spin" />
             )}
@@ -359,6 +376,8 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
           </div>
         </form>
 
+        {/* Scrollable results area */}
+        <div className="max-h-[60vh] overflow-y-auto">
         {/* Live Monitor commands section */}
         {isLiveMonitor && filteredLiveCommands.length > 0 && (
           <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
@@ -402,7 +421,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
         )}
 
         {/* Global section header (when Live Monitor context is active) */}
-        {isLiveMonitor && (suggestions.length > 0 || hasLiveResults) && (
+        {isLiveMonitor && (suggestions.length > 0 || hasLiveResults || hasGrepResults) && (
           <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
             Global
           </p>
@@ -434,6 +453,13 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
                 </button>
               )
             })}
+          </div>
+        )}
+
+        {/* Grep results (regex fallback) */}
+        {hasGrepResults && (
+          <div className="border-b border-slate-200/80 dark:border-white/[0.06]">
+            <GrepResults data={grepResults} />
           </div>
         )}
 
@@ -469,11 +495,16 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
         )}
 
         {/* No results message */}
-        {query.trim().length > 0 && !isSearching && !isDebouncing && searchResults && searchResults.sessions.length === 0 && filteredLiveCommands.length === 0 && suggestions.length === 0 && (
+        {query.trim().length > 0 && !showLoading && (
+          isRegex
+            ? grepResults && grepResults.results.length === 0 && filteredLiveCommands.length === 0 && suggestions.length === 0
+            : searchResults && searchResults.sessions.length === 0 && filteredLiveCommands.length === 0 && suggestions.length === 0
+        ) && (
           <div className="py-4 border-b border-slate-200/80 dark:border-white/[0.06] text-center">
             <p className="text-sm text-slate-400 dark:text-slate-500">No results found.</p>
           </div>
         )}
+        </div>
 
         {/* Filter hints */}
         <div className="px-4 py-3">
