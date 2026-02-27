@@ -75,6 +75,10 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
     let command_args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
     let command_message_regex =
         Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+    let local_stdout_regex =
+        Regex::new(r"(?s)<local-command-stdout>.*?</local-command-stdout>\s*").unwrap();
+    let system_reminder_regex =
+        Regex::new(r"(?s)<system-reminder>.*?</system-reminder>\s*").unwrap();
 
     // Track pending thinking text from thinking-only assistant messages
     let mut pending_thinking: Option<String> = None;
@@ -164,6 +168,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                         &command_name_regex,
                                         &command_args_regex,
                                         &command_message_regex,
+                                        &local_stdout_regex,
+                                        &system_reminder_regex,
                                     );
                                     let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                     if !cleaned_content.trim().is_empty() {
@@ -187,6 +193,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                             &command_name_regex,
                             &command_args_regex,
                             &command_message_regex,
+                            &local_stdout_regex,
+                            &system_reminder_regex,
                         );
                         // D5: Normalize backslash-newline sequences
                         let cleaned_content = cleaned_content.replace("\\\n", "\n");
@@ -210,6 +218,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                     &command_name_regex,
                                     &command_args_regex,
                                     &command_message_regex,
+                                    &local_stdout_regex,
+                                    &system_reminder_regex,
                                 );
                                 let cleaned_content = cleaned_content.replace("\\\n", "\n");
                                 if !cleaned_content.trim().is_empty() {
@@ -490,34 +500,6 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     &parent_uuid,
                 ));
             }
-            "hook_event" => {
-                let event_name = value
-                    .get("eventName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let tool_name = value.get("toolName").and_then(|v| v.as_str());
-                let label = value.get("label").and_then(|v| v.as_str()).unwrap_or("");
-
-                let content = if let Some(tool) = tool_name {
-                    format!("Hook: {} — {} ({})", event_name, label, tool)
-                } else {
-                    format!("Hook: {} — {}", event_name, label)
-                };
-
-                // Carry the full original value as _hookEvent for the frontend's HookEventRow
-                let mut meta = serde_json::Map::new();
-                meta.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("hook_event".to_string()),
-                );
-                meta.insert("_hookEvent".to_string(), value.clone());
-
-                let message =
-                    Message::progress(content).with_metadata(serde_json::Value::Object(meta));
-                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
-                let message = message.with_category("hook");
-                messages.push(message);
-            }
             _ => {
                 // Silently ignore unknown entry types for forward compatibility
                 debug!(
@@ -694,6 +676,8 @@ fn clean_command_tags(
     name_regex: &Regex,
     args_regex: &Regex,
     message_regex: &Regex,
+    local_stdout_regex: &Regex,
+    system_reminder_regex: &Regex,
 ) -> String {
     // Try to extract command-args content first
     if let Some(caps) = args_regex.captures(content) {
@@ -705,9 +689,11 @@ fn clean_command_tags(
         }
     }
 
-    // No command-args found (or empty), strip command-name and command-message tags
+    // No command-args found (or empty), strip all command/system tags
     let cleaned = name_regex.replace_all(content, "");
     let cleaned = message_regex.replace_all(&cleaned, "");
+    let cleaned = local_stdout_regex.replace_all(&cleaned, "");
+    let cleaned = system_reminder_regex.replace_all(&cleaned, "");
     cleaned.trim().to_string()
 }
 
@@ -1088,61 +1074,74 @@ mod tests {
         assert_eq!(thinking, Some("Just thinking...".to_string()));
     }
 
+    /// Helper: build all 5 tag-stripping regexes for clean_command_tags tests.
+    fn tag_regexes() -> (Regex, Regex, Regex, Regex, Regex) {
+        (
+            Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap(),
+            Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap(),
+            Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap(),
+            Regex::new(r"(?s)<local-command-stdout>.*?</local-command-stdout>\s*").unwrap(),
+            Regex::new(r"(?s)<system-reminder>.*?</system-reminder>\s*").unwrap(),
+        )
+    }
+
     #[test]
     fn test_clean_command_tags_basic() {
-        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
-
+        let (nr, ar, mr, lr, sr) = tag_regexes();
         let input = "<command-name>/commit</command-name>\nPlease commit";
-        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
         assert_eq!(result, "Please commit");
     }
 
     #[test]
     fn test_clean_command_tags_with_args() {
-        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
-
+        let (nr, ar, mr, lr, sr) = tag_regexes();
         // When command-args is present, its content becomes the message
         let input =
             "<command-name>/review</command-name>\n<command-args>123</command-args>\nReview PR";
-        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
         assert_eq!(result, "123");
     }
 
     #[test]
     fn test_clean_command_tags_with_multiline_args() {
-        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
-
+        let (nr, ar, mr, lr, sr) = tag_regexes();
         // command-args can contain < characters and span multiple lines
         let input = "<command-name>/review</command-name>\n<command-args>Fix the <T> generic\nacross files</command-args>";
-        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
         assert_eq!(result, "Fix the <T> generic\nacross files");
     }
 
     #[test]
     fn test_clean_command_tags_no_tags() {
-        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
-
+        let (nr, ar, mr, lr, sr) = tag_regexes();
         let input = "Normal message without tags";
-        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
         assert_eq!(result, "Normal message without tags");
     }
 
     #[test]
+    fn test_clean_command_tags_strips_local_stdout_and_system_reminder() {
+        let (nr, ar, mr, lr, sr) = tag_regexes();
+        let input = "<local-command-stdout>some output</local-command-stdout>\n<system-reminder>injected context</system-reminder>\nActual user message";
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
+        assert_eq!(result, "Actual user message");
+    }
+
+    #[test]
+    fn test_clean_command_tags_strips_system_reminder_only() {
+        let (nr, ar, mr, lr, sr) = tag_regexes();
+        let input = "<system-reminder>SessionStart hook context</system-reminder>\nFix the bug";
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
+        assert_eq!(result, "Fix the bug");
+    }
+
+    #[test]
     fn test_clean_command_message_tags() {
-        let name_regex = Regex::new(r"(?s)<command-name>.*?</command-name>\s*").unwrap();
-        let args_regex = Regex::new(r"(?s)<command-args>(.*?)</command-args>").unwrap();
-        let message_regex = Regex::new(r"(?s)<command-message>.*?</command-message>\s*").unwrap();
+        let (nr, ar, mr, lr, sr) = tag_regexes();
 
         let input = "<command-name>/commit</command-name>\n<command-message>System prompt text</command-message>\nPlease commit";
-        let result = clean_command_tags(input, &name_regex, &args_regex, &message_regex);
+        let result = clean_command_tags(input, &nr, &ar, &mr, &lr, &sr);
         assert_eq!(result, "Please commit");
     }
 
@@ -1201,15 +1200,14 @@ mod tests {
     ///  11. file-history-snapshot          → Role::System
     ///  12. result                         → Role::System
     ///  13. saved_hook_context             → Role::System
-    ///  14. hook_event                     → Role::Progress
-    ///  15. user (isMeta=true)             → skipped
-    /// = 14 messages total
+    ///  14. user (isMeta=true)             → skipped
+    /// = 13 messages total
 
     #[tokio::test]
     async fn test_parse_all_types_count() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
-        assert_eq!(session.messages.len(), 14);
+        assert_eq!(session.messages.len(), 13);
     }
 
     #[tokio::test]
@@ -1434,36 +1432,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_hook_event_role_and_category() {
-        let path = fixtures_path().join("all_types.jsonl");
-        let session = parse_session(&path).await.unwrap();
-
-        // hook_event is at index 13 (after saved_hook_context at 12)
-        let msg = &session.messages[13];
-        assert_eq!(msg.role, Role::Progress);
-        assert!(msg.content.contains("Hook: PreToolUse"));
-        assert!(msg.content.contains("Bash"));
-        assert_eq!(msg.category.as_deref(), Some("hook"));
-
-        let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "hook_event");
-        // _hookEvent carries the full original JSONL entry
-        let hook = meta.get("_hookEvent").unwrap();
-        assert_eq!(
-            hook.get("eventName").unwrap().as_str().unwrap(),
-            "PreToolUse"
-        );
-        assert_eq!(hook.get("toolName").unwrap().as_str().unwrap(), "Bash");
-    }
-
-    #[tokio::test]
     async fn test_parse_meta_user_still_skipped() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
 
-        // The last line is a user with isMeta=true, should be skipped
-        // So we should have 14 messages, not 15
-        assert_eq!(session.messages.len(), 14);
+        // The last line is a user with isMeta=true, should be skipped.
+        // 14 lines - 1 skipped (isMeta) = 13 parsed messages
+        assert_eq!(session.messages.len(), 13);
         // No message should contain "System init"
         for msg in &session.messages {
             assert!(!msg.content.contains("System init"));
