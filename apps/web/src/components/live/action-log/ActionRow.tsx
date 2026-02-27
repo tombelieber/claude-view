@@ -14,6 +14,9 @@ const CATEGORY_BADGE: Record<string, string> = {
   system: 'bg-cyan-500/10 text-cyan-400',
   snapshot: 'bg-teal-500/10 text-teal-400',
   queue: 'bg-orange-500/10 text-orange-400',
+  context: 'bg-emerald-500/10 text-emerald-400',
+  result: 'bg-green-500/10 text-green-400',
+  summary: 'bg-rose-500/10 text-rose-400',
 }
 
 const BADGE_LABELS: Record<string, string> = {
@@ -22,10 +25,13 @@ const BADGE_LABELS: Record<string, string> = {
   agent: 'Agent',
   error: 'Error',
   hook: 'Hook',
-  hook_progress: 'Hook',
+  hook_progress: 'Hook Progress',
   system: 'System',
   snapshot: 'Snapshot',
   queue: 'Queue',
+  context: 'Context',
+  result: 'Result',
+  summary: 'Summary',
 }
 
 function statusDotColor(status: ActionItem['status']): string {
