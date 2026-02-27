@@ -459,13 +459,30 @@ impl SearchIndex {
 
         let total_sessions_all = session_groups.len();
 
-        // Build a snippet generator for the text query
-        // (only if we have a text query to highlight)
+        // Build snippet query from original search terms (PhraseQuery + TermQuery).
+        // IMPORTANT: Do NOT use FuzzyTermQuery for snippets — Tantivy's
+        // SnippetGenerator calls query_terms() which is a no-op for FuzzyTermQuery
+        // (inherits empty default from Query trait). Only exact terms highlight.
         let snippet_gen = if !text_query.trim().is_empty() {
-            let query_parser =
-                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-            let parsed = query_parser.parse_query(&text_query)?;
-            SnippetGenerator::create(&searcher, &*parsed, self.content_field).ok()
+            let tokens: Vec<String> = text_query.trim()
+                .split_whitespace()
+                .map(|t| t.to_lowercase())
+                .collect();
+
+            let snippet_query: Box<dyn Query> = if tokens.len() >= 2 {
+                // PhraseQuery highlights exact phrase occurrences
+                let phrase_terms: Vec<Term> = tokens
+                    .iter()
+                    .map(|t| Term::from_field_text(self.content_field, t))
+                    .collect();
+                Box::new(PhraseQuery::new(phrase_terms))
+            } else {
+                // Single term
+                let term = Term::from_field_text(self.content_field, &tokens[0]);
+                Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+            };
+
+            SnippetGenerator::create(&searcher, &*snippet_query, self.content_field).ok()
         } else {
             None
         };
