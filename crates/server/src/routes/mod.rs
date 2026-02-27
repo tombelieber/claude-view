@@ -5,6 +5,7 @@ pub mod coaching;
 pub mod contributions;
 pub mod export;
 pub mod facets;
+pub mod grep;
 pub mod health;
 pub mod hooks;
 pub mod indexing;
@@ -87,6 +88,7 @@ use crate::state::AppState;
 /// - GET  /api/live/pricing             - Model pricing table
 /// - GET /api/sessions/:id/turns - Per-turn breakdown for a session
 /// - GET /api/search?q=...&scope=...&limit=...&offset=... - Full-text search
+/// - GET /api/grep?pattern=...&project=...&limit=... - Regex search over raw JSONL
 /// - GET /api/settings - Read current app settings (model, timeout)
 /// - PUT /api/settings - Update app settings (partial, validates model + timeout)
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
@@ -116,6 +118,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", turns::router())
         .nest("/api", hooks::router())
         .nest("/api", search::router())
+        .nest("/api", grep::router())
         .nest("/api", reports::router())
         .nest("/api", settings::router())
         .nest("/api", oauth::router())
