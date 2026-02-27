@@ -19,6 +19,7 @@ const createMockSession = (overrides?: Partial<SessionInfo>): SessionInfo => ({
   id: 'session-1',
   project: 'test-project',
   projectPath: '/path/to/project',
+  displayName: 'test-project',
   filePath: '/path/to/session.jsonl',
   modifiedAt: Math.floor(Date.now() / 1000),
   sizeBytes: 1024,
