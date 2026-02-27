@@ -1,8 +1,11 @@
 use std::collections::HashMap;
+use std::ops::Bound;
 use std::time::Instant;
 
+use chrono::NaiveDate;
+
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, TermQuery};
+use tantivy::query::{BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
 use tantivy::schema::IndexRecordOption;
 use tantivy::snippet::SnippetGenerator;
 use tantivy::schema::Value;
@@ -67,7 +70,7 @@ fn parse_query_string(raw: &str) -> (String, Vec<Qualifier>) {
     let mut qualifiers = Vec::new();
     let mut text_parts = Vec::new();
 
-    let known_keys = ["project", "branch", "model", "role", "skill"];
+    let known_keys = ["project", "branch", "model", "role", "skill", "session", "after", "before"];
 
     // Tokenize respecting quoted strings
     let tokens = tokenize_query(raw);
@@ -354,6 +357,39 @@ impl SearchIndex {
                 "model" => (self.model_field, true),  // TEXT field: tokenized, needs lowercase
                 "role" => (self.role_field, false),
                 "skill" => (self.skills_field, false),
+                "session" => {
+                    let term = Term::from_field_text(self.session_id_field, &qual.value);
+                    sub_queries.push((Occur::Must, Box::new(TermQuery::new(term, IndexRecordOption::Basic))));
+                    continue;
+                }
+                "after" => {
+                    if let Ok(date) = NaiveDate::parse_from_str(&qual.value, "%Y-%m-%d") {
+                        let ts = date.and_hms_opt(0, 0, 0)
+                            .map(|dt| dt.and_utc().timestamp())
+                            .unwrap_or(0);
+                        let range = RangeQuery::new_i64_bounds(
+                            "timestamp".to_string(),
+                            Bound::Excluded(ts),
+                            Bound::Unbounded,
+                        );
+                        sub_queries.push((Occur::Must, Box::new(range)));
+                    }
+                    continue;
+                }
+                "before" => {
+                    if let Ok(date) = NaiveDate::parse_from_str(&qual.value, "%Y-%m-%d") {
+                        let ts = date.and_hms_opt(0, 0, 0)
+                            .map(|dt| dt.and_utc().timestamp())
+                            .unwrap_or(0);
+                        let range = RangeQuery::new_i64_bounds(
+                            "timestamp".to_string(),
+                            Bound::Unbounded,
+                            Bound::Excluded(ts),
+                        );
+                        sub_queries.push((Occur::Must, Box::new(range)));
+                    }
+                    continue;
+                }
                 _ => continue,
             };
 
@@ -800,5 +836,86 @@ mod tests {
         let result = idx.search("deploymnt", None, 10, 0).unwrap();
         assert_eq!(result.total_sessions, 1, "fuzzy should catch single-char typo");
         assert_eq!(result.sessions[0].session_id, "session-typo");
+    }
+
+    #[test]
+    fn test_after_before_date_qualifiers() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        // Jan 15 2026 = 1768435200 unix
+        idx.index_session("old-session", &[crate::indexer::SearchDocument {
+            session_id: "old-session".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "deploy the app".to_string(),
+            turn_number: 1,
+            timestamp: 1768435200,
+            skills: vec![],
+        }]).unwrap();
+
+        // Feb 15 2026 = 1771113600 unix
+        idx.index_session("new-session", &[crate::indexer::SearchDocument {
+            session_id: "new-session".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "deploy the app".to_string(),
+            turn_number: 1,
+            timestamp: 1771113600,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // after:2026-02-01 should only return new-session
+        let result = idx.search("deploy after:2026-02-01", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "new-session");
+
+        // before:2026-02-01 should only return old-session
+        let result = idx.search("deploy before:2026-02-01", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "old-session");
+    }
+
+    #[test]
+    fn test_session_qualifier() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session("aaa-111", &[crate::indexer::SearchDocument {
+            session_id: "aaa-111".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "hello world".to_string(),
+            turn_number: 1,
+            timestamp: 1000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.index_session("bbb-222", &[crate::indexer::SearchDocument {
+            session_id: "bbb-222".to_string(),
+            project: "test".to_string(),
+            branch: String::new(),
+            model: String::new(),
+            role: "user".to_string(),
+            content: "hello world".to_string(),
+            turn_number: 1,
+            timestamp: 2000,
+            skills: vec![],
+        }]).unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // session:aaa-111 should only return that session
+        let result = idx.search("hello", Some("session:aaa-111"), 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "aaa-111");
     }
 }
