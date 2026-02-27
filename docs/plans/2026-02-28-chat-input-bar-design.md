@@ -354,14 +354,38 @@ Renders for `elicitation_dialog` notification type. Generic dialog prompt.
 
 ## 7. Integration Points
 
-### 7.1 In DashboardChat.tsx (existing resume flow)
+### 7.1 Unified Chat: RichPane + ChatInputBar
 
-Replace the plain `<textarea>` + send button at the bottom with `<ChatInputBar>`:
-- `onSend` → existing `sendMessage()` from `useControlSession`
-- `contextPercent` → from `SessionStatusMsg.contextUsage`
-- `estimatedCost` → from `/api/control/estimate` API (already exists)
-- `mode` / `onModeChange` → new state (or forward to session via `/` command)
-- `model` / `onModelChange` → new state (may require backend changes for model switching)
+**Key decision:** Reuse RichPane (1,042 lines, battle-tested) for ALL message rendering. Delete DashboardChat's duplicate renderers (`HistoryMessage`, `ControlMessage`, `ToolCallBlock`).
+
+DashboardChat becomes a thin wrapper (~30 lines):
+
+```tsx
+<div className="flex flex-col h-full">
+  <ChatStatusBar ... />            {/* existing, keep */}
+  <RichPane messages={messages} /> {/* REUSE for all rendering */}
+  <ChatInputBar onSend={...} />    {/* NEW for all input */}
+</div>
+```
+
+**Message normalization required:** RichPane expects `RichMessage[]`. Control session messages come from `useControlSession` in `ChatMessage` format. A new adapter function `controlMessageToRichMessage()` converts:
+- `ChatMessage { role: 'assistant', content }` → `RichMessage { type: 'assistant', content }`
+- `ChatMessage { role: 'tool_use', toolName, toolInput }` → `RichMessage { type: 'tool_use', name, input }`
+- `ChatMessage { role: 'tool_result', output }` → `RichMessage { type: 'tool_result', content }`
+- `PermissionRequestMsg` → `RichMessage { type: 'system', content, metadata: { interactive: 'permission', ... } }`
+- `ToolUseStartMsg` with `AskUserQuestion` → `RichMessage { type: 'system', metadata: { interactive: 'ask_question', ... } }`
+
+RichPane's render dispatch checks `metadata.interactive` to render the appropriate interactive card instead of a normal message bubble.
+
+**What gets deleted:**
+- `DashboardChat.tsx` lines 170-260: `HistoryMessage`, `ControlMessage`, `ToolCallBlock` components
+- The plain `<textarea>` + send button (lines 140-165)
+
+**What stays:**
+- `useControlSession` hook (WebSocket state management)
+- `useSessionMessages` hook (historical JSONL fetch)
+- `ChatStatusBar` (status display)
+- `PermissionDialog` modal (as fallback for urgent interrupts; inline PermissionCard is primary)
 
 Add interactive cards in the message stream:
 - When `PermissionRequestMsg` arrives → render `<PermissionCard>` inline

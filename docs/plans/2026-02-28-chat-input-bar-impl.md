@@ -977,29 +977,106 @@ git commit -m "feat(chat): add cards barrel export"
 
 ---
 
-## Task 14: Wire ChatInputBar into DashboardChat
+## Task 14: Unify DashboardChat — RichPane + ChatInputBar
+
+**Key decision:** Reuse RichPane (1,042 lines, battle-tested) for ALL message rendering. Delete DashboardChat's duplicate renderers. Users get the same rich rendering (markdown, Shiki code blocks, tool cards, thinking blocks) whether monitoring or chatting.
 
 **Files:**
 - Modify: `apps/web/src/components/live/DashboardChat.tsx`
+- Create: `apps/web/src/lib/control-to-rich-message.ts` (adapter)
 
-**Step 1: Replace textarea with ChatInputBar**
+**Step 1: Write the message adapter**
 
-Replace lines 140-165 (the input section) with `<ChatInputBar>`. Wire up:
-- `onSend={session.sendMessage}`
-- `onStop` → not implemented yet (placeholder)
-- `isStreaming={!!session.streamingContent}`
-- `disabled={isInputDisabled}`
-- `contextPercent={session.contextUsage}`
-- Add `mode` and `model` as local state
-- For V1, `onCommand` sends the command as a regular message (e.g., user types `/compact` → sends "/compact" as message text)
+RichPane expects `RichMessage[]`. Control session messages arrive as `ChatMessage[]` from `useControlSession`. Create an adapter function:
 
-**Step 2: Add interactive card rendering**
+```ts
+// control-to-rich-message.ts
+import type { RichMessage } from '../components/live/RichPane'
+import type { ChatMessage, PermissionRequestMsg, ToolUseStartMsg } from '../types/control'
 
-In the message rendering section, detect `tool_use_start` messages with special tool names and render the appropriate card:
-- `toolName === 'AskUserQuestion'` → `<AskUserQuestionCard>`
-- `toolName === 'ExitPlanMode'` → `<PlanApprovalCard>`
+export function controlMessageToRich(msg: ChatMessage): RichMessage {
+  switch (msg.role) {
+    case 'user':
+      return { type: 'user', content: msg.content ?? '' }
+    case 'assistant':
+      return { type: 'assistant', content: msg.content ?? '' }
+    case 'tool_use':
+      return {
+        type: 'tool_use',
+        content: '',
+        name: msg.toolName,
+        input: msg.toolInput ? JSON.stringify(msg.toolInput, null, 2) : undefined,
+        inputData: msg.toolInput,
+      }
+    case 'tool_result':
+      return {
+        type: 'tool_result',
+        content: msg.output ?? '',
+        metadata: msg.isError ? { isError: true } : undefined,
+      }
+    default:
+      return { type: 'system', content: msg.content ?? '' }
+  }
+}
+```
 
-For permissions, keep the existing `<PermissionDialog>` modal AND add `<PermissionCard>` inline as a dismissed log entry (shows what was approved/denied in the stream after the fact).
+**Step 2: Rewrite DashboardChat as thin wrapper**
+
+Delete `HistoryMessage`, `ControlMessage`, `ToolCallBlock` components (lines 170-260).
+Delete the plain `<textarea>` + send button (lines 140-165).
+Replace with:
+
+```tsx
+export function DashboardChat({ controlId, sessionId }: DashboardChatProps) {
+  const session = useControlSession(controlId)
+  const historyQuery = useSessionMessages(sessionId)
+  const [mode, setMode] = useState<'plan' | 'code' | 'ask'>('code')
+  const [model, setModel] = useState('claude-sonnet-4-6')
+
+  // Flatten paginated history into RichMessage[]
+  const historyMessages = useMemo(() =>
+    (historyQuery.data?.pages.flatMap(p => p.messages) ?? [])
+      .map(msg => historyMessageToRich(msg)),
+    [historyQuery.data]
+  )
+
+  // Convert control messages to RichMessage[]
+  const controlMessages = useMemo(() =>
+    session.messages.map(controlMessageToRich),
+    [session.messages]
+  )
+
+  // Merge: history + divider + control messages
+  const allMessages = useMemo(() => [
+    ...historyMessages,
+    ...controlMessages,
+  ], [historyMessages, controlMessages])
+
+  const isDisabled = session.status === 'completed' || session.status === 'error'
+
+  return (
+    <div className="flex flex-col h-full bg-gray-950">
+      <ChatStatusBar ... />
+      <div className="flex-1 overflow-hidden">
+        <RichPane messages={allMessages} />
+      </div>
+      <PermissionDialog request={session.permissionRequest} onRespond={session.respondPermission} />
+      <ChatInputBar
+        onSend={session.sendMessage}
+        isStreaming={!!session.streamingContent}
+        disabled={isDisabled}
+        mode={mode}
+        onModeChange={setMode}
+        model={model}
+        onModelChange={setModel}
+        contextPercent={session.contextUsage}
+      />
+    </div>
+  )
+}
+```
+
+~30 lines of glue. RichPane handles all rendering. ChatInputBar handles all input.
 
 **Step 3: Type-check and build**
 
@@ -1010,8 +1087,8 @@ Expected: 0 errors, successful build
 **Step 4: Commit**
 
 ```bash
-git add apps/web/src/components/live/DashboardChat.tsx
-git commit -m "feat(chat): wire ChatInputBar and interactive cards into DashboardChat"
+git add apps/web/src/components/live/DashboardChat.tsx apps/web/src/lib/control-to-rich-message.ts
+git commit -m "feat(chat): unify DashboardChat with RichPane + ChatInputBar"
 ```
 
 ---
