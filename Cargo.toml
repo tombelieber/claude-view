@@ -27,6 +27,11 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Search (Phase 2)
 tantivy = "0.22"
 
+# Grep (ripgrep core — regex search over raw JSONL)
+grep-matcher = "0.1"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+
 # File watcher (Phase 2)
 notify = "8.0"
 
