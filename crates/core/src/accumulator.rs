@@ -530,6 +530,7 @@ mod tests {
             task_updates: Vec::new(),
             task_id_assignments: Vec::new(),
             skill_names: Vec::new(),
+            is_compact_boundary: false,
         }
     }
 

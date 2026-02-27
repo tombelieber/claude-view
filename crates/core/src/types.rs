@@ -233,6 +233,10 @@ pub struct SessionInfo {
     pub id: String,
     pub project: String,
     pub project_path: String,
+    /// Human-readable project name (e.g. "claude-backup"), derived from CWD
+    /// evidence at index time. When no CWD is available, falls back to the
+    /// raw encoded directory name (no guessing).
+    pub display_name: String,
     /// Canonical git repository root resolved from session_cwd at index time.
     /// None for non-git directories or sessions indexed before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1088,6 +1092,7 @@ mod tests {
             id: "test-123".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            display_name: "project".to_string(),
             git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1769482232, // Unix timestamp
@@ -1235,6 +1240,7 @@ mod tests {
             id: "test-session".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            display_name: "project".to_string(),
             git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1700000000,
