@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CostEstimate, ResumeResponse } from '../../types/control'
 
 interface ResumePreFlightProps {
@@ -10,28 +10,72 @@ interface ResumePreFlightProps {
   onResume: (controlId: string, sessionId: string) => void
 }
 
-const MODEL_OPTIONS = [
-  { value: 'sonnet-4', label: 'Claude Sonnet 4' },
-  { value: 'opus-4', label: 'Claude Opus 4' },
-  { value: 'haiku-4', label: 'Claude Haiku 4' },
-] as const
+/** Current-gen models offered in the selector. Users can always switch model on resume. */
+const MODEL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { value: 'claude-opus-4-6', label: 'Opus 4.6' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+  { value: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
+  { value: 'claude-opus-4-5-20251101', label: 'Opus 4.5' },
+  { value: 'claude-sonnet-4-20250514', label: 'Sonnet 4' },
+  { value: 'claude-opus-4-20250514', label: 'Opus 4' },
+]
+
+/** Turn a raw model ID into a display label (e.g. "claude-opus-4-6" → "Opus 4.6"). */
+function modelLabel(id: string): string {
+  const found = MODEL_OPTIONS.find((o) => o.value === id)
+  if (found) return found.label
+  // Fallback: strip "claude-" prefix and date suffix, title-case the rest
+  return id
+    .replace(/^claude-/, '')
+    .replace(/-\d{8}$/, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
 export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: ResumePreFlightProps) {
-  const [model, setModel] = useState('sonnet-4')
+  // null = not yet loaded, let backend pick the session's original model
+  const [model, setModel] = useState<string | null>(null)
 
+  // Reset model when switching sessions so stale selection doesn't carry over
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is an intentional trigger
+  useEffect(() => {
+    setModel(null)
+  }, [sessionId])
+
+  // Use model for the query key only after it's been synced from the backend.
+  // While model is null, we omit it so the initial fetch and the post-sync state
+  // share the same cache entry — avoiding a redundant double-fetch.
+  const queryModel = model !== null ? model : undefined
   const estimate = useQuery({
-    queryKey: ['cost-estimate', sessionId, model],
+    queryKey: ['cost-estimate', sessionId, queryModel],
     queryFn: async (): Promise<CostEstimate> => {
+      const body: Record<string, string> = { session_id: sessionId }
+      if (model) body.model = model
       const res = await fetch('/api/control/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, model }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error('Failed to fetch cost estimate')
       return res.json()
     },
     enabled: open && !!sessionId,
   })
+
+  // Sync model selector from the first estimate response (session's original model)
+  useEffect(() => {
+    if (estimate.data && model === null) {
+      setModel(estimate.data.model)
+    }
+  }, [estimate.data, model])
+
+  // Build options: static list + session's model if not already present
+  const options = MODEL_OPTIONS.some((o) => o.value === (model ?? ''))
+    ? MODEL_OPTIONS
+    : model
+      ? [{ value: model, label: `${modelLabel(model)} (session)` }, ...MODEL_OPTIONS]
+      : MODEL_OPTIONS
 
   const resumeMutation = useMutation({
     mutationFn: async (): Promise<ResumeResponse> => {
@@ -40,7 +84,7 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
-          model,
+          model: model ?? estimate.data?.model,
           projectPath: estimate.data?.project_name ?? '',
         }),
       })
@@ -57,6 +101,7 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
   })
 
   const data = estimate.data
+  const selectValue = model ?? ''
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -146,11 +191,11 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
                 </label>
                 <select
                   id="model-select"
-                  value={model}
+                  value={selectValue}
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {MODEL_OPTIONS.map((opt) => (
+                  {options.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
