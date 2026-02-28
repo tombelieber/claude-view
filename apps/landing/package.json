@@ -2,10 +2,25 @@
   "name": "@claude-view/landing",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "open src/index.html",
-    "build": "mkdir -p dist && cp -r src/* dist/ && (test -d public && cp -r public/* dist/ || true)",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
     "lint": "biome check .",
+    "typecheck": "astro sync && astro check",
     "deploy": "wrangler pages deploy dist"
+  },
+  "dependencies": {
+    "astro": "^5",
+    "@astrojs/starlight": "^0.37",
+    "@astrojs/sitemap": "^3",
+    "tailwindcss": "^4.1",
+    "@tailwindcss/vite": "^4.1",
+    "@tailwindcss/typography": "^0.5.15"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9",
+    "typescript": "^5.7"
   }
 }
