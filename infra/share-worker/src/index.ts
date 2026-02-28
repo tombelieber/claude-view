@@ -53,7 +53,11 @@ export default withSentry(
       }
     },
 
-    async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    async scheduled(
+      _controller: ScheduledController,
+      env: Env,
+      _ctx: ExecutionContext,
+    ): Promise<void> {
       const cutoff = Math.floor(Date.now() / 1000) - 3600
       const { results } = await env.DB.prepare(
         "SELECT token FROM shares WHERE status = 'pending' AND created_at < ?",
