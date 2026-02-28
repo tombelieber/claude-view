@@ -6,6 +6,13 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   site: 'https://claude-view.dev',
   trailingSlash: 'always',
+  prefetch: {
+    defaultStrategy: 'hover',
+    prefetchAll: true,
+  },
+  experimental: {
+    clientPrerender: true,
+  },
   integrations: [
     starlight({
       title: 'claude-view',
