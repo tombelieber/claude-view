@@ -1,0 +1,79 @@
+---
+title: API Reference
+description: HTTP API endpoints exposed by the claude-view server.
+---
+
+The claude-view server exposes a REST API on `http://localhost:47892/api`. All endpoints return JSON.
+
+## Sessions
+
+### `GET /api/sessions`
+
+Returns a list of sessions.
+
+**Query params:**
+- `limit` — max results (default: 50)
+- `offset` — pagination offset
+- `project` — filter by project name
+- `model` — filter by model ID
+- `status` — `active` | `completed` | `error`
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "id": "sess_01ABCDEF",
+      "project": "my-app",
+      "model": "claude-opus-4-5",
+      "status": "completed",
+      "started_at": 1740700000,
+      "ended_at": 1740701200,
+      "cost_usd": 0.42,
+      "input_tokens": 12000,
+      "output_tokens": 3000
+    }
+  ],
+  "total": 234
+}
+```
+
+### `GET /api/sessions/:id`
+
+Returns full session detail including all messages and tool calls.
+
+## Live sessions
+
+### `GET /api/live`
+
+Returns currently active (running) sessions.
+
+### `GET /api/live/summary`
+
+Returns aggregate stats for today's sessions.
+
+## Stats
+
+### `GET /api/stats`
+
+Returns dashboard overview: total sessions, costs, fluency score, trends.
+
+## Search
+
+### `GET /api/search?q=<query>`
+
+Full-text search across all session content.
+
+**Query params:**
+- `q` — search query (required)
+- `limit` — max results (default: 20)
+
+## Server-Sent Events
+
+### `GET /api/sse`
+
+Real-time event stream. Connect with `EventSource` for live updates.
+
+**Events:**
+- `session_update` — session status changed
+- `live_update` — live session data refreshed

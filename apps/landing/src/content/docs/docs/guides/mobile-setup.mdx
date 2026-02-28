@@ -1,0 +1,40 @@
+---
+title: Mobile App Setup
+description: Set up the claude-view mobile app on iOS or Android.
+---
+
+The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
+
+> **Status:** The mobile app is currently in development. Sign up for early access.
+
+## Prerequisites
+
+- claude-view server running on your desktop (`npx claude-view`)
+- iOS 16+ or Android 12+
+- Same network OR cloud relay (Pro tier)
+
+## Coming soon
+
+The mobile app will include:
+- Real-time Mission Control view
+- Push notifications for agent events (tool approvals, completions)
+- Agent control (approve/reject tool calls, send messages)
+- QR code pairing — scan once, connect automatically
+
+## Pairing flow (preview)
+
+1. Install the claude-view app (App Store or Google Play)
+2. Open claude-view on desktop and click **Pair Mobile**
+3. A QR code appears — scan it with the mobile app
+4. Your phone connects securely via end-to-end encrypted relay
+
+All data in transit is encrypted with NaCl (libsodium). The relay never sees decrypted content.
+
+## Notifications
+
+The mobile app receives push notifications when:
+- An agent requests tool approval
+- A long-running session completes
+- An agent encounters an error
+
+Notification delivery requires the cloud relay (Pro tier).
