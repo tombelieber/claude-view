@@ -1,5 +1,6 @@
 ---
 // Sticky nav with blur backdrop, appears on scroll
+import { GITHUB_URL } from '../data/site';
 ---
 <nav
   class="fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-all duration-300"
@@ -15,7 +16,7 @@
       <a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Pricing</a>
       <a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Blog</a>
       <a
-        href="https://github.com/anthropics/claude-view"
+        href={GITHUB_URL}
         target="_blank"
         rel="noopener noreferrer"
         class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer flex items-center gap-1"
@@ -31,7 +32,7 @@
       aria-controls="mobile-menu"
       id="mobile-menu-btn"
     >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path d="M3 12h18M3 6h18M3 18h18" />
       </svg>
     </button>

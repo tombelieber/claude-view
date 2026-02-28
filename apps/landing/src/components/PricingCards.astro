@@ -1,62 +1,11 @@
 ---
-interface Tier {
-  name: string;
-  price: string;
-  description: string;
-  features: string[];
-  cta: string;
-  ctaHref: string;
-  highlight?: boolean;
-  comingSoon?: boolean;
-}
+import { PRICING_TIERS } from '../data/site';
 
-const tiers: Tier[] = [
-  {
-    name: 'Free',
-    price: '$0',
-    description: 'Everything you need for solo development.',
-    features: [
-      'Unlimited local sessions',
-      'Session browser & search',
-      'Cost tracking',
-      'AI Fluency Score',
-      'Community support',
-    ],
-    cta: 'Get Started',
-    ctaHref: '/docs/',
-  },
-  {
-    name: 'Pro',
-    price: '$19/mo',
-    description: 'For power users who need cloud access.',
-    features: [
-      'Everything in Free',
-      'Cloud relay access',
-      'Mobile app',
-      'Remote agent control',
-      'Priority support',
-    ],
-    cta: 'Coming Soon',
-    ctaHref: '',
-    highlight: true,
-    comingSoon: true,
-  },
-  {
-    name: 'Team',
-    price: '$49/mo',
-    description: 'Shared dashboards for engineering teams.',
-    features: [
-      'Everything in Pro',
-      'Team dashboard',
-      'Shared session history',
-      'Usage analytics',
-      'SSO & admin controls',
-    ],
-    cta: 'Coming Soon',
-    ctaHref: '',
-    comingSoon: true,
-  },
-];
+// Build display-ready tiers from centralized constants
+const tiers = PRICING_TIERS.map((t) => ({
+  ...t,
+  price: t.period && t.period !== 'forever' ? `${t.price}${t.period}` : t.price,
+}));
 ---
 
 <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -74,7 +23,7 @@ const tiers: Tier[] = [
       <ul class="space-y-3 mb-8 flex-1">
         {tier.features.map((f) => (
           <li class="flex items-start gap-2 text-sm text-slate-300">
-            <svg class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polyline points="20 6 9 17 4 12" />
             </svg>
             {f}

@@ -2,10 +2,10 @@
 // Click-to-copy install command — vanilla JS, no React
 ---
 <button
-  class="install-cmd group flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 font-mono text-lg text-green-400 hover:border-green-500/50 transition-colors cursor-pointer"
+  class="install-cmd group inline-flex items-center justify-center gap-3 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 font-mono text-lg text-green-400 hover:border-green-500/50 transition-colors cursor-pointer mx-auto"
   title="Click to copy"
   data-command="npx claude-view"
-  aria-label="Copy install command: npx claude-view"
+  aria-label="$ npx claude-view — click to copy"
 >
   <span class="text-slate-500">$</span>
   <span>npx claude-view</span>
@@ -46,7 +46,9 @@
           clipboardIcon?.classList.remove('hidden');
           checkIcon?.classList.add('hidden');
         }, 2000);
-      } catch { /* copy failed — no feedback */ }
+      } catch {
+        btn.setAttribute('title', 'Copy failed — try selecting manually');
+      }
     });
   });
 </script>

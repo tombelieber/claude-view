@@ -1,12 +1,20 @@
 ---
 // CSS-only typewriter terminal animation
+// Read version from Cargo.toml at build time so it never goes stale
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { DEFAULT_PORT } from '../data/site';
+
+const cargoToml = readFileSync(resolve(process.cwd(), '../../Cargo.toml'), 'utf-8');
+const versionMatch = cargoToml.match(/^version\s*=\s*"([^"]+)"/m);
+const version = versionMatch?.[1] ?? '0.0.0';
 ---
 <div class="bg-slate-950 border border-slate-700 rounded-xl overflow-hidden shadow-2xl max-w-2xl mx-auto" role="img" aria-label="Terminal showing: npx claude-view downloading and starting">
   <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
     <div class="w-3 h-3 rounded-full bg-red-500/70"></div>
     <div class="w-3 h-3 rounded-full bg-amber-500/70"></div>
     <div class="w-3 h-3 rounded-full bg-green-500/70"></div>
-    <span class="ml-2 text-xs text-slate-500 font-mono">Terminal</span>
+    <span class="ml-2 text-xs text-slate-400 font-mono">Terminal</span>
   </div>
   <div class="p-6 font-mono text-sm space-y-2">
     <div class="terminal-line" style="--delay: 0s">
@@ -14,11 +22,11 @@
       <span class="text-cta typing-animation"> npx claude-view</span>
     </div>
     <div class="terminal-line" style="--delay: 1.5s">
-      <span class="text-slate-400">▸ Downloading claude-view v0.8.0...</span>
+      <span class="text-slate-400">▸ Downloading claude-view v{version}...</span>
     </div>
     <div class="terminal-line" style="--delay: 2.5s">
       <span class="text-slate-400">▸ Starting server on </span>
-      <span class="text-accent">http://localhost:47892</span>
+      <span class="text-accent">http://localhost:{DEFAULT_PORT}</span>
     </div>
     <div class="terminal-line" style="--delay: 3.5s">
       <span class="text-cta">✓</span>
