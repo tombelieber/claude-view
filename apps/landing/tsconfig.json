@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", ".astro/types.d.ts"],
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  }
+}
