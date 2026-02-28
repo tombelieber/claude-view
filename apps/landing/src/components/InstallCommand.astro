@@ -1,0 +1,52 @@
+---
+// Click-to-copy install command — vanilla JS, no React
+---
+<button
+  class="install-cmd group flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 font-mono text-lg text-green-400 hover:border-green-500/50 transition-colors cursor-pointer"
+  title="Click to copy"
+  data-command="npx claude-view"
+  aria-label="Copy install command: npx claude-view"
+>
+  <span class="text-slate-500">$</span>
+  <span>npx claude-view</span>
+  <span class="install-icon ml-2 text-slate-500 group-hover:text-slate-300 transition-colors">
+    <!-- Lucide Clipboard SVG (inline, no dependency) -->
+    <svg class="icon-clipboard" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    </svg>
+    <!-- Lucide Check SVG (hidden by default, shown on copy) -->
+    <svg class="icon-check hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5"/>
+    </svg>
+  </span>
+</button>
+
+<script>
+  document.querySelectorAll('.install-cmd').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const command = btn.getAttribute('data-command') ?? '';
+      const clipboardIcon = btn.querySelector('.icon-clipboard');
+      const checkIcon = btn.querySelector('.icon-check');
+      try {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(command);
+        } else {
+          const el = document.createElement('textarea');
+          el.value = command;
+          el.style.position = 'fixed';
+          el.style.opacity = '0';
+          document.body.appendChild(el);
+          el.select();
+          document.execCommand('copy');
+          document.body.removeChild(el);
+        }
+        clipboardIcon?.classList.add('hidden');
+        checkIcon?.classList.remove('hidden');
+        setTimeout(() => {
+          clipboardIcon?.classList.remove('hidden');
+          checkIcon?.classList.add('hidden');
+        }, 2000);
+      } catch { /* copy failed — no feedback */ }
+    });
+  });
+</script>

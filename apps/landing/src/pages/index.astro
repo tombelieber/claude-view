@@ -1,16 +1,40 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
+import AnimatedTerminal from '../components/AnimatedTerminal.astro';
+import DashboardPreview from '../components/DashboardPreview.astro';
+import InstallCommand from '../components/InstallCommand.astro';
 ---
 <MarketingLayout title="Mission Control for AI Coding Agents">
-  <section class="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-    <h1 class="font-heading text-5xl md:text-7xl font-bold mb-6">
-      Mission Control for<br />AI Coding Agents
-    </h1>
-    <p class="text-lg md:text-xl text-slate-400 max-w-2xl mb-8">
-      Monitor, control, and orchestrate your Claude Code sessions from desktop or phone.
-    </p>
-    <div class="bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 font-mono text-cta text-lg">
-      $ npx claude-view
+  <!-- Hero Section -->
+  <section class="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
+    <!-- Gradient background -->
+    <div class="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(34,197,94,0.08),transparent_60%)]"></div>
+
+    <div class="relative z-10 max-w-6xl mx-auto px-6 text-center">
+      <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
+        Mission Control for<br />
+        <span class="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">AI Coding Agents</span>
+      </h1>
+      <p class="text-xl text-slate-400 max-w-2xl mx-auto mb-8">
+        Monitor, orchestrate, and command your Claude Code fleet — from desktop or phone.
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+        <InstallCommand />
+      </div>
+
+      <!-- MCP integrations row -->
+      <p class="text-sm text-slate-500 mb-12">
+        Works with Claude Code via
+        <a href="/docs/guides/mcp-integration/" class="text-green-400 hover:text-green-300 transition-colors">MCP — 8 tools</a>
+        for monitoring, cost tracking, and agent control.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <AnimatedTerminal />
+        <DashboardPreview />
+      </div>
     </div>
   </section>
 </MarketingLayout>
