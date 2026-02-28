@@ -1,0 +1,63 @@
+---
+interface Props {
+  repo: string;
+}
+const { repo } = Astro.props;
+---
+
+<a
+  class="github-stars hidden items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 transition-colors cursor-pointer"
+  href={`https://github.com/${repo}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  data-repo={repo}
+  aria-label={`View ${repo} on GitHub`}
+>
+  <!-- Lucide Star icon (inline SVG) -->
+  <svg class="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor" />
+  </svg>
+  <span class="star-count"></span>
+</a>
+
+<script>
+  document.querySelectorAll('.github-stars').forEach((el) => {
+    const link = el as HTMLAnchorElement;
+    const repo = link.dataset.repo;
+    if (!repo) return;
+
+    const cacheKey = `gh-stars-${repo}`;
+    const cacheTimeKey = `gh-stars-${repo}-at`;
+
+    function show(count: number) {
+      const span = link.querySelector('.star-count');
+      if (span) span.textContent = count.toLocaleString();
+      link.classList.remove('hidden');
+      link.classList.add('inline-flex');
+    }
+
+    // Use cache if less than 1 hour old
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      const cachedAt = localStorage.getItem(cacheTimeKey);
+      if (cached && cachedAt && Date.now() - Number(cachedAt) < 3600000) {
+        show(Number(cached));
+        return;
+      }
+    } catch { /* localStorage not available */ }
+
+    fetch(`https://api.github.com/repos/${repo}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.stargazers_count != null) {
+          const count = data.stargazers_count as number;
+          try {
+            localStorage.setItem(cacheKey, String(count));
+            localStorage.setItem(cacheTimeKey, String(Date.now()));
+          } catch { /* localStorage not available */ }
+          show(count);
+        }
+      })
+      .catch(() => {/* silent fail — badge stays hidden */});
+  });
+</script>
