@@ -9,6 +9,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -136,8 +137,33 @@ async fn handle_socket(socket: WebSocket, state: RelayState) {
         }
     });
 
+    // Per-message rate limiting: 60 messages per 60-second window.
+    // Closes the connection with 1008 (Policy Violation) if exceeded.
+    let mut msg_count: u32 = 0;
+    let mut window_start = Instant::now();
+    const MSG_RATE_LIMIT: u32 = 60;
+    const MSG_RATE_WINDOW: Duration = Duration::from_secs(60);
+
     // Read incoming messages and forward to recipients
     while let Some(Ok(msg)) = stream.next().await {
+        // Enforce per-message rate limit
+        if window_start.elapsed() > MSG_RATE_WINDOW {
+            msg_count = 0;
+            window_start = Instant::now();
+        }
+        msg_count += 1;
+        if msg_count > MSG_RATE_LIMIT {
+            warn!(device_id = %device_id, "WS message rate limit exceeded");
+            sentry::capture_message("WS message rate limit exceeded", sentry::Level::Warning);
+            // Notify client via the forwarding channel before disconnecting
+            if let Some(conn) = state.connections.get(&device_id) {
+                let _ = conn
+                    .tx
+                    .send(r#"{"error":"rate_limit_exceeded"}"#.to_string());
+            }
+            break;
+        }
+
         match msg {
             Message::Text(text) => {
                 if let Ok(envelope) = serde_json::from_str::<RelayEnvelope>(&text) {
