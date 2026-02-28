@@ -137,6 +137,35 @@ Before ANY `git add`:
 
 **The golden rule:** Your commit should contain ONLY your changes. The user's uncommitted work is sacred — don't touch it, don't commit it, don't mix it with yours.
 
+## Secrets & Environment Variables
+
+### Architecture
+
+End users running `npx claude-view` need **ZERO configuration**. All public keys/URLs are baked into the JS bundle at CI build time. No `.env` files ship with the binary. No `.env` files are loaded at runtime.
+
+### Per-service env var layout
+
+Each service manages its own env vars. No root `.env`. No automatic `.env` file loading in Rust (dotenvy removed).
+
+| Service | How env vars are set | .env.example location |
+|---------|---------------------|----------------------|
+| **Rust server** | Shell exports (`std::env::var()`) | `crates/server/.env.example` |
+| **Relay** | Fly.io secrets / shell exports | `crates/relay/.env.example` |
+| **Web frontend** | `apps/web/.env.local` (Vite `VITE_*`) | `apps/web/.env.example` |
+| **Sidecar** | `process.env` with defaults | N/A (only `SIDECAR_SOCKET`) |
+| **Landing** | None (static HTML) | N/A |
+| **Cloudflare Worker** | `wrangler secret put` / `wrangler.toml` [vars] | N/A |
+| **CI/CD** | GitHub Actions secrets | N/A |
+
+### Rules
+
+- **No root `.env`** — each service is self-contained
+- **No `dotenvy`** — Rust reads shell env only, no magic file loading
+- **Never commit `.env`, `.env.local`, or `.dev.vars`** — they are gitignored
+- **Never put secret keys in `.env.example`** — only placeholders
+- **Publishable keys are safe to embed** in client code (Supabase anon key, Supabase URL)
+- **Service role / secret keys are NEVER used** in this project — JWT validation uses JWKS
+
 ## Hard Rules
 
 > Detailed code examples: `docs/claude-rules-reference.md`

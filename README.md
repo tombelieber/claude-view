@@ -200,6 +200,7 @@ Opens at `http://localhost:47892`.
 | Env Variable | Default | Description |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Override data directory (see [Corporate Setup](#setup-for-corporatesandbox-environments)) |
 
 ---
 
@@ -220,9 +221,13 @@ Opens at `http://localhost:47892`.
 If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP), set all claude-view writes to stay inside the project directory:
 
 ```bash
-# One-time setup: copy the env template
-cp .env.example .env
-# Uncomment the CLAUDE_VIEW_DATA_DIR line in .env
+CLAUDE_VIEW_DATA_DIR=./.data npx claude-view
+```
+
+Or export it in your shell profile:
+
+```bash
+export CLAUDE_VIEW_DATA_DIR=./.data
 ```
 
 This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
@@ -318,6 +323,60 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | `bun run check` | Biome check across all workspaces |
 | `bun run fmt` | Format Rust code |
 | `bun run cleanupport` | Kill processes on dev ports (47892, 5173) |
+
+### Environment Variables & Secrets
+
+**End users need ZERO configuration.** `npx claude-view` works out of the box.
+
+This section is for **developers contributing to claude-view**.
+
+Each service manages its own env vars — no root `.env`, no automatic file loading.
+
+**Rust server** (`crates/server/.env.example`) — set via shell exports:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLAUDE_VIEW_PORT` | `47892` | Override the default port |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Override data directory |
+| `RELAY_URL` | None (disabled) | Mobile relay WebSocket endpoint |
+| `SUPABASE_URL` | — | Supabase project URL (sharing/auth) |
+| `SHARE_WORKER_URL` | — | Cloudflare Share Worker endpoint |
+| `SHARE_VIEWER_URL` | — | Share viewer SPA URL |
+| `RUST_LOG` | `warn` | Tracing verbosity |
+
+**Relay server** (`crates/relay/.env.example`) — set via Fly.io secrets:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORT` | `8080` | Fly.io sets this automatically |
+| `RUST_LOG` | `warn,claude_view_relay=info` | Tracing verbosity |
+
+**Web frontend** (`apps/web/.env.local`) — Vite reads `VITE_*` at build time:
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_SUPABASE_URL` | Supabase URL (browser SDK) |
+| `VITE_SUPABASE_ANON_KEY` | Supabase publishable key |
+| `VITE_SENTRY_DSN` | Sentry error tracking (optional) |
+
+**Secret management:**
+
+| Service | How secrets are managed |
+|---------|------------------------|
+| Cloudflare Worker | `wrangler secret put` (encrypted at rest) |
+| Fly.io Relay | `fly secrets set` |
+| Web frontend | `VITE_*` baked at CI build time (publishable keys only) |
+| Rust server | Shell exports |
+| CI/CD | GitHub Actions secrets |
+
+```bash
+# Developer setup
+cp apps/web/.env.example apps/web/.env.local   # Fill in Supabase credentials
+export RELAY_URL=ws://localhost:47893/ws        # Optional: enable mobile pairing
+bun dev                                        # Start full-stack dev
+```
+
+> **Note:** `.env.local` is gitignored. Never commit real credentials. The shipped binary contains only publishable keys.
 
 ### Testing Production Distribution
 
