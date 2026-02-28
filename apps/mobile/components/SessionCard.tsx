@@ -1,4 +1,5 @@
 import { type RelaySession, formatUsd } from '@claude-view/shared'
+import { FileText } from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { Circle, Text, XStack, YStack } from 'tamagui'
 
@@ -38,6 +39,21 @@ export function SessionCard({ session, onPress }: Props) {
             {session.model ?? 'unknown'}
           </Text>
         </XStack>
+        {/* Last user message */}
+        {session.lastUserMessage ? (
+          <Text color="$gray200" fontSize="$sm" numberOfLines={2} mt="$2">
+            {session.lastUserMessage}
+          </Text>
+        ) : null}
+        {/* IDE file chip */}
+        {session.lastUserFile ? (
+          <XStack items="center" gap="$1" mt="$1">
+            <FileText size={12} color="$gray400" />
+            <Text color="$gray400" fontSize="$xs" fontFamily="$mono">
+              {session.lastUserFile}
+            </Text>
+          </XStack>
+        ) : null}
         {/* NOTE (audit fix B1): cost is nested object, tokens use camelCase */}
         <XStack justify="space-between" items="center" mt="$3">
           <Text color="$gray400" fontFamily="$mono" fontSize="$sm">
