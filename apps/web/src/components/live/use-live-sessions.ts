@@ -18,6 +18,7 @@ export interface LiveSession {
   pid: number | null
   title: string
   lastUserMessage: string
+  lastUserFile?: string | null
   currentActivity: string
   turnCount: number
   startedAt: number | null

@@ -59,6 +59,10 @@ export type LiveSession = {
    */
   lastUserMessage: string
   /**
+   * Filename from `<ide_opened_file>` tag in the last user message, if present.
+   */
+  lastUserFile: string | null
+  /**
    * Human-readable description of the current activity.
    */
   currentActivity: string
