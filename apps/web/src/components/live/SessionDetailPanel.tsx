@@ -31,6 +31,7 @@ import { RichPane } from './RichPane'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
+import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
 import { ViewModeControls } from './ViewModeControls'
 import { ActionLogTab } from './action-log'
@@ -395,6 +396,11 @@ export function SessionDetailPanel({
                 {formatModel(data.model)}
               </span>
             </div>
+
+            {/* ── Tasks (first section — primary monitoring concern) ── */}
+            {data.progressItems && data.progressItems.length > 0 && (
+              <TasksOverviewSection items={data.progressItems} />
+            )}
 
             {/* ── Cost + Cache (similar density — pair at wider widths, stack at narrow) ── */}
             <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
