@@ -39,8 +39,6 @@ pub struct RelayState {
     pub pairing_offers: Arc<DashMap<String, PairingOffer>>,
     /// Registered devices, keyed by device_id.
     pub devices: Arc<DashMap<String, RegisteredDevice>>,
-    /// Expo push tokens, keyed by device_id.
-    pub push_tokens: Arc<DashMap<String, String>>,
     /// Supabase JWT validator (None = JWT auth disabled).
     pub supabase_auth: Option<Arc<SupabaseAuth>>,
     /// Rate limiter for POST /pair.
@@ -49,6 +47,12 @@ pub struct RelayState {
     pub claim_rate_limiter: Arc<RateLimiter>,
     /// Rate limiter for POST /push-tokens (10 req/min per device_id).
     pub push_rate_limiter: Arc<RateLimiter>,
+    /// OneSignal app ID (None = push disabled).
+    pub onesignal_app_id: Option<String>,
+    /// OneSignal REST API key (None = push disabled).
+    pub onesignal_api_key: Option<String>,
+    /// Shared HTTP client for OneSignal API calls (None = push disabled).
+    pub onesignal_client: Option<reqwest::Client>,
     /// PostHog HTTP client (None = tracking disabled).
     pub posthog_client: Option<reqwest::Client>,
     /// PostHog API key.
@@ -63,15 +67,24 @@ impl RelayState {
         push_rate_limiter: Arc<RateLimiter>,
     ) -> Self {
         let posthog_key = std::env::var("POSTHOG_API_KEY").unwrap_or_default();
+        let onesignal_app_id = std::env::var("ONESIGNAL_APP_ID").ok();
+        let onesignal_api_key = std::env::var("ONESIGNAL_REST_API_KEY").ok();
+        let onesignal_client = if onesignal_app_id.is_some() && onesignal_api_key.is_some() {
+            Some(reqwest::Client::new())
+        } else {
+            None
+        };
         Self {
             connections: Arc::new(DashMap::new()),
             pairing_offers: Arc::new(DashMap::new()),
             devices: Arc::new(DashMap::new()),
-            push_tokens: Arc::new(DashMap::new()),
             supabase_auth,
             pair_rate_limiter,
             claim_rate_limiter,
             push_rate_limiter,
+            onesignal_app_id,
+            onesignal_api_key,
+            onesignal_client,
             posthog_client: if posthog_key.is_empty() {
                 None
             } else {
