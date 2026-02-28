@@ -16,47 +16,54 @@ Returns a list of sessions.
 - `offset` — pagination offset
 - `project` — filter by project name
 - `model` — filter by model ID
-- `status` — `active` | `completed` | `error`
 
-**Response:**
-```json
-{
-  "sessions": [
-    {
-      "id": "sess_01ABCDEF",
-      "project": "my-app",
-      "model": "claude-opus-4-5",
-      "status": "completed",
-      "started_at": 1740700000,
-      "ended_at": 1740701200,
-      "cost_usd": 0.42,
-      "input_tokens": 12000,
-      "output_tokens": 3000
-    }
-  ],
-  "total": 234
-}
-```
+### `GET /api/sessions/{id}`
 
-### `GET /api/sessions/:id`
+Returns full session detail including messages and metrics.
 
-Returns full session detail including all messages and tool calls.
+### `GET /api/sessions/{id}/messages`
+
+Returns all messages for a session.
+
+### `GET /api/sessions/{id}/parsed`
+
+Returns parsed session data.
 
 ## Live sessions
 
-### `GET /api/live`
+### `GET /api/live/sessions`
 
 Returns currently active (running) sessions.
+
+### `GET /api/live/sessions/{id}`
+
+Returns detail for a specific live session.
 
 ### `GET /api/live/summary`
 
 Returns aggregate stats for today's sessions.
 
+### `GET /api/live/stream`
+
+Server-Sent Events stream. Connect with `EventSource` for real-time updates.
+
+**Events:**
+- `session_update` — session status changed
+- `live_update` — live session data refreshed
+
+### `GET /api/live/pricing`
+
+Returns current model pricing used for cost calculations.
+
 ## Stats
 
-### `GET /api/stats`
+### `GET /api/stats/dashboard`
 
 Returns dashboard overview: total sessions, costs, fluency score, trends.
+
+### `GET /api/stats/storage`
+
+Returns storage usage statistics.
 
 ## Search
 
@@ -68,12 +75,14 @@ Full-text search across all session content.
 - `q` — search query (required)
 - `limit` — max results (default: 20)
 
-## Server-Sent Events
+## Score
 
-### `GET /api/sse`
+### `GET /api/score`
 
-Real-time event stream. Connect with `EventSource` for live updates.
+Returns the AI Fluency Score (0–100) with breakdown.
 
-**Events:**
-- `session_update` — session status changed
-- `live_update` — live session data refreshed
+## Health
+
+### `GET /api/health`
+
+Health check endpoint. Returns server status.
