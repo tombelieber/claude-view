@@ -6,6 +6,9 @@ use dashmap::DashMap;
 use ed25519_dalek::VerifyingKey;
 use tokio::sync::mpsc;
 
+use crate::auth::SupabaseAuth;
+use crate::rate_limit::RateLimiter;
+
 /// A connected device's WebSocket sender.
 pub struct DeviceConnection {
     pub device_id: String,
@@ -28,7 +31,7 @@ pub struct RegisteredDevice {
 }
 
 /// Shared relay server state.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RelayState {
     /// Active WebSocket connections, keyed by device_id.
     pub connections: Arc<DashMap<String, DeviceConnection>>,
@@ -38,15 +41,39 @@ pub struct RelayState {
     pub devices: Arc<DashMap<String, RegisteredDevice>>,
     /// Expo push tokens, keyed by device_id.
     pub push_tokens: Arc<DashMap<String, String>>,
+    /// Supabase JWT validator (None = JWT auth disabled).
+    pub supabase_auth: Option<Arc<SupabaseAuth>>,
+    /// Rate limiter for POST /pair.
+    pub pair_rate_limiter: Arc<RateLimiter>,
+    /// Rate limiter for POST /pair/claim.
+    pub claim_rate_limiter: Arc<RateLimiter>,
+    /// PostHog HTTP client (None = tracking disabled).
+    pub posthog_client: Option<reqwest::Client>,
+    /// PostHog API key.
+    pub posthog_api_key: String,
 }
 
 impl RelayState {
-    pub fn new() -> Self {
+    pub fn new(
+        supabase_auth: Option<Arc<SupabaseAuth>>,
+        pair_rate_limiter: Arc<RateLimiter>,
+        claim_rate_limiter: Arc<RateLimiter>,
+    ) -> Self {
+        let posthog_key = std::env::var("POSTHOG_API_KEY").unwrap_or_default();
         Self {
             connections: Arc::new(DashMap::new()),
             pairing_offers: Arc::new(DashMap::new()),
             devices: Arc::new(DashMap::new()),
             push_tokens: Arc::new(DashMap::new()),
+            supabase_auth,
+            pair_rate_limiter,
+            claim_rate_limiter,
+            posthog_client: if posthog_key.is_empty() {
+                None
+            } else {
+                Some(reqwest::Client::new())
+            },
+            posthog_api_key: posthog_key,
         }
     }
 }

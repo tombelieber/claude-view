@@ -37,11 +37,30 @@ pub struct PairResponse {
     pub ok: bool,
 }
 
+fn extract_ip(headers: &axum::http::HeaderMap) -> String {
+    headers
+        .get("fly-client-ip")
+        .or_else(|| headers.get("cf-connecting-ip"))
+        .or_else(|| headers.get("x-forwarded-for"))
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .unwrap_or("unknown")
+        .trim()
+        .to_string()
+}
+
 /// POST /pair — Mac creates a pairing offer.
 pub async fn create_pair(
     State(state): State<RelayState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<PairRequest>,
 ) -> Result<Json<PairResponse>, StatusCode> {
+    // Rate limiting
+    let ip = extract_ip(&headers);
+    if !state.pair_rate_limiter.check(&ip).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
     // Validate Ed25519 pubkey
     let verifying_key = VerifyingKey::from_bytes(
         req.pubkey
@@ -80,8 +99,29 @@ pub async fn create_pair(
 /// POST /pair/claim — Phone claims a pairing offer.
 pub async fn claim_pair(
     State(state): State<RelayState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ClaimRequest>,
 ) -> Result<Json<PairResponse>, StatusCode> {
+    // JWT auth — require valid Supabase token if auth is configured
+    if let Some(auth) = &state.supabase_auth {
+        let jwt = headers
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        if auth.validate(jwt).is_err() {
+            tracing::warn!(endpoint = "pair/claim", "JWT validation failed");
+            sentry::capture_message("JWT validation failed", sentry::Level::Warning);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    // Rate limiting
+    let ip = extract_ip(&headers);
+    if !state.claim_rate_limiter.check(&ip).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
     // Look up and consume the one-time token
     let (_, offer) = state
         .pairing_offers
@@ -133,6 +173,23 @@ pub async fn claim_pair(
             msg["verification_hmac"] = serde_json::Value::String(hmac.clone());
         }
         let _ = mac_conn.tx.send(msg.to_string());
+    }
+
+    // PostHog: track successful pairing
+    if let Some(ref client) = state.posthog_client {
+        let client = client.clone();
+        let api_key = state.posthog_api_key.clone();
+        let device_id = req.device_id.clone();
+        tokio::spawn(async move {
+            crate::posthog::track(
+                &client,
+                &api_key,
+                "relay_paired",
+                &device_id,
+                serde_json::json!({}),
+            )
+            .await;
+        });
     }
 
     info!(mac = %offer.device_id, phone = %req.device_id, "pairing complete");
