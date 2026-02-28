@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
+    "prebuild": "node scripts/generate-og-image.mjs && node scripts/generate-llms-full.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "lint": "biome check .",
