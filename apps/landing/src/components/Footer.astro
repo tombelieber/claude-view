@@ -1,5 +1,6 @@
 ---
 // Site footer
+import { GITHUB_URL } from '../data/site';
 ---
 <footer class="border-t border-slate-800 bg-slate-900/50">
   <div class="mx-auto max-w-7xl px-6 py-12">
@@ -23,14 +24,13 @@
       <div>
         <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Community</h3>
         <ul class="space-y-2">
-          <li><a href="https://github.com/anthropics/claude-view" target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">GitHub</a></li>
-          <li><a href="https://twitter.com/claude_view" target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Twitter</a></li>
+          <li><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">GitHub</a></li>
         </ul>
       </div>
       <div>
         <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Legal</h3>
         <ul class="space-y-2">
-          <li><span class="text-sm text-slate-500">MIT License</span></li>
+          <li><a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">MIT License</a></li>
         </ul>
       </div>
     </div>

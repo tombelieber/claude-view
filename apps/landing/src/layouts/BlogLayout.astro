@@ -1,5 +1,6 @@
 ---
 import MarketingLayout from './MarketingLayout.astro';
+import { SITE_URL } from '../data/site';
 
 interface Props {
   title: string;
@@ -27,12 +28,12 @@ const { title, description, date, author } = Astro.props;
     "publisher": {
       "@type": "Organization",
       "name": "claude-view",
-      "url": "https://claude-view.dev"
+      "url": SITE_URL
     },
     "isPartOf": {
       "@type": "Blog",
       "name": "claude-view Blog",
-      "url": "https://claude-view.dev/blog"
+      "url": `${SITE_URL}/blog`
     }
   })} />
 
