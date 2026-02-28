@@ -118,7 +118,7 @@ pub async fn create_share(
         .ok_or_else(|| ApiError::Internal("Missing token in Worker response".into()))?
         .to_string();
 
-    share_cfg
+    let blob_resp = share_cfg
         .http_client
         .put(format!("{}/api/share/{}/blob", share_cfg.worker_url, token))
         .body(encrypted.blob)
@@ -126,6 +126,12 @@ pub async fn create_share(
         .send()
         .await
         .map_err(|e| ApiError::Internal(format!("Blob upload failed: {e}")))?;
+    if !blob_resp.status().is_success() {
+        return Err(ApiError::Internal(format!(
+            "Blob upload returned {}",
+            blob_resp.status()
+        )));
+    }
 
     let key_b64 = key_to_base64url(&encrypted.key);
     let url = format!("{}/s/{}#k={}", share_cfg.viewer_url, token, key_b64);

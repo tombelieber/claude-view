@@ -44,7 +44,8 @@ async function revokeShare(sessionId: string): Promise<void> {
 async function fetchShares(): Promise<ShareListItem[]> {
   const headers = await authHeaders()
   const res = await fetch('/api/shares', { headers })
-  if (!res.ok) return []
+  if (res.status === 401) return [] // not signed in — no shares to show
+  if (!res.ok) throw new Error(`Failed to load shares: ${res.status}`)
   const data = await res.json()
   return (data.shares ?? []).map((s: Omit<ShareListItem, 'url'>) => ({
     ...s,
