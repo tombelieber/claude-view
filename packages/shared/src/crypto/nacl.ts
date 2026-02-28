@@ -1,6 +1,6 @@
 // Audit gap #3: verbatimModuleSyntax requires namespace imports for CJS modules
-import { hmac } from '@noble/hashes/hmac'
-import { sha256 } from '@noble/hashes/sha256'
+import { hmac } from '@noble/hashes/hmac.js'
+import { sha256 } from '@noble/hashes/sha2.js'
 import * as nacl from 'tweetnacl'
 import { decodeBase64, decodeUTF8, encodeBase64 } from 'tweetnacl-util'
 import type { KeyStorage } from './storage'
