@@ -23,6 +23,7 @@ pub struct SessionAccumulator {
     pub user_turn_count: u32,
     pub first_user_message: String,
     pub last_user_message: String,
+    pub last_user_file: Option<String>,
     pub git_branch: Option<String>,
     pub started_at: Option<i64>,
     pub sub_agents: Vec<SubAgentInfo>,
@@ -48,6 +49,7 @@ pub struct RichSessionData {
     pub turn_count: u32,
     pub first_user_message: Option<String>,
     pub last_user_message: Option<String>,
+    pub last_user_file: Option<String>,
     pub last_cache_hit_at: Option<i64>,
 }
 
@@ -61,6 +63,7 @@ impl SessionAccumulator {
             user_turn_count: 0,
             first_user_message: String::new(),
             last_user_message: String::new(),
+            last_user_file: None,
             git_branch: None,
             started_at: None,
             sub_agents: Vec::new(),
@@ -163,6 +166,9 @@ impl SessionAccumulator {
                     self.first_user_message = line.content_preview.clone();
                 }
                 self.last_user_message = line.content_preview.clone();
+                if line.ide_file.is_some() {
+                    self.last_user_file = line.ide_file.clone();
+                }
             }
         }
 
@@ -415,6 +421,7 @@ impl SessionAccumulator {
             } else {
                 Some(self.last_user_message.clone())
             },
+            last_user_file: self.last_user_file.clone(),
             last_cache_hit_at: self.last_cache_hit_at,
         }
     }
