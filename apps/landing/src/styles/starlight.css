@@ -1,0 +1,6 @@
+/* Custom Starlight theme overrides */
+:root {
+  --sl-color-accent-low: #1e293b;
+  --sl-color-accent: #22c55e;
+  --sl-color-accent-high: #4ade80;
+}
