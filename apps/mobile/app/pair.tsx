@@ -54,17 +54,11 @@ export default function PairScreen() {
 
   if (!permission?.granted) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor="$gray900"
-        alignItems="center"
-        justifyContent="center"
-        padding="$8"
-      >
-        <Text color="$gray50" fontSize="$lg" textAlign="center" marginBottom="$6">
+      <YStack flex={1} bg="$gray900" items="center" justify="center" p="$8">
+        <Text color="$gray50" fontSize="$lg" text="center" mb="$6">
           Camera access needed to scan QR code
         </Text>
-        <Button onPress={requestPermission} backgroundColor="$primary600" color="$gray50" size="$5">
+        <Button onPress={requestPermission} bg="$primary600" size="$5">
           Grant Camera Access
         </Button>
       </YStack>
@@ -72,21 +66,21 @@ export default function PairScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor="$gray900">
+    <YStack flex={1} bg="$gray900">
       <CameraView
         style={{ flex: 1 }}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       />
-      <YStack position="absolute" bottom={0} left={0} right={0} padding="$8" alignItems="center">
-        <Text color="$gray50" fontSize="$lg" textAlign="center">
+      <YStack position="absolute" b={0} l={0} r={0} p="$8" items="center">
+        <Text color="$gray50" fontSize="$lg" text="center">
           Scan the QR code from your Mac's Claude View
         </Text>
-        <Text color="$gray400" fontSize="$sm" marginTop="$2" textAlign="center">
+        <Text color="$gray400" fontSize="$sm" mt="$2" text="center">
           One scan. No account. No password. Ever.
         </Text>
         {error && (
-          <Text color="#ef4444" fontSize="$sm" marginTop="$4" textAlign="center">
+          <Text color="#ef4444" fontSize="$sm" mt="$4" text="center">
             {error}
           </Text>
         )}

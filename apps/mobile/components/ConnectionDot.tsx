@@ -12,8 +12,8 @@ const STATE_CONFIG: Record<ConnectionState, { color: string; label: string }> = 
 export function ConnectionDot({ state }: { state: ConnectionState }) {
   const { color, label } = STATE_CONFIG[state]
   return (
-    <XStack alignItems="center" gap="$2">
-      <Circle size={8} backgroundColor={color} />
+    <XStack items="center" gap="$2">
+      <Circle size={8} bg={color as any} />
       <Text color="$gray400" fontSize="$sm">
         {label}
       </Text>
