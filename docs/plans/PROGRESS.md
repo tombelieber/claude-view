@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-03-01 (OneSignal push migration)
+> **Last updated:** 2026-03-01 (Phase F done, Chat Input unblocked)
 
 ---
 
@@ -20,15 +20,15 @@
 
 | # | Checkpoint | What It Means | Status | Depends On |
 |---|-----------|---------------|--------|------------|
-| 1 | **Phase F: Agent Control** | Node.js sidecar + Agent SDK. Type messages, approve tools, resume sessions from web dashboard. | **Impl plan ready** (17 tasks) | Phase A (done) |
-| 2 | **M1: Mobile Monitor** | Expo phone app — see running agents, get push notifications, QR pairing. Read-only. | **Impl plan ready** (10 tasks, audited) | Phase A-D APIs (done) |
+| 1 | **Phase F: Agent Control** | Node.js sidecar + Agent SDK. Type messages, approve tools, resume sessions from web dashboard. | **DONE** (sidecar + DashboardChat + PermissionDialog + ChatStatusBar) | Phase A (done) |
+| 2 | **M1: Mobile Monitor** | Expo phone app — see running agents, get push notifications, QR pairing. Read-only. | **DONE** (10/10 tasks: QR pairing, relay, push, dashboard, detail sheet) | Phase A-D APIs (done) |
 | 3 | **M2: Mobile Control** | Phone app gains control — send messages, approve/reject tools, spawn agents from phone. | Not started | Needs #1 + #2 |
-| 4 | **Landing page follow-up** | App Store badges, mobile signup CTA, Twitter handle, self-host fonts. | **Open — L1 blocker** | See [`landing/2026-03-01-landing-page-followup.md`](landing/2026-03-01-landing-page-followup.md) |
+| 4 | **Landing page follow-up** | App Store badges, mobile signup CTA, Twitter handle, self-host fonts. | **Partial — custom 404 deferred** | See [`landing/2026-03-01-landing-page-followup.md`](landing/2026-03-01-landing-page-followup.md) |
 | 5 | **Launch assets** | 60s demo video, Product Hunt listing, Show HN post, landing page update. | Not started | Needs #3 working |
 | 6 | **LAUNCH 1** | Ship it. "I shipped a feature from my phone." | — | Needs #5 |
 
-**Critical path:** `Phase F (#1) → M2 (#3) → Launch`
-**Parallel work:** #1 and #2 are independent — build simultaneously.
+**Critical path:** `M2 design → M2 build → Launch assets → LAUNCH 1`
+**Phase F + M1 both done.** Next: M2 (mobile control) extends both.
 
 **Plans:**
 - Phase F design: [`mission-control/phase-f-interactive.md`](mission-control/phase-f-interactive.md)
@@ -43,6 +43,8 @@
 
 ## Recently Completed
 
+- **M1: Mobile Monitor** (2026-03-01): Expo app with QR pairing, NaCl-encrypted relay connection, OneSignal push, session dashboard with grouping, session detail sheet. 10/10 tasks verified. Plan: [`mobile/2026-02-25-clawmini-mobile-m1-impl.md`](mobile/2026-02-25-clawmini-mobile-m1-impl.md)
+- **Phase F: Agent Control** (2026-03-01): Node.js sidecar + Agent SDK IPC. DashboardChat with streaming, ResumePreFlight cost estimation, PermissionDialog with countdown auto-deny, ChatStatusBar. 20+ commits, fully wired into AppState. Plan: [`mission-control/phase-f-impl.md`](mission-control/phase-f-impl.md)
 - **OneSignal Push Migration** (2026-03-01): Replace Expo Push with OneSignal for push notifications. Relay calls OneSignal REST API (no more token storage), mobile uses OneSignal SDK with `external_user_id` targeting. 12 tasks, 9 files, shippable audit passed (SHIP IT). Plan: [`mobile/2026-03-01-onesignal-push-impl.md`](mobile/2026-03-01-onesignal-push-impl.md)
 - **Landing Page & Docs Site** (2026-03-01): Astro 5 + Starlight site replacing placeholder. 19 pages: marketing homepage, pricing, 13 Starlight docs, blog, changelog. Agent SEO (llms.txt, Schema.org, HowTo, BreadcrumbList), zero-JS animations, Tailwind 4. 12 tasks, 10 commits, ~45 files, shippable audit passed (SHIP IT). Plan: [`landing/archived/2026-02-28-landing-page-impl.md`](landing/archived/2026-02-28-landing-page-impl.md)
 - **Clean User Message + IDE File Chip** (2026-03-01): Strip XML noise tags (`<system-reminder>`, `<ide_opened_file>`, etc.) from `lastUserMessage` before 200-char truncation. Extract IDE file context as `lastUserFile` field. File chip on web + mobile SessionCards. 7 tasks, 6 commits, 13 files, shippable audit passed. Plan: [`server/archived/2026-02-28-clean-user-message-impl.md`](server/archived/2026-02-28-clean-user-message-impl.md)
@@ -101,9 +103,9 @@
 | Sparkline Stats Grid | **DONE** | Personal |
 | Reliability Release | **DONE** (PR #14) | Both |
 | Pricing Engine Overhaul | **DONE** | Both |
-| **Mission Control** | **In Progress** (A-D done, E polish, **F = critical path**) | Personal |
-| **Phase F: Agent Control** | **Not started — L1 CRITICAL PATH** | Both |
-| **Mobile Remote M1** | **Impl plan ready** (10 tasks, audited) — L1 parallel build | Both |
+| **Mission Control** | **DONE** (A-F done, E theming ongoing) | Personal |
+| **Phase F: Agent Control** | **DONE** | Both |
+| **Mobile Remote M1** | **DONE** (10/10 tasks verified) | Both |
 | **Mobile Remote M2** | **Not started — L1 launch trigger** | Both |
 | **Monorepo Restructure** | **DONE** | Both |
 | **Plan Runner (Phase K)** | Not started — L2 | Both |
@@ -120,16 +122,16 @@ Plans are organized by area. Each area has its own `PROGRESS.md` with active/com
 | Area | Dashboard | Active | Description |
 |------|-----------|--------|-------------|
 | Web | [`web/PROGRESS.md`](web/PROGRESS.md) | 7 active | React SPA — chat input, conversation sharing, context bar, renderers |
-| Mobile | [`mobile/PROGRESS.md`](mobile/PROGRESS.md) | M1 impl ready, M2 TBD | Expo native app — monitor, push, control |
+| Mobile | [`mobile/PROGRESS.md`](mobile/PROGRESS.md) | M1 done, M2 TBD | Expo native app — monitor, push, control |
 | Landing | [`landing/PROGRESS.md`](landing/PROGRESS.md) | 1 active (L1 blocker) | Astro site — follow-up: badges, CTA, fonts |
 | Server | [`server/PROGRESS.md`](server/PROGRESS.md) | 3 active | Rust backend — plugin/MCP, session backup |
 | Relay | [`relay/PROGRESS.md`](relay/PROGRESS.md) | 0 active | Cloud relay (changes tracked in mobile/) |
-| Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | Phase F ready | L1 critical path — agent control |
+| Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | Phase F done, E theming | Agent control shipped; E polish ongoing |
 | Cross-cutting | [`cross-cutting/PROGRESS.md`](cross-cutting/PROGRESS.md) | 0 active | Monorepo, infra, types — all completed |
 | Backlog | [`backlog/`](backlog/) | 25 deferred | Epics, marketplace, future work |
 | Archived | [`archived/`](archived/) | — | Pre-monorepo era completed plans |
 
-**L1 execution order:** Phase F + M1 (parallel) → M2 → LAUNCH 1
+**L1 execution order:** ~~Phase F~~ (done) + ~~M1~~ (done) → M2 design → M2 build → LAUNCH 1
 
 See GTM repo `plans/active/2026-02-26-launch-roadmap.md` for full strategy.
 See `mobile/PROGRESS.md` for M1 phase details.
