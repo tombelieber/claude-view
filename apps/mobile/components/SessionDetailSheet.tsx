@@ -19,21 +19,21 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
       snapPoints={[85, 50]}
       dismissOnSnapToBottom
     >
-      <Sheet.Overlay backgroundColor="rgba(0,0,0,0.5)" />
-      <Sheet.Handle backgroundColor="$gray500" />
-      <Sheet.Frame backgroundColor="$gray800" borderTopLeftRadius="$4" borderTopRightRadius="$4">
+      <Sheet.Overlay bg="rgba(0,0,0,0.5)" />
+      <Sheet.Handle bg="$gray500" />
+      <Sheet.Frame bg="$gray800" borderTopLeftRadius="$4" borderTopRightRadius="$4">
         <ScrollView style={{ padding: 16 }}>
           {/* Header -- Audit gap #28: use projectDisplayName, not project */}
           <Text color="$gray50" fontWeight="bold" fontSize="$xl">
             {session.projectDisplayName}
           </Text>
           {/* Audit gap #29: model is string | null -- guard against null */}
-          <Text color="$gray400" fontSize="$sm" marginTop="$1">
+          <Text color="$gray400" fontSize="$sm" mt="$1">
             {session.model ?? 'unknown'}
           </Text>
 
           {/* Status info */}
-          <XStack flexWrap="wrap" marginTop="$4" gap="$4">
+          <XStack flexWrap="wrap" mt="$4" gap="$4">
             <InfoItem label="Status" value={session.status} />
             <InfoItem label="Model" value={session.model ?? 'unknown'} />
             {/* NOTE (audit fix B1): tokens use camelCase */}
@@ -43,16 +43,16 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
             />
           </XStack>
 
-          <Separator marginVertical="$4" borderColor="$gray700" />
+          <Separator my="$4" borderColor="$gray700" />
 
           {/* Cost */}
           <SectionLabel>Cost</SectionLabel>
-          <YStack backgroundColor="$gray900" borderRadius="$3" padding="$3">
+          <YStack bg="$gray900" rounded="$3" p="$3">
             {/* NOTE (audit fix B1): cost is nested object */}
             <CostRow label="Total" value={session.cost.totalUsd} bold />
           </YStack>
 
-          <Separator marginVertical="$4" borderColor="$gray700" />
+          <Separator my="$4" borderColor="$gray700" />
 
           {/* Last activity -- NOTE (audit fix B1): field is lastUserMessage */}
           {session.lastUserMessage ? (
@@ -65,14 +65,7 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
           ) : null}
 
           {/* M2 teaser */}
-          <YStack
-            marginTop="$6"
-            backgroundColor="$gray900"
-            borderRadius="$4"
-            padding="$4"
-            alignItems="center"
-            opacity={0.5}
-          >
+          <YStack mt="$6" bg="$gray900" rounded="$4" p="$4" items="center" opacity={0.5}>
             <Text color="$gray400" fontSize="$sm">
               Approve / Deny -- coming in M2
             </Text>
@@ -85,13 +78,7 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <Text
-      color="$gray400"
-      fontSize="$xs"
-      textTransform="uppercase"
-      letterSpacing={1}
-      marginBottom="$2"
-    >
+    <Text color="$gray400" fontSize="$xs" textTransform="uppercase" letterSpacing={1} mb="$2">
       {children}
     </Text>
   )
@@ -120,7 +107,7 @@ function CostRow({
   bold?: boolean
 }) {
   return (
-    <XStack justifyContent="space-between" paddingVertical="$1">
+    <XStack justify="space-between" py="$1">
       <Text color={bold ? '$gray50' : '$gray400'} fontSize="$sm" fontWeight={bold ? '600' : '400'}>
         {label}
       </Text>

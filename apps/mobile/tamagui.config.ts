@@ -81,10 +81,7 @@ const config = createTamagui({
   ...defaultConfig,
   tokens: {
     ...defaultConfig.tokens,
-    color: {
-      ...defaultConfig.tokens.color,
-      ...flatColors,
-    },
+    color: flatColors,
     space: {
       ...defaultConfig.tokens.space,
       ...spacing,
