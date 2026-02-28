@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
+use claude_view_server::auth::supabase::fetch_decoding_key;
+use claude_view_server::state::ShareConfig;
 use claude_view_server::{
     create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus,
     SearchIndexHolder,
@@ -275,7 +277,39 @@ async fn main() -> Result<()> {
     // Step 3b: Create shutdown channel for SSE stream termination on Ctrl+C
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Step 4: Build the Axum app with indexing state, registry holder, and search index
+    // Step 4: Load Supabase JWKS for JWT validation (sharing feature)
+    let jwks = if let Ok(supabase_url) = std::env::var("SUPABASE_URL") {
+        match fetch_decoding_key(&supabase_url).await {
+            Ok(cache) => {
+                tracing::info!("Supabase JWKS loaded");
+                Some(Arc::new(tokio::sync::RwLock::new(cache)))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load Supabase JWKS: {e}. Auth will be disabled.");
+                None
+            }
+        }
+    } else {
+        tracing::info!("SUPABASE_URL not set — auth disabled (dev mode)");
+        None
+    };
+
+    let share = match (
+        std::env::var("SHARE_WORKER_URL"),
+        std::env::var("SHARE_VIEWER_URL"),
+    ) {
+        (Ok(worker_url), Ok(viewer_url)) => Some(ShareConfig {
+            worker_url,
+            viewer_url,
+            http_client: reqwest::Client::new(),
+        }),
+        _ => {
+            tracing::info!("SHARE_WORKER_URL/SHARE_VIEWER_URL not set — sharing disabled");
+            None
+        }
+    };
+
+    // Step 4b: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
     let sidecar = Arc::new(claude_view_server::SidecarManager::new());
     let sidecar_for_shutdown = sidecar.clone();
@@ -287,6 +321,8 @@ async fn main() -> Result<()> {
         shutdown_rx,
         static_dir,
         sidecar,
+        jwks,
+        share,
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
