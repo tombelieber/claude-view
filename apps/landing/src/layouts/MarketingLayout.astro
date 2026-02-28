@@ -2,6 +2,7 @@
 import { ClientRouter } from 'astro:transitions';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import { SITE_URL, PLATFORM, TWITTER_HANDLE } from '../data/site';
 import '../styles/global.css';
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
 const {
   title,
   description = 'Mission Control for AI coding agents',
-  ogImage = '/og-image.png',
+  ogImage = `${SITE_URL}/og-image.png`,
   ogType = 'website',
   articleMeta,
 } = Astro.props;
@@ -24,13 +25,13 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 // BreadcrumbList JSON-LD — built in frontmatter to avoid TS in set:html
 const pathParts = Astro.url.pathname.replace(/\/$/, '').split('/').filter(Boolean);
 const breadcrumbItems: Array<Record<string, unknown>> = [
-  { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://claude-view.dev/" },
+  { "@type": "ListItem", "position": 1, "name": "Home", "item": `${SITE_URL}/` },
 ];
 pathParts.forEach((part, i) => {
   const name = part.charAt(0).toUpperCase() + part.slice(1);
   const item: Record<string, unknown> = { "@type": "ListItem", "position": i + 2, "name": name };
   if (i < pathParts.length - 1) {
-    item["item"] = `https://claude-view.dev/${pathParts.slice(0, i + 1).join('/')}/`;
+    item["item"] = `${SITE_URL}/${pathParts.slice(0, i + 1).join('/')}/`;
   }
   breadcrumbItems.push(item);
 });
@@ -63,7 +64,7 @@ const breadcrumbJsonLd = JSON.stringify({
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:site" content="@claude_view" />
+  {TWITTER_HANDLE && <meta name="twitter:site" content={TWITTER_HANDLE} />}
   <meta name="twitter:title" content={title} />
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImage} />
@@ -74,17 +75,13 @@ const breadcrumbJsonLd = JSON.stringify({
     "@type": "SoftwareApplication",
     "name": "claude-view",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS, Linux",
+    "operatingSystem": PLATFORM.current,
     "description": "Mission Control for AI coding agents",
     "offers": { "@type": "Offer", "price": "0" }
   })} />
 
   <!-- Schema.org BreadcrumbList -->
   <script is:inline type="application/ld+json" set:html={breadcrumbJsonLd} />
-
-  <!-- Google Fonts preconnect -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
