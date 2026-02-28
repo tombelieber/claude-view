@@ -1,6 +1,21 @@
-/* Custom Starlight theme overrides */
+/* Theme Starlight to match claude-view dark aesthetic */
 :root {
   --sl-color-accent-low: #1e293b;
   --sl-color-accent: #22c55e;
   --sl-color-accent-high: #4ade80;
+  --sl-color-white: #f8fafc;
+  --sl-color-gray-1: #e2e8f0;
+  --sl-color-gray-2: #cbd5e1;
+  --sl-color-gray-3: #94a3b8;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #475569;
+  --sl-color-gray-6: #334155;
+  --sl-color-black: #0f172a;
+  --sl-font: 'IBM Plex Sans', sans-serif;
+  --sl-font-system-mono: 'JetBrains Mono', monospace;
+}
+
+[data-theme='dark'] {
+  --sl-color-bg-nav: #0f172a;
+  --sl-color-bg-sidebar: #0f172a;
 }
