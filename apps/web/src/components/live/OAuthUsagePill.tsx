@@ -11,15 +11,30 @@ function formatReset(resetAt: string): string {
   return `${Math.ceil(diffMs / (1000 * 60 * 60 * 24))}d`
 }
 
-/** Longer reset label for the tooltip. */
+/** Human-readable "Updated Xs ago" from a millisecond epoch timestamp. */
+function formatUpdatedAgo(epochMs: number): string {
+  if (!epochMs) return ''
+  const diffMs = Date.now() - epochMs
+  if (diffMs < 5_000) return 'Updated just now'
+  const secs = Math.floor(diffMs / 1000)
+  if (secs < 60) return `Updated ${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `Updated ${mins}m ago`
+  return `Updated ${Math.floor(mins / 60)}h ago`
+}
+
+/** Longer reset label for the tooltip, showing both countdown and exact time/date. */
 function formatResetLabel(resetAt: string): string {
   if (!resetAt) return ''
-  const diffMs = new Date(resetAt).getTime() - Date.now()
+  const resetDate = new Date(resetAt)
+  const diffMs = resetDate.getTime() - Date.now()
   if (diffMs <= 0) return 'Resets now'
   const hours = Math.ceil(diffMs / (1000 * 60 * 60))
-  if (hours < 24) return `Resets in ${hours}h`
+  const time = resetDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (hours < 24) return `Resets in ${hours}h · ${time}`
   const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-  return `Resets in ${days}d`
+  const date = resetDate.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return `Resets in ${days}d · ${date}, ${time}`
 }
 
 function barColor(pct: number): string {
@@ -77,7 +92,7 @@ function getSessionTier(tiers: UsageTier[]): UsageTier | undefined {
 }
 
 export function OAuthUsagePill() {
-  const { data, isLoading, error, refetch } = useOAuthUsage()
+  const { data, isLoading, error, refetch, dataUpdatedAt } = useOAuthUsage()
 
   if (isLoading) {
     return <span className="text-xs text-gray-400 dark:text-gray-500">Loading usage...</span>
@@ -141,6 +156,13 @@ export function OAuthUsagePill() {
                 <TierRow key={tier.id} tier={tier} />
               ))}
             </div>
+
+            {/* Last refreshed */}
+            {dataUpdatedAt > 0 && (
+              <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                {formatUpdatedAgo(dataUpdatedAt)}
+              </div>
+            )}
 
             <Tooltip.Arrow className="fill-white dark:fill-gray-800" />
           </Tooltip.Content>
