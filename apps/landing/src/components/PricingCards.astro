@@ -1,0 +1,101 @@
+---
+interface Tier {
+  name: string;
+  price: string;
+  description: string;
+  features: string[];
+  cta: string;
+  ctaHref: string;
+  highlight?: boolean;
+  comingSoon?: boolean;
+}
+
+const tiers: Tier[] = [
+  {
+    name: 'Free',
+    price: '$0',
+    description: 'Everything you need for solo development.',
+    features: [
+      'Unlimited local sessions',
+      'Session browser & search',
+      'Cost tracking',
+      'AI Fluency Score',
+      'Community support',
+    ],
+    cta: 'Get Started',
+    ctaHref: '/docs/',
+  },
+  {
+    name: 'Pro',
+    price: '$19/mo',
+    description: 'For power users who need cloud access.',
+    features: [
+      'Everything in Free',
+      'Cloud relay access',
+      'Mobile app',
+      'Remote agent control',
+      'Priority support',
+    ],
+    cta: 'Coming Soon',
+    ctaHref: '',
+    highlight: true,
+    comingSoon: true,
+  },
+  {
+    name: 'Team',
+    price: '$49/mo',
+    description: 'Shared dashboards for engineering teams.',
+    features: [
+      'Everything in Pro',
+      'Team dashboard',
+      'Shared session history',
+      'Usage analytics',
+      'SSO & admin controls',
+    ],
+    cta: 'Coming Soon',
+    ctaHref: '',
+    comingSoon: true,
+  },
+];
+---
+
+<div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+  {tiers.map((tier) => (
+    <div class={`rounded-2xl border p-8 flex flex-col ${
+      tier.highlight
+        ? 'border-green-500/50 bg-green-500/5'
+        : 'border-slate-700 bg-slate-900/50'
+    }`}>
+      <h3 class="text-xl font-bold text-white">{tier.name}</h3>
+      <div class="mt-4 mb-2">
+        <span class="text-4xl font-bold text-white">{tier.price}</span>
+      </div>
+      <p class="text-sm text-slate-400 mb-6">{tier.description}</p>
+      <ul class="space-y-3 mb-8 flex-1">
+        {tier.features.map((f) => (
+          <li class="flex items-start gap-2 text-sm text-slate-300">
+            <svg class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            {f}
+          </li>
+        ))}
+      </ul>
+      {tier.comingSoon ? (
+        <button
+          disabled
+          class="block w-full text-center py-3 px-6 rounded-lg font-medium text-sm bg-slate-800 text-slate-400 cursor-not-allowed opacity-70"
+        >
+          {tier.cta}
+        </button>
+      ) : (
+        <a
+          href={tier.ctaHref}
+          class="block text-center py-3 px-6 rounded-lg font-medium text-sm transition-colors bg-green-600 text-white hover:bg-green-500"
+        >
+          {tier.cta}
+        </a>
+      )}
+    </div>
+  ))}
+</div>
