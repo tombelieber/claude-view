@@ -1,0 +1,65 @@
+---
+title: MCP Integration
+description: Connect AI agents to claude-view via the Model Context Protocol (MCP). 8 tools for session monitoring, cost tracking, and agent control.
+---
+
+claude-view ships an MCP (Model Context Protocol) server that exposes 8 read-only tools over stdio. Any MCP-compatible AI agent can query your session data directly.
+
+## Prerequisites
+
+- claude-view server must be running: `npx claude-view`
+- Node.js 18+ (for `npx @claude-view/mcp`)
+
+## Setup
+
+Add to your Claude Code `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-view": {
+      "command": "npx",
+      "args": ["-y", "@claude-view/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Code. The 8 claude-view tools are now available.
+
+## Available tools
+
+| Tool | Description |
+|------|-------------|
+| `list_sessions` | Browse sessions with filters (project, model, date, status) |
+| `get_session` | Session detail with messages, tool calls, and metrics |
+| `search_sessions` | Full-text search across all conversations |
+| `get_stats` | Dashboard overview — total sessions, costs, trends |
+| `get_fluency_score` | AI Fluency Score (0–100) with breakdown |
+| `get_token_stats` | Token usage with cache hit ratio |
+| `list_live_sessions` | Currently running agents (real-time) |
+| `get_live_summary` | Aggregate cost and status for today |
+
+## Example usage
+
+```
+# In Claude Code, after adding MCP config:
+"How much have I spent on Claude Code today?"
+→ Uses get_live_summary to fetch today's aggregate cost
+
+"Find my last session about authentication"
+→ Uses search_sessions(query: "authentication")
+
+"What's my AI Fluency Score?"
+→ Uses get_fluency_score
+```
+
+## Architecture
+
+The MCP server communicates with the running claude-view HTTP server on `localhost:47892`. All data stays local — no external requests. The server must be running before the MCP client connects.
+
+## Troubleshooting
+
+**"Connection refused"** — Start the claude-view server first: `npx claude-view`
+
+**"Tool not found"** — Restart Claude Code after updating `settings.json`
