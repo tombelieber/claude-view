@@ -531,6 +531,7 @@ mod tests {
             task_id_assignments: Vec::new(),
             skill_names: Vec::new(),
             is_compact_boundary: false,
+            ide_file: None,
         }
     }
 
