@@ -9,17 +9,17 @@ Zero config: `npx claude-view`. Rust backend, React web app, ~15MB binary.
 Landing page built with Astro 5 (zero client-side JS).
 
 ## Docs
-- [Getting Started](/docs): Install and first run
-- [Mission Control](/docs/features/mission-control): Live agent monitoring
-- [Agent Control](/docs/features/agent-control): Send messages, approve tools
-- [Mobile App](/docs/guides/mobile-setup): iOS/Android setup and pairing
-- [Cost Tracking](/docs/features/cost-tracking): Token usage and model costs
-- [AI Fluency Score](/docs/features/ai-fluency-score): Measure AI coding effectiveness
-- [Search](/docs/features/search): Full-text search across sessions
-- [CLI Reference](/docs/reference/cli-options): Command line options
-- [API Reference](/docs/reference/api): HTTP API endpoints
+- [Getting Started](/docs/): Install and first run
+- [Mission Control](/docs/features/mission-control/): Live agent monitoring
+- [Agent Control](/docs/features/agent-control/): Send messages, approve tools
+- [Mobile App](/docs/guides/mobile-setup/): iOS/Android setup and pairing
+- [Cost Tracking](/docs/features/cost-tracking/): Token usage and model costs
+- [AI Fluency Score](/docs/features/ai-fluency-score/): Measure AI coding effectiveness
+- [Search](/docs/features/search/): Full-text search across sessions
+- [CLI Reference](/docs/reference/cli-options/): Command line options
+- [API Reference](/docs/reference/api/): HTTP API endpoints
 
 ## Optional
-- [Blog](/blog): Technical deep dives and release announcements
-- [Changelog](/changelog): Version history
-- [MCP Integration](/docs/guides/mcp-integration): AI agent integration (8 tools via stdio)
+- [Blog](/blog/): Technical deep dives and release announcements
+- [Changelog](/changelog/): Version history
+- [MCP Integration](/docs/guides/mcp-integration/): AI agent integration (8 tools via stdio)

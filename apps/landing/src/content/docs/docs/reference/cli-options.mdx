@@ -1,50 +1,58 @@
 ---
 title: CLI Options
-description: Command-line flags and environment variables for claude-view.
+description: Command-line usage, subcommands, and environment variables for claude-view.
 ---
+
+{/* Default port (47892) sourced from apps/landing/src/data/site.ts */}
 
 ## Usage
 
 ```bash
-npx claude-view [options]
+npx claude-view
 ```
 
 Or if globally installed:
 ```bash
-claude-view [options]
+claude-view
 ```
 
-## Options
+The server starts, opens your browser, and begins discovering Claude Code sessions automatically.
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--port <n>` | HTTP server port | `47892` |
-| `--open` | Open browser on start | `true` |
-| `--no-open` | Disable auto-open | — |
-| `--version` | Print version and exit | — |
-| `--help` | Show help | — |
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `cleanup` | Remove stale lock files and temporary data |
+
+```bash
+claude-view cleanup
+```
 
 ## Environment variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CLAUDE_VIEW_PORT` | Override server port | `47892` |
+| `PORT` | Alternative port variable (fallback) | — |
 | `RUST_LOG` | Log level filter | `warn` |
 
 ## Examples
 
 ```bash
-# Use a custom port
-npx claude-view --port 8080
+# Default — starts server on port 47892 and opens browser
+npx claude-view
 
-# Disable browser auto-open (for headless/CI use)
-npx claude-view --no-open
+# Custom port via env var
+CLAUDE_VIEW_PORT=8080 npx claude-view
 
 # Verbose logging
 RUST_LOG=info npx claude-view
 
-# Set port via env var
-CLAUDE_VIEW_PORT=9000 npx claude-view
+# Debug logging for the server crate only
+RUST_LOG=warn,claude_view_server=debug npx claude-view
+
+# Clean up stale data
+npx claude-view cleanup
 ```
 
 ## Port fallback
