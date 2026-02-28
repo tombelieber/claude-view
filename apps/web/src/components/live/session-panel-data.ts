@@ -1,4 +1,5 @@
 import type { SessionInfo } from '../../types/generated'
+import type { ProgressItem } from '../../types/generated/ProgressItem'
 import type { RichSessionData } from '../../types/generated/RichSessionData'
 import type { SessionDetail } from '../../types/generated/SessionDetail'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
@@ -47,6 +48,9 @@ export interface SessionPanelData {
   // Sub-agents
   subAgents?: SubAgentInfo[]
 
+  // Progress items (live tasks/todos)
+  progressItems?: ProgressItem[]
+
   compactCount?: number
 
   // Live-only fields (optional)
@@ -86,6 +90,7 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     cost: session.cost,
     cacheStatus: session.cacheStatus,
     subAgents: session.subAgents,
+    progressItems: session.progressItems,
     compactCount: session.compactCount,
     startedAt: session.startedAt,
     lastActivityAt: session.lastActivityAt,
