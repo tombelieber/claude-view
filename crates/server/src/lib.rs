@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod live;
 pub mod metrics;
 pub mod routes;
+pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
 pub mod terminal_state;
