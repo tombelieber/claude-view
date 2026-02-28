@@ -1,12 +1,14 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Query, State,
     },
-    response::IntoResponse,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
+use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -27,9 +29,48 @@ struct RelayEnvelope {
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
+    Query(params): Query<HashMap<String, String>>,
     State(state): State<RelayState>,
-) -> impl IntoResponse {
+) -> Response {
+    // JWT auth — require valid token in query param if auth is configured
+    if let Some(auth) = &state.supabase_auth {
+        let jwt = match params.get("token") {
+            Some(t) => t,
+            None => return StatusCode::UNAUTHORIZED.into_response(),
+        };
+        if auth.validate(jwt).is_err() {
+            tracing::warn!(endpoint = "ws", "JWT validation failed on WS connect");
+            sentry::capture_message(
+                "JWT validation failed on WS connect",
+                sentry::Level::Warning,
+            );
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
+
+    // Check global connection limit
+    if state.connections.len() >= 1000 {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
+    // PostHog: track WS connection
+    if let Some(ref client) = state.posthog_client {
+        let client = client.clone();
+        let api_key = state.posthog_api_key.clone();
+        tokio::spawn(async move {
+            crate::posthog::track(
+                &client,
+                &api_key,
+                "relay_connected",
+                "ws_anonymous",
+                serde_json::json!({}),
+            )
+            .await;
+        });
+    }
+
     ws.on_upgrade(|socket| handle_socket(socket, state))
+        .into_response()
 }
 
 async fn handle_socket(socket: WebSocket, state: RelayState) {

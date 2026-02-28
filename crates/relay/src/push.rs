@@ -80,4 +80,20 @@ pub async fn send_push_notification(state: &RelayState, title: &str, body: &str)
     {
         warn!("failed to send push notification: {e}");
     }
+
+    // PostHog: track push notification sent
+    if let Some(ref ph_client) = state.posthog_client {
+        let ph_client = ph_client.clone();
+        let api_key = state.posthog_api_key.clone();
+        tokio::spawn(async move {
+            crate::posthog::track(
+                &ph_client,
+                &api_key,
+                "push_notification_sent",
+                "relay_server",
+                serde_json::json!({}),
+            )
+            .await;
+        });
+    }
 }
