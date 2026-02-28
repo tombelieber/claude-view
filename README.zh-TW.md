@@ -171,6 +171,7 @@ npx claude-view
 | 環境變數 | 預設 | 描述 |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` 或 `PORT` | `47892` | 覆蓋預設埠 |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | 覆蓋資料目錄 |
 
 ---
 
