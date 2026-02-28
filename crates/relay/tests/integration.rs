@@ -201,3 +201,78 @@ async fn claim_nonexistent_token_returns_404() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn push_token_registers_ok() {
+    let state = test_state();
+    let app = claude_view_relay::app(state);
+
+    let (status, body) = request(
+        app,
+        "POST",
+        "/push-tokens",
+        Some(serde_json::json!({
+            "device_id": "phone-push-001",
+            "onesignal_player_id": "player-abc-123",
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(parsed["ok"], true);
+}
+
+#[tokio::test]
+async fn push_token_empty_device_id_returns_400() {
+    let state = test_state();
+    let app = claude_view_relay::app(state);
+
+    let (status, _) = request(
+        app,
+        "POST",
+        "/push-tokens",
+        Some(serde_json::json!({
+            "device_id": "",
+            "onesignal_player_id": "player-abc-123",
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn push_token_rate_limit_returns_429() {
+    // burst=1 means only one token is available; rate=0 means no refill.
+    // First request consumes the single token (200), second finds none (429).
+    let state = claude_view_relay::state::RelayState::new(
+        None,
+        Arc::new(RateLimiter::new(100.0, 100.0)),
+        Arc::new(RateLimiter::new(100.0, 100.0)),
+        Arc::new(RateLimiter::new(0.0, 1.0)),
+    );
+
+    let body = serde_json::json!({
+        "device_id": "phone-ratelimit-001",
+        "onesignal_player_id": "player-xyz-999",
+    });
+
+    let (status_first, _) = request(
+        claude_view_relay::app(state.clone()),
+        "POST",
+        "/push-tokens",
+        Some(body.clone()),
+    )
+    .await;
+    assert_eq!(status_first, StatusCode::OK);
+
+    let (status_second, _) = request(
+        claude_view_relay::app(state.clone()),
+        "POST",
+        "/push-tokens",
+        Some(body),
+    )
+    .await;
+    assert_eq!(status_second, StatusCode::TOO_MANY_REQUESTS);
+}
