@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Explicitly allow AI crawlers (prevents accidental blocking via Cloudflare WAF rules)
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://claude-view.dev/sitemap.xml
