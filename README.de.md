@@ -171,6 +171,7 @@ npx claude-view
 | Umgebungsvariable | Standard | Beschreibung |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` oder `PORT` | `47892` | Standard-Port überschreiben |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Datenverzeichnis überschreiben |
 
 ---
 
