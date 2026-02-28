@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Tailwind 4 CSS-first configuration — replaces tailwind.config.mjs */
+@theme {
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-surface: #1e293b;
+  --color-cta: #22c55e;
+  --color-attention: #f59e0b;
+  --color-accent: #3b82f6;
+}
+
+/* Safelist classes that are only applied via JavaScript (Nav scroll effect).
+   Without this, Tailwind JIT purges them from the production bundle.
+   @source inline() accepts content that Tailwind scans for class patterns. */
+@source inline("{bg-slate-900/80,backdrop-blur-md,border-slate-700,border-transparent}");
+
+:root {
+  --color-bg: #0f172a;
+  --color-border: #334155;
+  --color-text: #f8fafc;
+  --color-text-secondary: #94a3b8;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+code, pre, kbd {
+  font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Ensure scroll-reveal sections are visible when JavaScript is disabled. */
+@media (scripting: none) {
+  .reveal-on-scroll {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
