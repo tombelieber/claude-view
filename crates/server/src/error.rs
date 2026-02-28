@@ -68,6 +68,9 @@ pub enum ApiError {
 
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for ApiError {
@@ -187,6 +190,10 @@ impl IntoResponse for ApiError {
                     StatusCode::SERVICE_UNAVAILABLE,
                     ErrorResponse::with_details("Service unavailable", msg.clone()),
                 )
+            }
+            ApiError::Unauthorized(msg) => {
+                tracing::warn!(message = %msg, "Unauthorized");
+                (StatusCode::UNAUTHORIZED, ErrorResponse::new(msg.clone()))
             }
         };
 
