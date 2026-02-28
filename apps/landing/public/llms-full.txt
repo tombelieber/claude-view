@@ -118,8 +118,8 @@ The claude-view server connects to the Fly.io relay via WebSocket. Your mobile a
 
 ## Related
 
-- [Mission Control →](/docs/docs/features/mission-control/) — live agent monitoring
-- [Mobile Setup →](/docs/docs/guides/mobile-setup/) — iOS and Android app setup
+- [Mission Control →](/docs/features/mission-control/) — live agent monitoring
+- [Mobile Setup →](/docs/guides/mobile-setup/) — iOS and Android app setup
 
 
 --- docs/docs/features/ai-fluency-score.mdx ---
@@ -161,7 +161,7 @@ The score combines multiple signals:
 claude --mcp-tool get_fluency_score
 ```
 
-See the [MCP Integration guide →](/docs/docs/guides/mcp-integration/) for setup.
+See the [MCP Integration guide →](/docs/guides/mcp-integration/) for setup.
 
 
 --- docs/docs/features/cost-tracking.mdx ---
@@ -236,8 +236,8 @@ Mission Control connects via WebSocket to the claude-view server. Data refreshes
 
 ## Related
 
-- [Agent Control →](/docs/docs/features/agent-control/) — send messages and approve tool calls
-- [Cost Tracking →](/docs/docs/features/cost-tracking/) — detailed token usage breakdown
+- [Agent Control →](/docs/features/agent-control/) — send messages and approve tool calls
+- [Cost Tracking →](/docs/features/cost-tracking/) — detailed token usage breakdown
 
 
 --- docs/docs/features/search.mdx ---
@@ -693,7 +693,7 @@ description: Keyboard shortcuts for the claude-view web dashboard.
 | `Cmd+F` / `Ctrl+F` | Search within session |
 
 
---- docs/index.mdx ---
+--- docs/getting-started.mdx ---
 
 ---
 title: Getting Started
@@ -727,6 +727,6 @@ import { Steps } from '@astrojs/starlight/components';
 
 ## Next steps
 
-- [Installation →](/docs/docs/installation/) — detailed setup, ports, and config
-- [Mission Control →](/docs/docs/features/mission-control/) — real-time agent monitoring
-- [MCP Integration →](/docs/docs/guides/mcp-integration/) — connect AI agents to claude-view
+- [Installation →](/docs/installation/) — detailed setup, ports, and config
+- [Mission Control →](/docs/features/mission-control/) — real-time agent monitoring
+- [MCP Integration →](/docs/guides/mcp-integration/) — connect AI agents to claude-view
