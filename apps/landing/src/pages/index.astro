@@ -1,14 +1,16 @@
 ---
-// Minimal homepage placeholder
+import MarketingLayout from '../layouts/MarketingLayout.astro';
 ---
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width" />
-  <title>claude-view</title>
-</head>
-<body>
-  <h1>claude-view</h1>
-  <p>Landing page coming soon.</p>
-</body>
-</html>
+<MarketingLayout title="Mission Control for AI Coding Agents">
+  <section class="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+    <h1 class="font-heading text-5xl md:text-7xl font-bold mb-6">
+      Mission Control for<br />AI Coding Agents
+    </h1>
+    <p class="text-lg md:text-xl text-slate-400 max-w-2xl mb-8">
+      Monitor, control, and orchestrate your Claude Code sessions from desktop or phone.
+    </p>
+    <div class="bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 font-mono text-cta text-lg">
+      $ npx claude-view
+    </div>
+  </section>
+</MarketingLayout>
