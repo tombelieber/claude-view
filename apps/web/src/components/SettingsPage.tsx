@@ -10,6 +10,7 @@ import {
   HardDrive,
   History,
   Info,
+  Link2,
   Loader2,
   RefreshCw,
   Smartphone,
@@ -19,9 +20,11 @@ import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { type ExportFormat, useExport } from '../hooks/use-export'
 import { useGitSync } from '../hooks/use-git-sync'
+import { useRevokeShare, useShares } from '../hooks/use-share'
 import { formatRelativeTime, useStatus } from '../hooks/use-status'
 import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '../hooks/use-system'
 import { formatNumber } from '../lib/format-utils'
+import { showToast } from '../lib/toast'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { PairingQrCode } from './PairingQrCode'
@@ -299,6 +302,79 @@ function DangerZoneSection() {
         )}
       </div>
     </div>
+  )
+}
+
+// ============================================================================
+// Shared Links Section
+// ============================================================================
+
+function SharedLinksSection() {
+  const { data: shares, isLoading } = useShares()
+  const revokeShare = useRevokeShare()
+
+  if (isLoading) return <div className="text-gray-500 dark:text-gray-400 text-sm">Loading...</div>
+  if (!shares?.length) {
+    return (
+      <div className="text-gray-500 dark:text-gray-400 text-sm">No shared conversations yet.</div>
+    )
+  }
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-700">
+          <th className="pb-2">Title</th>
+          <th className="pb-2">Created</th>
+          <th className="pb-2">Views</th>
+          <th className="pb-2">Link</th>
+          <th className="pb-2" />
+        </tr>
+      </thead>
+      <tbody>
+        {shares.map((share) => (
+          <tr key={share.token} className="border-b border-gray-100 dark:border-gray-800">
+            <td className="py-2 text-gray-700 dark:text-gray-300">{share.title ?? 'Untitled'}</td>
+            <td className="py-2 text-gray-500 dark:text-gray-400">
+              {share.created_at > 0
+                ? new Date(share.created_at * 1000).toLocaleDateString()
+                : '\u2014'}
+            </td>
+            <td className="py-2 text-gray-500 dark:text-gray-400">{share.view_count}</td>
+            <td className="py-2">
+              {share.url ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (share.url) navigator.clipboard.writeText(share.url)
+                    showToast('Link copied to clipboard')
+                  }}
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 truncate max-w-48 text-left"
+                  title={share.url}
+                >
+                  Copy link
+                </button>
+              ) : (
+                <span className="text-gray-400 dark:text-gray-500 text-sm">Link unavailable</span>
+              )}
+            </td>
+            <td className="py-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Revoke this share? The link will stop working.')) {
+                    revokeShare.mutate(share.session_id)
+                  }
+                }}
+                className="text-red-600 dark:text-red-500 hover:text-red-500 dark:hover:text-red-400 text-xs"
+              >
+                Revoke
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -615,6 +691,11 @@ export function SettingsPage() {
               Scan this QR code with the Claude View mobile app to pair your phone.
             </p>
             <PairingQrCode />
+          </SettingsSection>
+
+          {/* SHARED LINKS */}
+          <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
+            <SharedLinksSection />
           </SettingsSection>
 
           {/* ABOUT */}
