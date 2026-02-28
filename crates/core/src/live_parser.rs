@@ -112,6 +112,8 @@ pub struct LiveLine {
     pub skill_names: Vec<String>,
     /// Whether this is a system message with subtype "compact_boundary".
     pub is_compact_boundary: bool,
+    /// Filename extracted from `<ide_opened_file>` tag, if present.
+    pub ide_file: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -314,6 +316,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 task_id_assignments: Vec::new(),
                 skill_names: Vec::new(),
                 is_compact_boundary: false,
+                ide_file: None,
             };
         }
     };
@@ -336,14 +339,20 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names, skill_names, is_tool_result) =
+    let (content_preview, tool_names, skill_names, is_tool_result, ide_file) =
         extract_content_and_tools(content_source, finders);
 
-    // Detect system-injected prefixes in user-type lines.
-    // These are not real user prompts — they're tool result continuations,
-    // command outputs, or session continuation markers injected by Claude Code.
+    // Detect system-injected prefixes from RAW content (before stripping).
+    // NOTE: .as_str() returns None for array content, defaulting to "" (false).
+    // This is safe because system-prefix messages (<command-name>, <task-notification>,
+    // <local-command-stdout>) always use string content in Claude Code JSONL — never
+    // inside content arrays.
     let has_system_prefix = if line_type == LineType::User {
-        let c = content_preview.trim_start();
+        let raw = content_source
+            .get("content")
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+        let c = raw.trim_start();
         c.starts_with("<local-command-caveat>")
             || c.starts_with("<local-command-stdout>")
             || c.starts_with("<command-name>/clear")
@@ -759,6 +768,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         task_id_assignments,
         skill_names,
         is_compact_boundary,
+        ide_file,
     }
 }
 
@@ -833,15 +843,18 @@ fn strip_noise_tags(content: &str) -> (String, Option<String>) {
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
     _finders: &TailFinders,
-) -> (String, Vec<String>, Vec<String>, bool) {
+) -> (String, Vec<String>, Vec<String>, bool, Option<String>) {
     let mut preview = String::new();
     let mut tool_names = Vec::new();
     let mut skill_names = Vec::new();
     let mut has_tool_result = false;
+    let mut ide_file: Option<String> = None;
 
     match parsed.get("content") {
         Some(serde_json::Value::String(s)) => {
-            preview = truncate_str(s, 200);
+            let (stripped, file) = strip_noise_tags(s);
+            preview = truncate_str(&stripped, 200);
+            ide_file = file;
         }
         Some(serde_json::Value::Array(blocks)) => {
             for block in blocks {
@@ -849,7 +862,11 @@ fn extract_content_and_tools(
                     Some("text") => {
                         if preview.is_empty() {
                             if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                preview = truncate_str(text, 200);
+                                let (stripped, file) = strip_noise_tags(text);
+                                preview = truncate_str(&stripped, 200);
+                                if ide_file.is_none() {
+                                    ide_file = file;
+                                }
                             }
                         }
                     }
@@ -880,7 +897,7 @@ fn extract_content_and_tools(
         _ => {}
     }
 
-    (preview, tool_names, skill_names, has_tool_result)
+    (preview, tool_names, skill_names, has_tool_result, ide_file)
 }
 
 /// Extract a `<task-notification>` from the full content JSON value.
@@ -1970,5 +1987,41 @@ mod tests {
         let (clean, file) = strip_noise_tags(input);
         assert_eq!(clean, "hello world");
         assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_parse_tail_strips_noise_tags_from_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tags.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<system-reminder>hook data</system-reminder>fix the bug"}}}}"#
+        ).unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].content_preview, "fix the bug");
+        assert!(lines[0].ide_file.is_none());
+    }
+
+    #[test]
+    fn test_parse_tail_extracts_ide_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ide.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<ide_opened_file>The user opened the file /src/auth.rs in the IDE.</ide_opened_file> continue"}}}}"#
+        ).unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].content_preview, "continue");
+        assert_eq!(lines[0].ide_file.as_deref(), Some("auth.rs"));
     }
 }
