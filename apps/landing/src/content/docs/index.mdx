@@ -1,6 +1,35 @@
 ---
 title: Getting Started
-description: Install and start using claude-view
+description: Install claude-view and start monitoring your Claude Code sessions in 15 seconds.
 ---
 
-claude-view documentation coming soon.
+import { Steps } from '@astrojs/starlight/components';
+
+**claude-view** is an open-source developer tool that monitors Claude Code sessions in real time. Watch token usage, costs, tool calls, and agent state — from your browser or phone.
+
+**Zero config. One command.**
+
+<Steps>
+1. **Install** — run `npx claude-view` in any terminal
+2. **Open** — your browser opens automatically at `http://localhost:47892`
+3. **Monitor** — all active Claude Code sessions appear automatically
+</Steps>
+
+## What you'll see
+
+- **Session browser** — searchable list of all past and active sessions
+- **Mission Control** — live view of running agents with real-time cost tracking
+- **Agent Control** — approve/reject tool calls, send messages (with cloud relay)
+- **AI Fluency Score** — measure how effectively you collaborate with AI
+
+## Requirements
+
+- macOS (Apple Silicon or Intel) — Linux support in v2.1
+- Node.js 18 or later (for `npx`)
+- Claude Code installed and running
+
+## Next steps
+
+- [Installation →](/docs/docs/installation/) — detailed setup, ports, and config
+- [Mission Control →](/docs/docs/features/mission-control/) — real-time agent monitoring
+- [MCP Integration →](/docs/docs/guides/mcp-integration/) — connect AI agents to claude-view

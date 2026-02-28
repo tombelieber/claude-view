@@ -1,0 +1,33 @@
+---
+title: Mission Control
+description: Real-time dashboard for monitoring all active Claude Code agents simultaneously.
+---
+
+Mission Control is a live view of all running Claude Code sessions. It updates in real time via WebSocket — no refresh needed.
+
+## What you see
+
+Each agent card shows:
+- **Status** — running (green), waiting for input (amber), done (gray), error (red)
+- **Current task** — the most recent tool call or message
+- **Cost** — cumulative token cost for the session
+- **Duration** — time elapsed since session start
+
+## Cost tracking
+
+Token costs update live as agents work. claude-view uses current Anthropic pricing to calculate USD costs per model. The total across all active agents is shown in the header.
+
+## Session control
+
+From Mission Control, you can:
+- **Click a session** to open the full session detail view
+- **Kill a session** — stops the Claude Code process (with confirmation)
+
+## Real-time updates
+
+Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically.
+
+## Related
+
+- [Agent Control →](/docs/docs/features/agent-control/) — send messages and approve tool calls
+- [Cost Tracking →](/docs/docs/features/cost-tracking/) — detailed token usage breakdown

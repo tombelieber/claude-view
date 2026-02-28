@@ -1,0 +1,41 @@
+---
+title: Session Browser
+description: Search and browse all past and active Claude Code sessions.
+---
+
+The Session Browser is the main view in claude-view. It shows a searchable, filterable list of all Claude Code sessions detected on your machine.
+
+## What's tracked
+
+For each session:
+- Project name and directory
+- Start time, end time, duration
+- Token counts (input, output, cache read, cache write)
+- Total cost (USD)
+- Model used (e.g., `claude-opus-4-5`, `claude-sonnet-4-5`)
+- Git commit (if a commit was made during the session)
+
+## Search
+
+Full-text search across all session content — tool calls, messages, file names. Uses Tantivy (Rust-native search library, similar to Lucene) for fast in-process search.
+
+Search is available via:
+- The search bar in the Session Browser
+- `Cmd+K` / `Ctrl+K` global shortcut
+- The MCP `search_sessions` tool
+
+## Filters
+
+Filter sessions by:
+- **Project** — sessions grouped by project directory
+- **Model** — filter by Claude model used
+- **Date range** — sessions from a specific period
+- **Status** — active, completed, or error sessions
+
+## Session detail
+
+Click any session to see:
+- Full conversation timeline (all messages, tool calls, results)
+- Per-message token counts
+- Tool call details (input/output)
+- Timeline of events

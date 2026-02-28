@@ -762,6 +762,71 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     }
 }
 
+/// Strip XML noise tags from user message content and extract IDE file context.
+///
+/// Returns `(clean_text, ide_file)` where:
+/// - `clean_text` is the content with all noise tags removed, trimmed
+/// - `ide_file` is the last path component from `<ide_opened_file>` if present
+///
+/// Tags stripped: system-reminder, ide_opened_file, ide_selection, command-name,
+/// command-args, command-message, local-command-stdout, local-command-caveat,
+/// task-notification, user-prompt-submit-hook.
+///
+/// NOTE: The IDE filename extraction regex ("the file\s+(\S+)\s+in the IDE") is
+/// coupled to Claude Code's current hook output format. If the format changes,
+/// extraction gracefully degrades to `None`.
+fn strip_noise_tags(content: &str) -> (String, Option<String>) {
+    use regex_lite::Regex;
+    use std::sync::OnceLock;
+
+    // `regex-lite` does NOT support backreferences (\1), so each tag must be
+    // enumerated with its explicit closing tag. Uses OnceLock to match codebase
+    // convention (see cli.rs, sync.rs, metrics.rs).
+    static NOISE_TAGS: OnceLock<Regex> = OnceLock::new();
+    let noise_re = NOISE_TAGS.get_or_init(|| {
+        Regex::new(concat!(
+            r"(?s)<system-reminder>.*?</system-reminder>\s*",
+            r"|<ide_selection>.*?</ide_selection>\s*",
+            r"|<command-name>.*?</command-name>\s*",
+            r"|<command-args>.*?</command-args>\s*",
+            r"|<command-message>.*?</command-message>\s*",
+            r"|<local-command-stdout>.*?</local-command-stdout>\s*",
+            r"|<local-command-caveat>.*?</local-command-caveat>\s*",
+            r"|<task-notification>.*?</task-notification>\s*",
+            r"|<user-prompt-submit-hook>.*?</user-prompt-submit-hook>\s*",
+        ))
+        .unwrap()
+    });
+
+    // Separate regex for ide_opened_file to extract filename before stripping
+    static IDE_FILE_TAG: OnceLock<Regex> = OnceLock::new();
+    let ide_tag_re = IDE_FILE_TAG
+        .get_or_init(|| Regex::new(r"(?s)<ide_opened_file>.*?</ide_opened_file>\s*").unwrap());
+
+    static IDE_FILE_PATH: OnceLock<Regex> = OnceLock::new();
+    let ide_path_re =
+        IDE_FILE_PATH.get_or_init(|| Regex::new(r"the file\s+(\S+)\s+in the IDE").unwrap());
+
+    // Extract IDE file before stripping
+    let ide_file = ide_tag_re.find(content).and_then(|m| {
+        ide_path_re.captures(m.as_str()).and_then(|caps| {
+            caps.get(1).map(|p| {
+                let path = p.as_str();
+                // Extract last path component (filename)
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            })
+        })
+    });
+
+    // Strip all noise tags
+    let cleaned = noise_re.replace_all(content, "");
+    // Strip ide_opened_file tag
+    let cleaned = ide_tag_re.replace_all(&cleaned, "");
+    let cleaned = cleaned.trim().to_string();
+
+    (cleaned, ide_file)
+}
+
 /// Extract content preview (truncated to 200 chars), tool_use names,
 /// skill names (from Skill tool_use `input.skill`), and whether the
 /// content array contains a `tool_result` block.
@@ -1829,5 +1894,81 @@ mod tests {
             vec!["mcp__chrome-devtools__take_screenshot", "Skill"]
         );
         assert_eq!(line.skill_names, vec!["pdf"]);
+    }
+
+    // -------------------------------------------------------------------------
+    // strip_noise_tags
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_strip_noise_tags_system_reminder() {
+        let input = "<system-reminder>SessionStart:startup hook success: Success</system-reminder>fix the bug";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "fix the bug");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_ide_opened_file() {
+        let input = "<ide_opened_file>The user opened the file /Users/me/project/src/auth.rs in the IDE. This may or may not be related to the current task.</ide_opened_file> continue";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "continue");
+        assert_eq!(file.as_deref(), Some("auth.rs"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_multiple_tags() {
+        let input = "<system-reminder>hook data</system-reminder><ide_opened_file>The user opened the file /path/to/main.rs in the IDE.</ide_opened_file><ide_selection>some code</ide_selection> do the thing";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "do the thing");
+        assert_eq!(file.as_deref(), Some("main.rs"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_no_tags() {
+        let input = "just a normal message";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "just a normal message");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_only_tags() {
+        let input = "<system-reminder>hook stuff</system-reminder>";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_command_tags() {
+        let input = "<command-name>/clear</command-name><command-message>Clearing context</command-message> hello";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "hello");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_nested_path() {
+        let input = "<ide_opened_file>The user opened the file /deep/nested/path/to/component.tsx in the IDE.</ide_opened_file>review this";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "review this");
+        assert_eq!(file.as_deref(), Some("component.tsx"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_user_prompt_submit_hook() {
+        let input = "<user-prompt-submit-hook>hook output</user-prompt-submit-hook>fix tests";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "fix tests");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_whitespace_between_text() {
+        let input = "hello <system-reminder>hook data</system-reminder> world";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "hello world");
+        assert!(file.is_none());
     }
 }

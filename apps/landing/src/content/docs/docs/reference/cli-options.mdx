@@ -1,0 +1,52 @@
+---
+title: CLI Options
+description: Command-line flags and environment variables for claude-view.
+---
+
+## Usage
+
+```bash
+npx claude-view [options]
+```
+
+Or if globally installed:
+```bash
+claude-view [options]
+```
+
+## Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--port <n>` | HTTP server port | `47892` |
+| `--open` | Open browser on start | `true` |
+| `--no-open` | Disable auto-open | — |
+| `--version` | Print version and exit | — |
+| `--help` | Show help | — |
+
+## Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLAUDE_VIEW_PORT` | Override server port | `47892` |
+| `RUST_LOG` | Log level filter | `warn` |
+
+## Examples
+
+```bash
+# Use a custom port
+npx claude-view --port 8080
+
+# Disable browser auto-open (for headless/CI use)
+npx claude-view --no-open
+
+# Verbose logging
+RUST_LOG=info npx claude-view
+
+# Set port via env var
+CLAUDE_VIEW_PORT=9000 npx claude-view
+```
+
+## Port fallback
+
+If the specified port (default `47892`) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.

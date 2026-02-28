@@ -1,0 +1,34 @@
+---
+title: Agent Control
+description: Send messages, approve tool calls, and control Claude Code agents from any device.
+---
+
+Agent Control lets you interact with running Claude Code sessions — approve tool calls, send follow-up messages, or stop runaway agents.
+
+## Prerequisites
+
+Agent Control requires the cloud relay (`claude-view-relay`). Self-hosted users can only monitor sessions; control features require a relay connection.
+
+> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). Free tier has full monitoring.
+
+## What you can do
+
+- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from any device
+- **Send messages** — inject a message into the agent's conversation
+- **Stop agent** — gracefully stop a running session
+
+## How it works
+
+The claude-view server connects to the Fly.io relay via WebSocket. Your mobile app or remote browser session authenticates via a QR code pairing flow. All traffic is end-to-end encrypted with NaCl (libsodium).
+
+## Pairing your phone
+
+1. Open claude-view on your desktop: `npx claude-view`
+2. Click **Pair Mobile** in the top right
+3. Scan the QR code with the claude-view mobile app
+4. Your phone shows the same Mission Control view
+
+## Related
+
+- [Mission Control →](/docs/docs/features/mission-control/) — live agent monitoring
+- [Mobile Setup →](/docs/docs/guides/mobile-setup/) — iOS and Android app setup
