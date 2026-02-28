@@ -1,17 +1,21 @@
 /**
- * SharedConversationView -- renders a shared conversation using the exact same
- * components as the web app's session detail view (compact mode).
+ * SharedConversationView -- renders a shared conversation using the same
+ * MessageTyped component as the web app (from @claude-view/shared).
  *
- * Imports from @claude-view/shared so shared links have 100% visual parity
- * with the main app, without coupling to apps/web source.
+ * Code blocks use plain-text rendering (no shiki syntax highlighting) since
+ * the share viewer is a lightweight read-only SPA. The web app injects
+ * shiki-based renderers via CodeRenderProvider for enhanced highlighting.
  */
 
-import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
-import { MessageTyped } from '@claude-view/shared/components/MessageTyped'
-import { ExpandProvider } from '@claude-view/shared/contexts/ExpandContext'
-import { ThreadHighlightProvider } from '@claude-view/shared/contexts/ThreadHighlightContext'
-import type { Message } from '@claude-view/shared/types/message'
-import { buildThreadMap, getThreadChain } from '@claude-view/shared/utils/thread-map'
+import {
+  ErrorBoundary,
+  ExpandProvider,
+  type Message,
+  MessageTyped,
+  ThreadHighlightProvider,
+  buildThreadMap,
+  getThreadChain,
+} from '@claude-view/shared'
 import { useCallback, useMemo } from 'react'
 
 interface SharedConversationViewProps {

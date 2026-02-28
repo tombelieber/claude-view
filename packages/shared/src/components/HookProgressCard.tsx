@@ -1,5 +1,5 @@
 import { GitBranch } from 'lucide-react'
-import { CompactCodeBlock } from './CompactCodeBlock'
+import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 
 interface HookProgressCardProps {
   hookEvent: string
@@ -17,6 +17,7 @@ export function HookProgressCard({
   output,
   blockId,
 }: HookProgressCardProps) {
+  const CompactCodeBlock = useCompactCodeBlock()
   const hasOutput = output !== undefined
 
   return (

@@ -2,8 +2,9 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { XmlCard, detectXmlType, extractXmlBlocks } from './XmlCard'
 
-// Mock ToolCallCard to verify it gets rendered with correct props
-vi.mock('./ToolCallCard', () => ({
+// Mock ToolCallCard to verify it gets rendered with correct props.
+// XmlCard is re-exported from @claude-view/shared, so mock the shared paths.
+vi.mock('@claude-view/shared/components/ToolCallCard', () => ({
   ToolCallCard: ({
     name,
     input,
@@ -15,8 +16,8 @@ vi.mock('./ToolCallCard', () => ({
   ),
 }))
 
-// Mock StructuredDataCard to verify it gets rendered with correct props
-vi.mock('./StructuredDataCard', () => ({
+// Mock StructuredDataCard to verify it gets rendered with correct props.
+vi.mock('@claude-view/shared/components/StructuredDataCard', () => ({
   StructuredDataCard: ({ xml, type }: { xml: string; type?: string }) => (
     <div data-testid="structured-data-card" data-type={type}>
       StructuredDataCard: {xml}

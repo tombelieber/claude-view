@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { type CodeRenderContextValue, CodeRenderProvider } from '@claude-view/shared'
+import { useEffect, useMemo } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AuthBanner } from './components/AuthBanner'
+import { CodeBlock } from './components/CodeBlock'
 import { ColdStartOverlay } from './components/ColdStartOverlay'
 import { CommandPalette } from './components/CommandPalette'
 import { Header } from './components/Header'
@@ -8,6 +10,7 @@ import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
 import { PatternAlert } from './components/PatternAlert'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
+import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSessions } from './components/live/use-live-sessions'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
@@ -35,6 +38,12 @@ export default function App() {
     audioUnlocked,
   } = useNotificationSound(liveSessions.sessions)
   const liveContext = useLiveCommandStore((s) => s.context)
+
+  // Provide shiki-based code renderers to shared components via context
+  const codeRenderValue = useMemo<CodeRenderContextValue>(
+    () => ({ CodeBlock, CompactCodeBlock }),
+    [],
+  )
 
   // Global keyboard shortcut: Cmd+K
   useEffect(() => {
@@ -77,37 +86,39 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
-      <a href="#main" className="skip-to-content">
-        Skip to content
-      </a>
-      <Header
-        soundSettings={soundSettings}
-        onSoundSettingsChange={updateSoundSettings}
-        onSoundPreview={previewSound}
-        audioUnlocked={audioUnlocked}
-      />
-      <AuthBanner />
-      <ColdStartOverlay progress={indexingProgress} />
+    <CodeRenderProvider value={codeRenderValue}>
+      <div className="h-screen flex flex-col bg-white dark:bg-gray-950">
+        <a href="#main" className="skip-to-content">
+          Skip to content
+        </a>
+        <Header
+          soundSettings={soundSettings}
+          onSoundSettingsChange={updateSoundSettings}
+          onSoundPreview={previewSound}
+          audioUnlocked={audioUnlocked}
+        />
+        <AuthBanner />
+        <ColdStartOverlay progress={indexingProgress} />
 
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar projects={summaries ?? []} collapsed={sidebarCollapsed} />
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar projects={summaries ?? []} collapsed={sidebarCollapsed} />
 
-        <main id="main" className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-          <Outlet context={{ summaries: summaries ?? [], liveSessions, indexingProgress }} />
-        </main>
+          <main id="main" className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+            <Outlet context={{ summaries: summaries ?? [], liveSessions, indexingProgress }} />
+          </main>
+        </div>
+
+        <StatusBar projects={summaries ?? []} />
+
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={closeCommandPalette}
+          projects={summaries ?? []}
+          liveContext={liveContext ?? undefined}
+        />
+
+        <PatternAlert />
       </div>
-
-      <StatusBar projects={summaries ?? []} />
-
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={closeCommandPalette}
-        projects={summaries ?? []}
-        liveContext={liveContext ?? undefined}
-      />
-
-      <PatternAlert />
-    </div>
+    </CodeRenderProvider>
   )
 }
