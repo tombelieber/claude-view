@@ -17,7 +17,7 @@ const { title, description, date, author } = Astro.props;
   articleMeta={{ publishedTime: date.toISOString(), author }}
 >
   <!-- BlogPosting structured data for GEO (Generative Engine Optimization) -->
-  <script type="application/ld+json" set:html={JSON.stringify({
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     "headline": title,

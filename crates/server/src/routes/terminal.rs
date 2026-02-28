@@ -1196,6 +1196,7 @@ mod tests {
                 pid: None,
                 title: "Test session".to_string(),
                 last_user_message: "test".to_string(),
+                last_user_file: None,
                 current_activity: "testing".to_string(),
                 turn_count: 0,
                 started_at: None,

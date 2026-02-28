@@ -50,6 +50,8 @@ struct SessionAccumulator {
     first_user_message: String,
     /// The last user message content (truncated).
     last_user_message: String,
+    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
+    last_user_file: Option<String>,
     /// Git branch name extracted from user messages.
     git_branch: Option<String>,
     /// The timestamp of the first line (session start).
@@ -96,6 +98,7 @@ impl SessionAccumulator {
             user_turn_count: 0,
             first_user_message: String::new(),
             last_user_message: String::new(),
+            last_user_file: None,
             git_branch: None,
             started_at: None,
             current_turn_started_at: None,
@@ -124,6 +127,7 @@ struct JsonlMetadata {
     pid: Option<u32>,
     title: String,
     last_user_message: String,
+    last_user_file: Option<String>,
     turn_count: u32,
     started_at: Option<i64>,
     last_activity_at: i64,
@@ -169,6 +173,7 @@ fn build_recovered_session(
         pid: Some(entry.pid),
         title: String::new(),
         last_user_message: String::new(),
+        last_user_file: None,
         current_activity: entry.agent_state.label.clone(),
         turn_count: 0,
         started_at: None,
@@ -297,6 +302,9 @@ fn apply_jsonl_metadata(
     }
     if !m.last_user_message.is_empty() {
         session.last_user_message = m.last_user_message.clone();
+    }
+    if m.last_user_file.is_some() {
+        session.last_user_file = m.last_user_file.clone();
     }
     session.turn_count = m.turn_count;
     if m.started_at.is_some() {
@@ -555,6 +563,7 @@ impl LiveSessionManager {
                                     pid: Some(entry.pid),
                                     title: acc.first_user_message.clone(),
                                     last_user_message: acc.last_user_message.clone(),
+                                    last_user_file: acc.last_user_file.clone(),
                                     turn_count: acc.user_turn_count,
                                     started_at: acc.started_at,
                                     last_activity_at: entry.last_activity_at,
@@ -1102,6 +1111,9 @@ impl LiveSessionManager {
                         acc.first_user_message = line.content_preview.clone();
                     }
                     acc.last_user_message = line.content_preview.clone();
+                    if line.ide_file.is_some() {
+                        acc.last_user_file = line.ide_file.clone();
+                    }
                 }
             }
 
@@ -1385,6 +1397,7 @@ impl LiveSessionManager {
             pid: None,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
+            last_user_file: acc.last_user_file.clone(),
             turn_count: acc.user_turn_count,
             started_at: acc.started_at,
             last_activity_at,
