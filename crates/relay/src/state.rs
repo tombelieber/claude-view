@@ -47,6 +47,8 @@ pub struct RelayState {
     pub pair_rate_limiter: Arc<RateLimiter>,
     /// Rate limiter for POST /pair/claim.
     pub claim_rate_limiter: Arc<RateLimiter>,
+    /// Rate limiter for POST /push-tokens (10 req/min per device_id).
+    pub push_rate_limiter: Arc<RateLimiter>,
     /// PostHog HTTP client (None = tracking disabled).
     pub posthog_client: Option<reqwest::Client>,
     /// PostHog API key.
@@ -58,6 +60,7 @@ impl RelayState {
         supabase_auth: Option<Arc<SupabaseAuth>>,
         pair_rate_limiter: Arc<RateLimiter>,
         claim_rate_limiter: Arc<RateLimiter>,
+        push_rate_limiter: Arc<RateLimiter>,
     ) -> Self {
         let posthog_key = std::env::var("POSTHOG_API_KEY").unwrap_or_default();
         Self {
@@ -68,6 +71,7 @@ impl RelayState {
             supabase_auth,
             pair_rate_limiter,
             claim_rate_limiter,
+            push_rate_limiter,
             posthog_client: if posthog_key.is_empty() {
                 None
             } else {

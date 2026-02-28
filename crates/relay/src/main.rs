@@ -51,23 +51,31 @@ async fn main() {
         }
     };
 
-    // Rate limiters: 5 req/min burst 5 for /pair, 10 req/min burst 10 for /pair/claim
+    // Rate limiters: 5 req/min burst 5 for /pair, 10 req/min burst 10 for /pair/claim,
+    // 10 req/min burst 10 for /push-tokens
     let pair_rl = Arc::new(RateLimiter::new(5.0 / 60.0, 5.0));
     let claim_rl = Arc::new(RateLimiter::new(10.0 / 60.0, 10.0));
+    let push_rl = Arc::new(RateLimiter::new(10.0 / 60.0, 10.0));
 
-    let state =
-        claude_view_relay::state::RelayState::new(supabase_auth, pair_rl.clone(), claim_rl.clone());
+    let state = claude_view_relay::state::RelayState::new(
+        supabase_auth,
+        pair_rl.clone(),
+        claim_rl.clone(),
+        push_rl.clone(),
+    );
     let app = claude_view_relay::app(state);
 
     // Spawn periodic rate-limiter bucket eviction (every 5 min, stale after 10 min)
     let pair_rl_clone = pair_rl.clone();
     let claim_rl_clone = claim_rl.clone();
+    let push_rl_clone = push_rl.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         loop {
             interval.tick().await;
             pair_rl_clone.evict_stale(Duration::from_secs(600)).await;
             claim_rl_clone.evict_stale(Duration::from_secs(600)).await;
+            push_rl_clone.evict_stale(Duration::from_secs(600)).await;
         }
     });
 

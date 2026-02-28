@@ -19,6 +19,11 @@ pub async fn register_push_token(
     State(state): State<RelayState>,
     Json(body): Json<RegisterToken>,
 ) -> StatusCode {
+    // Rate limit: 10 req/min per device_id
+    if !state.push_rate_limiter.check(&body.device_id).await {
+        return StatusCode::TOO_MANY_REQUESTS;
+    }
+
     // Look up registered device's verifying key
     let verifying_key = match state.devices.get(&body.device_id) {
         Some(d) => d.verifying_key,
