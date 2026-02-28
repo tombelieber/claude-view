@@ -1,8 +1,19 @@
+use std::sync::Arc;
+
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use claude_view_relay::rate_limit::RateLimiter;
 use tower::ServiceExt;
+
+fn test_state() -> claude_view_relay::state::RelayState {
+    claude_view_relay::state::RelayState::new(
+        None,
+        Arc::new(RateLimiter::new(100.0, 100.0)),
+        Arc::new(RateLimiter::new(100.0, 100.0)),
+    )
+}
 
 /// Helper to make a request to the app.
 async fn request(
@@ -31,7 +42,7 @@ async fn request(
 
 #[tokio::test]
 async fn health_check() {
-    let state = claude_view_relay::state::RelayState::new();
+    let state = test_state();
     let app = claude_view_relay::app(state);
 
     let (status, body) = request(app, "GET", "/health", None).await;
@@ -41,7 +52,7 @@ async fn health_check() {
 
 #[tokio::test]
 async fn pair_creates_offer() {
-    let state = claude_view_relay::state::RelayState::new();
+    let state = test_state();
     let app = claude_view_relay::app(state.clone());
 
     use base64::{engine::general_purpose::STANDARD, Engine};
@@ -70,7 +81,7 @@ async fn pair_creates_offer() {
 
 #[tokio::test]
 async fn claim_consumes_token() {
-    let state = claude_view_relay::state::RelayState::new();
+    let state = test_state();
 
     use base64::{engine::general_purpose::STANDARD, Engine};
     use ed25519_dalek::SigningKey;
@@ -129,7 +140,7 @@ async fn claim_consumes_token() {
 
 #[tokio::test]
 async fn claim_expired_token_returns_gone() {
-    let state = claude_view_relay::state::RelayState::new();
+    let state = test_state();
 
     // Insert an expired offer directly
     state.pairing_offers.insert(
@@ -166,7 +177,7 @@ async fn claim_expired_token_returns_gone() {
 
 #[tokio::test]
 async fn claim_nonexistent_token_returns_404() {
-    let state = claude_view_relay::state::RelayState::new();
+    let state = test_state();
     let app = claude_view_relay::app(state);
 
     use base64::{engine::general_purpose::STANDARD, Engine};
