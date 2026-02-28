@@ -49,6 +49,19 @@ export default defineConfig({
             }
           }),
         },
+        {
+          tag: 'script',
+          attrs: { type: 'application/ld+json' },
+          content: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://claude-view.dev/" },
+              { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "https://claude-view.dev/docs/" },
+              { "@type": "ListItem", "position": 3, "name": "Current Page" }
+            ]
+          }),
+        },
       ],
     }),
     sitemap(),

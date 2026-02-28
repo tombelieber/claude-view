@@ -1,0 +1,732 @@
+--- blog/introducing-claude-view.mdx ---
+
+---
+title: Introducing claude-view
+description: Monitor, orchestrate, and command your Claude Code sessions from a web dashboard or your phone.
+date: 2026-02-28
+author: claude-view team
+---
+
+Today we're launching **claude-view** — an open-source tool that brings Mission Control to your Claude Code workflows.
+
+## What it is
+
+claude-view monitors every Claude Code session on your machine in real time. It shows you what each agent is working on, how many tokens it's using, and how much it costs — all in one dashboard.
+
+Run it with one command:
+
+```bash
+npx claude-view
+```
+
+No config. No signup. Your browser opens automatically at `http://localhost:47892`.
+
+## Why we built it
+
+As we started running multiple Claude Code agents simultaneously, we lost visibility. Which agent is working on what? Is that session still running or is it waiting for input? How much have I spent today?
+
+Mission Control answers all of these questions — live.
+
+## What you get
+
+**Session browser** — every Claude Code session, past and present. Full-text search across all conversations. Filter by project, model, or date.
+
+**Live dashboard** — real-time view of all running agents. Watch token counts tick up, see which tools are being called, monitor costs as they accumulate.
+
+**Cost tracking** — per-session and aggregate costs with cache hit ratio. Know exactly where your tokens are going.
+
+**AI Fluency Score** — a 0–100 metric that measures how effectively you collaborate with AI agents. Track your progress over time.
+
+**MCP integration** — 8 read-only tools that let other AI agents query your session data. Ask Claude "what did I work on last week?" and get a real answer.
+
+## The mobile app (coming soon)
+
+The next milestone is the mobile app — native iOS and Android. Monitor your agents from your phone, receive push notifications when agents need approval, and ship features from anywhere.
+
+## Get started
+
+```bash
+npx claude-view
+```
+
+[Read the docs →](/docs/) · [GitHub →](https://github.com/anthropics/claude-view)
+
+
+--- changelog/v0.8.0.md ---
+
+---
+title: v0.8.0 — Mission Control
+date: 2026-02-28
+version: v0.8.0
+---
+
+## New features
+
+**Mission Control** — real-time dashboard for all running Claude Code agents. See status, cost, and current tool calls live.
+
+**Agent Control** — approve/reject tool calls, send messages to agents (requires cloud relay).
+
+**MCP Server** — `@claude-view/mcp` exposes 8 read-only tools for session monitoring, cost tracking, and search. Add to any Claude Code or MCP-compatible AI agent.
+
+**AI Fluency Score** — composite 0–100 metric measuring AI collaboration effectiveness.
+
+## Improvements
+
+- Full-text search now uses Tantivy for faster, more relevant results
+- Cost tracking includes cache read/write breakdown
+- Session browser shows model and git commit per session
+- Performance: ~15MB binary with sub-second startup
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- docs/docs/features/agent-control.mdx ---
+
+---
+title: Agent Control
+description: Send messages, approve tool calls, and control Claude Code agents from any device.
+---
+
+Agent Control lets you interact with running Claude Code sessions — approve tool calls, send follow-up messages, or stop runaway agents.
+
+## Prerequisites
+
+Agent Control requires the cloud relay (`claude-view-relay`). Self-hosted users can only monitor sessions; control features require a relay connection.
+
+> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). Free tier has full monitoring.
+
+## What you can do
+
+- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from any device
+- **Send messages** — inject a message into the agent's conversation
+- **Stop agent** — gracefully stop a running session
+
+## How it works
+
+The claude-view server connects to the Fly.io relay via WebSocket. Your mobile app or remote browser session authenticates via a QR code pairing flow. All traffic is end-to-end encrypted with NaCl (libsodium).
+
+## Pairing your phone
+
+1. Open claude-view on your desktop: `npx claude-view`
+2. Click **Pair Mobile** in the top right
+3. Scan the QR code with the claude-view mobile app
+4. Your phone shows the same Mission Control view
+
+## Related
+
+- [Mission Control →](/docs/docs/features/mission-control/) — live agent monitoring
+- [Mobile Setup →](/docs/docs/guides/mobile-setup/) — iOS and Android app setup
+
+
+--- docs/docs/features/ai-fluency-score.mdx ---
+
+---
+title: AI Fluency Score
+description: Measure how effectively you collaborate with Claude Code agents.
+---
+
+The AI Fluency Score (0–100) measures how effectively you work with AI coding agents. It's a composite metric derived from session patterns, not a simple token count.
+
+## What it measures
+
+The score combines multiple signals:
+- **Session efficiency** — cost per meaningful outcome (commits, files changed)
+- **Cache utilization** — how well you leverage prompt caching
+- **Session patterns** — consistent, focused sessions score higher
+- **Recovery rate** — how quickly errors are resolved
+
+## Interpreting your score
+
+| Range | Level | Description |
+|-------|-------|-------------|
+| 0–39 | Beginner | Learning to work with AI agents effectively |
+| 40–59 | Developing | Good fundamentals, room to optimize |
+| 60–79 | Proficient | Consistent, effective AI collaboration |
+| 80–100 | Expert | Highly optimized AI-first workflow |
+
+## Improving your score
+
+- **Keep sessions focused** — one task per session is more efficient than context-switching
+- **Reuse context** — start sessions from the same project to maximize cache hits
+- **Review tool calls** — unnecessary tool calls increase cost without outcomes
+
+## MCP access
+
+```bash
+# Get your current fluency score
+claude --mcp-tool get_fluency_score
+```
+
+See the [MCP Integration guide →](/docs/docs/guides/mcp-integration/) for setup.
+
+
+--- docs/docs/features/cost-tracking.mdx ---
+
+---
+title: Cost Tracking
+description: Real-time token usage and USD cost tracking for all Claude Code sessions.
+---
+
+claude-view tracks token usage and cost for every session in real time.
+
+## How costs are calculated
+
+Token counts are read from Claude Code's JSONL event log (`~/.claude/projects/`). claude-view applies Anthropic's current pricing to calculate USD costs.
+
+| Token type | Description |
+|------------|-------------|
+| Input | Tokens sent to Claude in the prompt |
+| Output | Tokens generated by Claude |
+| Cache read | Prompt cache hits (reduced cost) |
+| Cache write | Tokens stored in prompt cache |
+
+## Cache efficiency
+
+The cache hit ratio shows what percentage of input tokens were served from the prompt cache. A higher ratio means lower costs. claude-view displays this prominently because it's one of the most actionable cost metrics.
+
+## Daily / session breakdown
+
+The dashboard shows:
+- **Today's total cost** across all sessions
+- **Per-session cost** in the session browser
+- **Running total** in Mission Control (live updates)
+
+## MCP tools
+
+Access cost data programmatically via the MCP server:
+- `get_token_stats` — token usage with cache hit ratio
+- `get_live_summary` — aggregate cost and status for today
+- `get_stats` — dashboard overview with cost trends
+
+
+--- docs/docs/features/mission-control.mdx ---
+
+---
+title: Mission Control
+description: Real-time dashboard for monitoring all active Claude Code agents simultaneously.
+---
+
+Mission Control is a live view of all running Claude Code sessions. It updates in real time via WebSocket — no refresh needed.
+
+## What you see
+
+Each agent card shows:
+- **Status** — running (green), waiting for input (amber), done (gray), error (red)
+- **Current task** — the most recent tool call or message
+- **Cost** — cumulative token cost for the session
+- **Duration** — time elapsed since session start
+
+## Cost tracking
+
+Token costs update live as agents work. claude-view uses current Anthropic pricing to calculate USD costs per model. The total across all active agents is shown in the header.
+
+## Session control
+
+From Mission Control, you can:
+- **Click a session** to open the full session detail view
+- **Kill a session** — stops the Claude Code process (with confirmation)
+
+## Real-time updates
+
+Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically.
+
+## Related
+
+- [Agent Control →](/docs/docs/features/agent-control/) — send messages and approve tool calls
+- [Cost Tracking →](/docs/docs/features/cost-tracking/) — detailed token usage breakdown
+
+
+--- docs/docs/features/search.mdx ---
+
+---
+title: Search
+description: Full-text search across all Claude Code sessions.
+---
+
+claude-view includes full-text search powered by Tantivy — a Rust-native search library comparable to Lucene/Elasticsearch, but embedded directly in the claude-view binary.
+
+## What's indexed
+
+- All message content (user and assistant)
+- Tool call inputs and outputs
+- File paths referenced in sessions
+- Session metadata (project, model, date)
+
+## Using search
+
+**In the UI:** Click the search bar or press `Cmd+K` / `Ctrl+K`.
+
+**Via MCP:**
+```
+search_sessions(query: "authentication refactor", limit: 10)
+```
+
+## Search syntax
+
+Tantivy supports standard query syntax:
+- Plain text: `refactor auth module`
+- Phrase search: `"git push origin"`
+- Field filters: `project:my-app`
+
+## Performance
+
+The search index is built incrementally as sessions are added. Initial indexing of existing sessions happens at startup. Search results return in under 50ms for typical databases (thousands of sessions).
+
+
+--- docs/docs/features/session-browser.mdx ---
+
+---
+title: Session Browser
+description: Search and browse all past and active Claude Code sessions.
+---
+
+The Session Browser is the main view in claude-view. It shows a searchable, filterable list of all Claude Code sessions detected on your machine.
+
+## What's tracked
+
+For each session:
+- Project name and directory
+- Start time, end time, duration
+- Token counts (input, output, cache read, cache write)
+- Total cost (USD)
+- Model used (e.g., `claude-opus-4-5`, `claude-sonnet-4-5`)
+- Git commit (if a commit was made during the session)
+
+## Search
+
+Full-text search across all session content — tool calls, messages, file names. Uses Tantivy (Rust-native search library, similar to Lucene) for fast in-process search.
+
+Search is available via:
+- The search bar in the Session Browser
+- `Cmd+K` / `Ctrl+K` global shortcut
+- The MCP `search_sessions` tool
+
+## Filters
+
+Filter sessions by:
+- **Project** — sessions grouped by project directory
+- **Model** — filter by Claude model used
+- **Date range** — sessions from a specific period
+- **Status** — active, completed, or error sessions
+
+## Session detail
+
+Click any session to see:
+- Full conversation timeline (all messages, tool calls, results)
+- Per-message token counts
+- Tool call details (input/output)
+- Timeline of events
+
+
+--- docs/docs/guides/mcp-integration.mdx ---
+
+---
+title: MCP Integration
+description: Connect AI agents to claude-view via the Model Context Protocol (MCP). 8 tools for session monitoring, cost tracking, and agent control.
+---
+
+claude-view ships an MCP (Model Context Protocol) server that exposes 8 read-only tools over stdio. Any MCP-compatible AI agent can query your session data directly.
+
+## Prerequisites
+
+- claude-view server must be running: `npx claude-view`
+- Node.js 18+ (for `npx @claude-view/mcp`)
+
+## Setup
+
+Add to your Claude Code `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-view": {
+      "command": "npx",
+      "args": ["-y", "@claude-view/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Code. The 8 claude-view tools are now available.
+
+## Available tools
+
+| Tool | Description |
+|------|-------------|
+| `list_sessions` | Browse sessions with filters (project, model, date, status) |
+| `get_session` | Session detail with messages, tool calls, and metrics |
+| `search_sessions` | Full-text search across all conversations |
+| `get_stats` | Dashboard overview — total sessions, costs, trends |
+| `get_fluency_score` | AI Fluency Score (0–100) with breakdown |
+| `get_token_stats` | Token usage with cache hit ratio |
+| `list_live_sessions` | Currently running agents (real-time) |
+| `get_live_summary` | Aggregate cost and status for today |
+
+## Example usage
+
+```
+# In Claude Code, after adding MCP config:
+"How much have I spent on Claude Code today?"
+→ Uses get_live_summary to fetch today's aggregate cost
+
+"Find my last session about authentication"
+→ Uses search_sessions(query: "authentication")
+
+"What's my AI Fluency Score?"
+→ Uses get_fluency_score
+```
+
+## Architecture
+
+The MCP server communicates with the running claude-view HTTP server on `localhost:47892`. All data stays local — no external requests. The server must be running before the MCP client connects.
+
+## Troubleshooting
+
+**"Connection refused"** — Start the claude-view server first: `npx claude-view`
+
+**"Tool not found"** — Restart Claude Code after updating `settings.json`
+
+
+--- docs/docs/guides/mobile-setup.mdx ---
+
+---
+title: Mobile App Setup
+description: Set up the claude-view mobile app on iOS or Android.
+---
+
+The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
+
+> **Status:** The mobile app is currently in development. Sign up for early access.
+
+## Prerequisites
+
+- claude-view server running on your desktop (`npx claude-view`)
+- iOS 16+ or Android 12+
+- Same network OR cloud relay (Pro tier)
+
+## Coming soon
+
+The mobile app will include:
+- Real-time Mission Control view
+- Push notifications for agent events (tool approvals, completions)
+- Agent control (approve/reject tool calls, send messages)
+- QR code pairing — scan once, connect automatically
+
+## Pairing flow (preview)
+
+1. Install the claude-view app (App Store or Google Play)
+2. Open claude-view on desktop and click **Pair Mobile**
+3. A QR code appears — scan it with the mobile app
+4. Your phone connects securely via end-to-end encrypted relay
+
+All data in transit is encrypted with NaCl (libsodium). The relay never sees decrypted content.
+
+## Notifications
+
+The mobile app receives push notifications when:
+- An agent requests tool approval
+- A long-running session completes
+- An agent encounters an error
+
+Notification delivery requires the cloud relay (Pro tier).
+
+
+--- docs/docs/installation.mdx ---
+
+---
+title: Installation
+description: Install claude-view on macOS or Linux. Zero config — one command.
+---
+
+<script type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Install claude-view",
+  "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
+  "totalTime": "PT15S",
+  "tool": [{"@type": "HowToTool", "name": "Node.js (v18 or later)"}],
+  "step": [
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": "claude-view starts a local server and opens your browser to http://localhost:47892. You'll see all active Claude Code sessions automatically detected."}
+  ]
+})} />
+
+## Quick install
+
+```bash
+npx claude-view
+```
+
+That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| macOS | 12 (Monterey) or later |
+| Node.js | 18 or later |
+| Claude Code | Latest |
+
+> **Linux:** Supported in v2.1 (coming soon). Windows in v2.2.
+
+## What happens on first run
+
+1. `npx` downloads the pre-built `claude-view` binary for your platform
+2. The binary starts a local HTTP server on port `47892`
+3. Your default browser opens `http://localhost:47892`
+4. claude-view scans for active Claude Code processes automatically
+
+## Configuration
+
+### Change the port
+
+```bash
+CLAUDE_VIEW_PORT=8080 npx claude-view
+```
+
+Or set permanently in your shell profile:
+
+```bash
+export CLAUDE_VIEW_PORT=8080
+```
+
+If port `47892` is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
+
+### Persistent binary (faster startup)
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+Global install skips the `npx` download step on subsequent runs.
+
+## Verify it's running
+
+Open `http://localhost:47892` in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
+
+## Troubleshooting
+
+**"Port 47892 already in use"**
+Another instance is running. Kill it with `pkill claude-view` or use a different port.
+
+**"No sessions found"**
+Start a Claude Code session in another terminal: `claude`. Sessions appear within a few seconds.
+
+**Binary download fails**
+Check your Node.js version: `node --version`. Requires v18+. If behind a proxy, set `HTTPS_PROXY`.
+
+
+--- docs/docs/reference/api.mdx ---
+
+---
+title: API Reference
+description: HTTP API endpoints exposed by the claude-view server.
+---
+
+The claude-view server exposes a REST API on `http://localhost:47892/api`. All endpoints return JSON.
+
+## Sessions
+
+### `GET /api/sessions`
+
+Returns a list of sessions.
+
+**Query params:**
+- `limit` — max results (default: 50)
+- `offset` — pagination offset
+- `project` — filter by project name
+- `model` — filter by model ID
+- `status` — `active` | `completed` | `error`
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "id": "sess_01ABCDEF",
+      "project": "my-app",
+      "model": "claude-opus-4-5",
+      "status": "completed",
+      "started_at": 1740700000,
+      "ended_at": 1740701200,
+      "cost_usd": 0.42,
+      "input_tokens": 12000,
+      "output_tokens": 3000
+    }
+  ],
+  "total": 234
+}
+```
+
+### `GET /api/sessions/:id`
+
+Returns full session detail including all messages and tool calls.
+
+## Live sessions
+
+### `GET /api/live`
+
+Returns currently active (running) sessions.
+
+### `GET /api/live/summary`
+
+Returns aggregate stats for today's sessions.
+
+## Stats
+
+### `GET /api/stats`
+
+Returns dashboard overview: total sessions, costs, fluency score, trends.
+
+## Search
+
+### `GET /api/search?q=<query>`
+
+Full-text search across all session content.
+
+**Query params:**
+- `q` — search query (required)
+- `limit` — max results (default: 20)
+
+## Server-Sent Events
+
+### `GET /api/sse`
+
+Real-time event stream. Connect with `EventSource` for live updates.
+
+**Events:**
+- `session_update` — session status changed
+- `live_update` — live session data refreshed
+
+
+--- docs/docs/reference/cli-options.mdx ---
+
+---
+title: CLI Options
+description: Command-line flags and environment variables for claude-view.
+---
+
+## Usage
+
+```bash
+npx claude-view [options]
+```
+
+Or if globally installed:
+```bash
+claude-view [options]
+```
+
+## Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--port <n>` | HTTP server port | `47892` |
+| `--open` | Open browser on start | `true` |
+| `--no-open` | Disable auto-open | — |
+| `--version` | Print version and exit | — |
+| `--help` | Show help | — |
+
+## Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLAUDE_VIEW_PORT` | Override server port | `47892` |
+| `RUST_LOG` | Log level filter | `warn` |
+
+## Examples
+
+```bash
+# Use a custom port
+npx claude-view --port 8080
+
+# Disable browser auto-open (for headless/CI use)
+npx claude-view --no-open
+
+# Verbose logging
+RUST_LOG=info npx claude-view
+
+# Set port via env var
+CLAUDE_VIEW_PORT=9000 npx claude-view
+```
+
+## Port fallback
+
+If the specified port (default `47892`) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.
+
+
+--- docs/docs/reference/keyboard-shortcuts.mdx ---
+
+---
+title: Keyboard Shortcuts
+description: Keyboard shortcuts for the claude-view web dashboard.
+---
+
+## Global
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` / `Ctrl+K` | Open search |
+| `Escape` | Close dialog / clear search |
+| `?` | Show keyboard shortcuts |
+
+## Session browser
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` / `↓` | Navigate sessions |
+| `Enter` | Open selected session |
+| `F` | Toggle filters panel |
+
+## Session detail
+
+| Shortcut | Action |
+|----------|--------|
+| `←` | Back to session list |
+| `T` | Jump to timeline |
+| `Cmd+F` / `Ctrl+F` | Search within session |
+
+
+--- docs/index.mdx ---
+
+---
+title: Getting Started
+description: Install claude-view and start monitoring your Claude Code sessions in 15 seconds.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+**claude-view** is an open-source developer tool that monitors Claude Code sessions in real time. Watch token usage, costs, tool calls, and agent state — from your browser or phone.
+
+**Zero config. One command.**
+
+<Steps>
+1. **Install** — run `npx claude-view` in any terminal
+2. **Open** — your browser opens automatically at `http://localhost:47892`
+3. **Monitor** — all active Claude Code sessions appear automatically
+</Steps>
+
+## What you'll see
+
+- **Session browser** — searchable list of all past and active sessions
+- **Mission Control** — live view of running agents with real-time cost tracking
+- **Agent Control** — approve/reject tool calls, send messages (with cloud relay)
+- **AI Fluency Score** — measure how effectively you collaborate with AI
+
+## Requirements
+
+- macOS (Apple Silicon or Intel) — Linux support in v2.1
+- Node.js 18 or later (for `npx`)
+- Claude Code installed and running
+
+## Next steps
+
+- [Installation →](/docs/docs/installation/) — detailed setup, ports, and config
+- [Mission Control →](/docs/docs/features/mission-control/) — real-time agent monitoring
+- [MCP Integration →](/docs/docs/guides/mcp-integration/) — connect AI agents to claude-view

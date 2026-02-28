@@ -3,6 +3,20 @@ title: Installation
 description: Install claude-view on macOS or Linux. Zero config — one command.
 ---
 
+<script type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Install claude-view",
+  "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
+  "totalTime": "PT15S",
+  "tool": [{"@type": "HowToTool", "name": "Node.js (v18 or later)"}],
+  "step": [
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": "claude-view starts a local server and opens your browser to http://localhost:47892. You'll see all active Claude Code sessions automatically detected."}
+  ]
+})} />
+
 ## Quick install
 
 ```bash
