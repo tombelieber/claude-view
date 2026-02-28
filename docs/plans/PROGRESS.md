@@ -43,6 +43,7 @@
 
 ## Recently Completed
 
+- **Claude View Plugin** (2026-03-01): `@claude-view/plugin` Claude Code plugin — auto-starts Rust server via SessionStart hook, bundles 8 MCP tools (session/cost/fluency), adds 3 skills (`/session-recap`, `/daily-cost`, `/standup`). `packages/mcp/` demoted to private workspace. 7 commits, 14 files, shippable audit passed. Plan: [`cross-cutting/2026-03-01-claude-view-plugin-impl.md`](cross-cutting/2026-03-01-claude-view-plugin-impl.md)
 - **M1: Mobile Monitor** (2026-03-01): Expo app with QR pairing, NaCl-encrypted relay connection, OneSignal push, session dashboard with grouping, session detail sheet. 10/10 tasks verified. Plan: [`mobile/2026-02-25-clawmini-mobile-m1-impl.md`](mobile/2026-02-25-clawmini-mobile-m1-impl.md)
 - **Phase F: Agent Control** (2026-03-01): Node.js sidecar + Agent SDK IPC. DashboardChat with streaming, ResumePreFlight cost estimation, PermissionDialog with countdown auto-deny, ChatStatusBar. 20+ commits, fully wired into AppState. Plan: [`mission-control/phase-f-impl.md`](mission-control/phase-f-impl.md)
 - **OneSignal Push Migration** (2026-03-01): Replace Expo Push with OneSignal for push notifications. Relay calls OneSignal REST API (no more token storage), mobile uses OneSignal SDK with `external_user_id` targeting. 12 tasks, 9 files, shippable audit passed (SHIP IT). Plan: [`mobile/2026-03-01-onesignal-push-impl.md`](mobile/2026-03-01-onesignal-push-impl.md)
@@ -127,7 +128,7 @@ Plans are organized by area. Each area has its own `PROGRESS.md` with active/com
 | Server | [`server/PROGRESS.md`](server/PROGRESS.md) | 3 active | Rust backend — plugin/MCP, session backup |
 | Relay | [`relay/PROGRESS.md`](relay/PROGRESS.md) | 0 active | Cloud relay (changes tracked in mobile/) |
 | Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | Phase F done, E theming | Agent control shipped; E polish ongoing |
-| Cross-cutting | [`cross-cutting/PROGRESS.md`](cross-cutting/PROGRESS.md) | 0 active | Monorepo, infra, types — all completed |
+| Cross-cutting | [`cross-cutting/PROGRESS.md`](cross-cutting/PROGRESS.md) | Plugin done | Monorepo, infra, types, plugin |
 | Backlog | [`backlog/`](backlog/) | 25 deferred | Epics, marketplace, future work |
 | Archived | [`archived/`](archived/) | — | Pre-monorepo era completed plans |
 
@@ -138,14 +139,35 @@ See `mobile/PROGRESS.md` for M1 phase details.
 
 ---
 
-## Deferred / Pre-Launch Checklist
+## L1 Prerequisites (Blockers — Human Setup Required)
 
-Items removed during monorepo cleanup that need attention before specific milestones:
+All code is shipped. These are cloud console + CLI steps requiring your accounts.
+
+| # | Prerequisite | Blocker For | Checklist |
+|---|-------------|-------------|-----------|
+| 1 | **Supabase project** — create project, enable auth, configure OAuth | Auth, sharing, relay JWT | [Deployment checklist D1-D5](cross-cutting/2026-02-28-deployment-checklist.md) |
+| 2 | **Cloudflare share worker** — R2 bucket, D1 database, deploy worker | Conversation sharing | [Deployment checklist D6-D14](cross-cutting/2026-02-28-deployment-checklist.md) |
+| 3 | **Fly.io relay secrets** — Supabase URL, Sentry, PostHog | Relay JWT auth | [Deployment checklist D15-D16](cross-cutting/2026-02-28-deployment-checklist.md) |
+| 4 | **OneSignal account** — create app, upload APNs .p8 key | Push notifications | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
+| 5 | **OneSignal env vars** — `flyctl secrets set ONESIGNAL_APP_ID + REST_API_KEY` | Push notifications | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
+| 6 | **EAS project init** — `cd apps/mobile && eas init` | Mobile builds | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
+| 7 | **Apple Developer account** — needed for TestFlight + push entitlement | App Store submission | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
+| 8 | **Mobile app icons** — replace 1x1 placeholders in `apps/mobile/assets/` | App Store submission | Currently gitignored |
+| 9 | **Privacy policy URL** | App Store submission | Required by Apple |
+
+**Do in order:** #1 → #2-3 (parallel) → #4-7 (parallel) → #8-9 (before submission)
+
+**Checklists:**
+- Infra setup: [`cross-cutting/2026-02-28-deployment-checklist.md`](cross-cutting/2026-02-28-deployment-checklist.md)
+- Mobile E2E: [`mobile/2026-02-28-m1-e2e-checklist.md`](mobile/2026-02-28-m1-e2e-checklist.md)
+
+---
+
+## Deferred / Non-Blocking
 
 | Item | When Needed | Notes |
 |------|-------------|-------|
 | `apple-app-site-association` | Before mobile app Universal Links | Needs real Apple Team ID; removed placeholder with `TEAMID` |
-| Mobile app icons (`apps/mobile/assets/images/`) | Before mobile app store submission | Currently gitignored (1x1 placeholders); replace with real icons |
 | `package-lock.json` | Only if npm workspace support needed | Removed — npm can't resolve `workspace:*` protocol; Bun is the dev tool |
 
 ---
