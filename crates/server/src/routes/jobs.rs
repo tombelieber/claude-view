@@ -97,6 +97,8 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            jwks: None,
+            share: None,
         });
 
         let app = Router::new()

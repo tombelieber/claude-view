@@ -1171,6 +1171,8 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            jwks: None,
+            share: None,
         });
 
         // Register the session in the live sessions map
@@ -1352,6 +1354,8 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            jwks: None,
+            share: None,
         });
 
         let (addr, server_handle) = start_test_server(state).await;
