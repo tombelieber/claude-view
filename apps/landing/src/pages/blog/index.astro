@@ -1,0 +1,26 @@
+---
+import { getCollection } from 'astro:content';
+import MarketingLayout from '../../layouts/MarketingLayout.astro';
+
+const posts = (await getCollection('blog')).sort((a, b) =>
+  new Date(b.data.date).getTime() - new Date(a.data.date).getTime()
+);
+---
+<MarketingLayout title="Blog">
+  <section class="mx-auto max-w-3xl px-6 py-16">
+    <h1 class="font-heading text-4xl font-bold mb-12">Blog</h1>
+    <div class="space-y-8">
+      {posts.map(post => (
+        <a href={`/blog/${post.id.replace(/\.(mdx?|md)$/, '')}/`} class="block group cursor-pointer">
+          <article class="border-b border-slate-800 pb-8">
+            <time class="text-sm text-slate-500" datetime={post.data.date.toISOString()}>
+              {post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </time>
+            <h2 class="font-heading text-xl font-semibold mt-2 group-hover:text-cta transition-colors">{post.data.title}</h2>
+            <p class="text-slate-400 mt-2">{post.data.description}</p>
+          </article>
+        </a>
+      ))}
+    </div>
+  </section>
+</MarketingLayout>
