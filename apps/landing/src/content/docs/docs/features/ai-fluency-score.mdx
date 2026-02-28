@@ -30,9 +30,9 @@ The score combines multiple signals:
 
 ## MCP access
 
-```bash
-# Get your current fluency score
-claude --mcp-tool get_fluency_score
-```
+After [configuring the MCP server](/docs/guides/mcp-integration/), ask Claude Code directly:
 
-See the [MCP Integration guide →](/docs/guides/mcp-integration/) for setup.
+```
+"What's my AI Fluency Score?"
+→ Uses get_fluency_score tool automatically
+```
