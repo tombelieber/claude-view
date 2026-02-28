@@ -69,7 +69,7 @@ const breadcrumbJsonLd = JSON.stringify({
   <meta name="twitter:image" content={ogImage} />
 
   <!-- Schema.org SoftwareApplication -->
-  <script type="application/ld+json" set:html={JSON.stringify({
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "claude-view",
@@ -80,7 +80,7 @@ const breadcrumbJsonLd = JSON.stringify({
   })} />
 
   <!-- Schema.org BreadcrumbList -->
-  <script type="application/ld+json" set:html={breadcrumbJsonLd} />
+  <script is:inline type="application/ld+json" set:html={breadcrumbJsonLd} />
 
   <!-- Google Fonts preconnect -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
