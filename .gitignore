@@ -15,6 +15,10 @@ claude-view.db-*
 .env
 .env.local
 .env.*.local
+.dev.vars
+
+# Wrangler local state (D1, KV, R2 local dev)
+.wrangler/
 
 # Local data directory (sandbox/dev)
 .data/
