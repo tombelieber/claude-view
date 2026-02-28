@@ -1,23 +1,40 @@
+import {
+  type CodeRenderContextValue,
+  CodeRenderProvider,
+} from '@claude-view/shared/contexts/CodeRenderContext'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { BashProgressCard } from './BashProgressCard'
 
-vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({
-    code,
-    language,
-    blockId,
-  }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
-      {code}
-    </pre>
-  ),
-}))
+const MockCompactCodeBlock = ({
+  code,
+  language,
+  blockId,
+}: { code: string; language: string; blockId?: string }) => (
+  <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+    {code}
+  </pre>
+)
+
+const MockCodeBlock = ({ code, language }: { code: string; language?: string | null }) => (
+  <pre data-testid="code-block" data-language={language}>
+    {code}
+  </pre>
+)
+
+const mockCodeRender: CodeRenderContextValue = {
+  CodeBlock: MockCodeBlock as any,
+  CompactCodeBlock: MockCompactCodeBlock as any,
+}
+
+function renderWithCodeContext(ui: React.ReactElement) {
+  return render(<CodeRenderProvider value={mockCodeRender}>{ui}</CodeRenderProvider>)
+}
 
 describe('BashProgressCard', () => {
   describe('Status rendering', () => {
     it('should display exit code and duration', () => {
-      render(
+      renderWithCodeContext(
         <BashProgressCard
           command="npm test"
           output="All tests passed"
@@ -31,14 +48,16 @@ describe('BashProgressCard', () => {
     })
 
     it('should show green styling for exit code 0', () => {
-      const { container } = render(<BashProgressCard command="ls" exitCode={0} />)
+      const { container } = renderWithCodeContext(<BashProgressCard command="ls" exitCode={0} />)
 
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toContain('border-l-green')
     })
 
     it('should show red styling for non-zero exit code', () => {
-      const { container } = render(<BashProgressCard command="bad-cmd" exitCode={1} />)
+      const { container } = renderWithCodeContext(
+        <BashProgressCard command="bad-cmd" exitCode={1} />,
+      )
 
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toContain('border-l-red')
@@ -47,7 +66,7 @@ describe('BashProgressCard', () => {
 
   describe('Command rendering', () => {
     it('should render command via CompactCodeBlock with bash language', () => {
-      render(<BashProgressCard command="npm test" exitCode={0} />)
+      renderWithCodeContext(<BashProgressCard command="npm test" exitCode={0} />)
 
       const codeBlocks = screen.getAllByTestId('compact-code-block')
       const cmdBlock = codeBlocks[0]
@@ -58,7 +77,7 @@ describe('BashProgressCard', () => {
 
   describe('Output rendering', () => {
     it('should show output immediately without expand click', () => {
-      render(
+      renderWithCodeContext(
         <BashProgressCard
           command="npm test"
           output="All tests passed\n5 tests, 0 failures"
@@ -70,7 +89,7 @@ describe('BashProgressCard', () => {
     })
 
     it('should render output via CompactCodeBlock with bash language', () => {
-      render(<BashProgressCard command="echo hello" output="hello" exitCode={0} />)
+      renderWithCodeContext(<BashProgressCard command="echo hello" output="hello" exitCode={0} />)
 
       const codeBlocks = screen.getAllByTestId('compact-code-block')
       // First is command, second is output
@@ -80,13 +99,13 @@ describe('BashProgressCard', () => {
     })
 
     it('should show "No output" when output is empty string', () => {
-      render(<BashProgressCard command="touch file.txt" output="" exitCode={0} />)
+      renderWithCodeContext(<BashProgressCard command="touch file.txt" output="" exitCode={0} />)
 
       expect(screen.getByText('No output')).toBeInTheDocument()
     })
 
     it('should only render command code block when output is undefined', () => {
-      render(<BashProgressCard command="running..." />)
+      renderWithCodeContext(<BashProgressCard command="running..." />)
 
       const codeBlocks = screen.getAllByTestId('compact-code-block')
       expect(codeBlocks).toHaveLength(1)
@@ -96,19 +115,19 @@ describe('BashProgressCard', () => {
 
   describe('Edge cases', () => {
     it('should not show exit status when exitCode is undefined', () => {
-      render(<BashProgressCard command="running..." />)
+      renderWithCodeContext(<BashProgressCard command="running..." />)
 
       expect(screen.queryByText(/exit/)).not.toBeInTheDocument()
     })
 
     it('should not show duration when undefined', () => {
-      render(<BashProgressCard command="ls" exitCode={0} />)
+      renderWithCodeContext(<BashProgressCard command="ls" exitCode={0} />)
 
       expect(screen.queryByText(/ms/)).not.toBeInTheDocument()
     })
 
     it('should render with only command prop', () => {
-      const { container } = render(<BashProgressCard command="echo hello" />)
+      const { container } = renderWithCodeContext(<BashProgressCard command="echo hello" />)
       expect(container).toBeInTheDocument()
       expect(screen.getByText('echo hello')).toBeInTheDocument()
     })

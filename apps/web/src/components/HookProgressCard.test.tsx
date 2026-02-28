@@ -1,23 +1,40 @@
+import {
+  type CodeRenderContextValue,
+  CodeRenderProvider,
+} from '@claude-view/shared/contexts/CodeRenderContext'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { HookProgressCard } from './HookProgressCard'
 
-vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({
-    code,
-    language,
-    blockId,
-  }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
-      {code}
-    </pre>
-  ),
-}))
+const MockCompactCodeBlock = ({
+  code,
+  language,
+  blockId,
+}: { code: string; language: string; blockId?: string }) => (
+  <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+    {code}
+  </pre>
+)
+
+const MockCodeBlock = ({ code, language }: { code: string; language?: string | null }) => (
+  <pre data-testid="code-block" data-language={language}>
+    {code}
+  </pre>
+)
+
+const mockCodeRender: CodeRenderContextValue = {
+  CodeBlock: MockCodeBlock as any,
+  CompactCodeBlock: MockCompactCodeBlock as any,
+}
+
+function renderWithCodeContext(ui: React.ReactElement) {
+  return render(<CodeRenderProvider value={mockCodeRender}>{ui}</CodeRenderProvider>)
+}
 
 describe('HookProgressCard', () => {
   describe('Title and status rendering', () => {
     it('should display hook event and command name', () => {
-      render(
+      renderWithCodeContext(
         <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup-env.sh" />,
       )
 
@@ -26,7 +43,7 @@ describe('HookProgressCard', () => {
     })
 
     it('should have amber left border', () => {
-      const { container } = render(
+      const { container } = renderWithCodeContext(
         <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
       )
 
@@ -37,7 +54,7 @@ describe('HookProgressCard', () => {
 
   describe('Output rendering', () => {
     it('should show output immediately via CompactCodeBlock', () => {
-      render(
+      renderWithCodeContext(
         <HookProgressCard
           hookEvent="SessionStart"
           hookName="pre-session"
@@ -50,7 +67,7 @@ describe('HookProgressCard', () => {
     })
 
     it('should render output via CompactCodeBlock with bash language', () => {
-      render(
+      renderWithCodeContext(
         <HookProgressCard
           hookEvent="SessionStart"
           hookName="pre-session"
@@ -65,7 +82,7 @@ describe('HookProgressCard', () => {
     })
 
     it('should not render code block when output is undefined', () => {
-      render(
+      renderWithCodeContext(
         <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup.sh" />,
       )
 
@@ -75,7 +92,7 @@ describe('HookProgressCard', () => {
 
   describe('Accessibility', () => {
     it('should have aria-hidden on decorative icon', () => {
-      const { container } = render(
+      const { container } = renderWithCodeContext(
         <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
       )
       const svg = container.querySelector('svg')

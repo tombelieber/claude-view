@@ -2,8 +2,9 @@ import { Check, Copy } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 interface CodeBlockProps {
-  code: string
-  language?: string | null
+  code: string | null | undefined
+  language?: string | null | undefined
+  blockId?: string
 }
 
 const COLLAPSE_THRESHOLD = 25
@@ -12,21 +13,22 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
 
-  const lines = code.split('\n')
+  const safeCode = code || ''
+  const lines = safeCode.split('\n')
   const shouldCollapse = lines.length > COLLAPSE_THRESHOLD
   const displayCode =
-    shouldCollapse && !isExpanded ? lines.slice(0, COLLAPSE_THRESHOLD).join('\n') : code
+    shouldCollapse && !isExpanded ? lines.slice(0, COLLAPSE_THRESHOLD).join('\n') : safeCode
   const remainingLines = lines.length - COLLAPSE_THRESHOLD
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(code)
+      await navigator.clipboard.writeText(safeCode)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
       // Clipboard API may not be available in all contexts
     }
-  }, [code])
+  }, [safeCode])
 
   return (
     <div className="relative my-3 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">

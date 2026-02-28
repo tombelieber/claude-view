@@ -1,6 +1,6 @@
 import { Terminal } from 'lucide-react'
+import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 import { cn } from '../utils/cn'
-import { CompactCodeBlock } from './CompactCodeBlock'
 
 interface BashProgressCardProps {
   command: string
@@ -17,6 +17,7 @@ export function BashProgressCard({
   duration,
   blockId,
 }: BashProgressCardProps) {
+  const CompactCodeBlock = useCompactCodeBlock()
   const isSuccess = exitCode === 0
   const hasExitCode = exitCode !== undefined
   const borderColor = !hasExitCode

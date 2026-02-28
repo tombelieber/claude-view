@@ -24,10 +24,10 @@ import { useCallback, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
+import { useCodeBlock } from '../contexts/CodeRenderContext'
 import { useThreadHighlight } from '../contexts/ThreadHighlightContext'
 import type { Message } from '../types/message'
 import { cn } from '../utils/cn'
-import { CodeBlock } from './CodeBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 import { XmlCard, extractXmlBlocks } from './XmlCard'
 
@@ -55,6 +55,8 @@ import { SessionSummaryCard } from './SessionSummaryCard'
 const MAX_INDENT_LEVEL = 5
 /** Pixels per indent level (desktop) */
 const INDENT_PX = 12
+/** Regex to extract language from markdown code block class names */
+const LANG_PATTERN = /language-(\w+)/
 
 interface MessageTypedProps {
   message: Message
@@ -393,6 +395,7 @@ export function MessageTyped({
   onGetThreadChain,
   showThinking = true,
 }: MessageTypedProps) {
+  const CodeBlock = useCodeBlock()
   const type = messageType as keyof typeof TYPE_CONFIG
   const config = TYPE_CONFIG[type]
   const Icon = config.icon
@@ -434,12 +437,77 @@ export function MessageTyped({
   // Memoize content processing to avoid re-running XML extraction on every render
   const contentSegments = useMemo(() => processContent(message.content), [message.content])
 
+  // Memoize ReactMarkdown components to prevent full subtree re-mount on every render.
+  // react-markdown re-mounts when the components object reference changes.
+  const markdownComponents = useMemo(
+    () => ({
+      code({ className, children, ...props }: any) {
+        const langMatch = LANG_PATTERN.exec(className || '')
+        const isInline = !langMatch && !String(children).includes('\n')
+
+        if (isInline) {
+          return (
+            <code
+              className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono"
+              {...props}
+            >
+              {children}
+            </code>
+          )
+        }
+
+        return <CodeBlock code={String(children).replace(/\n$/, '')} language={langMatch?.[1]} />
+      },
+      pre({ children }: any) {
+        return <>{children}</>
+      },
+      p({ children }: any) {
+        return <p className="mb-2 last:mb-0">{children}</p>
+      },
+      ul({ children }: any) {
+        return <ul className="list-disc pl-4 mb-2">{children}</ul>
+      },
+      ol({ children }: any) {
+        return <ol className="list-decimal pl-4 mb-2">{children}</ol>
+      },
+      li({ children }: any) {
+        return <li className="mb-1">{children}</li>
+      },
+      a({ href, children }: any) {
+        return (
+          <a
+            href={href}
+            className="text-blue-500 hover:text-blue-700 underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {children}
+          </a>
+        )
+      },
+      blockquote({ children }: any) {
+        return (
+          <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-2">
+            {children}
+          </blockquote>
+        )
+      },
+      h1({ children }: any) {
+        return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
+      },
+      h2({ children }: any) {
+        return <h2 className="text-base font-bold mt-2 mb-2">{children}</h2>
+      },
+      h3({ children }: any) {
+        return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
+      },
+    }),
+    [CodeBlock],
+  )
+
   if ((type === 'system' || type === 'progress') && !message.content && !message.thinking) {
     if (!metadata || Object.keys(metadata).length === 0) return null
   }
-
-  // Extract language from code block class name
-  const langPattern = /language-(\w+)/
 
   return (
     <div
@@ -526,75 +594,7 @@ export function MessageTyped({
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeRaw]}
-                      components={{
-                        code: (() => {
-                          return ({ className, children, ...props }: any) => {
-                            const langMatch = langPattern.exec(className || '')
-                            const isInline = !langMatch && !String(children).includes('\n')
-
-                            if (isInline) {
-                              return (
-                                <code
-                                  className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono"
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              )
-                            }
-
-                            return (
-                              <CodeBlock
-                                code={String(children).replace(/\n$/, '')}
-                                language={langMatch?.[1]}
-                              />
-                            )
-                          }
-                        })(),
-                        pre({ children }) {
-                          return <>{children}</>
-                        },
-                        p({ children }) {
-                          return <p className="mb-2 last:mb-0">{children}</p>
-                        },
-                        ul({ children }) {
-                          return <ul className="list-disc pl-4 mb-2">{children}</ul>
-                        },
-                        ol({ children }) {
-                          return <ol className="list-decimal pl-4 mb-2">{children}</ol>
-                        },
-                        li({ children }) {
-                          return <li className="mb-1">{children}</li>
-                        },
-                        a({ href, children }) {
-                          return (
-                            <a
-                              href={href}
-                              className="text-blue-500 hover:text-blue-700 underline"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {children}
-                            </a>
-                          )
-                        },
-                        blockquote({ children }) {
-                          return (
-                            <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-2">
-                              {children}
-                            </blockquote>
-                          )
-                        },
-                        h1({ children }) {
-                          return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
-                        },
-                        h2({ children }) {
-                          return <h2 className="text-base font-bold mt-2 mb-2">{children}</h2>
-                        },
-                        h3({ children }) {
-                          return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
-                        },
-                      }}
+                      components={markdownComponents}
                     >
                       {segment.content}
                     </ReactMarkdown>

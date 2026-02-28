@@ -1,60 +1,61 @@
+import type { Message as MessageType } from '@claude-view/shared'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Message as MessageType } from '../hooks/use-session'
 import { MessageTyped } from './MessageTyped'
 
-// Mock all card components so we can verify dispatch without needing their internals
-vi.mock('./TurnDurationCard', () => ({
+// Mock all card components so we can verify dispatch without needing their internals.
+// These mock the shared package paths since MessageTyped is now imported from @claude-view/shared.
+vi.mock('@claude-view/shared/components/TurnDurationCard', () => ({
   TurnDurationCard: (props: any) => (
     <div data-testid="turn-duration-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./ApiErrorCard', () => ({
+vi.mock('@claude-view/shared/components/ApiErrorCard', () => ({
   ApiErrorCard: (props: any) => (
     <div data-testid="api-error-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./CompactBoundaryCard', () => ({
+vi.mock('@claude-view/shared/components/CompactBoundaryCard', () => ({
   CompactBoundaryCard: (props: any) => (
     <div data-testid="compact-boundary-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./HookSummaryCard', () => ({
+vi.mock('@claude-view/shared/components/HookSummaryCard', () => ({
   HookSummaryCard: (props: any) => (
     <div data-testid="hook-summary-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./LocalCommandEventCard', () => ({
+vi.mock('@claude-view/shared/components/LocalCommandEventCard', () => ({
   LocalCommandEventCard: (props: any) => (
     <div data-testid="local-command-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./AgentProgressCard', () => ({
+vi.mock('@claude-view/shared/components/AgentProgressCard', () => ({
   AgentProgressCard: (props: any) => (
     <div data-testid="agent-progress-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./BashProgressCard', () => ({
+vi.mock('@claude-view/shared/components/BashProgressCard', () => ({
   BashProgressCard: (props: any) => (
     <div data-testid="bash-progress-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./HookProgressCard', () => ({
+vi.mock('@claude-view/shared/components/HookProgressCard', () => ({
   HookProgressCard: (props: any) => (
     <div data-testid="hook-progress-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./McpProgressCard', () => ({
+vi.mock('@claude-view/shared/components/McpProgressCard', () => ({
   McpProgressCard: (props: any) => (
     <div data-testid="mcp-progress-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./TaskQueueCard', () => ({
+vi.mock('@claude-view/shared/components/TaskQueueCard', () => ({
   TaskQueueCard: (props: any) => (
     <div data-testid="task-queue-card" data-props={JSON.stringify(props)} />
   ),
 }))
-vi.mock('./live/action-log/HookEventRow', () => ({
+vi.mock('@claude-view/shared/components/HookEventRow', () => ({
   HookEventRow: (props: any) => (
     <div data-testid="hook-event-row" data-event={JSON.stringify(props.event)} />
   ),
