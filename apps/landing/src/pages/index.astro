@@ -8,9 +8,10 @@ import PhoneMockup from '../components/PhoneMockup.astro';
 import PricingCards from '../components/PricingCards.astro';
 import GitHubStars from '../components/GitHubStars.astro';
 import AppStoreBadges from '../components/AppStoreBadges.astro';
+import { GITHUB_REPO, MCP_TOOL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data/site';
 ---
 <MarketingLayout title="Mission Control for AI Coding Agents">
-<script is:inline>
+<script is:inline define:vars={{ deepLinkScheme: DEEP_LINK_SCHEME }}>
   // Deep link handler: if opened with ?k=...&t=..., redirect to app
   // Security: only forward whitelisted params (k, t) to prevent parameter injection
   (function() {
@@ -19,7 +20,7 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
       var safe = new URLSearchParams();
       safe.set('k', params.get('k'));
       safe.set('t', params.get('t'));
-      window.location.href = 'claude-view://pair?' + safe.toString();
+      window.location.href = deepLinkScheme + '://pair?' + safe.toString();
     }
   })();
 </script>
@@ -40,14 +41,14 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
 
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
         <InstallCommand />
-        <GitHubStars repo="anthropics/claude-view" />
+        <GitHubStars repo={GITHUB_REPO} />
       </div>
 
       <!-- MCP integrations row -->
       <p class="text-sm text-slate-500 mb-12">
         Works with Claude Code via
-        <a href="/docs/guides/mcp-integration/" class="text-green-400 hover:text-green-300 transition-colors">MCP — 8 tools</a>
-        for monitoring, cost tracking, and agent control.
+        <a href="/docs/guides/mcp-integration/" class="text-green-400 hover:text-green-300 transition-colors">MCP — {MCP_TOOL_COUNT} tools</a>
+        for monitoring, cost tracking, and session insights.
       </p>
 
       <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -81,6 +82,7 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
 <FeatureSection
   title="Approve. Reject. Resume. From anywhere."
   description="Full agent control from any device. Review tool calls, approve changes, or kill a runaway session — all without leaving your browser."
+  badge="Coming Soon"
   reverse
 >
   <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 space-y-3">
@@ -94,8 +96,9 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
 </FeatureSection>
 
 <FeatureSection
-  title="I shipped a feature from my phone."
+  title="Ship features from your phone."
   description="Native mobile app connects to your agents via cloud relay. Monitor, approve, and control from the couch, the train, or the beach."
+  badge="Coming Soon"
 >
   <PhoneMockup />
   <div class="mt-6">
@@ -111,12 +114,12 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
   <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-center">
     <div class="text-5xl font-bold text-green-400 mb-2">87</div>
     <div class="text-sm text-slate-400">AI Fluency Score</div>
-    <div class="mt-4 flex justify-center gap-1">
+    <div class="mt-4 flex items-end justify-center gap-1">
+      <div class="w-2 h-6 bg-slate-700 rounded-sm"></div>
       <div class="w-2 h-8 bg-slate-700 rounded-sm"></div>
-      <div class="w-2 h-12 bg-slate-600 rounded-sm"></div>
       <div class="w-2 h-10 bg-slate-600 rounded-sm"></div>
+      <div class="w-2 h-13 bg-slate-600 rounded-sm"></div>
       <div class="w-2 h-16 bg-green-500 rounded-sm"></div>
-      <div class="w-2 h-14 bg-green-500 rounded-sm"></div>
       <div class="w-2 h-20 bg-green-400 rounded-sm"></div>
     </div>
   </div>
@@ -128,7 +131,7 @@ import AppStoreBadges from '../components/AppStoreBadges.astro';
     <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Get started in 10 seconds</h2>
     <p class="text-lg text-slate-400 mb-8">No signup. No config. Just run one command.</p>
     <InstallCommand />
-    <p class="text-sm text-slate-500 mt-4">Requires Node.js 18+. Works on macOS and Linux.</p>
+    <p class="text-sm text-slate-500 mt-4">Requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
   </div>
 </section>
 

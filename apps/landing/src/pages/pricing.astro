@@ -1,6 +1,7 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import PricingCards from '../components/PricingCards.astro';
+import { PRICING, PLATFORM } from '../data/site';
 ---
 
 <MarketingLayout title="Pricing" description="Simple, transparent pricing. Free forever for local use.">
@@ -22,7 +23,7 @@ import PricingCards from '../components/PricingCards.astro';
         "name": "What does the Pro plan include?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The Pro plan ($19/mo, coming soon) adds cloud relay access, the mobile app for iOS and Android, and remote agent control from any device."
+          "text": `The Pro plan (${PRICING.pro.price}${PRICING.pro.period}, coming soon) adds cloud relay access, the mobile app for iOS and Android, and remote agent control from any device.`
         }
       },
       {
@@ -30,7 +31,7 @@ import PricingCards from '../components/PricingCards.astro';
         "name": "How do I install claude-view?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run npx claude-view in your terminal. Requires Node.js 18+. Works on macOS and Linux. No global install needed."
+          "text": `Run npx claude-view in your terminal. Requires Node.js ${PLATFORM.nodeMin}+. Works on ${PLATFORM.current}. Linux support coming in ${PLATFORM.linuxVersion}. No global install needed.`
         }
       },
       {
