@@ -155,7 +155,9 @@ async fn handle_socket(socket: WebSocket, state: RelayState) {
         if msg_count > MSG_RATE_LIMIT {
             warn!(device_id = %device_id, "WS message rate limit exceeded");
             sentry::capture_message("WS message rate limit exceeded", sentry::Level::Warning);
-            // Notify client via the forwarding channel before disconnecting
+            // Send the error via conn.tx (not directly to sink) because forward_task owns the
+            // sink exclusively. After break, connections.remove() drops our tx clone, which
+            // closes rx, causing forward_task to exit after delivering this final message.
             if let Some(conn) = state.connections.get(&device_id) {
                 let _ = conn
                     .tx
