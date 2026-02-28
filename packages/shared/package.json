@@ -6,11 +6,24 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    "./components/*": "./src/components/*.tsx",
+    "./contexts/*": "./src/contexts/*.tsx",
+    "./utils/*": "./src/utils/*.ts",
+    "./types/message": "./src/types/message/index.ts",
+    "./types/generated": "./src/types/generated/index.ts",
+    "./types/*": "./src/types/*.ts",
+    "./*": "./src/*"
   },
   "dependencies": {
     "@claude-view/design-tokens": "workspace:*",
     "@noble/hashes": "^2.0.1",
+    "clsx": "^2.1.1",
+    "dompurify": "^3.3.1",
+    "lucide-react": "^0.575.0",
+    "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.5.0",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
   },
