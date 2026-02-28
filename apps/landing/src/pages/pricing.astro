@@ -1,0 +1,54 @@
+---
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import PricingCards from '../components/PricingCards.astro';
+---
+
+<MarketingLayout title="Pricing" description="Simple, transparent pricing. Free forever for local use.">
+  <!-- FAQPage structured data for GEO -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is claude-view free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. claude-view is free and open source for local use. Just run npx claude-view. No signup, no API key, no config."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does the Pro plan include?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The Pro plan ($19/mo, coming soon) adds cloud relay access, the mobile app for iOS and Android, and remote agent control from any device."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I install claude-view?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Run npx claude-view in your terminal. Requires Node.js 18+. Works on macOS and Linux. No global install needed."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I monitor multiple Claude Code sessions?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. claude-view automatically discovers all active Claude Code sessions on your machine and shows them in a single dashboard with real-time cost tracking."
+        }
+      }
+    ]
+  })} />
+
+  <section class="py-24 px-6">
+    <div class="max-w-6xl mx-auto text-center">
+      <h1 class="text-4xl md:text-5xl font-bold text-white mb-4">Simple, transparent pricing</h1>
+      <p class="text-lg text-slate-400 mb-16">Free forever for local use. Pay only for cloud features.</p>
+      <PricingCards />
+    </div>
+  </section>
+</MarketingLayout>
