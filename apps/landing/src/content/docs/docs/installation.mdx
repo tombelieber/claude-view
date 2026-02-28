@@ -1,0 +1,69 @@
+---
+title: Installation
+description: Install claude-view on macOS or Linux. Zero config — one command.
+---
+
+## Quick install
+
+```bash
+npx claude-view
+```
+
+That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+
+## Requirements
+
+| Requirement | Version |
+|-------------|---------|
+| macOS | 12 (Monterey) or later |
+| Node.js | 18 or later |
+| Claude Code | Latest |
+
+> **Linux:** Supported in v2.1 (coming soon). Windows in v2.2.
+
+## What happens on first run
+
+1. `npx` downloads the pre-built `claude-view` binary for your platform
+2. The binary starts a local HTTP server on port `47892`
+3. Your default browser opens `http://localhost:47892`
+4. claude-view scans for active Claude Code processes automatically
+
+## Configuration
+
+### Change the port
+
+```bash
+CLAUDE_VIEW_PORT=8080 npx claude-view
+```
+
+Or set permanently in your shell profile:
+
+```bash
+export CLAUDE_VIEW_PORT=8080
+```
+
+If port `47892` is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
+
+### Persistent binary (faster startup)
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+Global install skips the `npx` download step on subsequent runs.
+
+## Verify it's running
+
+Open `http://localhost:47892` in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
+
+## Troubleshooting
+
+**"Port 47892 already in use"**
+Another instance is running. Kill it with `pkill claude-view` or use a different port.
+
+**"No sessions found"**
+Start a Claude Code session in another terminal: `claude`. Sessions appear within a few seconds.
+
+**Binary download fails**
+Check your Node.js version: `node --version`. Requires v18+. If behind a proxy, set `HTTPS_PROXY`.

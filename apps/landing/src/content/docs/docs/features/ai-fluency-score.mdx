@@ -1,0 +1,38 @@
+---
+title: AI Fluency Score
+description: Measure how effectively you collaborate with Claude Code agents.
+---
+
+The AI Fluency Score (0–100) measures how effectively you work with AI coding agents. It's a composite metric derived from session patterns, not a simple token count.
+
+## What it measures
+
+The score combines multiple signals:
+- **Session efficiency** — cost per meaningful outcome (commits, files changed)
+- **Cache utilization** — how well you leverage prompt caching
+- **Session patterns** — consistent, focused sessions score higher
+- **Recovery rate** — how quickly errors are resolved
+
+## Interpreting your score
+
+| Range | Level | Description |
+|-------|-------|-------------|
+| 0–39 | Beginner | Learning to work with AI agents effectively |
+| 40–59 | Developing | Good fundamentals, room to optimize |
+| 60–79 | Proficient | Consistent, effective AI collaboration |
+| 80–100 | Expert | Highly optimized AI-first workflow |
+
+## Improving your score
+
+- **Keep sessions focused** — one task per session is more efficient than context-switching
+- **Reuse context** — start sessions from the same project to maximize cache hits
+- **Review tool calls** — unnecessary tool calls increase cost without outcomes
+
+## MCP access
+
+```bash
+# Get your current fluency score
+claude --mcp-tool get_fluency_score
+```
+
+See the [MCP Integration guide →](/docs/docs/guides/mcp-integration/) for setup.

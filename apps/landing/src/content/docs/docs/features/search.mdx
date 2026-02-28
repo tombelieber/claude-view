@@ -1,0 +1,33 @@
+---
+title: Search
+description: Full-text search across all Claude Code sessions.
+---
+
+claude-view includes full-text search powered by Tantivy — a Rust-native search library comparable to Lucene/Elasticsearch, but embedded directly in the claude-view binary.
+
+## What's indexed
+
+- All message content (user and assistant)
+- Tool call inputs and outputs
+- File paths referenced in sessions
+- Session metadata (project, model, date)
+
+## Using search
+
+**In the UI:** Click the search bar or press `Cmd+K` / `Ctrl+K`.
+
+**Via MCP:**
+```
+search_sessions(query: "authentication refactor", limit: 10)
+```
+
+## Search syntax
+
+Tantivy supports standard query syntax:
+- Plain text: `refactor auth module`
+- Phrase search: `"git push origin"`
+- Field filters: `project:my-app`
+
+## Performance
+
+The search index is built incrementally as sessions are added. Initial indexing of existing sessions happens at startup. Search results return in under 50ms for typical databases (thousands of sessions).
