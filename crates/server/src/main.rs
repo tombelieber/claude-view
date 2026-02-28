@@ -561,7 +561,8 @@ async fn main() -> Result<()> {
         // Touch the lock file
         let _ = std::fs::write(&lock_path, b"");
 
-        if should_open {
+        // Only open browser if not suppressed (hook starts set CLAUDE_VIEW_NO_OPEN=1)
+        if should_open && std::env::var("CLAUDE_VIEW_NO_OPEN").unwrap_or_default() != "1" {
             if let Err(e) = open::that(&browse_url) {
                 tracing::debug!("Could not open browser: {e}");
             }
