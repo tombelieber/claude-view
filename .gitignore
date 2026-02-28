@@ -91,3 +91,9 @@ __pycache__/
 # Auto-generated claude-mem files
 **/CLAUDE.md
 .playwright-mcp/
+
+# Astro build artifacts (apps/landing)
+apps/landing/.astro/
+
+# Allow landing page images (overrides root *.png ignore)
+!apps/landing/public/*.png
