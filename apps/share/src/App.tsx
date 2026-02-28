@@ -1,5 +1,8 @@
+import type { ParsedSession } from '@claude-view/shared/types/message'
 import * as Sentry from '@sentry/react'
+import posthog from 'posthog-js'
 import { useEffect, useState } from 'react'
+import { SharedConversationView } from './SharedConversationView'
 import { decryptShareBlob } from './crypto'
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://claude-view-share.workers.dev'
@@ -9,12 +12,18 @@ Sentry.init({
   enabled: import.meta.env.PROD,
 })
 
+if (import.meta.env.PROD && import.meta.env.VITE_POSTHOG_KEY) {
+  posthog.init(import.meta.env.VITE_POSTHOG_KEY, {
+    api_host: 'https://us.i.posthog.com',
+  })
+}
+
 export default function App() {
   const token = window.location.pathname.split('/s/')[1]?.split('#')[0]
   const hash = window.location.hash.slice(1)
   const keyBase64url = new URLSearchParams(hash).get('k')
 
-  const [session, setSession] = useState<unknown>(null)
+  const [session, setSession] = useState<ParsedSession | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -42,14 +51,10 @@ export default function App() {
       })
       .then((blob) => decryptShareBlob(blob, keyBase64url))
       .then((data) => {
-        setSession(data)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostHog snippet loaded externally
-        const win = window as unknown as Record<string, any>
-        if (typeof win.posthog?.capture === 'function') {
-          win.posthog.capture('share_decrypt_success', {
-            duration_ms: Date.now() - start,
-          })
-        }
+        setSession(data as ParsedSession)
+        posthog.capture('share_decrypt_success', {
+          duration_ms: Date.now() - start,
+        })
       })
       .catch((err: unknown) => {
         Sentry.captureException(err)
@@ -102,11 +107,7 @@ export default function App() {
         </a>
       </header>
       <main className="max-w-4xl mx-auto py-8 px-4">
-        {/* Phase 4 MVP: raw JSON preview. Follow-up task: render session.messages
-            using extracted components from @web (shared via @claude-view/shared). */}
-        <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-auto">
-          {JSON.stringify(session, null, 2).slice(0, 2000)}
-        </pre>
+        {session && <SharedConversationView messages={session.messages} />}
       </main>
     </div>
   )
