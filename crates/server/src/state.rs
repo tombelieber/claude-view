@@ -1,6 +1,7 @@
 // crates/server/src/state.rs
 //! Application state for the Axum server.
 
+use crate::auth::supabase::JwksCache;
 use crate::classify_state::ClassifyState;
 use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
@@ -18,6 +19,14 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::broadcast;
+
+/// Configuration for the conversation sharing feature.
+/// Only populated when SHARE_WORKER_URL and SHARE_VIEWER_URL are set.
+pub struct ShareConfig {
+    pub worker_url: String,
+    pub viewer_url: String,
+    pub http_client: reqwest::Client,
+}
 
 /// Type alias for the shared registry holder.
 ///
@@ -82,6 +91,12 @@ pub struct AppState {
     /// Node.js sidecar manager for Phase F interactive control.
     /// Lazy-started on first `/api/control/*` request.
     pub sidecar: Arc<SidecarManager>,
+    /// Supabase JWKS cache for JWT validation (sharing feature).
+    /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
+    pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
+    /// Sharing configuration (Worker URL, viewer URL, HTTP client).
+    /// `None` when SHARE_WORKER_URL / SHARE_VIEWER_URL are not set.
+    pub share: Option<ShareConfig>,
 }
 
 impl AppState {
@@ -116,6 +131,8 @@ impl AppState {
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
         })
     }
 
@@ -149,6 +166,8 @@ impl AppState {
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
         })
     }
 
@@ -185,6 +204,8 @@ impl AppState {
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
         })
     }
 
