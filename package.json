@@ -36,7 +36,7 @@
     "release:bump": "node -e \"const v=process.argv[1]; const fs=require('fs'); const p=JSON.parse(fs.readFileSync('npx-cli/package.json','utf8')); p.version=v; fs.writeFileSync('npx-cli/package.json', JSON.stringify(p,null,2)+'\\n'); console.log('npx-cli/package.json -> '+v);\"",
     "release:tag": "node -e \"const v=require('./npx-cli/package.json').version; require('child_process').execFileSync('git',['tag','v'+v],{stdio:'inherit'}); console.log('Tagged v'+v);\"",
     "release:push": "git push && git push --tags",
-    "postinstall": "cd sidecar && bun install",
+    "postinstall": "cd sidecar && bun install && cd ../infra/share-worker && bun install",
     "prepare": "node -e \"if(require('fs').statSync('.git').isFile())process.exit(0);require('child_process').execFileSync('lefthook',['install'],{stdio:'inherit'});\""
   },
   "devDependencies": {
