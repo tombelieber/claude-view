@@ -1,0 +1,36 @@
+{
+  "name": "@claude-view/plugin",
+  "version": "0.8.0",
+  "description": "Claude Code plugin for claude-view — auto-starts web dashboard, provides session/cost/fluency tools and skills",
+  "private": false,
+  "type": "module",
+  "files": [".claude-plugin/", ".mcp.json", "skills/", "hooks/", "dist/", "README.md"],
+  "scripts": {
+    "build": "node scripts/bundle-mcp.mjs",
+    "prepublishOnly": "node scripts/bundle-mcp.mjs",
+    "typecheck": "echo 'no TS in plugin'",
+    "lint": "echo 'markdown + json only'",
+    "test": "node scripts/bundle-mcp.mjs && bash scripts/validate-plugin.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.24"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "claude-view",
+    "mission-control",
+    "session-analytics",
+    "cost-tracking"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tombelieber/claude-view",
+    "directory": "packages/plugin"
+  },
+  "license": "MIT"
+}
