@@ -1,89 +1,132 @@
 use axum::{extract::State, http::StatusCode, Json};
-use base64::engine::{general_purpose::STANDARD, Engine};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use crate::auth::{verify_auth, AuthMessage};
 use crate::state::RelayState;
 
 #[derive(Deserialize)]
-pub struct RegisterToken {
+pub struct RegisterPushTokenRequest {
     pub device_id: String,
-    pub token: String,
-    /// Ed25519 signature — same auth scheme as WS connections.
-    pub timestamp: u64,
-    pub signature: String,
+    pub onesignal_player_id: String,
 }
 
+#[derive(Serialize)]
+pub struct RegisterPushTokenResponse {
+    pub ok: bool,
+}
+
+/// POST /push-tokens — Register a OneSignal push token for a device.
+///
+/// Rate limited to 10 requests/min per device_id.
 pub async fn register_push_token(
     State(state): State<RelayState>,
-    Json(body): Json<RegisterToken>,
-) -> StatusCode {
-    // Rate limit: 10 req/min per device_id
-    if !state.push_rate_limiter.check(&body.device_id).await {
-        return StatusCode::TOO_MANY_REQUESTS;
+    Json(req): Json<RegisterPushTokenRequest>,
+) -> Result<Json<RegisterPushTokenResponse>, StatusCode> {
+    // Validate the device_id is non-empty before using it as a rate-limiter key
+    if req.device_id.is_empty() || req.onesignal_player_id.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Look up registered device's verifying key
-    let verifying_key = match state.devices.get(&body.device_id) {
-        Some(d) => d.verifying_key,
-        None => return StatusCode::UNAUTHORIZED,
-    };
-
-    let sig_bytes = match STANDARD.decode(&body.signature) {
-        Ok(b) => b,
-        Err(_) => return StatusCode::BAD_REQUEST,
-    };
-
-    // Construct AuthMessage manually — signature field is Vec<u8> (base64
-    // deserialization is only used when going through serde JSON path).
-    let auth_msg = AuthMessage {
-        msg_type: "auth".to_string(),
-        device_id: body.device_id.clone(),
-        timestamp: body.timestamp,
-        signature: sig_bytes,
-    };
-
-    if !verify_auth(&auth_msg, &verifying_key) {
-        return StatusCode::UNAUTHORIZED;
+    // Rate limiting: 10 req/min per device_id (key is now guaranteed non-empty)
+    if !state.push_rate_limiter.check(&req.device_id).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    state.push_tokens.insert(body.device_id, body.token);
-    StatusCode::OK
-}
+    let (app_id, api_key, client) = match (
+        &state.onesignal_app_id,
+        &state.onesignal_api_key,
+        &state.onesignal_client,
+    ) {
+        (Some(a), Some(k), Some(c)) => (a.clone(), k.clone(), c.clone()),
+        _ => {
+            // OneSignal not configured — accept silently (no-op)
+            return Ok(Json(RegisterPushTokenResponse { ok: true }));
+        }
+    };
 
-/// Send a push notification to all registered Expo push tokens.
-pub async fn send_push_notification(state: &RelayState, title: &str, body: &str) {
-    let tokens: Vec<String> = state
-        .push_tokens
-        .iter()
-        .map(|entry| entry.value().clone())
-        .collect();
+    // Link the OneSignal player to this device_id via the external_user_id alias
+    let url = format!(
+        "https://api.onesignal.com/apps/{app_id}/users/by/onesignal_id/{player_id}",
+        app_id = app_id,
+        player_id = req.onesignal_player_id
+    );
+    let payload = serde_json::json!({
+        "identity": { "external_id": req.device_id }
+    });
 
-    if tokens.is_empty() {
-        return;
-    }
-
-    let client = reqwest::Client::new();
-    let messages: Vec<serde_json::Value> = tokens
-        .into_iter()
-        .map(|token| {
-            serde_json::json!({
-                "to": token,
-                "title": title,
-                "body": body,
-                "sound": "default",
-            })
-        })
-        .collect();
-
-    if let Err(e) = client
-        .post("https://exp.host/--/api/v2/push/send")
-        .json(&messages)
+    match client
+        .patch(&url)
+        .header("Authorization", format!("Basic {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
         .send()
         .await
     {
-        warn!("failed to send push notification: {e}");
+        Ok(resp) if !resp.status().is_success() => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            warn!("OneSignal token registration failed ({status}): {body}");
+            // Still return ok=true — the relay accepted the request. OneSignal
+            // errors are non-fatal; the device can retry on the next app launch.
+        }
+        Err(e) => {
+            warn!("OneSignal token registration request error: {e}");
+        }
+        _ => {} // success
+    }
+
+    Ok(Json(RegisterPushTokenResponse { ok: true }))
+}
+
+/// Send a push notification via OneSignal REST API.
+///
+/// If `target_device_id` is Some, targets that specific device (by external_user_id).
+/// If None, sends to all subscribed users.
+pub async fn send_push_notification(
+    state: &RelayState,
+    title: &str,
+    body: &str,
+    target_device_id: Option<&str>,
+) {
+    let (app_id, api_key, client) = match (
+        &state.onesignal_app_id,
+        &state.onesignal_api_key,
+        &state.onesignal_client,
+    ) {
+        (Some(a), Some(k), Some(c)) => (a.as_str(), k.as_str(), c.clone()),
+        _ => return, // OneSignal not configured — skip silently
+    };
+
+    let mut payload = serde_json::json!({
+        "app_id": app_id,
+        "headings": { "en": title },
+        "contents": { "en": body },
+    });
+
+    if let Some(did) = target_device_id {
+        payload["include_aliases"] = serde_json::json!({ "external_id": [did] });
+        payload["target_channel"] = serde_json::json!("push");
+    } else {
+        payload["included_segments"] = serde_json::json!(["Subscribed Users"]);
+    }
+
+    match client
+        .post("https://api.onesignal.com/api/v1/notifications")
+        .header("Authorization", format!("Basic {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) if !resp.status().is_success() => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            warn!("OneSignal push failed ({status}): {body}");
+        }
+        Err(e) => {
+            warn!("OneSignal push request error: {e}");
+        }
+        _ => {} // success
     }
 
     // PostHog: track push notification sent

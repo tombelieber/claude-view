@@ -186,8 +186,10 @@ async fn handle_socket(socket: WebSocket, state: RelayState) {
                             let state = state.clone();
                             let title = title.to_string();
                             let hint = hint.clone();
+                            let target = envelope.to.clone();
                             tokio::spawn(async move {
-                                push::send_push_notification(&state, &title, &hint).await;
+                                push::send_push_notification(&state, &title, &hint, Some(&target))
+                                    .await;
                             });
                         }
                     } else {
