@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "verbatimModuleSyntax": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/__tests__"]
+}
