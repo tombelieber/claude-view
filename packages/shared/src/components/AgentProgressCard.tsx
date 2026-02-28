@@ -8,8 +8,8 @@
 
 import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 import { cn } from '../utils/cn'
-import { CompactCodeBlock } from './CompactCodeBlock'
 
 interface TokenCount {
   input?: number
@@ -39,6 +39,7 @@ export function AgentProgressCard({
   blockId,
   verboseMode,
 }: AgentProgressCardProps) {
+  const CompactCodeBlock = useCompactCodeBlock()
   const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) : undefined

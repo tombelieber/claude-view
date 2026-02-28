@@ -1,23 +1,40 @@
+import {
+  type CodeRenderContextValue,
+  CodeRenderProvider,
+} from '@claude-view/shared/contexts/CodeRenderContext'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { McpProgressCard } from './McpProgressCard'
 
-vi.mock('./live/CompactCodeBlock', () => ({
-  CompactCodeBlock: ({
-    code,
-    language,
-    blockId,
-  }: { code: string; language: string; blockId?: string }) => (
-    <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
-      {code}
-    </pre>
-  ),
-}))
+const MockCompactCodeBlock = ({
+  code,
+  language,
+  blockId,
+}: { code: string; language: string; blockId?: string }) => (
+  <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
+    {code}
+  </pre>
+)
+
+const MockCodeBlock = ({ code, language }: { code: string; language?: string | null }) => (
+  <pre data-testid="code-block" data-language={language}>
+    {code}
+  </pre>
+)
+
+const mockCodeRender: CodeRenderContextValue = {
+  CodeBlock: MockCodeBlock as any,
+  CompactCodeBlock: MockCompactCodeBlock as any,
+}
+
+function renderWithCodeContext(ui: React.ReactElement) {
+  return render(<CodeRenderProvider value={mockCodeRender}>{ui}</CodeRenderProvider>)
+}
 
 describe('McpProgressCard', () => {
   describe('Title and status rendering', () => {
     it('should display server.method with params', () => {
-      render(
+      renderWithCodeContext(
         <McpProgressCard
           server="filesystem"
           method="readFile"
@@ -29,13 +46,13 @@ describe('McpProgressCard', () => {
     })
 
     it('should show "(no params)" when params is undefined', () => {
-      render(<McpProgressCard server="memory" method="search" />)
+      renderWithCodeContext(<McpProgressCard server="memory" method="search" />)
 
       expect(screen.getByText(/\(no params\)/)).toBeInTheDocument()
     })
 
     it('should have purple left border', () => {
-      const { container } = render(<McpProgressCard server="fs" method="read" />)
+      const { container } = renderWithCodeContext(<McpProgressCard server="fs" method="read" />)
 
       const card = container.firstElementChild as HTMLElement
       expect(card.className).toContain('border-l-purple')
@@ -44,7 +61,7 @@ describe('McpProgressCard', () => {
 
   describe('Collapsible behavior', () => {
     it('should expand to show result on click', () => {
-      render(
+      renderWithCodeContext(
         <McpProgressCard
           server="filesystem"
           method="readFile"
@@ -59,7 +76,9 @@ describe('McpProgressCard', () => {
     })
 
     it('should show params in expanded view', () => {
-      render(<McpProgressCard server="fs" method="read" params={{ path: '/tmp/test.txt' }} />)
+      renderWithCodeContext(
+        <McpProgressCard server="fs" method="read" params={{ path: '/tmp/test.txt' }} />,
+      )
 
       fireEvent.click(screen.getByRole('button'))
 
@@ -69,7 +88,7 @@ describe('McpProgressCard', () => {
 
   describe('ARIA and keyboard', () => {
     it('should have ARIA label', () => {
-      render(<McpProgressCard server="fs" method="read" />)
+      renderWithCodeContext(<McpProgressCard server="fs" method="read" />)
       expect(screen.getByRole('button', { name: /mcp/i })).toBeInTheDocument()
     })
   })
