@@ -1,0 +1,99 @@
+---
+/**
+ * CSS-only 3D phone mockup with animated notification badges.
+ * No JavaScript — pure CSS perspective + keyframe animations.
+ */
+---
+
+<div class="phone-mockup" role="img" aria-label="Mobile app showing agent notifications">
+  <div class="phone-frame">
+    <div class="phone-notch"></div>
+    <div class="phone-screen">
+      <!-- Notification badges -->
+      <div class="notification notification-1">
+        <span class="notification-dot bg-green-400"></span>
+        <span class="text-xs text-slate-300">Agent completed task</span>
+      </div>
+      <div class="notification notification-2">
+        <span class="notification-dot bg-yellow-400"></span>
+        <span class="text-xs text-slate-300">Awaiting approval</span>
+      </div>
+      <div class="notification notification-3">
+        <span class="notification-dot bg-blue-400"></span>
+        <span class="text-xs text-slate-300">3 agents active</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .phone-mockup {
+    perspective: 1000px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .phone-frame {
+    width: 240px;
+    height: 480px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border-radius: 36px;
+    border: 2px solid #334155;
+    padding: 12px;
+    transform: rotateY(-8deg) rotateX(2deg);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  .phone-notch {
+    width: 80px;
+    height: 24px;
+    background: #0f172a;
+    border-radius: 0 0 16px 16px;
+    margin: 0 auto 16px;
+  }
+
+  .phone-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px;
+  }
+
+  .notification {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 12px;
+    border: 1px solid #334155;
+    opacity: 0;
+    animation: slide-in 0.5s ease forwards;
+  }
+
+  .notification-1 { animation-delay: 0.5s; }
+  .notification-2 { animation-delay: 1.2s; }
+  .notification-3 { animation-delay: 1.9s; }
+
+  .notification-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .notification {
+      opacity: 1;
+      animation: none;
+    }
+    .phone-frame {
+      transform: none;
+    }
+  }
+</style>
