@@ -1,9 +1,12 @@
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   Copy,
   Download,
   FileX,
+  Link2,
+  Loader2,
   MessageSquare,
   PanelRight,
   Terminal,
@@ -20,6 +23,7 @@ import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useSessionMessages } from '../hooks/use-session-messages'
+import { useCreateShare } from '../hooks/use-share'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
 import {
   type ExportMetadata,
@@ -41,6 +45,7 @@ import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
 import { MessageTyped } from './MessageTyped'
 import { SessionMetricsBar } from './SessionMetricsBar'
+import { SignInPrompt } from './SignInPrompt'
 import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
@@ -105,6 +110,25 @@ export function ConversationView() {
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
   const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
+
+  // Share state
+  const createShare = useCreateShare()
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [showSignIn, setShowSignIn] = useState(false)
+
+  const handleShare = async () => {
+    if (!sessionId) return
+    try {
+      const result = await createShare.mutateAsync(sessionId)
+      setShareUrl(result.url)
+      await navigator.clipboard.writeText(result.url)
+      showToast('Share link copied to clipboard')
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
+        setShowSignIn(true)
+      }
+    }
+  }
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
   const backUrl = useMemo(() => {
@@ -532,6 +556,24 @@ export function ConversationView() {
             <PanelRight className="w-4 h-4" />
           </button>
 
+          {/* Share button */}
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={createShare.isPending}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors disabled:opacity-50"
+            title={shareUrl ? 'Link copied!' : 'Share conversation'}
+          >
+            {createShare.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : shareUrl ? (
+              <Check className="w-4 h-4 text-green-500" />
+            ) : (
+              <Link2 className="w-4 h-4" />
+            )}
+            {shareUrl ? 'Copied!' : 'Share'}
+          </button>
+
           {/* Continue / Resume dropdown */}
           <div className="relative" ref={resumeMenuRef}>
             <button
@@ -725,6 +767,31 @@ export function ConversationView() {
           <SessionDetailPanel panelData={panelData} onClose={() => setPanelOpen(false)} inline />
         )}
       </div>
+
+      {/* Sign-in modal (shown on 401 from share endpoint) */}
+      {showSignIn && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+          onClick={() => setShowSignIn(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowSignIn(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={() => {}}
+            role="document"
+          >
+            <SignInPrompt
+              onSignedIn={() => {
+                setShowSignIn(false)
+                handleShare()
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
