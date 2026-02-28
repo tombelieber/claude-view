@@ -12,6 +12,7 @@ fn test_state() -> claude_view_relay::state::RelayState {
         None,
         Arc::new(RateLimiter::new(100.0, 100.0)),
         Arc::new(RateLimiter::new(100.0, 100.0)),
+        Arc::new(RateLimiter::new(100.0, 100.0)),
     )
 }
 
