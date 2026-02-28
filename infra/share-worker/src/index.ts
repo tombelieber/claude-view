@@ -166,17 +166,41 @@ async function handleCreateShare(request: Request, env: Env): Promise<Response> 
 }
 
 async function handleUploadBlob(token: string, request: Request, env: Env): Promise<Response> {
+  // Supabase JWT auth — ensures only the token creator can upload
+  const user = await requireAuth(request, env.SUPABASE_URL)
+
+  // Rate limit: shared budget with create (10/hour per user_id)
+  const rl = await checkRateLimit(
+    env.DB,
+    `${user.userId}:create`,
+    RATE_LIMITS.create.limit,
+    RATE_LIMITS.create.windowSecs,
+  )
+  if (!rl.allowed) {
+    return jsonResponse(
+      {
+        error: 'Rate limit exceeded',
+        retry_after: rl.resetAt - Math.floor(Date.now() / 1000),
+      },
+      429,
+      { 'Retry-After': String(rl.resetAt - Math.floor(Date.now() / 1000)) },
+    )
+  }
+
   const contentLength = Number.parseInt(request.headers.get('Content-Length') || '0')
   if (contentLength > MAX_BLOB_BYTES) {
     return jsonResponse({ error: 'Blob too large (max 50MB)' }, 413)
   }
 
-  const row = await env.DB.prepare('SELECT status FROM shares WHERE token = ?')
+  const row = await env.DB.prepare('SELECT status, user_id FROM shares WHERE token = ?')
     .bind(token)
-    .first<{ status: string }>()
+    .first<{ status: string; user_id: string }>()
 
   if (!row) return jsonResponse({ error: 'Token not found' }, 404)
   if (row.status !== 'pending') return jsonResponse({ error: 'Share already uploaded' }, 409)
+
+  // Verify the authenticated user owns this token
+  if (row.user_id !== user.userId) return jsonResponse({ error: 'Forbidden' }, 403)
 
   const body = await request.arrayBuffer()
   if (body.byteLength > MAX_BLOB_BYTES) {
