@@ -1,7 +1,7 @@
 # Claude View Plugin — Design Doc
 
 **Date:** 2026-03-01
-**Status:** Approved
+**Status:** Done (implemented 2026-03-01)
 **Scope:** New `packages/plugin/` workspace; demote `packages/mcp/` to private
 
 ---

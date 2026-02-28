@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-03-01 (Phase F done, Chat Input unblocked)
+> **Last updated:** 2026-03-01 (Plugin shipped, Phase F done)
 
 ---
 
@@ -177,6 +177,8 @@ All code is shipped. These are cloud console + CLI steps requiring your accounts
 - **Compiles:** Yes (cargo check + `bun run build` pass)
 - **Backend tests:** 1177 (core 652 + server 525, 2 pre-existing failures unrelated)
 - **Frontend tests:** 1117 (vitest, 74 files, 0 failures)
+- **MCP tests:** 24 pass (6 files, 69 assertions)
+- **Plugin validation:** 13/13 checks pass (files, JSON, executable)
 - **TypeScript:** 0 errors (`tsc --noEmit`)
 - **Clippy:** 1 cosmetic warning (SidecarManager Default derive)
 - **Last verified:** 2026-03-01 on branch `worktree-monorepo-expo`
