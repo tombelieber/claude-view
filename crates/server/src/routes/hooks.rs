@@ -138,6 +138,7 @@ async fn handle_hook(
                     .as_ref()
                     .map(|p| p.chars().take(500).collect())
                     .unwrap_or_default(),
+                last_user_file: None,
                 current_activity: agent_state.label.clone(),
                 turn_count: 0,
                 started_at: None,
@@ -213,6 +214,7 @@ async fn handle_hook(
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
+                    last_user_file: None,
                     current_activity: agent_state.label.clone(),
                     turn_count: 0,
                     started_at: Some(now),
@@ -887,6 +889,7 @@ mod tests {
             pid: None,
             title: "Test session".into(),
             last_user_message: String::new(),
+            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 5,
             started_at: Some(1000),

@@ -103,6 +103,8 @@ pub struct LiveSession {
     pub title: String,
     /// The last user message text (truncated for display).
     pub last_user_message: String,
+    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
+    pub last_user_file: Option<String>,
     /// Human-readable description of the current activity.
     pub current_activity: String,
     /// Number of user/assistant turn pairs.
