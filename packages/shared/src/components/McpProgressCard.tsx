@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Plug } from 'lucide-react'
 import { useState } from 'react'
-import { CompactCodeBlock } from './CompactCodeBlock'
+import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 
 interface McpProgressCardProps {
   server: string
@@ -19,6 +19,7 @@ export function McpProgressCard({
   blockId,
   verboseMode,
 }: McpProgressCardProps) {
+  const CompactCodeBlock = useCompactCodeBlock()
   const [expanded, setExpanded] = useState(verboseMode ?? false)
 
   const paramsLabel = params ? '' : ' (no params)'
