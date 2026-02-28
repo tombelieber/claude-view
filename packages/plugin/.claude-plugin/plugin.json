@@ -1,0 +1,20 @@
+{
+  "name": "claude-view",
+  "description": "Mission Control for Claude Code — auto-starts a web dashboard, provides session/cost/fluency tools, and adds /session-recap, /daily-cost, /standup skills.",
+  "version": "0.8.0",
+  "author": {
+    "name": "tombelieber",
+    "email": "nicholasgee1997@gmail.com"
+  },
+  "homepage": "https://github.com/tombelieber/claude-view",
+  "repository": "https://github.com/tombelieber/claude-view",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "mission-control",
+    "session-analytics",
+    "cost-tracking",
+    "fluency-score",
+    "dashboard"
+  ]
+}
