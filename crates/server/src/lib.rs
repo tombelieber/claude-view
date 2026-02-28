@@ -4,6 +4,7 @@
 //! This crate provides the Axum-based HTTP server for the claude-view application.
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
+pub mod auth;
 pub mod backfill;
 pub mod classify_state;
 pub mod crypto;
@@ -30,7 +31,7 @@ pub use live::state::SessionEvent;
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use sidecar::SidecarManager;
-pub use state::{AppState, RegistryHolder, SearchIndexHolder};
+pub use state::{AppState, RegistryHolder, SearchIndexHolder, ShareConfig};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -130,6 +131,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
+        jwks: None,
+        share: None,
     });
     api_routes(state)
 }
@@ -147,6 +150,8 @@ pub fn create_app_full(
     shutdown: tokio::sync::watch::Receiver<bool>,
     static_dir: Option<PathBuf>,
     sidecar: Arc<sidecar::SidecarManager>,
+    jwks: Option<Arc<tokio::sync::RwLock<auth::supabase::JwksCache>>>,
+    share: Option<state::ShareConfig>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
@@ -189,6 +194,8 @@ pub fn create_app_full(
         shutdown,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         sidecar,
+        jwks,
+        share,
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
