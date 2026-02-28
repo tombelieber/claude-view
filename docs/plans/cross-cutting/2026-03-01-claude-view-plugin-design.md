@@ -65,16 +65,16 @@ packages/plugin/                    # @claude-view/plugin
   .claude-plugin/
     plugin.json                     # Manifest: name, version, description
   skills/
-    session-recap.md                # /session-recap — summarize a session
-    daily-cost.md                   # /daily-cost — today's spend + live sessions
-    standup.md                      # /standup — multi-session work log
+    session-recap/SKILL.md          # /session-recap — summarize a session
+    daily-cost/SKILL.md             # /daily-cost — today's spend + live sessions
+    standup/SKILL.md                # /standup — multi-session work log
   hooks/
     hooks.json                      # SessionStart → start-server.sh
     start-server.sh                 # Health check + background spawn
-  .mcp.json                         # MCP config → ${__dirname}/dist/mcp-server.js
+  .mcp.json                         # MCP config → ${CLAUDE_PLUGIN_ROOT}/dist/index.js
   dist/
-    mcp-server.js                   # Bundled from packages/mcp at build time
-  package.json                      # deps: { "@claude-view/mcp": "workspace:*" }
+    index.js                        # Bundled from packages/mcp/dist at build time
+  package.json                      # deps: @modelcontextprotocol/sdk, zod
   README.md
 
 packages/mcp/                       # @claude-view/mcp (PRIVATE)
@@ -97,13 +97,22 @@ packages/mcp/                       # @claude-view/mcp (PRIVATE)
 
 **`hooks.json`:**
 ```json
-[
-  {
-    "event": "SessionStart",
-    "type": "command",
-    "command": "${__dirname}/hooks/start-server.sh"
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/start-server.sh",
+            "async": false
+          }
+        ]
+      }
+    ]
   }
-]
+}
 ```
 
 **`start-server.sh` logic:**
@@ -127,7 +136,7 @@ packages/mcp/                       # @claude-view/mcp (PRIVATE)
     "claude-view": {
       "type": "stdio",
       "command": "node",
-      "args": ["${__dirname}/dist/mcp-server.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
     }
   }
 }
@@ -190,7 +199,7 @@ packages/mcp (build)  →  packages/plugin (build)
 
 **`packages/plugin/` build script:**
 1. `tsc` (if any TS in plugin — likely not needed for v1)
-2. Copy `packages/mcp/dist/index.js` → `packages/plugin/dist/mcp-server.js`
+2. Copy `packages/mcp/dist/*` → `packages/plugin/dist/` (preserves internal imports)
 3. Ensure `hooks/start-server.sh` is executable
 
 **npm publish:** Only `packages/plugin/` publishes. `files` in package.json:
@@ -231,7 +240,7 @@ packages/mcp (build)  →  packages/plugin (build)
 
 - **Rust server must be installed:** `npx claude-view` must work (downloads pre-built binary). The plugin hook calls this.
 - **Port 47892:** Default, overridable via `CLAUDE_VIEW_PORT`. Both hook and MCP client respect this.
-- **Node.js >= 16:** Required for the MCP server (bundled JS).
+- **Node.js >= 18:** Required for the MCP server (bundled JS).
 - **Claude Code:** This plugin is Claude Code-only. Codex support is planned for a future release.
 
 ## Not In Scope (v1)
