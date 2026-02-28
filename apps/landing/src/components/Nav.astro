@@ -1,0 +1,80 @@
+---
+// Sticky nav with blur backdrop, appears on scroll
+---
+<nav
+  class="fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-all duration-300"
+  id="site-nav"
+>
+  <div class="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+    <a href="/" class="font-heading text-xl font-bold text-slate-50 hover:text-cta transition-colors cursor-pointer">
+      claude-view
+    </a>
+    <div class="hidden md:flex items-center gap-8">
+      <a href="/#features" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Features</a>
+      <a href="/docs/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Blog</a>
+      <a
+        href="https://github.com/anthropics/claude-view"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer flex items-center gap-1"
+      >
+        GitHub
+      </a>
+    </div>
+    <!-- Mobile hamburger -->
+    <button
+      class="md:hidden text-slate-400 hover:text-slate-50 cursor-pointer"
+      aria-label="Toggle menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      id="mobile-menu-btn"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12h18M3 6h18M3 18h18" />
+      </svg>
+    </button>
+  </div>
+  <!-- Mobile menu -->
+  <div class="md:hidden hidden border-t border-slate-700 bg-slate-900/95 backdrop-blur-md" id="mobile-menu">
+    <div class="px-6 py-4 flex flex-col gap-4">
+      <a href="/#features" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Features</a>
+      <a href="/docs/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Blog</a>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // Blur backdrop on scroll
+  const nav = document.getElementById('site-nav');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 50) {
+      nav?.classList.add('bg-slate-900/80', 'backdrop-blur-md', 'border-slate-700');
+      nav?.classList.remove('border-transparent');
+    } else {
+      nav?.classList.remove('bg-slate-900/80', 'backdrop-blur-md', 'border-slate-700');
+      nav?.classList.add('border-transparent');
+    }
+  });
+
+  // Mobile menu toggle
+  const btn = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+  btn?.addEventListener('click', () => {
+    menu?.classList.toggle('hidden');
+    const isOpen = !menu?.classList.contains('hidden');
+    btn?.setAttribute('aria-expanded', String(isOpen));
+  });
+
+  // Close mobile menu on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu?.classList.contains('hidden')) {
+      menu?.classList.add('hidden');
+      btn?.setAttribute('aria-expanded', 'false');
+      btn?.focus();
+    }
+  });
+</script>

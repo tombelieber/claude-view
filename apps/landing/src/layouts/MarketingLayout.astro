@@ -1,0 +1,116 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  ogType?: string;
+  articleMeta?: { publishedTime?: string; author?: string };
+}
+
+const {
+  title,
+  description = 'Mission Control for AI coding agents',
+  ogImage = '/og-image.png',
+  ogType = 'website',
+  articleMeta,
+} = Astro.props;
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+
+// BreadcrumbList JSON-LD — built in frontmatter to avoid TS in set:html
+const pathParts = Astro.url.pathname.replace(/\/$/, '').split('/').filter(Boolean);
+const breadcrumbItems: Array<Record<string, unknown>> = [
+  { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://claude-view.dev/" },
+];
+pathParts.forEach((part, i) => {
+  const name = part.charAt(0).toUpperCase() + part.slice(1);
+  const item: Record<string, unknown> = { "@type": "ListItem", "position": i + 2, "name": name };
+  if (i < pathParts.length - 1) {
+    item["item"] = `https://claude-view.dev/${pathParts.slice(0, i + 1).join('/')}/`;
+  }
+  breadcrumbItems.push(item);
+});
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": breadcrumbItems,
+});
+---
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} | claude-view</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonicalURL} />
+
+  <!-- View Transitions — native CSS page-to-page animations (progressive enhancement) -->
+  <ClientRouter />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content={ogType} />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:image" content={ogImage} />
+  <meta property="og:url" content={canonicalURL} />
+  {articleMeta?.publishedTime && <meta property="article:published_time" content={articleMeta.publishedTime} />}
+  {articleMeta?.author && <meta property="article:author" content={articleMeta.author} />}
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@claude_view" />
+  <meta name="twitter:title" content={title} />
+  <meta name="twitter:description" content={description} />
+  <meta name="twitter:image" content={ogImage} />
+
+  <!-- Schema.org SoftwareApplication -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "claude-view",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux",
+    "description": "Mission Control for AI coding agents",
+    "offers": { "@type": "Offer", "price": "0" }
+  })} />
+
+  <!-- Schema.org BreadcrumbList -->
+  <script type="application/ld+json" set:html={breadcrumbJsonLd} />
+
+  <!-- Google Fonts preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+  <!-- Focus ring for keyboard navigation -->
+  <style>
+    :focus-visible {
+      outline: 2px solid #22c55e;
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-50 antialiased">
+  <!-- Skip link for keyboard navigation (WCAG 2.2 AA) -->
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-green-600 focus:text-white focus:rounded">
+    Skip to content
+  </a>
+  <!-- noscript fallback for older browsers that don't support @media (scripting: none) -->
+  <noscript>
+    <style>
+      .reveal-on-scroll { opacity: 1 !important; transform: none !important; }
+    </style>
+  </noscript>
+  <Nav />
+  <main id="main-content" class="pt-16">
+    <slot />
+  </main>
+  <Footer />
+</body>
+</html>
