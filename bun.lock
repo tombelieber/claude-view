@@ -55,6 +55,24 @@
         "typescript": "~5.9.2",
       },
     },
+    "apps/share": {
+      "name": "@claude-view/share",
+      "version": "0.8.0",
+      "dependencies": {
+        "@sentry/react": "^10.40.0",
+        "react": "19.2.0",
+        "react-dom": "19.2.0",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.1.18",
+        "@types/react": "^19.2.5",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^5.1.1",
+        "tailwindcss": "^4.1.18",
+        "typescript": "~5.9.3",
+        "vite": "^7.2.4",
+      },
+    },
     "apps/web": {
       "name": "@claude-view/web",
       "version": "0.8.0",
@@ -342,6 +360,8 @@
     "@claude-view/landing": ["@claude-view/landing@workspace:apps/landing"],
 
     "@claude-view/mobile": ["@claude-view/mobile@workspace:apps/mobile"],
+
+    "@claude-view/share": ["@claude-view/share@workspace:apps/share"],
 
     "@claude-view/shared": ["@claude-view/shared@workspace:packages/shared"],
 
