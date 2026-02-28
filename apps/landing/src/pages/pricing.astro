@@ -5,7 +5,7 @@ import PricingCards from '../components/PricingCards.astro';
 
 <MarketingLayout title="Pricing" description="Simple, transparent pricing. Free forever for local use.">
   <!-- FAQPage structured data for GEO -->
-  <script type="application/ld+json" set:html={JSON.stringify({
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
