@@ -171,6 +171,7 @@ Opent op `http://localhost:47892`.
 | Omgevingsvariabele | Standaard | Beschrijving |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` of `PORT` | `47892` | Standaard poort overschrijven |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Data-directory overschrijven |
 
 ---
 
