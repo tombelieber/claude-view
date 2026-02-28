@@ -6,6 +6,7 @@ import {
   CirclePause,
   Clock,
   FileCheck,
+  FileText,
   GitBranch,
   Loader,
   MessageCircle,
@@ -161,6 +162,14 @@ export function SessionCard({
         <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mb-1">
           <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>
           {lastMsg}
+        </p>
+      )}
+
+      {/* IDE file context chip */}
+      {session.lastUserFile && (
+        <p className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mb-1">
+          <FileText className="h-3 w-3 shrink-0" />
+          <span className="font-mono truncate">{session.lastUserFile}</span>
         </p>
       )}
 
