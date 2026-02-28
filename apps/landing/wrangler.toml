@@ -1,5 +1,9 @@
 name = "claude-view-landing"
 compatibility_date = "2026-02-25"
 
+# NOTE: [site] is the Workers Sites pattern (deprecated). For Cloudflare Pages
+# deployment via `wrangler pages deploy dist`, this config is ignored — the
+# positional `dist` argument is used instead. This file is harmless but not
+# required for Pages. Consider removing or migrating to [pages] config.
 [site]
 bucket = "./dist"
