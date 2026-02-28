@@ -143,6 +143,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
 /// delegate to this one. Starts the `LiveSessionManager` for Live Monitor.
+#[allow(clippy::too_many_arguments)]
 pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
