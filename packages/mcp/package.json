@@ -1,13 +1,11 @@
 {
   "name": "@claude-view/mcp",
   "version": "0.8.0",
-  "description": "MCP server for claude-view — gives AI agents native tool access to session data, costs, and fluency scores",
-  "private": false,
+  "description": "MCP server for claude-view — internal package, bundled into @claude-view/plugin",
+  "private": true,
   "type": "module",
-  "bin": {
-    "claude-view-mcp": "./dist/index.js"
-  },
-  "files": ["dist", "README.md"],
+  "main": "./dist/index.js",
+  "files": ["dist"],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
