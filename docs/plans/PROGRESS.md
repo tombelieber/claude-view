@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-02-27
+> **Last updated:** 2026-03-01 (OneSignal push migration)
 
 ---
 
@@ -23,8 +23,9 @@
 | 1 | **Phase F: Agent Control** | Node.js sidecar + Agent SDK. Type messages, approve tools, resume sessions from web dashboard. | **Impl plan ready** (17 tasks) | Phase A (done) |
 | 2 | **M1: Mobile Monitor** | Expo phone app — see running agents, get push notifications, QR pairing. Read-only. | **Impl plan ready** (10 tasks, audited) | Phase A-D APIs (done) |
 | 3 | **M2: Mobile Control** | Phone app gains control — send messages, approve/reject tools, spawn agents from phone. | Not started | Needs #1 + #2 |
-| 4 | **Launch assets** | 60s demo video, Product Hunt listing, Show HN post, landing page update. | Not started | Needs #3 working |
-| 5 | **LAUNCH 1** | Ship it. "I shipped a feature from my phone." | — | Needs #4 |
+| 4 | **Landing page follow-up** | App Store badges, mobile signup CTA, Twitter handle, self-host fonts. | **Open — L1 blocker** | See [`landing/2026-03-01-landing-page-followup.md`](landing/2026-03-01-landing-page-followup.md) |
+| 5 | **Launch assets** | 60s demo video, Product Hunt listing, Show HN post, landing page update. | Not started | Needs #3 working |
+| 6 | **LAUNCH 1** | Ship it. "I shipped a feature from my phone." | — | Needs #5 |
 
 **Critical path:** `Phase F (#1) → M2 (#3) → Launch`
 **Parallel work:** #1 and #2 are independent — build simultaneously.
@@ -32,8 +33,8 @@
 **Plans:**
 - Phase F design: [`mission-control/phase-f-interactive.md`](mission-control/phase-f-interactive.md)
 - Phase F impl: [`mission-control/phase-f-impl.md`](mission-control/phase-f-impl.md) (17 tasks, verified)
-- M1 design: [`mobile-remote/2026-02-25-clawmini-mobile-m1-design.md`](mobile-remote/2026-02-25-clawmini-mobile-m1-design.md)
-- M1 impl: [`mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md`](mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md) (10 tasks, audited for monorepo)
+- M1 design: [`mobile/2026-02-25-clawmini-mobile-m1-design.md`](mobile/2026-02-25-clawmini-mobile-m1-design.md)
+- M1 impl: [`mobile/2026-02-25-clawmini-mobile-m1-impl.md`](mobile/2026-02-25-clawmini-mobile-m1-impl.md) (10 tasks, audited for monorepo)
 - M2 plan: TBD (extends M1 + Phase F)
 
 **Optional / lower priority:**
@@ -42,6 +43,9 @@
 
 ## Recently Completed
 
+- **OneSignal Push Migration** (2026-03-01): Replace Expo Push with OneSignal for push notifications. Relay calls OneSignal REST API (no more token storage), mobile uses OneSignal SDK with `external_user_id` targeting. 12 tasks, 9 files, shippable audit passed (SHIP IT). Plan: [`mobile/2026-03-01-onesignal-push-impl.md`](mobile/2026-03-01-onesignal-push-impl.md)
+- **Landing Page & Docs Site** (2026-03-01): Astro 5 + Starlight site replacing placeholder. 19 pages: marketing homepage, pricing, 13 Starlight docs, blog, changelog. Agent SEO (llms.txt, Schema.org, HowTo, BreadcrumbList), zero-JS animations, Tailwind 4. 12 tasks, 10 commits, ~45 files, shippable audit passed (SHIP IT). Plan: [`landing/archived/2026-02-28-landing-page-impl.md`](landing/archived/2026-02-28-landing-page-impl.md)
+- **Clean User Message + IDE File Chip** (2026-03-01): Strip XML noise tags (`<system-reminder>`, `<ide_opened_file>`, etc.) from `lastUserMessage` before 200-char truncation. Extract IDE file context as `lastUserFile` field. File chip on web + mobile SessionCards. 7 tasks, 6 commits, 13 files, shippable audit passed. Plan: [`server/archived/2026-02-28-clean-user-message-impl.md`](server/archived/2026-02-28-clean-user-message-impl.md)
 - **Branch `worktree-monorepo-expo` — SHIPPABLE** (verified 2026-02-27): 0 TS errors, 1117 web tests pass, 575 Rust tests pass, clean build. One production bug fix (`cleanPreviewText` backslash), infra upgrades (Biome, Lefthook, cargo-deny, CI), monorepo restructure. No breaking changes, no regressions.
 - Monorepo Restructure (Turborepo + Bun workspaces: `apps/web`, `apps/mobile`, `apps/landing`, `packages/shared`, `packages/design-tokens`)
 - Reliability Release (centralized path config, JSONL-based session classification, cwd-based path resolve, sandbox docs)
@@ -111,43 +115,24 @@
 
 ## Active Plan Index
 
-Plans in `docs/plans/` (active work only):
+Plans are organized by area. Each area has its own `PROGRESS.md` with active/completed/backlog files.
 
-| File | Status | Description |
-|------|--------|-------------|
-| `2026-02-18-full-text-search-design.md` | done | Phase 6: Tantivy search, Cmd+K, scoped search (in-session Ctrl+F deferred) |
-| `2026-02-19-action-log-tab-design.md` | done | Filterable action timeline in SessionDetailPanel |
-| `2026-02-19-action-log-tab-impl.md` | done | 9 tasks for action log implementation |
-| `2026-02-19-notification-sound-design.md` | done | Audio notifications for session events |
-| `2026-02-19-notification-sound-impl.md` | done | Implementation plan for notification sounds |
-| `2026-02-19-pricing-engine-overhaul.md` | done | Unified ModelPricing, litellm auto-fetch, 200k tiering, 3-tier fallback |
-| `2026-02-19-sessions-infinite-scroll.md` | done | Infinite scroll for session lists |
-| `2026-02-19-restore-sparkline-stats-grid.md` | done | Restore sparkline stats grid |
-| `2026-02-19-oauth-usage-pill-design.md` | done | OAuth usage pill feature |
-| `2026-02-21-custom-skill-registry-*.md` | done | User-level custom skill discovery and registry auto-reindex |
-| `2026-02-21-jsonl-ground-truth-recovery*.md` | done | Startup state from JSONL ground truth, removed staleness hack |
-| `2026-02-20-*` (8 files) | various | Recent active designs (pricing, liveness, history, renderers, etc.) |
-| `2026-02-24-reliability-release-issues.md` | done (PR #14) | 4 foundation bugs: path config, hooks, session count, path resolve |
-| `mission-control/` | in-progress | A-D done, **F = L1 critical path** (see `mission-control/PROGRESS.md`) |
-| `mission-control/phase-f-interactive.md` | **has design** | Agent SDK sidecar, spawn/resume/control from dashboard |
-| `mission-control/phase-f-impl.md` | **impl plan ready** (17 tasks) | Task breakdown for Phase F implementation |
-| `mobile-remote/2026-02-25-clawmini-mobile-m1-design.md` | **has design — L1 parallel** | Expo native app: live dashboard, keypair auth, dumb relay |
-| `mobile-remote/2026-02-25-clawmini-mobile-m1-impl.md` | **impl plan ready** (10 tasks, audited) | Shared pkg, relay fixes, pair screen, dashboard, push, TestFlight |
-| `mobile-remote/m2-mobile-control-design.md` | **TO WRITE — L1 blocker** | Mobile control: approve/reject, send messages, spawn from phone |
-| `mission-control/phase-e-custom-layout.md` | not started (parallel, lower pri) | react-mosaic custom layout — polish, not blocking L1 |
-| `2026-02-25-monorepo-restructure-design.md` | done | Turborepo monorepo: `apps/web`, `apps/mobile`, `packages/shared` |
-| `2026-02-25-monorepo-restructure-impl.md` | done | 12 tasks: git mv web SPA, workspaces, Expo scaffold, landing page |
-| `2026-02-24-star-label-sessions-design.md` | deferred (L0 nice-to-have) | Named bookmarks on sessions |
-| `2026-02-24-session-backup-design.md` | done (standalone); integration deferred | Standalone tool at `claude-backup` repo |
+| Area | Dashboard | Active | Description |
+|------|-----------|--------|-------------|
+| Web | [`web/PROGRESS.md`](web/PROGRESS.md) | 7 active | React SPA — chat input, conversation sharing, context bar, renderers |
+| Mobile | [`mobile/PROGRESS.md`](mobile/PROGRESS.md) | M1 impl ready, M2 TBD | Expo native app — monitor, push, control |
+| Landing | [`landing/PROGRESS.md`](landing/PROGRESS.md) | 1 active (L1 blocker) | Astro site — follow-up: badges, CTA, fonts |
+| Server | [`server/PROGRESS.md`](server/PROGRESS.md) | 3 active | Rust backend — plugin/MCP, session backup |
+| Relay | [`relay/PROGRESS.md`](relay/PROGRESS.md) | 0 active | Cloud relay (changes tracked in mobile/) |
+| Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | Phase F ready | L1 critical path — agent control |
+| Cross-cutting | [`cross-cutting/PROGRESS.md`](cross-cutting/PROGRESS.md) | 0 active | Monorepo, infra, types — all completed |
+| Backlog | [`backlog/`](backlog/) | 25 deferred | Epics, marketplace, future work |
+| Archived | [`archived/`](archived/) | — | Pre-monorepo era completed plans |
 
 **L1 execution order:** Phase F + M1 (parallel) → M2 → LAUNCH 1
 
 See GTM repo `plans/active/2026-02-26-launch-roadmap.md` for full strategy.
-See `mobile-remote/PROGRESS.md` for M1 phase details.
-
-**Other locations:**
-- `docs/plans/backlog/` — 25 deferred/draft plans (epics, marketplace, mobile app (Expo), etc.)
-- `docs/plans/archived/` — All completed phase plans and theme work
+See `mobile/PROGRESS.md` for M1 phase details.
 
 ---
 
@@ -166,11 +151,11 @@ Items removed during monorepo cleanup that need attention before specific milest
 ## Code Health
 
 - **Compiles:** Yes (cargo check + `bun run build` pass)
-- **Backend tests:** 575 (cargo test --workspace, 0 failures)
+- **Backend tests:** 1177 (core 652 + server 525, 2 pre-existing failures unrelated)
 - **Frontend tests:** 1117 (vitest, 74 files, 0 failures)
 - **TypeScript:** 0 errors (`tsc --noEmit`)
 - **Clippy:** 1 cosmetic warning (SidecarManager Default derive)
-- **Last verified:** 2026-02-27 on branch `worktree-monorepo-expo`
+- **Last verified:** 2026-03-01 on branch `worktree-monorepo-expo`
 
 ---
 
@@ -179,6 +164,7 @@ Items removed during monorepo cleanup that need attention before specific milest
 - **Starting a session:** Read this file first. Check "Current Focus" and "At a Glance".
 - **Product context:** Read `docs/VISION.md` for product evolution and business model.
 - **What's next:** Read `docs/ROADMAP.md` for module roadmap and priorities.
-- **Specific phase design:** Check `archived/` for the completed implementation spec.
+- **Area-specific plans:** Check the area's `PROGRESS.md` (e.g., `web/PROGRESS.md`, `server/PROGRESS.md`).
+- **Completed designs:** Check `{area}/archived/` for recently completed plans, or `archived/` for pre-monorepo era.
 - **Deferred ideas:** Check `backlog/` for draft/deferred plans.
-- **Adding new work:** Create plan in `docs/plans/`, add to "Active Plan Index", move to `archived/` when done.
+- **Adding new work:** Create plan in the appropriate area directory (e.g., `web/`, `server/`), add to that area's `PROGRESS.md`.

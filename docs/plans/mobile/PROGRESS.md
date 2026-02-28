@@ -2,8 +2,8 @@
 
 **Epic:** Zero-setup mobile remote monitoring and control for claude-view
 **Branch:** `worktree-monorepo-expo`
-**Status:** M1 impl plan audited, 22 gaps fixed — ready to execute
-**Last updated:** 2026-02-27
+**Status:** M1 impl plan audited, OneSignal push migration done
+**Last updated:** 2026-03-01
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Order | Plan | Tasks | Status |
 |-------|------|-------|--------|
-| **1** | [Monorepo Restructure](../2026-02-25-monorepo-restructure-impl.md) | 12 | **DONE** |
+| **1** | [Monorepo Restructure](../cross-cutting/archived/2026-02-25-monorepo-restructure-impl.md) | 12 | **DONE** |
 | **2** | [clawmini Mobile M1](./2026-02-25-clawmini-mobile-m1-impl.md) | 10 | **Ready to execute** (audited, 22 gaps fixed in plan) |
 
 Monorepo restructure is complete. M1 impl plan starts at Task 1 (all 10 tasks, 4 phases). Package names use `@claude-view/*`.
@@ -35,7 +35,7 @@ Monorepo restructure is complete. M1 impl plan starts at Task 1 (all 10 tasks, 4
 |-------|--------|---------|
 | **A** | NOT STARTED | Command protocol design + Mac command handler |
 | **B** | NOT STARTED | Mobile UI for chat, approve/deny, spawn session |
-| **C** | NOT STARTED | Push notifications via expo-notifications |
+| **C** | NOT STARTED | Push notifications via OneSignal (migration done — see `2026-03-01-onesignal-push-impl.md`) |
 
 ### M3: "Full parity" — Phone can do everything desktop can
 
@@ -102,7 +102,7 @@ Found during shippable audit (2026-02-25). All 3 are in dormant code paths gated
 | [design.md](./design.md) | Zero-setup architecture, security model, command protocol |
 | [2026-02-25-clawmini-mobile-m1-design.md](./2026-02-25-clawmini-mobile-m1-design.md) | M1 design: live dashboard, Expo native, keypair auth |
 | [2026-02-25-clawmini-mobile-m1-impl.md](./2026-02-25-clawmini-mobile-m1-impl.md) | M1 impl: 12 tasks across 4 phases |
-| [../2026-02-25-monorepo-restructure-design.md](../2026-02-25-monorepo-restructure-design.md) | Monorepo design |
-| [../2026-02-25-monorepo-restructure-impl.md](../2026-02-25-monorepo-restructure-impl.md) | Monorepo impl: 12 tasks |
+| [../cross-cutting/archived/2026-02-25-monorepo-restructure-design.md](../cross-cutting/archived/2026-02-25-monorepo-restructure-design.md) | Monorepo design |
+| [../cross-cutting/archived/2026-02-25-monorepo-restructure-impl.md](../cross-cutting/archived/2026-02-25-monorepo-restructure-impl.md) | Monorepo impl: 12 tasks |
 | [analysis-pairing-bugs.md](./analysis-pairing-bugs.md) | Original bug analysis (3 root causes) |
 | [archived/](./archived/) | Earlier M1 design and impl plans (superseded) |
