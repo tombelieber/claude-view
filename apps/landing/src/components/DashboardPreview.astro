@@ -1,0 +1,66 @@
+---
+// Animated CSS mockup of Mission Control dashboard
+const agents = [
+  { name: 'Auth Module', status: 'running', color: '#22c55e', cost: '$0.12' },
+  { name: 'API Routes', status: 'waiting', color: '#f59e0b', cost: '$0.08' },
+  { name: 'Test Suite', status: 'done', color: '#64748b', cost: '$0.03' },
+  { name: 'Docs Gen', status: 'running', color: '#22c55e', cost: '$0.15' },
+];
+---
+<div class="bg-slate-950 border border-slate-700 rounded-xl overflow-hidden shadow-2xl max-w-4xl mx-auto" role="img" aria-label="Mission Control dashboard showing 4 active agents">
+  <div class="flex items-center justify-between px-6 py-3 border-b border-slate-800">
+    <span class="font-heading text-sm font-semibold text-slate-300">Mission Control</span>
+    <span class="text-xs text-slate-500 font-mono">4 agents • $0.38 total</span>
+  </div>
+  <div class="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+    {agents.map((agent, i) => (
+      <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-4 agent-card" style={`--card-delay: ${i * 0.15}s`}>
+        <div class="flex items-center gap-2 mb-3">
+          <div
+            class={`w-2 h-2 rounded-full ${agent.status === 'running' ? 'status-pulse' : ''}`}
+            style={`background: ${agent.color}`}
+          ></div>
+          <span class="text-xs text-slate-400 capitalize">{agent.status}</span>
+        </div>
+        <div class="font-heading text-sm font-medium text-slate-200 mb-2">{agent.name}</div>
+        <div class="font-mono text-xs text-slate-500">{agent.cost}</div>
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .agent-card {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: slideUp 0.5s ease forwards;
+    animation-delay: var(--card-delay);
+  }
+
+  .status-pulse {
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes slideUp {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .agent-card {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+    .status-pulse {
+      animation: none;
+    }
+  }
+</style>
