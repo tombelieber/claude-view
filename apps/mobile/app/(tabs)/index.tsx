@@ -23,7 +23,7 @@ export default function SessionsScreen() {
 
   if (isPaired === null) {
     return (
-      <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$gray900">
+      <YStack flex={1} items="center" justify="center" bg="$gray900">
         <Spinner size="large" />
       </YStack>
     )
@@ -36,12 +36,7 @@ export default function SessionsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }} edges={['top']}>
       {/* Header */}
-      <XStack
-        justifyContent="space-between"
-        alignItems="center"
-        paddingHorizontal="$4"
-        paddingVertical="$3"
-      >
+      <XStack justify="space-between" items="center" px="$4" py="$3">
         <Text color="$gray50" fontWeight="bold" fontSize="$xl">
           Claude View
         </Text>
@@ -51,13 +46,13 @@ export default function SessionsScreen() {
       {/* Session list */}
       <ScrollView style={{ flex: 1, paddingHorizontal: 16 }}>
         {needsYou.length > 0 && (
-          <YStack marginBottom="$4">
+          <YStack mb="$4">
             <H4
               color="$statusWarning"
               fontSize="$xs"
               textTransform="uppercase"
               letterSpacing={1}
-              marginBottom="$2"
+              mb="$2"
             >
               Needs You
             </H4>
@@ -68,13 +63,13 @@ export default function SessionsScreen() {
         )}
 
         {autonomous.length > 0 && (
-          <YStack marginBottom="$4">
+          <YStack mb="$4">
             <H4
               color="$statusActive"
               fontSize="$xs"
               textTransform="uppercase"
               letterSpacing={1}
-              marginBottom="$2"
+              mb="$2"
             >
               Autonomous
             </H4>
@@ -85,7 +80,7 @@ export default function SessionsScreen() {
         )}
 
         {sessionList.length === 0 && (
-          <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical="$16">
+          <YStack flex={1} items="center" justify="center" py="$16">
             <Text color="$gray400" fontSize="$lg">
               {connectionState === 'disconnected' ? 'Mac offline' : 'No active sessions'}
             </Text>

@@ -7,12 +7,12 @@ export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
 
   return (
     <XStack
-      backgroundColor="$gray800"
+      bg="$gray800"
       borderTopWidth={1}
       borderTopColor="$gray700"
-      paddingHorizontal="$4"
-      paddingVertical="$3"
-      justifyContent="space-between"
+      px="$4"
+      py="$3"
+      justify="space-between"
     >
       <Text color="$statusWarning" fontSize="$sm">
         {needsYou.length} needs you

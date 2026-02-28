@@ -10,11 +10,13 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 })
 
 export function usePushNotifications() {
-  const listenerRef = useRef<Notifications.EventSubscription>()
+  const listenerRef = useRef<Notifications.EventSubscription | undefined>(undefined)
 
   useEffect(() => {
     registerPushToken()
@@ -37,7 +39,9 @@ export function usePushNotifications() {
 }
 
 async function registerPushToken() {
-  const { status } = await Notifications.requestPermissionsAsync()
+  const { status } = await Notifications.requestPermissionsAsync({
+    ios: { allowAlert: true, allowBadge: true, allowSound: true },
+  })
   if (status !== 'granted') return
 
   const tokenData = await Notifications.getExpoPushTokenAsync({
