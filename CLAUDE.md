@@ -163,8 +163,43 @@ Each service manages its own env vars. No root `.env`. No automatic `.env` file 
 - **No `dotenvy`** — Rust reads shell env only, no magic file loading
 - **Never commit `.env`, `.env.local`, or `.dev.vars`** — they are gitignored
 - **Never put secret keys in `.env.example`** — only placeholders
-- **Publishable keys are safe to embed** in client code (Supabase anon key, Supabase URL)
+- **Publishable keys are safe to embed** in client code (Supabase publishable key, Supabase URL)
 - **Service role / secret keys are NEVER used** in this project — JWT validation uses JWKS
+
+### Cloudflare Dev/Prod Strategy
+
+Primary domain: **claudeview.ai**. `claudeview.com` redirects to `claudeview.ai`.
+
+| Service | Dev | Production |
+| ------- | --- | ---------- |
+| **Share Worker** | `claude-view-share-worker-dev` | `claude-view-share-worker-prod` → `share.claudeview.ai` |
+| **D1 Database** | `claude-view-share-d1-dev` | `claude-view-share-d1-prod` |
+| **R2 Bucket** | `claude-view-share-r2-dev` | `claude-view-share-r2-prod` |
+| **Landing** | Cloudflare Pages preview | `claudeview.ai` |
+
+Pattern: `claude-view-share-{type}-{env}` — always suffix with `-dev` or `-prod`.
+
+Deploy commands:
+
+- Dev: `npx wrangler deploy --env dev` (uses `-dev` suffixed resources)
+- Prod: `npx wrangler deploy` (uses `-prod` suffixed resources + custom domain)
+
+Secrets (set via `wrangler secret put`, NEVER in code/docs):
+
+- `SUPABASE_URL` — set per environment (`--env dev` for dev)
+- Any future secrets follow the same pattern
+
+Safe to document (public):
+
+- Supabase project URL, publishable key
+- Worker names, D1/R2 resource names
+- Domain layout
+
+NEVER document:
+
+- Supabase secret key (`sb_secret_*`)
+- Wrangler secret values
+- Any `*.workers.dev` URLs with auth tokens
 
 ## Hard Rules
 
