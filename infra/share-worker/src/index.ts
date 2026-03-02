@@ -15,12 +15,19 @@ export interface Env {
 
 const MAX_BLOB_BYTES = 50 * 1024 * 1024 // 50MB
 const MAX_JSON_BODY_BYTES = 1024 // 1KB for JSON endpoints
+const TOKEN_PATTERN = /^[a-zA-Z0-9]{22}$/ // 22-char base62
+
+const SECURITY_HEADERS = {
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff',
+} as const
 
 const RATE_LIMITS = {
-  create: { limit: 10, windowSecs: 3600 },
-  read: { limit: 60, windowSecs: 60 },
-  delete: { limit: 20, windowSecs: 3600 },
-  list: { limit: 30, windowSecs: 60 },
+  create: { limit: 200, windowSecs: 3600 },
+  read: { limit: 300, windowSecs: 60 },
+  delete: { limit: 100, windowSecs: 3600 },
+  list: { limit: 60, windowSecs: 60 },
 } as const
 
 export default withSentry(
@@ -40,7 +47,14 @@ export default withSentry(
 
       try {
         const response = await route(url, request, env)
-        for (const [k, v] of Object.entries(corsHeaders)) {
+        // Only apply default CORS if handler didn't set its own
+        // (e.g. handleGetShare uses permissive Access-Control-Allow-Origin: *)
+        if (!response.headers.has('Access-Control-Allow-Origin')) {
+          for (const [k, v] of Object.entries(corsHeaders)) {
+            response.headers.set(k, v)
+          }
+        }
+        for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
           response.headers.set(k, v)
         }
         return response
@@ -48,7 +62,8 @@ export default withSentry(
         if (err instanceof AuthError) {
           return jsonResponse({ error: err.message }, err.status, corsHeaders)
         }
-        console.error('Unhandled error:', err)
+        const errMsg = err instanceof Error ? err.message : 'Unknown error'
+        console.error(`Unhandled error on ${request.method} ${url.pathname}: ${errMsg}`)
         return jsonResponse({ error: 'Internal server error' }, 500, corsHeaders)
       }
     },
@@ -65,9 +80,19 @@ export default withSentry(
         .bind(cutoff)
         .all<{ token: string }>()
 
+      let cleaned = 0
       for (const row of results) {
-        await env.SHARE_BUCKET.delete(`shares/${row.token}`)
-        await env.DB.prepare('DELETE FROM shares WHERE token = ?').bind(row.token).run()
+        try {
+          await env.SHARE_BUCKET.delete(`shares/${row.token}`)
+          await env.DB.prepare('DELETE FROM shares WHERE token = ?').bind(row.token).run()
+          cleaned++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error'
+          console.error(`Failed to clean pending share ${row.token}: ${msg}`)
+        }
+      }
+      if (results.length > 0) {
+        console.log(`Cleaned ${cleaned}/${results.length} stale pending shares`)
       }
 
       await cleanupExpiredWindows(env.DB)
@@ -85,15 +110,18 @@ async function route(url: URL, request: Request, env: Env): Promise<Response> {
 
   const blobMatch = path.match(/^\/api\/share\/([\w]+)\/blob$/)
   if (blobMatch && method === 'PUT') {
+    if (!TOKEN_PATTERN.test(blobMatch[1])) return jsonResponse({ error: 'Invalid token' }, 400)
     return handleUploadBlob(blobMatch[1], request, env)
   }
 
   const shareMatch = path.match(/^\/api\/share\/([\w]+)$/)
   if (shareMatch && method === 'GET') {
+    if (!TOKEN_PATTERN.test(shareMatch[1])) return jsonResponse({ error: 'Invalid token' }, 400)
     return handleGetShare(shareMatch[1], request, env)
   }
 
   if (shareMatch && method === 'DELETE') {
+    if (!TOKEN_PATTERN.test(shareMatch[1])) return jsonResponse({ error: 'Invalid token' }, 400)
     return handleDeleteShare(shareMatch[1], request, env)
   }
 
@@ -158,9 +186,9 @@ async function handleCreateShare(request: Request, env: Env): Promise<Response> 
     .bind(token, user.userId, body.session_id, body.title ?? null, body.size_bytes ?? 0, now)
     .run()
 
-  void trackEvent(env, 'share_created', user.userId, {
+  trackEvent(env, 'share_created', user.userId, {
     size_bytes: body.size_bytes ?? 0,
-  })
+  }).catch(logTrackingError)
 
   return jsonResponse({ token })
 }
@@ -256,14 +284,14 @@ async function handleGetShare(token: string, request: Request, env: Env): Promis
       headers: getPublicCorsHeaders(),
     })
 
-  void env.DB.prepare('UPDATE shares SET view_count = view_count + 1 WHERE token = ?')
+  env.DB.prepare('UPDATE shares SET view_count = view_count + 1 WHERE token = ?')
     .bind(token)
     .run()
+    .catch(logTrackingError)
 
-  const tokenHash = await sha256hex(token)
-  void trackEventAnon(env, 'share_viewed', {
-    token_hash: tokenHash.slice(0, 16),
-  })
+  sha256hex(token)
+    .then((hash) => trackEventAnon(env, 'share_viewed', { token_hash: hash.slice(0, 16) }))
+    .catch(logTrackingError)
 
   return new Response(obj.body, {
     headers: {
@@ -297,7 +325,7 @@ async function handleDeleteShare(token: string, request: Request, env: Env): Pro
   await env.SHARE_BUCKET.delete(`shares/${token}`)
   await env.DB.prepare("UPDATE shares SET status = 'deleted' WHERE token = ?").bind(token).run()
 
-  void trackEvent(env, 'share_revoked', user.userId, {})
+  trackEvent(env, 'share_revoked', user.userId, {}).catch(logTrackingError)
 
   return jsonResponse({ status: 'deleted' })
 }
@@ -328,7 +356,7 @@ async function handleDeleteShareBySession(
   await env.SHARE_BUCKET.delete(`shares/${row.token}`)
   await env.DB.prepare("UPDATE shares SET status = 'deleted' WHERE token = ?").bind(row.token).run()
 
-  void trackEvent(env, 'share_revoked', user.userId, {})
+  trackEvent(env, 'share_revoked', user.userId, {}).catch(logTrackingError)
   return jsonResponse({ status: 'deleted' })
 }
 
@@ -356,6 +384,11 @@ async function handleListShares(request: Request, env: Env): Promise<Response> {
 
 // ---- Helpers ----
 
+function logTrackingError(err: unknown): void {
+  const msg = err instanceof Error ? err.message : 'Unknown tracking error'
+  console.warn(`Non-critical tracking/analytics error: ${msg}`)
+}
+
 function jsonResponse(
   data: unknown,
   status = 200,
@@ -363,7 +396,7 @@ function jsonResponse(
 ): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    headers: { 'Content-Type': 'application/json', ...SECURITY_HEADERS, ...extraHeaders },
   })
 }
 

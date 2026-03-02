@@ -14,13 +14,16 @@ export function getCorsHeaders(
   const origin = request.headers.get('Origin') || ''
   const isDev = env.ENVIRONMENT === 'development'
 
-  const allowedOrigin =
-    ALLOWED_ORIGINS.includes(origin) || (isDev && DEV_ORIGIN_PATTERN.test(origin))
-      ? origin
-      : ALLOWED_ORIGINS[0] // fallback to primary domain
+  const isAllowed = ALLOWED_ORIGINS.includes(origin) || (isDev && DEV_ORIGIN_PATTERN.test(origin))
+
+  // Only reflect the origin if it's in the allowlist — reject unknown origins
+  // by omitting Access-Control-Allow-Origin entirely
+  if (!isAllowed) {
+    return { Vary: 'Origin' }
+  }
 
   return {
-    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     Vary: 'Origin',
