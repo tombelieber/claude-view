@@ -27,7 +27,7 @@ export function SignInPrompt({ onSignedIn }: Props) {
     setLoading(true)
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: window.location.href },
     })
     setLoading(false)
     if (!error) setSent(true)
@@ -37,7 +37,7 @@ export function SignInPrompt({ onSignedIn }: Props) {
     if (!supabase) return
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: window.location.href },
     })
   }
 

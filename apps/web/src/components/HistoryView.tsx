@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useDebounce } from '../hooks/use-debounce'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
+import { useLiveSessionIds } from '../hooks/use-live-session-ids'
 import { useIsMobile } from '../hooks/use-media-query'
 import { useProjectSummaries } from '../hooks/use-projects'
 import { DEFAULT_FILTERS, useSessionFilters } from '../hooks/use-session-filters'
@@ -108,6 +109,7 @@ export function HistoryView() {
   const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
   const { indexingProgress } = useOutletContext<{ indexingProgress?: IndexingProgress }>()
+  const liveSessionIds = useLiveSessionIds()
 
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
@@ -472,6 +474,7 @@ export function HistoryView() {
               /* Table view */
               <CompactSessionTable
                 sessions={sessions}
+                liveSessionIds={liveSessionIds}
                 onSort={(column) => {
                   // Map table column to SessionSort
                   const sortMap: Record<SortColumn, SessionSort> = {
@@ -555,6 +558,7 @@ export function HistoryView() {
                                   <SessionCard
                                     session={session}
                                     isSelected={false}
+                                    isLive={liveSessionIds.has(session.id)}
                                     projectDisplayName={projectDisplayNames.get(session.project)}
                                     onResumeClick={setResumeSessionId}
                                   />
@@ -601,8 +605,8 @@ export function HistoryView() {
             onOpenChange={(open) => {
               if (!open) setResumeSessionId(null)
             }}
-            onResume={(controlId, sid) => {
-              navigate(`/control/${controlId}?sessionId=${encodeURIComponent(sid)}`)
+            onResume={(_controlId, sid) => {
+              navigate(`/?focus=${encodeURIComponent(sid)}`)
             }}
           />
         )}
