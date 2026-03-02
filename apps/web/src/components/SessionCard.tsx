@@ -31,6 +31,7 @@ interface ExtendedSessionInfo extends SessionInfo {
 interface SessionCardProps {
   session: ExtendedSessionInfo | null | undefined
   isSelected?: boolean
+  isLive?: boolean
   projectDisplayName?: string | null
   onResumeClick?: (sessionId: string) => void
 }
@@ -144,6 +145,7 @@ function formatRelativeTime(timestamp: number): string {
 export function SessionCard({
   session,
   isSelected = false,
+  isLive = false,
   projectDisplayName,
   onResumeClick,
 }: SessionCardProps) {
@@ -216,10 +218,12 @@ export function SessionCard({
         'transition-all duration-200 ease-out',
         isSelected
           ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 shadow-[0_0_0_1px_#3b82f6]'
-          : cn(
-              'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
-              weightBorderClass(weightTier),
-            ),
+          : isLive
+            ? 'bg-green-50/40 dark:bg-green-950/20 border-green-300 dark:border-green-800 border-l-green-500 dark:border-l-green-500 hover:bg-green-50/70 dark:hover:bg-green-950/30 hover:shadow-sm'
+            : cn(
+                'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm',
+                weightBorderClass(weightTier),
+              ),
       )}
       aria-label={`Session: ${cleanPreview}`}
     >
@@ -239,6 +243,15 @@ export function SessionCard({
             >
               <GitBranch className="w-3 h-3 flex-shrink-0" />
               <span className="truncate">{gitBranch}</span>
+            </span>
+          )}
+          {isLive && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 rounded flex-shrink-0 border border-green-200 dark:border-green-800/60">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              LIVE
             </span>
           )}
         </div>

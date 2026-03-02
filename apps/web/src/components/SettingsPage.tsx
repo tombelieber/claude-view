@@ -27,6 +27,7 @@ import { formatNumber } from '../lib/format-utils'
 import { showToast } from '../lib/toast'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
+import { AccountSection } from './AccountSection'
 import { PairingQrCode } from './PairingQrCode'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
@@ -463,6 +464,9 @@ export function SettingsPage() {
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Settings</h1>
 
         <div className="space-y-4">
+          {/* ACCOUNT */}
+          <AccountSection />
+
           {/* STORAGE OVERVIEW */}
           <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
             <StorageOverview />
