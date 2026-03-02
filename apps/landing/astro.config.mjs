@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'astro/config'
 
 export default defineConfig({
-  site: 'https://claude-view.dev',
+  site: 'https://claudeview.ai',
   trailingSlash: 'always',
   prefetch: {
     defaultStrategy: 'hover',
@@ -19,6 +19,7 @@ export default defineConfig({
     starlight({
       title: 'claude-view',
       description: 'Mission Control for AI coding agents',
+      disable404Route: true,
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/tombelieber/claude-view' },
       ],
@@ -65,12 +66,12 @@ export default defineConfig({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://claude-view.dev/' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://claudeview.ai/' },
               {
                 '@type': 'ListItem',
                 position: 2,
                 name: 'Documentation',
-                item: 'https://claude-view.dev/docs/',
+                item: 'https://claudeview.ai/docs/',
               },
               { '@type': 'ListItem', position: 3, name: 'Current Page' },
             ],

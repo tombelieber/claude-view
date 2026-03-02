@@ -9,7 +9,7 @@
 // Site metadata
 // ---------------------------------------------------------------------------
 
-export const SITE_URL = 'https://claude-view.dev'
+export const SITE_URL = 'https://claudeview.ai'
 export const GITHUB_REPO = 'tombelieber/claude-view'
 export const GITHUB_URL = `https://github.com/${GITHUB_REPO}`
 
@@ -60,7 +60,7 @@ export const PRICING = {
       'Remote agent control',
       'Priority support',
     ],
-    cta: 'Coming Soon',
+    cta: 'Join Waitlist',
     ctaHref: '',
     highlight: true,
     comingSoon: true,
@@ -77,7 +77,7 @@ export const PRICING = {
       'Usage analytics',
       'SSO & admin controls',
     ],
-    cta: 'Coming Soon',
+    cta: 'Join Waitlist',
     ctaHref: '',
     comingSoon: true,
   },
@@ -99,8 +99,10 @@ export const PLATFORM = {
 } as const
 
 // ---------------------------------------------------------------------------
-// MCP
+// Plugin — Claude Code plugin (@claude-view/plugin)
 // ---------------------------------------------------------------------------
+
+export const PLUGIN_PACKAGE = '@claude-view/plugin'
 
 export const MCP_TOOLS = [
   {
@@ -117,7 +119,14 @@ export const MCP_TOOLS = [
 ] as const
 
 export const MCP_TOOL_COUNT = MCP_TOOLS.length
-export const MCP_PACKAGE = '@claude-view/mcp'
+
+export const PLUGIN_SKILLS = [
+  { name: '/session-recap', description: 'Summarize a specific session' },
+  { name: '/daily-cost', description: "Today's spending and activity report" },
+  { name: '/standup', description: 'Multi-session work log for standups' },
+] as const
+
+export const PLUGIN_SKILL_COUNT = PLUGIN_SKILLS.length
 
 // ---------------------------------------------------------------------------
 // Deep links
@@ -130,3 +139,17 @@ export const DEEP_LINK_SCHEME = 'claude-view'
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_PORT = 47892
+
+// ---------------------------------------------------------------------------
+// Waitlist
+// ---------------------------------------------------------------------------
+
+export const WAITLIST_API = '/api/waitlist'
+
+/**
+ * Cloudflare Turnstile site key (public, safe to embed in client code).
+ * ⚠️  REPLACE BEFORE DEPLOYING TO PRODUCTION — see Task 8 Step 2.
+ * Current value '1x00000000000000000000AA' is Cloudflare's always-passes TEST key.
+ * Deploying with this key means ALL bot submissions pass Turnstile verification.
+ */
+export const TURNSTILE_SITE_KEY = '1x00000000000000000000AA' // TODO(deploy): replace with real site key

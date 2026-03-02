@@ -1,27 +1,29 @@
 ---
-title: MCP Integration
-description: Give Claude Code native tool access to your session data, costs, and fluency scores — via the claude-view plugin (coming soon).
+title: Claude Code Plugin
+description: Install the claude-view plugin for Claude Code — auto-starts the dashboard, adds 8 tools and 3 skills. One command, zero config.
 ---
 
 import { MCP_TOOL_COUNT } from '../../../../data/site';
 
-:::caution[Coming Soon]
-The claude-view plugin is in development and not yet published. This page describes the planned integration. Check back soon or [watch the repo](https://github.com/tombelieber/claude-view) for the release.
-:::
-
 ## Overview
 
-claude-view will ship as a **Claude Code plugin** (`@claude-view/plugin`) that gives Claude Code native access to {MCP_TOOL_COUNT} session tools — no manual `settings.json` editing required.
+`@claude-view/plugin` is a **Claude Code plugin** that gives Claude native access to {MCP_TOOL_COUNT} session tools and 3 skills — no manual `settings.json` editing required.
 
-Once published, installation will be a single command:
+Install with one command:
 
 ```bash
 claude plugin add @claude-view/plugin
 ```
 
-## Available tools
+## What you get
 
-The plugin exposes {MCP_TOOL_COUNT} read-only tools:
+### Auto-start hook
+
+Every time you start a Claude Code session, the plugin checks if the claude-view server is running. If not, it starts it in the background. The web dashboard appears at `http://localhost:47892` — no manual `npx claude-view` needed.
+
+### {MCP_TOOL_COUNT} MCP tools
+
+The plugin exposes {MCP_TOOL_COUNT} read-only tools via MCP (Model Context Protocol):
 
 | Tool | Description |
 |------|-------------|
@@ -36,7 +38,15 @@ The plugin exposes {MCP_TOOL_COUNT} read-only tools:
 
 All tools are read-only. All data stays local — no external requests.
 
-## Example usage (preview)
+### 3 skills
+
+| Skill | Description |
+|-------|-------------|
+| `/session-recap` | Summarize a specific session — commits, metrics, duration |
+| `/daily-cost` | Today's spending, running sessions, token usage |
+| `/standup` | Multi-session work log for standup updates |
+
+## Example usage
 
 ```
 "How much have I spent on Claude Code today?"
@@ -47,12 +57,38 @@ All tools are read-only. All data stays local — no external requests.
 
 "What's my AI Fluency Score?"
 → Uses get_fluency_score
+
+/session-recap
+→ Summarizes your most recent session
+
+/standup
+→ Generates a standup update from the last 24h
 ```
 
 ## Architecture
 
-The plugin connects to the running claude-view server on `localhost:47892`. Start the server first:
+The plugin connects to the running claude-view server on `localhost:47892`. The auto-start hook ensures the server is always running when Claude Code starts.
 
-```bash
-npx claude-view
 ```
+Claude Code session starts
+  → Plugin SessionStart hook fires
+  → Hook checks localhost:47892/api/health
+    → Running? Skip.
+    → Not running? Spawn: npx claude-view (background)
+  → MCP server registered via plugin .mcp.json
+  → Claude has 8 tools + 3 skills available
+  → Web dashboard at localhost:47892
+```
+
+## Prerequisites
+
+- **Node.js 18+** — required by the MCP server
+- The plugin auto-starts the server, but `npx claude-view` must be available (downloads the Rust binary on first run)
+
+:::note[First run]
+The very first session after install may take 5–30 seconds to download the Rust binary. The hook times out gracefully — the server starts in the background and will be ready for your next tool call or session.
+:::
+
+## Configuration
+
+Set `CLAUDE_VIEW_PORT` to override the default port (47892). Both the hook and MCP client respect this variable.
