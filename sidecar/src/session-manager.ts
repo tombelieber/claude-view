@@ -8,11 +8,17 @@
 
 import { EventEmitter } from 'node:events'
 import {
+  type PermissionResult,
   type SDKMessage,
   type SDKSession,
   unstable_v2_resumeSession,
 } from '@anthropic-ai/claude-agent-sdk'
-import type { ActiveSession, ServerMessage } from './types.js'
+import type {
+  ActiveSession,
+  AskUserQuestionMessage,
+  PlanApprovalMessage,
+  ServerMessage,
+} from './types.js'
 
 interface ControlSession {
   controlId: string
@@ -32,6 +38,9 @@ interface ControlSession {
       timer: ReturnType<typeof setTimeout>
     }
   >
+  pendingQuestions: Map<string, { resolve: (answers: Record<string, string>) => void }>
+  pendingPlans: Map<string, { resolve: (result: { approved: boolean; feedback?: string }) => void }>
+  pendingElicitations: Map<string, { resolve: (response: string) => void }>
 }
 
 export class SessionManager {
@@ -66,42 +75,26 @@ export class SessionManager {
 
     const controlId = crypto.randomUUID()
     const emitter = new EventEmitter()
-    const pendingPermissions = new Map<
-      string,
-      {
-        resolve: (allowed: boolean) => void
-        timer: ReturnType<typeof setTimeout>
-      }
-    >()
 
-    // SDK V2 LIMITATION (verified against installed `@anthropic-ai/claude-agent-sdk` types):
-    //
-    // `SDKSessionOptions` only accepts: { model, pathToClaudeCodeExecutable?, executable?,
-    //   executableArgs?, env? }
-    //
-    // The following fields are NOT available in V2:
-    //   - `cwd` -- pass via env: { CLAUDE_CWD: projectPath } if the SDK respects it, or omit
-    //   - `canUseTool` -- NOT available in V2. Interactive permission routing requires either:
-    //     (a) Fall back to V1 query() API which supports canUseTool in its Options type
-    //     (b) Accept all tools automatically in V2 and add interactive permissions when SDK stabilizes
-    //   - `includePartialMessages` -- NOT available in V2. Streaming content comes via stream() events.
-    //
-    // Recommendation: For Phase F MVP, use V2 with auto-accept permissions. Add
-    // env: { CLAUDE_ACCEPT_TOS: 'true' } or equivalent. Mark interactive permission approval as
-    // Phase F.2 pending SDK stabilization. The permission UI (Task 14) can still be built -- it
-    // just won't be wired to canUseTool until the V2 API adds it.
+    // SDK v0.2.63: canUseTool available — permissions, AskUserQuestion, ExitPlanMode
+    // routed through handleCanUseTool → pendingPermissions/Questions/Plans maps
+
+    // canUseTool closure captures `cs` by reference — safe because
+    // canUseTool fires asynchronously, never during synchronous init.
+    // biome-ignore lint/style/useConst: definite assignment with deferred init — `let x!: T` then assign after sdkSession
+    let cs!: ControlSession
+
     const sdkSession = unstable_v2_resumeSession(sessionId, {
       model: model ?? 'claude-sonnet-4-20250514',
       env: {
         ...(projectPath ? { CLAUDE_CWD: projectPath } : {}),
       },
+      canUseTool: async (toolName, input, { signal }) => {
+        return this.handleCanUseTool(cs, toolName, input, signal)
+      },
     })
 
-    // Phase F.2 TODO: Wire interactive permission routing when SDK V2 adds canUseTool.
-    // The permission UI (Task 14) and pendingPermissions map are ready -- they just need
-    // the SDK callback to be wired in. For now, permissions are auto-accepted by the SDK.
-
-    const cs: ControlSession = {
+    cs = {
       controlId,
       sessionId,
       sdkSession,
@@ -112,11 +105,163 @@ export class SessionManager {
       startedAt: Date.now(),
       emitter,
       isStreaming: false,
-      pendingPermissions,
+      pendingPermissions: new Map(),
+      pendingQuestions: new Map(),
+      pendingPlans: new Map(),
+      pendingElicitations: new Map(),
     }
 
     this.sessions.set(controlId, cs)
     return cs
+  }
+
+  /**
+   * Central callback for all tool permission decisions.
+   * Routes to specific handlers based on toolName.
+   */
+  private async handleCanUseTool(
+    cs: ControlSession,
+    toolName: string,
+    input: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<PermissionResult> {
+    // --- AskUserQuestion: route to frontend for user selection ---
+    if (toolName === 'AskUserQuestion') {
+      const requestId = crypto.randomUUID()
+      const questions = input.questions as AskUserQuestionMessage['questions']
+
+      return new Promise((resolve) => {
+        cs.pendingQuestions.set(requestId, {
+          resolve: (answers: Record<string, string>) => {
+            resolve({
+              behavior: 'allow',
+              updatedInput: { ...input, answers },
+            })
+          },
+        })
+
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (cs.pendingQuestions.has(requestId)) {
+              cs.pendingQuestions.delete(requestId)
+              resolve({ behavior: 'deny', message: 'Question aborted' })
+            }
+          },
+          { once: true },
+        )
+
+        // Update status and emit to frontend
+        cs.status = 'waiting_permission'
+        cs.emitter.emit('message', {
+          type: 'ask_user_question',
+          requestId,
+          questions,
+        } satisfies AskUserQuestionMessage)
+        cs.emitter.emit('message', {
+          type: 'session_status',
+          status: cs.status,
+          contextUsage: cs.contextUsage,
+          turnCount: cs.turnCount,
+        } satisfies ServerMessage)
+      })
+    }
+
+    // --- ExitPlanMode: route to frontend for plan approval ---
+    if (toolName === 'ExitPlanMode') {
+      const requestId = crypto.randomUUID()
+
+      return new Promise((resolve) => {
+        cs.pendingPlans.set(requestId, {
+          resolve: (result: { approved: boolean; feedback?: string }) => {
+            resolve(
+              result.approved
+                ? { behavior: 'allow', updatedInput: input }
+                : { behavior: 'deny', message: result.feedback ?? 'Plan rejected by user' },
+            )
+          },
+        })
+
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (cs.pendingPlans.has(requestId)) {
+              cs.pendingPlans.delete(requestId)
+              resolve({ behavior: 'deny', message: 'Plan approval aborted' })
+            }
+          },
+          { once: true },
+        )
+
+        // Update status and emit plan data to frontend
+        cs.status = 'waiting_permission'
+        cs.emitter.emit('message', {
+          type: 'plan_approval',
+          requestId,
+          planData: input,
+        } satisfies PlanApprovalMessage)
+        cs.emitter.emit('message', {
+          type: 'session_status',
+          status: cs.status,
+          contextUsage: cs.contextUsage,
+          turnCount: cs.turnCount,
+        } satisfies ServerMessage)
+      })
+    }
+
+    // --- Generic permission request (all other tools) ---
+    const requestId = crypto.randomUUID()
+
+    return new Promise((resolve) => {
+      // Store resolve callback
+      cs.pendingPermissions.set(requestId, {
+        resolve: (allowed: boolean) => {
+          resolve(
+            allowed
+              ? { behavior: 'allow', updatedInput: input }
+              : { behavior: 'deny', message: `User denied ${toolName}` },
+          )
+        },
+        timer: setTimeout(() => {
+          // Auto-deny after 60s if frontend doesn't respond
+          if (cs.pendingPermissions.has(requestId)) {
+            cs.pendingPermissions.delete(requestId)
+            resolve({ behavior: 'deny', message: 'Permission request timed out' })
+          }
+        }, 60_000),
+      })
+
+      // Handle SDK abort (session close, server shutdown)
+      signal.addEventListener(
+        'abort',
+        () => {
+          const pending = cs.pendingPermissions.get(requestId)
+          if (pending) {
+            clearTimeout(pending.timer)
+            cs.pendingPermissions.delete(requestId)
+            resolve({ behavior: 'deny', message: 'Request aborted' })
+          }
+        },
+        { once: true },
+      )
+
+      // Emit to frontend via EventEmitter → WebSocket
+      cs.status = 'waiting_permission'
+      cs.emitter.emit('message', {
+        type: 'permission_request',
+        requestId,
+        toolName,
+        toolInput: input,
+        description: `${toolName} requires permission`,
+        timeoutMs: 60_000,
+      } satisfies ServerMessage)
+      cs.emitter.emit('message', {
+        type: 'session_status',
+        status: cs.status,
+        contextUsage: cs.contextUsage,
+        turnCount: cs.turnCount,
+      } satisfies ServerMessage)
+    })
   }
 
   async sendMessage(controlId: string, content: string): Promise<void> {
@@ -210,13 +355,94 @@ export class SessionManager {
     if (!pending) return false
     clearTimeout(pending.timer)
     cs.pendingPermissions.delete(requestId)
+    cs.status = 'active'
+    cs.emitter.emit('message', {
+      type: 'session_status',
+      status: cs.status,
+      contextUsage: cs.contextUsage,
+      turnCount: cs.turnCount,
+    } satisfies ServerMessage)
     pending.resolve(allowed)
+    return true
+  }
+
+  resolveQuestion(controlId: string, requestId: string, answers: Record<string, string>): boolean {
+    const cs = this.sessions.get(controlId)
+    if (!cs) return false
+    const pending = cs.pendingQuestions.get(requestId)
+    if (!pending) return false
+    cs.pendingQuestions.delete(requestId)
+    cs.status = 'active'
+    cs.emitter.emit('message', {
+      type: 'session_status',
+      status: cs.status,
+      contextUsage: cs.contextUsage,
+      turnCount: cs.turnCount,
+    } satisfies ServerMessage)
+    pending.resolve(answers)
+    return true
+  }
+
+  resolvePlan(controlId: string, requestId: string, approved: boolean, feedback?: string): boolean {
+    const cs = this.sessions.get(controlId)
+    if (!cs) return false
+    const pending = cs.pendingPlans.get(requestId)
+    if (!pending) return false
+    cs.pendingPlans.delete(requestId)
+    cs.status = 'active'
+    cs.emitter.emit('message', {
+      type: 'session_status',
+      status: cs.status,
+      contextUsage: cs.contextUsage,
+      turnCount: cs.turnCount,
+    } satisfies ServerMessage)
+    pending.resolve({ approved, feedback })
+    return true
+  }
+
+  resolveElicitation(controlId: string, requestId: string, response: string): boolean {
+    const cs = this.sessions.get(controlId)
+    if (!cs) return false
+    const pending = cs.pendingElicitations.get(requestId)
+    if (!pending) return false
+    cs.pendingElicitations.delete(requestId)
+    cs.status = 'active'
+    cs.emitter.emit('message', {
+      type: 'session_status',
+      status: cs.status,
+      contextUsage: cs.contextUsage,
+      turnCount: cs.turnCount,
+    } satisfies ServerMessage)
+    pending.resolve(response)
     return true
   }
 
   async close(controlId: string): Promise<void> {
     const cs = this.sessions.get(controlId)
     if (!cs) return
+
+    // Drain all pending promises before closing (prevents leaked promises)
+    for (const [, pending] of cs.pendingPermissions) {
+      clearTimeout(pending.timer)
+      pending.resolve(false) // deny
+    }
+    cs.pendingPermissions.clear()
+
+    for (const [, pending] of cs.pendingQuestions) {
+      pending.resolve({}) // allow with empty answers
+    }
+    cs.pendingQuestions.clear()
+
+    for (const [, pending] of cs.pendingPlans) {
+      pending.resolve({ approved: false }) // reject plan
+    }
+    cs.pendingPlans.clear()
+
+    for (const [, pending] of cs.pendingElicitations) {
+      pending.resolve('') // empty response
+    }
+    cs.pendingElicitations.clear()
+
     cs.sdkSession.close() // close() is synchronous in V2, no await
     this.sessions.delete(controlId)
   }

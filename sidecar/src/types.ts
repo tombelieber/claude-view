@@ -18,7 +18,32 @@ export interface PingMessage {
   type: 'ping'
 }
 
-export type ClientMessage = UserMessage | PermissionResponse | PingMessage
+export interface QuestionResponse {
+  type: 'question_response'
+  requestId: string
+  answers: Record<string, string> // { "question text": "selected option label" }
+}
+
+export interface PlanResponse {
+  type: 'plan_response'
+  requestId: string
+  approved: boolean
+  feedback?: string
+}
+
+export interface ElicitationResponse {
+  type: 'elicitation_response'
+  requestId: string
+  response: string
+}
+
+export type ClientMessage =
+  | UserMessage
+  | PermissionResponse
+  | QuestionResponse
+  | PlanResponse
+  | ElicitationResponse
+  | PingMessage
 
 // ── Sidecar → Frontend (via Axum WS proxy) ──
 
@@ -81,12 +106,41 @@ export interface PongMessage {
   type: 'pong'
 }
 
+// Interactive card messages — sidecar → frontend
+// Emitted when canUseTool intercepts AskUserQuestion, ExitPlanMode, or Elicitation
+
+export interface AskUserQuestionMessage {
+  type: 'ask_user_question'
+  requestId: string
+  questions: {
+    question: string
+    header: string
+    options: { label: string; description: string; markdown?: string }[]
+    multiSelect: boolean
+  }[]
+}
+
+export interface PlanApprovalMessage {
+  type: 'plan_approval'
+  requestId: string
+  planData: Record<string, unknown> // ExitPlanMode tool input (allowedPrompts, etc.)
+}
+
+export interface ElicitationMessage {
+  type: 'elicitation'
+  requestId: string
+  prompt: string
+}
+
 export type ServerMessage =
   | AssistantChunk
   | AssistantDone
   | ToolUseStart
   | ToolUseResult
   | PermissionRequest
+  | AskUserQuestionMessage
+  | PlanApprovalMessage
+  | ElicitationMessage
   | SessionStatusMessage
   | ErrorMessage
   | PongMessage

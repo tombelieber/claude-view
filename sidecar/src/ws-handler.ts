@@ -42,6 +42,38 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
         case 'permission_response':
           sessions.resolvePermission(controlId, msg.requestId, msg.allowed)
           break
+        case 'question_response': {
+          const ok = sessions.resolveQuestion(controlId, msg.requestId, msg.answers)
+          if (!ok)
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'Unknown question requestId',
+                fatal: false,
+              }),
+            )
+          break
+        }
+        case 'plan_response': {
+          const ok = sessions.resolvePlan(controlId, msg.requestId, msg.approved, msg.feedback)
+          if (!ok)
+            ws.send(
+              JSON.stringify({ type: 'error', message: 'Unknown plan requestId', fatal: false }),
+            )
+          break
+        }
+        case 'elicitation_response': {
+          const ok = sessions.resolveElicitation(controlId, msg.requestId, msg.response)
+          if (!ok)
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'Unknown elicitation requestId',
+                fatal: false,
+              }),
+            )
+          break
+        }
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))
           break
@@ -54,5 +86,25 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
   // Cleanup on close
   ws.on('close', () => {
     session.emitter.removeListener('message', onMessage)
+
+    // Drain interactive pending maps (question/plan/elicitation) — these have
+    // no auto-timeout timer, so they'd hang forever without a connected frontend.
+    // Do NOT call sessions.close() — that destroys the SDK session and defeats
+    // the frontend's reconnect logic (exponential backoff, up to 10 retries).
+    // pendingPermissions is NOT drained here because it has its own 60s auto-deny timer.
+    for (const [, pending] of session.pendingQuestions) {
+      pending.resolve({}) // empty answers → allow with no selections
+    }
+    session.pendingQuestions.clear()
+
+    for (const [, pending] of session.pendingPlans) {
+      pending.resolve({ approved: false }) // reject plan (never auto-approve)
+    }
+    session.pendingPlans.clear()
+
+    for (const [, pending] of session.pendingElicitations) {
+      pending.resolve('') // empty response
+    }
+    session.pendingElicitations.clear()
   })
 }
