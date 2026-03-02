@@ -5,6 +5,7 @@ import { useTheme } from '../hooks/use-theme'
 import { useAppStore } from '../store/app-store'
 import { AuthPill } from './AuthPill'
 import { HealthIndicator } from './HealthIndicator'
+import { UserMenu } from './UserMenu'
 import { NotificationSoundPopover } from './live/NotificationSoundPopover'
 
 const THEME_LABELS = { light: 'Light', dark: 'Dark', system: 'System' } as const
@@ -153,6 +154,8 @@ export function Header({
           <ThemeIcon className="w-4 h-4" aria-hidden="true" />
           <span className="text-xs font-medium">{THEME_LABELS[theme]}</span>
         </button>
+
+        <UserMenu />
 
         <button
           type="button"
