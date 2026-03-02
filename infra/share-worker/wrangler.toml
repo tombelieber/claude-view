@@ -2,10 +2,14 @@ name = "claude-view-share-worker-prod"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]  # Required by @sentry/cloudflare (uses Node.js APIs)
+workers_dev = true
+routes = [
+  { pattern = "api-share.claudeview.ai", custom_domain = true }
+]
 
+# Secrets (set via `wrangler secret put`): SUPABASE_URL
 [vars]
 ENVIRONMENT = "production"
-SUPABASE_URL = "" # set via `wrangler secret put`
 POSTHOG_API_KEY = "" # fill after PostHog setup
 
 [[r2_buckets]]
@@ -15,16 +19,16 @@ bucket_name = "claude-view-share-r2-prod"
 [[d1_databases]]
 binding = "DB"
 database_name = "claude-view-share-d1-prod"
-database_id = "" # filled after `wrangler d1 create`
+database_id = "44aa8a50-580a-4c48-a9b9-84929d51546c"
 
 [triggers]
 crons = ["0 * * * *"] # hourly cleanup of pending shares
 
 [env.dev]
 name = "claude-view-share-worker-dev"
+# Secrets (set via `wrangler secret put --env dev`): SUPABASE_URL
 [env.dev.vars]
 ENVIRONMENT = "development"
-SUPABASE_URL = ""       # set via `wrangler secret put --env dev`
 POSTHOG_API_KEY = ""    # fill after PostHog setup
 
 [[env.dev.r2_buckets]]
