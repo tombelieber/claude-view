@@ -31,12 +31,12 @@ const tiers = PRICING_TIERS.map((t) => ({
         ))}
       </ul>
       {tier.comingSoon ? (
-        <button
-          disabled
-          class="block w-full text-center py-3 px-6 rounded-lg font-medium text-sm bg-slate-800 text-slate-400 cursor-not-allowed opacity-70"
+        <a
+          href="#waitlist"
+          class="block w-full text-center py-3 px-6 rounded-lg font-medium text-sm transition-colors border border-green-500/30 bg-green-500/10 text-green-400 hover:bg-green-500/20 hover:border-green-500/50"
         >
-          {tier.cta}
-        </button>
+          Join Waitlist
+        </a>
       ) : (
         <a
           href={tier.ctaHref}
