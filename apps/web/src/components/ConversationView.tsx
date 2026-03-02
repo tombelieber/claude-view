@@ -1,12 +1,9 @@
 import {
   ArrowLeft,
-  Check,
   ChevronDown,
   Copy,
   Download,
   FileX,
-  Link2,
-  Loader2,
   MessageSquare,
   PanelRight,
   Terminal,
@@ -16,6 +13,7 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { Virtuoso } from 'react-virtuoso'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { useControlSession } from '../hooks/use-control-session'
 import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
@@ -23,7 +21,6 @@ import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useSessionMessages } from '../hooks/use-session-messages'
-import { useCreateShare } from '../hooks/use-share'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
 import {
   type ExportMetadata,
@@ -45,7 +42,8 @@ import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
 import { MessageTyped } from './MessageTyped'
 import { SessionMetricsBar } from './SessionMetricsBar'
-import { SignInPrompt } from './SignInPrompt'
+import { ShareModal } from './ShareModal'
+import { ChatInputBar, type InputBarState } from './chat/ChatInputBar'
 import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
@@ -92,6 +90,24 @@ function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[
   })
 }
 
+function controlStatusToInputState(status: string | undefined): InputBarState {
+  switch (status) {
+    case 'active':
+    case 'waiting_input':
+      return 'active'
+    case 'waiting_permission':
+      return 'waiting_permission'
+    case 'connecting':
+      return 'connecting'
+    case 'reconnecting':
+      return 'reconnecting'
+    case 'completed':
+      return 'completed'
+    default:
+      return 'dormant'
+  }
+}
+
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -104,31 +120,17 @@ export function ConversationView() {
   const project = summaries.find((p) => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
+  // Chat input bar: resume flow
+  const [controlId, setControlId] = useState<string | null>(null)
+  const pendingMessageRef = useRef<string | null>(null)
+  const controlSession = useControlSession(controlId)
+
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
   const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
-
-  // Share state
-  const createShare = useCreateShare()
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  const [showSignIn, setShowSignIn] = useState(false)
-
-  const handleShare = async () => {
-    if (!sessionId) return
-    try {
-      const result = await createShare.mutateAsync(sessionId)
-      setShareUrl(result.url)
-      await navigator.clipboard.writeText(result.url)
-      showToast('Share link copied to clipboard')
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
-        setShowSignIn(true)
-      }
-    }
-  }
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
   const backUrl = useMemo(() => {
@@ -241,6 +243,39 @@ export function ConversationView() {
       3000,
     )
   }, [sessionId, sessionDetail])
+
+  const handleChatSend = useCallback(
+    async (message: string) => {
+      if (!controlId) {
+        pendingMessageRef.current = message
+        try {
+          const res = await fetch('/api/control/resume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+          })
+          if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
+          const data = await res.json()
+          setControlId(data.controlId)
+        } catch {
+          pendingMessageRef.current = null
+          showToast('Failed to resume session', 3000)
+        }
+      } else {
+        controlSession.sendMessage(message)
+      }
+    },
+    [controlId, controlSession.sendMessage, sessionId],
+  )
+
+  // Drain pending message when WS reaches waiting_input
+  useEffect(() => {
+    if (controlId && pendingMessageRef.current && controlSession.status === 'waiting_input') {
+      const msg = pendingMessageRef.current
+      pendingMessageRef.current = null
+      controlSession.sendMessage(msg)
+    }
+  }, [controlId, controlSession.status, controlSession.sendMessage])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
@@ -556,23 +591,11 @@ export function ConversationView() {
             <PanelRight className="w-4 h-4" />
           </button>
 
-          {/* Share button */}
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={createShare.isPending}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors disabled:opacity-50"
-            title={shareUrl ? 'Link copied!' : 'Share conversation'}
-          >
-            {createShare.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : shareUrl ? (
-              <Check className="w-4 h-4 text-green-500" />
-            ) : (
-              <Link2 className="w-4 h-4" />
-            )}
-            {shareUrl ? 'Copied!' : 'Share'}
-          </button>
+          <ShareModal
+            sessionId={sessionId!}
+            messages={session?.messages}
+            projectName={projectName}
+          />
 
           {/* Continue / Resume dropdown */}
           <div className="relative" ref={resumeMenuRef}>
@@ -692,74 +715,82 @@ export function ConversationView() {
 
       {/* Two-column: Conversation + Sidebar */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Conversation messages */}
-        <div className="flex-1 min-w-0">
-          {!verboseMode ? (
-            <ThreadHighlightProvider>
-              <ExpandProvider>
-                <Virtuoso
-                  data={filteredMessages}
-                  firstItemIndex={firstItemIndex}
-                  startReached={handleStartReached}
-                  initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
-                  followOutput="smooth"
-                  itemContent={(index, message) => {
-                    const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                    return (
-                      <div className="max-w-4xl mx-auto px-6 pb-4">
-                        <ErrorBoundary key={message.uuid || index}>
-                          <MessageTyped
-                            message={message}
-                            messageIndex={index}
-                            messageType={message.role}
-                            metadata={message.metadata}
-                            parentUuid={thread?.parentUuid}
-                            indent={thread?.indent ?? 0}
-                            isChildMessage={thread?.isChild ?? false}
-                            onGetThreadChain={getThreadChainForUuid}
-                            showThinking={false}
-                          />
-                        </ErrorBoundary>
-                      </div>
-                    )
-                  }}
-                  components={{
-                    Header: () =>
-                      isFetchingPreviousPage ? (
-                        <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                          Loading older messages...
+        {/* Left: Conversation messages + ChatInputBar */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {!verboseMode ? (
+              <ThreadHighlightProvider>
+                <ExpandProvider>
+                  <Virtuoso
+                    data={filteredMessages}
+                    firstItemIndex={firstItemIndex}
+                    startReached={handleStartReached}
+                    initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                    followOutput="smooth"
+                    itemContent={(index, message) => {
+                      const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                      return (
+                        <div className="max-w-4xl mx-auto px-6 pb-4">
+                          <ErrorBoundary key={message.uuid || index}>
+                            <MessageTyped
+                              message={message}
+                              messageIndex={index}
+                              messageType={message.role}
+                              metadata={message.metadata}
+                              parentUuid={thread?.parentUuid}
+                              indent={thread?.indent ?? 0}
+                              isChildMessage={thread?.isChild ?? false}
+                              onGetThreadChain={getThreadChainForUuid}
+                              showThinking={false}
+                            />
+                          </ErrorBoundary>
                         </div>
-                      ) : hasPreviousPage ? (
-                        <div className="h-6" />
-                      ) : filteredMessages.length > 0 ? (
-                        <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                          Beginning of conversation
-                        </div>
-                      ) : (
-                        <div className="h-6" />
-                      ),
-                    Footer: () =>
-                      filteredMessages.length > 0 ? (
-                        <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                          {totalMessages} messages
-                          {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
-                          {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                            <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                          )}
-                        </div>
-                      ) : null,
-                  }}
-                  increaseViewportBy={{ top: 400, bottom: 400 }}
-                  className="h-full overflow-auto"
-                />
-              </ExpandProvider>
-            </ThreadHighlightProvider>
-          ) : (
-            <HistoryRichPane
-              messages={richMessagesWithHookEvents}
-              categoryCounts={historyCategoryCounts}
-            />
-          )}
+                      )
+                    }}
+                    components={{
+                      Header: () =>
+                        isFetchingPreviousPage ? (
+                          <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                            Loading older messages...
+                          </div>
+                        ) : hasPreviousPage ? (
+                          <div className="h-6" />
+                        ) : filteredMessages.length > 0 ? (
+                          <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                            Beginning of conversation
+                          </div>
+                        ) : (
+                          <div className="h-6" />
+                        ),
+                      Footer: () =>
+                        filteredMessages.length > 0 ? (
+                          <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                            {totalMessages} messages
+                            {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
+                            {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                              <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                            )}
+                          </div>
+                        ) : null,
+                    }}
+                    increaseViewportBy={{ top: 400, bottom: 400 }}
+                    className="h-full overflow-auto"
+                  />
+                </ExpandProvider>
+              </ThreadHighlightProvider>
+            ) : (
+              <HistoryRichPane
+                messages={richMessagesWithHookEvents}
+                categoryCounts={historyCategoryCounts}
+              />
+            )}
+          </div>
+          <ChatInputBar
+            onSend={handleChatSend}
+            state={controlStatusToInputState(controlSession.status)}
+            contextPercent={Math.round(controlSession.contextUsage)}
+            placeholder={controlId ? 'Send a message...' : 'Resume this session...'}
+          />
         </div>
 
         {/* Right: Detail panel (inline) */}
@@ -767,31 +798,6 @@ export function ConversationView() {
           <SessionDetailPanel panelData={panelData} onClose={() => setPanelOpen(false)} inline />
         )}
       </div>
-
-      {/* Sign-in modal (shown on 401 from share endpoint) */}
-      {showSignIn && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-          onClick={() => setShowSignIn(false)}
-          onKeyDown={(e) => e.key === 'Escape' && setShowSignIn(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={() => {}}
-            role="document"
-          >
-            <SignInPrompt
-              onSignedIn={() => {
-                setShowSignIn(false)
-                handleShare()
-              }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
