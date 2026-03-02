@@ -3,7 +3,7 @@ title: CLI Options
 description: Command-line usage, subcommands, and environment variables for claude-view.
 ---
 
-{/* Default port (47892) sourced from apps/landing/src/data/site.ts */}
+import { DEFAULT_PORT } from '../../../../data/site';
 
 ## Usage
 
@@ -30,16 +30,21 @@ claude-view cleanup
 
 ## Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CLAUDE_VIEW_PORT` | Override server port | `47892` |
-| `PORT` | Alternative port variable (fallback) | — |
-| `RUST_LOG` | Log level filter | `warn` |
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CLAUDE_VIEW_PORT</code></td><td>Override server port</td><td><code>{DEFAULT_PORT}</code></td></tr>
+    <tr><td><code>PORT</code></td><td>Alternative port variable (fallback)</td><td>—</td></tr>
+    <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>warn</code></td></tr>
+  </tbody>
+</table>
 
 ## Examples
 
 ```bash
-# Default — starts server on port 47892 and opens browser
+# Default — starts server and opens browser
 npx claude-view
 
 # Custom port via env var
@@ -57,4 +62,4 @@ npx claude-view cleanup
 
 ## Port fallback
 
-If the specified port (default `47892`) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.
+If the specified port (default <code>{DEFAULT_PORT}</code>) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.

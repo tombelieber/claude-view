@@ -1,4 +1,4 @@
-# Site URL sourced from apps/landing/src/data/site.ts (SITE_URL = https://claude-view.dev)
+# Site URL sourced from apps/landing/src/data/site.ts (SITE_URL = https://claudeview.ai)
 User-agent: *
 Allow: /
 
@@ -12,4 +12,4 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-Sitemap: https://claude-view.dev/sitemap-index.xml
+Sitemap: https://claudeview.ai/sitemap-index.xml
