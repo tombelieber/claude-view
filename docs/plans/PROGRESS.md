@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-03-01 (Plugin shipped, Phase F done)
+> **Last updated:** 2026-03-02 (Share Viewer Upgrade shipped, Sidecar SDK Upgrade shipped, Chat Input Bar shipped, Web Auth UX done, Waitlist CTA done)
 
 ---
 
@@ -27,8 +27,9 @@
 | 5 | **Launch assets** | 60s demo video, Product Hunt listing, Show HN post, landing page update. | Not started | Needs #3 working |
 | 6 | **LAUNCH 1** | Ship it. "I shipped a feature from my phone." | — | Needs #5 |
 
-**Critical path:** `M2 design → M2 build → Launch assets → LAUNCH 1`
-**Phase F + M1 both done.** Next: M2 (mobile control) extends both.
+**Critical path:** `M2 design → M2 build → Launch assets → LAUNCH 1 → M4 Workflows → LAUNCH 2`
+**Phase F + M1 + Chat Input Bar all done.** Next: M2 design doc — sole remaining blocker on the critical path.
+**M4 Workflows design complete** — GTM repo `plans/active/2026-03-02-m4-workflows-design.md`. Impl after M2.
 
 **Plans:**
 - Phase F design: [`mission-control/phase-f-interactive.md`](mission-control/phase-f-interactive.md)
@@ -39,10 +40,16 @@
 
 **Optional / lower priority:**
 
-- Phase E (Mission Control custom layout — drag-and-drop panes) — polish, do when convenient. Plan: [`mission-control/phase-e-custom-layout.md`](mission-control/phase-e-custom-layout.md)
+- ~~Phase E (Mission Control custom layout)~~ — **DONE** (dockview, 3 presets, custom presets, layout save/load, 12 tests)
 
 ## Recently Completed
 
+- **Share Viewer Upgrade** (2026-03-02): Upgraded share viewer to feature parity — ViewModeToggle + SessionInfoPanel shared components, verbose mode with Chat/Debug toggle, redesigned header with backdrop-blur branding, ChatGPT-style share modal with Copy Link/Copy Message, expanded Rust share blob with rich session metadata. 8 tasks, 7 commits, ~15 files modified. Shippable audit passed (SHIP IT). Plan: [`web/2026-03-02-share-viewer-upgrade-impl.md`](web/2026-03-02-share-viewer-upgrade-impl.md)
+- **Sidecar SDK Upgrade** (2026-03-02): Bumped Agent SDK ^0.1.0 → ^0.2.63, wired `canUseTool` callback for permissions/AskUserQuestion/ExitPlanMode/Elicitation interactive flows. 11 tasks, 5 commits, 7 files modified. Shippable audit passed (SHIP IT). Plan: [`mission-control/2026-03-01-sidecar-sdk-upgrade-impl.md`](mission-control/2026-03-01-sidecar-sdk-upgrade-impl.md)
+- **Chat Input Bar** (2026-03-02): ChatInputBar with dormant state machine (9 states), 4 interactive cards (AskUserQuestion, Permission, PlanApproval, Elicitation), ControlCallbacks dependency inversion, wired into SessionDetailPanel + ConversationView + RichPane. 24 tasks, 7 commits, ~1200 lines added, shippable audit passed (SHIP IT). Plan: [`web/2026-02-28-chat-input-bar-impl.md`](web/2026-02-28-chat-input-bar-impl.md)
+- **Waitlist CTA** (2026-03-02): WaitlistForm with Turnstile CAPTCHA + referral tracking. CF Pages Function, Supabase `waitlist` migration, integrated into hero + pricing + docs. **L1 blocker #2 resolved.** Plan: [`landing/2026-03-01-waitlist-cta-impl.md`](landing/2026-03-01-waitlist-cta-impl.md)
+- **Web Auth UX** (2026-03-02): AuthProvider context, UserMenu header avatar/dropdown, AccountSection settings, centralized sign-in modal via Radix Dialog. 8 tasks, 7 commits, 7 files. Plan: [`web/2026-03-02-web-auth-ux-impl.md`](web/2026-03-02-web-auth-ux-impl.md)
+- **Share Worker Prod Deployment** (2026-03-02): Deployed production Cloudflare Worker at `share.claudeview.ai`. Fixed SUPABASE_URL var/secret conflict, standardized `-prod` naming. 3 commits.
 - **Claude View Plugin** (2026-03-01): `@claude-view/plugin` Claude Code plugin — auto-starts Rust server via SessionStart hook, bundles 8 MCP tools (session/cost/fluency), adds 3 skills (`/session-recap`, `/daily-cost`, `/standup`). `packages/mcp/` demoted to private workspace. 7 commits, 14 files, shippable audit passed. Plan: [`cross-cutting/2026-03-01-claude-view-plugin-impl.md`](cross-cutting/2026-03-01-claude-view-plugin-impl.md)
 - **M1: Mobile Monitor** (2026-03-01): Expo app with QR pairing, NaCl-encrypted relay connection, OneSignal push, session dashboard with grouping, session detail sheet. 10/10 tasks verified. Plan: [`mobile/2026-02-25-clawmini-mobile-m1-impl.md`](mobile/2026-02-25-clawmini-mobile-m1-impl.md)
 - **Phase F: Agent Control** (2026-03-01): Node.js sidecar + Agent SDK IPC. DashboardChat with streaming, ResumePreFlight cost estimation, PermissionDialog with countdown auto-deny, ChatStatusBar. 20+ commits, fully wired into AppState. Plan: [`mission-control/phase-f-impl.md`](mission-control/phase-f-impl.md)
@@ -104,12 +111,12 @@
 | Sparkline Stats Grid | **DONE** | Personal |
 | Reliability Release | **DONE** (PR #14) | Both |
 | Pricing Engine Overhaul | **DONE** | Both |
-| **Mission Control** | **DONE** (A-F done, E theming ongoing) | Personal |
+| **Mission Control** | **DONE** (A-F all done) | Personal |
 | **Phase F: Agent Control** | **DONE** | Both |
 | **Mobile Remote M1** | **DONE** (10/10 tasks verified) | Both |
 | **Mobile Remote M2** | **Not started — L1 launch trigger** | Both |
 | **Monorepo Restructure** | **DONE** | Both |
-| **Plan Runner (Phase K)** | Not started — L2 | Both |
+| **M4: Workflows (Plan Runner)** | **Design done** — L2. See GTM `plans/active/2026-03-02-m4-workflows-design.md` | Both |
 | Star / Label Sessions | Deferred (L0 nice-to-have) | Both |
 | Session Backup | Done (standalone); integration deferred | Both |
 | Phase 5: Enterprise Team Layer | Not started | **Enterprise** |
@@ -122,12 +129,12 @@ Plans are organized by area. Each area has its own `PROGRESS.md` with active/com
 
 | Area | Dashboard | Active | Description |
 |------|-----------|--------|-------------|
-| Web | [`web/PROGRESS.md`](web/PROGRESS.md) | 7 active | React SPA — chat input, conversation sharing, context bar, renderers |
+| Web | [`web/PROGRESS.md`](web/PROGRESS.md) | 0 active | React SPA — context bar marker done, verbose renderers done, star/label (deferred) |
 | Mobile | [`mobile/PROGRESS.md`](mobile/PROGRESS.md) | M1 done, M2 TBD | Expo native app — monitor, push, control |
 | Landing | [`landing/PROGRESS.md`](landing/PROGRESS.md) | 1 active (L1 blocker) | Astro site — follow-up: badges, CTA, fonts |
-| Server | [`server/PROGRESS.md`](server/PROGRESS.md) | 3 active | Rust backend — plugin/MCP, session backup |
+| Server | [`server/PROGRESS.md`](server/PROGRESS.md) | 0 active | All done or superseded |
 | Relay | [`relay/PROGRESS.md`](relay/PROGRESS.md) | 0 active | Cloud relay (changes tracked in mobile/) |
-| Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | Phase F done, E theming | Agent control shipped; E polish ongoing |
+| Mission Control | [`mission-control/PROGRESS.md`](mission-control/PROGRESS.md) | A-F all done | Phases A-F shipped; G-J (Codex multi-provider) pending |
 | Cross-cutting | [`cross-cutting/PROGRESS.md`](cross-cutting/PROGRESS.md) | Plugin done | Monorepo, infra, types, plugin |
 | Backlog | [`backlog/`](backlog/) | 25 deferred | Epics, marketplace, future work |
 | Archived | [`archived/`](archived/) | — | Pre-monorepo era completed plans |
@@ -176,12 +183,12 @@ All code is shipped. These are cloud console + CLI steps requiring your accounts
 
 - **Compiles:** Yes (cargo check + `bun run build` pass)
 - **Backend tests:** 1177 (core 652 + server 525, 2 pre-existing failures unrelated)
-- **Frontend tests:** 1117 (vitest, 74 files, 0 failures)
+- **Frontend tests:** 1140 (vitest, 78 files, 2 pre-existing failures in SubAgentDrillDown.test.tsx)
 - **MCP tests:** 24 pass (6 files, 69 assertions)
 - **Plugin validation:** 13/13 checks pass (files, JSON, executable)
 - **TypeScript:** 0 errors (`tsc --noEmit`)
 - **Clippy:** 1 cosmetic warning (SidecarManager Default derive)
-- **Last verified:** 2026-03-01 on branch `worktree-monorepo-expo`
+- **Last verified:** 2026-03-02 on branch `worktree-monorepo-expo`
 
 ---
 

@@ -18,8 +18,8 @@ feature: mission-control
 | C | Monitor Mode | `done` | Live chat grid, WebSocket + RichPane (HTML), verbose toggle, responsive pane grid |
 | D | Sub-Agent Visualization | `done` | Swim lanes, sub-agent extraction, compact pills, timeline view |
 | D.2 | Sub-Agent Deep Dive | `done` | Real-time progress, drill-down conversations, sub-agent WebSocket streaming |
-| E | Custom Layout | `pending` | dockview drag-and-drop, tab groups, floating panels, layout save/load, presets |
-| F | Interactive Control | `ready` (impl plan done) | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
+| E | Custom Layout | `done` | dockview drag-and-drop, tab groups, layout save/load, 3 built-in presets + custom presets, DockLayout + LayoutPresets + hooks + 12 tests |
+| F | Interactive Control | `done` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
 | G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
 | H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support |
 | I | Codex Live Mission Control | `pending` | Codex watcher/process/parser integration into live manager + mixed-source Mission Control UI |
@@ -62,11 +62,13 @@ Phase A ──► Phase G ──► Phase H ──┐
 | [`phase-a-monitoring.md`](phase-a-monitoring.md) | A | `done` |
 | [`phase-b-views-layout.md`](phase-b-views-layout.md) | B | `done` |
 | [`phase-b2-intelligent-states.md`](phase-b2-intelligent-states.md) | B2 | `superseded` |
-| [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `in-progress` |
+| [`phase-c-monitor-mode.md`](phase-c-monitor-mode.md) | C | `done` |
 | [`phase-d-subagent-viz.md`](phase-d-subagent-viz.md) | D | `done` |
 | [`phase-d2-subagent-drilldown.md`](phase-d2-subagent-drilldown.md) | D.2 | `done` |
-| [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `pending` |
-| [`phase-f-interactive.md`](phase-f-interactive.md) | F | `pending` |
+| [`phase-e-custom-layout.md`](phase-e-custom-layout.md) | E | `done` |
+| [`phase-f-interactive.md`](phase-f-interactive.md) | F | `done` |
+| [`2026-03-01-agent-sdk-upgrade-research.md`](2026-03-01-agent-sdk-upgrade-research.md) | F.2 | `done` |
+| [`2026-03-01-sidecar-sdk-upgrade-impl.md`](2026-03-01-sidecar-sdk-upgrade-impl.md) | F.2 | `done` |
 | [`phase-g-codex-foundation.md`](phase-g-codex-foundation.md) | G | `pending` |
 | [`phase-h-codex-historical-sessions.md`](phase-h-codex-historical-sessions.md) | H | `pending` |
 | [`phase-i-codex-live-mission-control.md`](phase-i-codex-live-mission-control.md) | I | `pending` |

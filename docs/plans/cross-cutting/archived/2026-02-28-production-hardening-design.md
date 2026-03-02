@@ -300,9 +300,9 @@ const plaintext = await crypto.subtle.decrypt(
 **User table:** Use Supabase's built-in `auth.users` — no custom user table needed at this stage.
 
 **Secrets:**
-- `SUPABASE_URL` + `SUPABASE_ANON_KEY` → Share Worker (Cloudflare secret)
-- `SUPABASE_URL` + `SUPABASE_ANON_KEY` → Relay (Fly.io secret)
-- `SUPABASE_URL` + `SUPABASE_ANON_KEY` → Mac Rust server (env var)
+- `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` → Share Worker (Cloudflare secret)
+- `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` → Relay (Fly.io secret)
+- `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` → Mac Rust server (env var)
 - JWKS URL: `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`
 
 ## UX — Sign-in Flow

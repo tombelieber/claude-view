@@ -1,14 +1,58 @@
 # ChatInputBar + Interactive Cards — Implementation Plan
 
+> **Status:** DONE (2026-03-02) — all 24 tasks implemented, shippable audit passed (SHIP IT)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build a shared chat input bar matching the Claude Code VSCode extension UX, plus 4 interactive message cards, and wire them into DashboardChat.
 
-**Architecture:** Plain `<textarea>` with auto-grow + Radix UI Popover for slash commands + Lucide icons. Interactive cards rendered inline in the chat message stream. Zero new dependencies (Radix Popover and Lucide already installed).
+**Architecture:** Plain `<textarea>` with auto-grow + Radix UI Popover for slash commands + Lucide icons. Interactive cards rendered inline in the chat message stream. One new dependency: `@radix-ui/react-alert-dialog` (see Task 0).
 
-**Tech Stack:** React 19, Radix UI (`react-popover`, `react-tooltip`), Lucide React, Tailwind CSS, Vitest
+**Tech Stack:** React 19, Radix UI (`react-popover`, `react-tooltip`, `react-alert-dialog`), Lucide React, Tailwind CSS, Vitest
 
 **Design doc:** `docs/plans/2026-02-28-chat-input-bar-design.md`
+
+### Completion Summary
+
+| Task(s) | Commit | Description |
+|---------|--------|-------------|
+| 0-7 | `7980aeb6` | ChatInputBar sub-components (commands, gauge, cost, mode, model, attach, slash popover) |
+| 8 | `04c71ac8` | ChatInputBar main component with dormant state machine |
+| 9-14 | `f4e13edc` | Interactive card components (shell, question, permission, plan, elicitation) |
+| 15-16.5 | `2cd3c1f1` | ControlCallbacks plumbing, TakeoverConfirmDialog, LiveSession controlId |
+| 17-19 | `3ff59389` | Wire into RichPane, MonitorPane slots, SessionDetailPanel |
+| 20-22 | `b1cea46d` | ConversationView resume, NewSessionInput, DashboardChat deletion |
+| Audit fixes | `f8aba7d4` | Missing dependency commit, error handling, stable React keys |
+
+Shippable audit: tsc 0 errors, build 7/7, tests 1140/1142 (2 pre-existing), 0 blockers, 12 warnings (all pre-existing).
+
+---
+
+## Task 0: Install Missing Package
+
+**Files:**
+- Modify: `apps/web/package.json` (via bun add)
+
+**Why first:** `@radix-ui/react-alert-dialog` is NOT in `apps/web/package.json`. Task 16
+(`TakeoverConfirmDialog`) imports from it and will fail to compile without it. Confirmed absent
+by inspecting `apps/web/package.json` — only `react-dialog`, `react-popover`, `react-tabs`, and
+`react-tooltip` are present.
+
+**Step 1: Install the package**
+
+Run: `cd apps/web && bun add @radix-ui/react-alert-dialog`
+
+**Step 2: Verify import resolves**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -5`
+Expected: 0 new errors (same baseline as before Task 0)
+
+**Step 3: Commit**
+
+```bash
+git add apps/web/package.json bun.lock
+git commit -m "chore(web): add @radix-ui/react-alert-dialog dependency"
+```
 
 ---
 
@@ -108,22 +152,27 @@ git commit -m "feat(chat): add slash command data and filter"
 
 ---
 
-## Task 2: ContextGauge Sub-component
+## Task 2: ChatContextGauge Sub-component
+
+> **Audit fix B7:** Renamed from `ContextGauge` → `ChatContextGauge`. An existing
+> `apps/web/src/components/live/ContextGauge.tsx` has a completely different API
+> (`contextWindowTokens`, `model`, `group`). Same component name in two directories causes
+> auto-import confusion and DevTools ambiguity.
 
 **Files:**
-- Create: `apps/web/src/components/chat/ContextGauge.tsx`
+- Create: `apps/web/src/components/chat/ChatContextGauge.tsx`
 
 **Step 1: Write the component**
 
 ```tsx
-// ContextGauge.tsx
+// ChatContextGauge.tsx
 import * as Tooltip from '@radix-ui/react-tooltip'
 
-interface ContextGaugeProps {
+interface ChatContextGaugeProps {
   percent: number // 0-100
 }
 
-export function ContextGauge({ percent }: ContextGaugeProps) {
+export function ChatContextGauge({ percent }: ChatContextGaugeProps) {
   const clamped = Math.min(Math.max(percent, 0), 100)
   const color =
     clamped > 80 ? 'bg-red-500' : clamped > 60 ? 'bg-amber-500' : 'bg-blue-500'
@@ -163,8 +212,8 @@ export function ContextGauge({ percent }: ContextGaugeProps) {
 **Step 3: Commit**
 
 ```bash
-git add apps/web/src/components/chat/ContextGauge.tsx
-git commit -m "feat(chat): add ContextGauge sub-component"
+git add apps/web/src/components/chat/ChatContextGauge.tsx
+git commit -m "feat(chat): add ChatContextGauge sub-component"
 ```
 
 ---
@@ -389,15 +438,15 @@ import { Paperclip, X } from 'lucide-react'
 import { useRef } from 'react'
 
 interface AttachButtonProps {
-  attachments: File[]
   onAttach: (files: File[]) => void
-  onRemove: (index: number) => void
   disabled?: boolean
 }
 
 const ACCEPT = 'image/*,.txt,.md,.json,.ts,.tsx,.js,.jsx,.rs,.py,.css,.html'
 
-export function AttachButton({ attachments, onAttach, onRemove, disabled }: AttachButtonProps) {
+/** Audit fix B11: Removed unused `attachments` and `onRemove` props — parent renders
+ *  `<AttachmentChips>` separately. With `noUnusedParameters: true`, unused props cause tsc errors. */
+export function AttachButton({ onAttach, disabled }: AttachButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleClick = () => inputRef.current?.click()
@@ -615,7 +664,7 @@ This composes all sub-components. The auto-growing textarea, slash command trigg
 import { ArrowUp, Square } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { AttachButton, AttachmentChips } from './AttachButton'
-import { ContextGauge } from './ContextGauge'
+import { ChatContextGauge } from './ChatContextGauge'
 import { CostPreview } from './CostPreview'
 import { ModeSwitch } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
@@ -625,8 +674,28 @@ import type { SlashCommand } from './commands'
 
 type Mode = 'plan' | 'code' | 'ask'
 
-/** Dormant state machine: dormant → resuming → active → streaming → completed */
-type InputBarState = 'dormant' | 'resuming' | 'active' | 'streaming' | 'completed' | 'controlled_elsewhere'
+/** Dormant state machine: dormant → resuming → active → streaming → completed
+ *
+ * Mapping from useControlSession's ControlStatus:
+ *   'connecting' | 'reconnecting'  → 'resuming'     (disabled, spinner implied)
+ *   'active' | 'waiting_input'     → 'active'
+ *   'waiting_permission'           → 'streaming'    (disable input while awaiting permission)
+ *   'completed'                    → 'completed'
+ *   'error' | 'disconnected'       → 'dormant'      (allow retry)
+ */
+/** Audit fix B6: exported so Task 18 can import it.
+ *  Audit fix B12: added 'waiting_permission' — distinct from 'streaming' because the
+ *  user sees a PermissionCard and should know Claude is paused, not responding. */
+export type InputBarState =
+  | 'dormant'
+  | 'resuming'
+  | 'active'
+  | 'streaming'
+  | 'waiting_permission'
+  | 'completed'
+  | 'controlled_elsewhere'
+  | 'connecting'     // direct from ControlStatus when not yet mapped by parent
+  | 'reconnecting'   // direct from ControlStatus when not yet mapped by parent
 
 interface ChatInputBarProps {
   onSend: (message: string) => void
@@ -641,6 +710,9 @@ interface ChatInputBarProps {
   model?: string
   onModelChange?: (model: string) => void
   // Context & cost
+  // AUDIT FIX B8 (resolved): useControlSession returns contextUsage as 0–100 percent
+  // (confirmed: ChatStatusBar.tsx line 2 documents "0-100 percentage", DashboardChat.tsx
+  // line 70 passes it directly without multiplication). Pass directly — do NOT multiply.
   contextPercent?: number
   estimatedCost?: { cached: number; uncached: number } | null
   // Commands
@@ -649,12 +721,15 @@ interface ChatInputBarProps {
 }
 
 const STATE_CONFIG: Record<InputBarState, { placeholder: string; disabled: boolean; muted: boolean }> = {
-  dormant:   { placeholder: 'Resume this session...', disabled: false, muted: true },
-  resuming:  { placeholder: 'Resuming session...', disabled: true, muted: true },
-  active:    { placeholder: 'Send a message... (or type / for commands)', disabled: false, muted: false },
-  streaming: { placeholder: 'Claude is responding...', disabled: true, muted: false },
-  completed:              { placeholder: 'Session ended', disabled: true, muted: true },
-  controlled_elsewhere:   { placeholder: 'Controlled in another tab', disabled: true, muted: true },
+  dormant:              { placeholder: 'Resume this session...', disabled: false, muted: true },
+  resuming:             { placeholder: 'Resuming session...', disabled: true, muted: true },
+  connecting:           { placeholder: 'Connecting...', disabled: true, muted: true },
+  reconnecting:         { placeholder: 'Reconnecting...', disabled: true, muted: true },
+  active:               { placeholder: 'Send a message... (or type / for commands)', disabled: false, muted: false },
+  streaming:            { placeholder: 'Claude is responding...', disabled: true, muted: false },
+  waiting_permission:   { placeholder: 'Waiting for permission response...', disabled: true, muted: false },
+  completed:            { placeholder: 'Session ended', disabled: true, muted: true },
+  controlled_elsewhere: { placeholder: 'Controlled in another tab', disabled: true, muted: true },
 }
 
 export function ChatInputBar({
@@ -815,12 +890,10 @@ export function ChatInputBar({
         <div className="flex items-center justify-between px-3 pb-2">
           <div className="flex items-center gap-3">
             <AttachButton
-              attachments={attachments}
               onAttach={handleAttach}
-              onRemove={handleRemoveAttachment}
               disabled={disabled}
             />
-            {contextPercent != null && <ContextGauge percent={contextPercent} />}
+            {contextPercent != null && <ChatContextGauge percent={contextPercent} />}
             {estimatedCost && (
               <CostPreview cached={estimatedCost.cached} uncached={estimatedCost.uncached} />
             )}
@@ -1015,6 +1088,15 @@ git commit -m "feat(chat): add InteractiveCardShell shared wrapper"
 
 Builds on the visual pattern from `AskUserQuestionDisplay` but adds interactivity. Uses `InteractiveCardShell` for consistent wrapper.
 
+**Important — do NOT import `COLORS` from `AskUserQuestionDisplay`:**
+The `COLORS` constant in `AskUserQuestionDisplay.tsx` is NOT exported (module-private). All styling
+for `AskUserQuestionCard` comes from `InteractiveCardShell`'s `variant="question"` (purple color).
+Do not attempt to re-use or import `COLORS` from the display component.
+
+**Schema note:** `AskUserQuestionDisplay` uses `multiple` (boolean) for multi-select; the WebSocket
+`AskUserQuestionMsg` type uses `multiSelect`. Both refer to the same concept. The card's `questions`
+prop uses `multiSelect` to match the WS protocol. For display-only fallback, map `multiSelect → multiple`.
+
 Key features:
 
 - Single-select: radio buttons (controlled via `useState`)
@@ -1037,12 +1119,40 @@ git commit -m "feat(chat): add interactive AskUserQuestionCard"
 
 **Files:**
 
+- Modify: `apps/web/src/components/live/PermissionDialog.tsx` (export `getToolDisplay`)
 - Create: `apps/web/src/components/chat/cards/PermissionCard.tsx`
 - Reference: `apps/web/src/components/live/PermissionDialog.tsx` (existing modal)
 
+**ARCHITECTURE NOTE — PermissionCard does NOT render inside RichPane:**
+`PermissionRequestMsg` arrives over the **control WebSocket** (stored as `permissionRequest` in
+`useControlSession` state), never in the JSONL stream. It is never a `RichMessage`. Therefore
+`PermissionCard` cannot be wired inside `RichPane`.
+
+Instead, `PermissionCard` renders as a **sibling to RichPane** in `MonitorPane` (and
+`SessionDetailPanel`), passed via the `permissionCard` slot prop added in Task 18. The parent
+that owns `useControlSession` builds the card and passes it down.
+
+**Step 0: Export `getToolDisplay` from `PermissionDialog.tsx`**
+
+`getToolDisplay` is currently module-private. `PermissionCard.tsx` lives in a different directory
+and must import it. Change the declaration:
+
+```ts
+// In apps/web/src/components/live/PermissionDialog.tsx
+// BEFORE (line ~141):
+function getToolDisplay(...)
+
+// AFTER:
+export function getToolDisplay(...)
+```
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -5`
+Expected: 0 errors (export is additive, no callers break)
+
 **Step 1: Write the component**
 
-Inline card version of `PermissionDialog`. Uses `InteractiveCardShell` with `variant="permission"`. Reuses `getToolDisplay()` pattern from the modal.
+Inline card version of `PermissionDialog`. Uses `InteractiveCardShell` with `variant="permission"`.
+Imports the now-exported `getToolDisplay` from `../../live/PermissionDialog`.
 
 Key differences from the modal:
 
@@ -1155,7 +1265,33 @@ export interface ControlCallbacks {
 }
 ```
 
-**Step 2: Create hook that builds ControlCallbacks from useControlSession**
+**Step 2: Add `sendRaw` method to `use-control-session.ts`**
+
+> **Audit fix W1:** This step was originally Step 3. Reordered because Step 3 (now Step 3)
+> imports `sendRaw`. If `sendRaw` doesn't exist yet, `useControlCallbacks` won't compile
+> between steps.
+
+The existing hook exposes `sendMessage(content: string)` for user chat messages and
+`respondPermission(requestId, allowed)` for permissions. Neither handles generic JSON payloads.
+Add a `sendRaw` method that sends arbitrary JSON — used by `useControlCallbacks` for card responses.
+
+```ts
+// In apps/web/src/hooks/use-control-session.ts
+// Add after the existing sendMessage useCallback:
+
+const sendRaw = useCallback((msg: Record<string, unknown>) => {
+  const ws = wsRef.current
+  if (!ws || ws.readyState !== WebSocket.OPEN) return
+  ws.send(JSON.stringify(msg))
+}, [])
+
+// Update the return statement from:
+return { ...state, sendMessage, respondPermission }
+// To:
+return { ...state, sendMessage, sendRaw, respondPermission }
+```
+
+**Step 3: Create hook that builds ControlCallbacks from useControlSession**
 
 ```ts
 // use-control-callbacks.ts
@@ -1165,30 +1301,29 @@ import type { ControlCallbacks } from '../types/control-callbacks'
 /**
  * Builds a ControlCallbacks object from a control session's WebSocket send.
  * Returns undefined when no control session exists (read-only mode).
+ *
+ * Uses `sendRaw` (not `sendMessage`) — sendMessage only handles user chat messages
+ * ({type:'user_message', content}). Card responses need arbitrary JSON (question_response, etc.).
  */
 export function useControlCallbacks(
-  sendWsMessage: ((msg: Record<string, unknown>) => void) | undefined,
+  sendRaw: ((msg: Record<string, unknown>) => void) | undefined,
   respondPermission: ((requestId: string, allowed: boolean) => void) | undefined,
 ): ControlCallbacks | undefined {
   return useMemo(() => {
-    if (!sendWsMessage) return undefined
+    if (!sendRaw) return undefined
     return {
       answerQuestion: (requestId, answers) =>
-        sendWsMessage({ type: 'question_response', requestId, answers }),
+        sendRaw({ type: 'question_response', requestId, answers }),
       respondPermission: (requestId, allowed) =>
         respondPermission?.(requestId, allowed),
       approvePlan: (requestId, approved, feedback) =>
-        sendWsMessage({ type: 'plan_response', requestId, approved, feedback }),
+        sendRaw({ type: 'plan_response', requestId, approved, feedback }),
       submitElicitation: (requestId, response) =>
-        sendWsMessage({ type: 'elicitation_response', requestId, response }),
+        sendRaw({ type: 'elicitation_response', requestId, response }),
     }
-  }, [sendWsMessage, respondPermission])
+  }, [sendRaw, respondPermission])
 }
 ```
-
-**Step 3: Extend useControlSession to expose raw sendWsMessage**
-
-In `apps/web/src/hooks/use-control-session.ts`, expose a `send` method that sends arbitrary JSON over the WebSocket. This is needed for the new card response types.
 
 **Step 4: Type-check**
 
@@ -1211,15 +1346,19 @@ git commit -m "feat(chat): add ControlCallbacks type and useControlCallbacks hoo
 - Create: `apps/web/src/components/chat/TakeoverConfirmDialog.tsx`
 - Modify: `apps/web/src/types/control.ts` (add `origin` field to `ControlSessionInfo`)
 
-**Step 1: Add `origin` field to control types**
+**Step 1: Create `ControlSessionInfo` in control types**
+
+`ControlSessionInfo` does NOT currently exist in `apps/web/src/types/control.ts` — verified by
+reading the file. The file contains `CostEstimate`, `ResumeResponse`, message types, and
+`ServerMessage`. Add the new interface from scratch:
 
 ```ts
-// In apps/web/src/types/control.ts — add to existing ControlSessionInfo or ServerMessage types:
-interface ControlSessionInfo {
+// In apps/web/src/types/control.ts — ADD (do not try to modify an existing interface):
+export interface ControlSessionInfo {
   sessionId: string
   controlId: string
   status: 'idle' | 'running' | 'completed'
-  origin: 'claude-view' | 'external'  // NEW
+  origin: 'claude-view' | 'external'
 }
 ```
 
@@ -1296,39 +1435,173 @@ git commit -m "feat(chat): add TakeoverConfirmDialog for external session takeov
 
 ---
 
+## Task 16.5: Add `controlId` to `LiveSession` type
+
+**Files:**
+- Modify: `apps/web/src/components/live/use-live-sessions.ts`
+
+**Why required:** Tasks 18–19 need to check `session.controlId` to conditionally render the
+ChatInputBar and PermissionCard. Currently `LiveSession` has no such field (confirmed: id, project,
+projectPath, status, agentState, tokens, cost, etc. — no controlId).
+
+**Step 1: Add the field to the `LiveSession` interface**
+
+```ts
+// In apps/web/src/components/live/use-live-sessions.ts
+// Add to the LiveSession interface (after existing fields, e.g. after compactCount):
+controlId?: string | null
+```
+
+**Sidecar prerequisite (tracked separately — not in this plan):**
+The Rust SSE handler must emit `controlId` in `session_discovered` / `session_updated` events for
+the field to be populated. Until that backend change ships, `controlId` will be `undefined` for all
+sessions (feature flag off), and ChatInputBar will not appear — which is safe, not a regression.
+
+**Step 2: Verify type-check passes**
+
+Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -10`
+Expected: 0 errors (optional field is additive)
+
+**Step 3: Commit**
+
+```bash
+git add apps/web/src/components/live/use-live-sessions.ts
+git commit -m "feat(live): add optional controlId field to LiveSession type"
+```
+
+---
+
 ## Task 17: Wire interactive cards into RichPane (with controlCallbacks prop)
 
 **Files:**
 
 - Modify: `apps/web/src/components/live/RichPane.tsx`
+- Modify: `apps/web/src/components/live/PairedToolCard.tsx`
 
-**Step 1: Add `controlCallbacks` prop to RichPane**
+**Architecture note — what renders where:**
+
+| Card | Where it renders | Why |
+| --- | --- | --- |
+| `AskUserQuestionCard` | Inside RichPane (via PairedToolCard) | Tool_use IS a RichMessage — arrives in JSONL stream |
+| `PlanApprovalCard` | Inside RichPane (new ExitPlanMode detection) | Tool_use IS a RichMessage |
+| `ElicitationCard` | Inside RichPane (new elicitation detection) | Arrives as progress message in JSONL |
+| `PermissionCard` | **NOT inside RichPane** — sibling via MonitorPane slot | `permission_request` arrives on control WS, never JSONL |
+
+**Step 1: Add `controlCallbacks` prop and import to `RichPane.tsx`**
 
 ```ts
-// Add to RichPane's props interface
-controlCallbacks?: ControlCallbacks  // undefined = read-only (display-only cards)
+// Add to imports at top of RichPane.tsx:
+import type { ControlCallbacks } from '../../types/control-callbacks'
+
+// Extend RichPaneProps interface (currently lines ~69-80):
+export interface RichPaneProps {
+  messages: RichMessage[]
+  isVisible: boolean
+  verboseMode?: boolean
+  bufferDone?: boolean
+  categoryCounts?: Record<ActionCategory, number>
+  /** When provided, interactive cards (AskUserQuestion, PlanApproval, Elicitation) are active.
+   *  When undefined (read-only session), cards render display-only (no action buttons). */
+  controlCallbacks?: ControlCallbacks
+}
 ```
 
-**Step 2: Add interactive card rendering to message dispatch**
+**Step 2: Add `ExitPlanMode` to `displayMessages` compact-mode filter**
 
-RichPane already special-cases `AskUserQuestion` at lines 905-909 (compact mode detection). Extend the render dispatch:
+The `displayMessages` useMemo already shows `AskUserQuestion` tool_use in compact mode (lines
+905–911). Add `ExitPlanMode` immediately after with the same pattern:
 
-- `tool_use` with `toolName === 'AskUserQuestion'` → `<AskUserQuestionCard onAnswer={controlCallbacks?.answerQuestion} />`
-- `tool_use` with `toolName === 'ExitPlanMode'` → `<PlanApprovalCard onApprove={controlCallbacks?.approvePlan} />`
-- Messages with `metadata.interactive === 'permission'` → `<PermissionCard onRespond={controlCallbacks?.respondPermission} />`
-- Messages with `metadata.interactive === 'elicitation'` → `<ElicitationCard onSubmit={controlCallbacks?.submitElicitation} />`
+```ts
+// After the AskUserQuestion block (line ~910), add:
+if (m.type === 'tool_use' && m.name === 'ExitPlanMode')
+  return true
+```
 
-When `controlCallbacks` is undefined (read-only), cards render without action buttons (display-only, showing the question/permission but no way to respond).
+**Step 3: Thread `controlCallbacks` down to `DisplayItemCard` → `PairedToolCard`**
 
-**Step 3: Type-check**
+```tsx
+// Update renderItem to pass controlCallbacks:
+const renderItem = useCallback(
+  (index: number, item: DisplayItem) => (
+    <div className="px-2 py-0.5">
+      <DisplayItemCard
+        item={item}
+        index={index}
+        verboseMode={verboseMode}
+        controlCallbacks={controlCallbacks}
+      />
+    </div>
+  ),
+  [verboseMode, controlCallbacks],
+)
+```
+
+Add `controlCallbacks?: ControlCallbacks` to `DisplayItemCard`'s props inline type and pass it
+through to `PairedToolCard`.
+
+**Step 4: Update `PairedToolCard.tsx` to use interactive `AskUserQuestionCard` when active**
+
+> **Audit fix B1:** All `item.tool.*` references corrected → `toolUse.*`. `PairedToolCardProps`
+> has `toolUse: RichMessage` and `toolResult: RichMessage | null` — there is no `item.tool`.
+>
+> **Audit fix B2:** `RichMessage` has no `toolUseId` field. Before this task, add
+> `toolUseId?: string` to the `RichMessage` interface in `RichPane.tsx` (line ~48) and populate
+> it from the JSONL `tool_use` block's `id` field in the parser (`parseRichMessages`).
+>
+> **Audit fix W3:** `planContent` now reads from `toolUse.inputData` (structured object) instead
+> of `toolUse.input` (truncated summary string). `PlanApprovalCard` must handle the structured
+> `inputData` and extract the plan content from it.
+
+```tsx
+// In PairedToolCard.tsx — add to imports:
+import type { ControlCallbacks } from '../../types/control-callbacks'
+import { AskUserQuestionCard } from '../chat/cards/AskUserQuestionCard'
+import { PlanApprovalCard } from '../chat/cards/PlanApprovalCard'
+
+// Add controlCallbacks to PairedToolCardProps:
+// controlCallbacks?: ControlCallbacks
+
+// In the AskUserQuestion rendering section (already checks isAskUserQuestionInput):
+if (isAskUserQuestionInput(toolUse.inputData)) {
+  if (controlCallbacks?.answerQuestion) {
+    return (
+      <AskUserQuestionCard
+        inputData={toolUse.inputData}
+        requestId={toolUse.toolUseId ?? ''}
+        onAnswer={(requestId, answers) => controlCallbacks.answerQuestion(requestId, answers)}
+      />
+    )
+  }
+  // Fallback: display-only (existing behaviour, read-only sessions)
+  return <AskUserQuestionDisplay inputData={toolUse.inputData} />
+}
+
+// Add ExitPlanMode handler nearby:
+if (toolUse.name === 'ExitPlanMode') {
+  if (controlCallbacks?.approvePlan) {
+    return (
+      <PlanApprovalCard
+        requestId={toolUse.toolUseId ?? ''}
+        planData={toolUse.inputData}
+        onApprove={(requestId, approved, feedback) =>
+          controlCallbacks.approvePlan(requestId, approved, feedback)
+        }
+      />
+    )
+  }
+  // Fallback: show plan content as markdown block (display-only)
+}
+```
+
+**Step 5: Type-check**
 
 Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
 Expected: 0 errors
 
-**Step 4: Commit**
+**Step 6: Commit**
 
 ```bash
-git add apps/web/src/components/live/RichPane.tsx
+git add apps/web/src/components/live/RichPane.tsx apps/web/src/components/live/PairedToolCard.tsx
 git commit -m "feat(chat): wire interactive cards into RichPane with ControlCallbacks"
 ```
 
@@ -1339,41 +1612,207 @@ git commit -m "feat(chat): wire interactive cards into RichPane with ControlCall
 **Files:**
 
 - Modify: `apps/web/src/components/live/MonitorPane.tsx`
+- Modify: Parent component that renders `<MonitorPane>` (find via `grep -r "MonitorPane" apps/web/src --include="*.tsx" -l`)
 
-**Step 1: Add ChatInputBar to MonitorPane**
+> **Architectural note:** `MonitorPane` must NOT import `useControlSession` or carry mode/model
+> state. It receives pre-composed `ReactNode` slots from its parent. The parent calls
+> `useControlSession`, builds `<ChatInputBar>` and `<PermissionCard>`, and passes them in.
+> This keeps MonitorPane as a pure layout container.
 
-ChatInputBar appears at the bottom of MonitorPane, between the content area and footer, when the session has a control connection.
+**Step 1: Add slot props to `MonitorPaneProps`**
+
+Add two `ReactNode` slots to `MonitorPane.tsx`:
 
 ```tsx
-// In MonitorPane, after the content area, before Footer:
-{controlSession && (
-  <ChatInputBar
-    onSend={controlSession.sendMessage}
-    onStop={controlSession.stop}
-    isStreaming={!!controlSession.streamingContent}
-    disabled={controlSession.status === 'completed' || controlSession.status === 'error'}
-    mode={mode}
-    onModeChange={setMode}
-    model={model}
-    onModelChange={setModel}
-    contextPercent={session.contextWindowTokens ? contextPercent(session) : undefined}
-  />
-)}
+// In MonitorPaneProps interface — add after children:
+chatInput?: React.ReactNode      // ChatInputBar — placed between content area and footer
+permissionCard?: React.ReactNode // PermissionCard — placed above chatInput
 ```
 
-MonitorPane needs a new optional `controlSession` prop (or accesses it via hook/context based on `session.controlId`).
+Destructure in the function signature:
 
-**Step 2: Type-check and build**
+```tsx
+export function MonitorPane({
+  // ...existing props...
+  chatInput,
+  permissionCard,
+  children,
+}: MonitorPaneProps) {
+```
+
+**Step 2: Place slots in JSX**
+
+Between the content `<div>` and `<Footer>`:
+
+```tsx
+      {/* Content area */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {children ?? (
+          <div className="flex items-center justify-center h-full min-h-[120px] text-sm text-gray-400 dark:text-[#8B949E]">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin text-blue-500 dark:text-[#79C0FF]" />
+            Connecting...
+          </div>
+        )}
+      </div>
+
+      {/* Permission card (above input bar when agent is waiting for approval) */}
+      {permissionCard}
+
+      {/* Chat input bar */}
+      {chatInput}
+
+      {/* Footer */}
+      <Footer session={session} onExpand={onExpand} />
+```
+
+**Step 3: Wire slots in the parent component**
+
+> **Audit fix B3 (Rules of Hooks):** `MonitorView.tsx` renders `MonitorPane` inside
+> `visibleSessions.map()`. Hooks (`useControlSession`) cannot be called inside `.map()`.
+> Solution: extract a per-session wrapper component `MonitorPaneWithControl` that calls
+> `useControlSession` at component level. Each wrapper renders for one session.
+>
+> **Audit fix B4:** `controlStatusToInputState` returned `'idle'` and `'disabled'` which are NOT
+> valid `InputBarState` values. Fixed to use `'active'`, `'dormant'`, `'waiting_permission'`, etc.
+>
+> **Audit fix B5:** `controlCallbacks` was `{ sendMessage, respondPermission }` which does NOT
+> match the `ControlCallbacks` interface shape (`answerQuestion`, `respondPermission`,
+> `approvePlan`, `submitElicitation`). Fixed to use `useControlCallbacks()` from Task 15.
+>
+> **Audit fix B8 (RESOLVED):** `contextUsage` is 0-100 percent, NOT 0-1 ratio. Evidence:
+> `ChatStatusBar.tsx` line 2 documents `// 0-100 percentage`, `DashboardChat.tsx` line 70 passes
+> it directly without multiplication. All `* 100` multiplications have been removed.
+
+```tsx
+import { useControlSession, type ControlStatus } from '../../hooks/use-control-session'
+import { useControlCallbacks } from '../../hooks/use-control-callbacks'
+import type { InputBarState } from '../chat/ChatInputBar'
+
+// Helper — add near component (outside render):
+function controlStatusToInputState(status: ControlStatus | undefined): InputBarState {
+  switch (status) {
+    case 'active':
+    case 'waiting_input':       return 'active'
+    case 'waiting_permission':  return 'waiting_permission'
+    case 'connecting':          return 'connecting'
+    case 'reconnecting':        return 'reconnecting'
+    case 'completed':           return 'completed'
+    case 'error':
+    case 'disconnected':
+    default:                    return 'dormant'
+  }
+}
+
+// AUDIT FIX B3: Extract per-session wrapper to avoid calling hooks inside .map():
+function MonitorPaneWithControl({ session, ...paneProps }: MonitorPaneProps & { session: LiveSession }) {
+  // useControlSession accepts string | null; returns initialState + no-ops when null
+  const controlSession = useControlSession(session.controlId ?? null)
+  const controlCallbacks = useControlCallbacks(controlSession.sendRaw, controlSession.respondPermission)
+  const inputState = controlStatusToInputState(controlSession.status)
+
+  // B8 RESOLVED: contextUsage is 0-100 percent (confirmed ChatStatusBar.tsx:2, DashboardChat.tsx:70)
+  const chatInputSlot = session.controlId ? (
+    <ChatInputBar
+      onSend={controlSession.sendMessage}
+      state={inputState}
+      contextPercent={Math.round(controlSession.contextUsage)}
+    />
+  ) : undefined
+
+  const permissionCardSlot =
+    controlSession.status === 'waiting_permission' && controlSession.permissionRequest ? (
+      <PermissionCard
+        permission={controlSession.permissionRequest}
+        onRespond={controlSession.respondPermission}
+      />
+    ) : undefined
+
+  return (
+    <MonitorPane
+      {...paneProps}
+      chatInput={chatInputSlot}
+      permissionCard={permissionCardSlot}
+    >
+      {/* AUDIT FIX B13: MonitorView renders <RichTerminalPane>, NOT <RichPane>.
+          RichTerminalPane manages its own WS subscription by sessionId.
+          RichPane requires pre-loaded messages[] — unavailable in this context.
+          controlCallbacks is threaded through to RichPane inside RichTerminalPane
+          (see Step 3a below for the RichTerminalPane interface extension). */}
+      <RichTerminalPane
+        sessionId={session.id}
+        isVisible={isPaneVisible}
+        verboseMode={verboseMode}
+        controlCallbacks={controlCallbacks}
+      />
+    </MonitorPane>
+  )
+}
+
+// In MonitorView's visibleSessions.map(), replace <MonitorPane> with:
+// <MonitorPaneWithControl session={session} {...otherProps} />
+```
+
+> **Field reference:** `controlSession.permissionRequest` is the correct field name (confirmed in
+> `use-control-session.ts` line 25). NOT `pendingPermission`.
+
+**Step 3a: Extend `RichTerminalPane` to pass through `controlCallbacks`**
+
+`RichTerminalPane` (48 lines, at `apps/web/src/components/live/RichTerminalPane.tsx`) wraps
+`RichPane` and manages the WS subscription. Currently its props interface is:
+
+```ts
+// CURRENT (apps/web/src/components/live/RichTerminalPane.tsx lines 5-9):
+interface RichTerminalPaneProps {
+  sessionId: string
+  isVisible: boolean
+  verboseMode: boolean
+}
+```
+
+Add an optional `controlCallbacks` prop and pass it through to `RichPane`:
+
+```ts
+import type { ControlCallbacks } from './types/control'  // defined in Task 15
+
+interface RichTerminalPaneProps {
+  sessionId: string
+  isVisible: boolean
+  verboseMode: boolean
+  controlCallbacks?: ControlCallbacks   // ← NEW: optional, undefined = read-only
+}
+
+export function RichTerminalPane({ sessionId, isVisible, verboseMode, controlCallbacks }: RichTerminalPaneProps) {
+  // ... existing useState + useTerminalSocket logic unchanged ...
+
+  return (
+    <RichPane
+      messages={messages}
+      isVisible={isVisible}
+      verboseMode={verboseMode}
+      bufferDone={bufferDone}
+      controlCallbacks={controlCallbacks}  // ← NEW: pass through
+    />
+  )
+}
+```
+
+> **Prerequisite:** `RichPane` must also accept an optional `controlCallbacks?: ControlCallbacks` prop.
+> This is added in **Task 17 Step 3** when `RichPaneProps` is extended. Both changes (RichPane +
+> RichTerminalPane) must land together — the import resolves because Task 15 defines `ControlCallbacks`
+> and Task 17 extends `RichPaneProps` before Task 18 runs.
+
+**Step 4: Type-check and build**
 
 Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
 Run: `bun run build 2>&1 | tail -15`
 Expected: 0 errors, successful build
 
-**Step 3: Commit**
+**Step 5: Commit**
 
 ```bash
 git add apps/web/src/components/live/MonitorPane.tsx
-git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
+git add apps/web/src/components/live/MonitorView.tsx
+git commit -m "feat(chat): wire ChatInputBar + PermissionCard into MonitorPane via slots"
 ```
 
 ---
@@ -1384,25 +1823,68 @@ git commit -m "feat(chat): wire ChatInputBar into MonitorPane"
 
 - Modify: `apps/web/src/components/live/SessionDetailPanel.tsx`
 
-**Step 1: Add ChatInputBar to the terminal tab**
+> **Fix vs B6/Task 16.5:** Accept `controlId?: string` as an explicit prop rather than reading
+> `session?.controlId` inline. `SessionDetailPanel` is used from both live monitoring and
+> the history view — the `controlId` may come from different sources (SSE payload vs
+> `/api/control/resume`). Accepting it as a prop supports both call sites without branching.
 
-`SessionDetailPanel` has tabs: overview, terminal, log, sub-agents, cost. The terminal tab renders `RichPane`. Add ChatInputBar below the RichPane when the session is live and controllable.
+**Step 1: Add `controlId` prop to `SessionDetailPanel`**
 
 ```tsx
-// In the terminal tab content, after RichPane:
-{session?.controlId && (
-  <ChatInputBar
-    onSend={controlSession.sendMessage}
-    isStreaming={!!controlSession?.streamingContent}
-    disabled={!controlSession || controlSession.status === 'completed'}
-    contextPercent={contextPercent(session)}
-  />
-)}
+// Add to SessionDetailPanelProps (or equivalent):
+controlId?: string
 ```
 
-Same wiring as MonitorPane — session is already live, `controlId` available.
+**Step 2: Call `useControlSession` unconditionally at the top of the component**
 
-**Step 2: Commit**
+```tsx
+// ALWAYS call at top level — hooks must NOT be conditional (Rules of Hooks):
+// useControlSession accepts string | null; returns initialState + no-ops when null.
+const controlSession = useControlSession(controlId ?? null)
+const controlCallbacks = useControlCallbacks(controlSession.sendRaw, controlSession.respondPermission)
+const inputState = controlStatusToInputState(controlSession.status)
+// Reuse controlStatusToInputState helper from Task 18 Step 3 (or import from shared module).
+```
+
+**Step 3: Add ChatInputBar + PermissionCard in the terminal tab**
+
+> **Audit fix B9:** The terminal tab is a bare `<RichPane>` with no wrapping div. Adding
+> ChatInputBar and PermissionCard as siblings requires a flex column container. `RichPane` has no
+> `className` prop, so wrap the entire tab content:
+
+```tsx
+// In the terminal tab content — WRAP in flex column container:
+<div className="flex flex-col h-full">
+  <div className="flex-1 min-h-0 overflow-hidden">
+    <RichPane
+      messages={messages}
+      isVisible={isVisible}
+      verboseMode={verboseMode}
+      bufferDone={bufferDone}
+      controlCallbacks={controlCallbacks}
+    />
+  </div>
+  {controlSession.status === 'waiting_permission' && controlSession.permissionRequest && (
+    <PermissionCard
+      permission={controlSession.permissionRequest}
+      onRespond={controlSession.respondPermission}
+    />
+  )}
+  {controlId && (
+    <ChatInputBar
+    onSend={controlSession.sendMessage}
+    state={inputState}
+    contextPercent={Math.round(controlSession.contextUsage)}
+  />
+)}
+</div>
+```
+
+> Note: `isStreaming` and `disabled` are NOT valid `ChatInputBar` props — the `state` machine
+> (Task 8) handles enabled/disabled and streaming display. `contextPercent` receives
+> `contextUsage` directly (already 0-100 percent — confirmed ChatStatusBar.tsx:2).
+
+**Step 4: Commit**
 
 ```bash
 git add apps/web/src/components/live/SessionDetailPanel.tsx
@@ -1417,39 +1899,100 @@ git commit -m "feat(chat): wire ChatInputBar into SessionDetailPanel terminal ta
 
 - Modify: `apps/web/src/components/ConversationView.tsx`
 
-**Step 1: Add ChatInputBar with resume-on-first-send**
+> **Layout prerequisite:** The left column in `ConversationView` is currently
+> `<div className="flex-1 min-w-0">` (confirmed at line ~696). Add `flex flex-col` so
+> ChatInputBar anchors at the bottom:
+> ```tsx
+> <div className="flex-1 min-w-0 flex flex-col">
+> ```
+> The Virtuoso list inside must expand to fill the remaining height — add `style={{ flex: 1 }}`
+> to the `<Virtuoso>` component.
 
-ConversationView renders session history at `/sessions/:sessionId`. Add ChatInputBar at the bottom. On first send:
-
-1. Call `/api/control/resume` with `sessionId` → get `controlId`
-2. Transition to live mode (establish `useControlSession`)
-3. Send the message via the new control connection
+**Step 1: State for resume flow (correct hook patterns)**
 
 ```tsx
-// State for resume flow
+// State — controlId starts null (not yet resumed):
 const [controlId, setControlId] = useState<string | null>(null)
-const controlSession = controlId ? useControlSession(controlId) : null
+const pendingMessageRef = useRef<string | null>(null)
 
-const handleSend = useCallback(async (message: string) => {
-  if (!controlId) {
-    // Resume first, then send
-    const res = await fetch(`/api/control/resume`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })
-    const data = await res.json()
-    setControlId(data.controlId)
-    // sendMessage will be available on next render via controlSession
-  } else {
-    controlSession?.sendMessage(message)
-  }
-}, [controlId, controlSession, sessionId])
+// ALWAYS call useControlSession unconditionally — hooks must NOT be conditional.
+// useControlSession accepts string | null and returns initialState + no-ops when null
+// (confirmed: useEffect returns early on !controlId — see use-control-session.ts line 54).
+const controlSession = useControlSession(controlId)
 ```
 
-ChatInputBar shows placeholder: "Resume this session..." when no controlId. Shows normal "Send a message..." after resumed.
+**Step 2: Send handler with resume-first and drain effect**
 
-**Step 2: Commit**
+```tsx
+const handleSend = useCallback(
+  async (message: string) => {
+    if (!controlId) {
+      // Store message, trigger resume — WS isn't open yet so we can't send immediately
+      pendingMessageRef.current = message
+      // AUDIT FIX W9: Wrap in try/catch — existing handleResume (line ~221) demonstrates the
+      // correct pattern with try/catch + showToast. Without error handling, a failed resume
+      // silently strands the pending message and gives the user no feedback.
+      try {
+        const res = await fetch('/api/control/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        })
+        if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
+        const data = await res.json()
+        setControlId(data.controlId)
+        // Pending message is sent by the drain effect below once WS reaches waiting_input
+      } catch {
+        pendingMessageRef.current = null
+        showToast('Failed to resume session', 3000)
+      }
+    } else {
+      controlSession.sendMessage(message)
+    }
+  },
+  [controlId, controlSession.sendMessage, sessionId],
+)
+
+// Drain pending message once WS connection is ready to accept input:
+// Audit fix W4: controlSession is a new object every render (spread { ...state, sendMessage, ... }).
+// Using it as a dep fires the effect on every render, violating CLAUDE.md's
+// "useEffect deps: Never raw parsed objects" rule.
+// Fixed: use only primitive/stable deps.
+useEffect(() => {
+  if (
+    controlId &&
+    pendingMessageRef.current &&
+    controlSession.status === 'waiting_input'
+  ) {
+    const msg = pendingMessageRef.current
+    pendingMessageRef.current = null
+    controlSession.sendMessage(msg)
+  }
+}, [controlId, controlSession.status, controlSession.sendMessage])
+```
+
+> **Why the drain effect?** After `setControlId(data.controlId)`, the WS is still opening.
+> The server sends a `session_status` message that transitions state to `waiting_input` once
+> the sidecar is ready. The effect fires on that transition — the correct send window.
+
+**Step 3: Render ChatInputBar at bottom of left column**
+
+```tsx
+// Left column — changed from:
+//   <div className="flex-1 min-w-0">
+// to:
+<div className="flex-1 min-w-0 flex flex-col">
+  <Virtuoso ... style={{ flex: 1 }} />
+  <ChatInputBar
+    onSend={handleSend}
+    state={controlStatusToInputState(controlSession.status)}
+    contextPercent={Math.round(controlSession.contextUsage)}
+    placeholder={controlId ? 'Send a message...' : 'Resume this session...'}
+  />
+</div>
+```
+
+**Step 4: Commit**
 
 ```bash
 git add apps/web/src/components/ConversationView.tsx
@@ -1460,10 +2003,20 @@ git commit -m "feat(chat): add resume-and-send to ConversationView"
 
 ## Task 21: New session spawn UI
 
+> **Audit fix B10:** `POST /api/control/start` does NOT exist in the Rust router. The router has
+> `/control/estimate`, `/control/resume`, `/control/send`, `/control/sessions` — no `/control/start`.
+> **Prerequisite:** Add a `start_session` handler in `crates/server/src/routes/control.rs` that
+> proxies to the sidecar's session spawn API. This is a backend change tracked separately.
+>
+> **Audit fix W7:** The "+" button only works in dockview (custom layout) mode. In auto-grid mode
+> (default), there is no panel concept. Constrain the "+" button to custom layout mode, or use
+> a modal/overlay for auto-grid mode.
+
 **Files:**
 
 - Create: `apps/web/src/components/chat/NewSessionInput.tsx`
 - Modify: `apps/web/src/components/live/MonitorView.tsx` (add "+" button)
+- **Backend prerequisite:** `crates/server/src/routes/control.rs` (add `/control/start` endpoint)
 
 **Step 1: Create NewSessionInput wrapper**
 
@@ -1471,6 +2024,10 @@ Thin wrapper around ChatInputBar for the "new session" context:
 
 ```tsx
 // NewSessionInput.tsx
+// Audit fix M3: missing React import for useCallback
+import { useCallback } from 'react'
+import { ChatInputBar } from './ChatInputBar'
+
 export function NewSessionInput({ onSessionCreated }: { onSessionCreated: (sessionId: string) => void }) {
   const handleSend = useCallback(async (message: string) => {
     const res = await fetch('/api/control/start', {
@@ -1507,11 +2064,19 @@ git commit -m "feat(chat): add new session spawn via ChatInputBar"
 
 ## Task 22: Delete DashboardChat + ControlPage
 
+> **Audit fix W2:** `HistoryView.tsx:605` navigates to `/control/${controlId}?sessionId=...`.
+> Converting ControlPage to a redirect breaks the "Resume" button in HistoryView — users
+> silently redirect to `/`. Must also update HistoryView's navigation target.
+>
+> **Audit fix M4:** ControlPage replacement must be whole-file, not just component body — existing
+> imports reference `DashboardChat` and other deleted modules. Replace entire file contents.
+
 **Files:**
 
 - Delete: `apps/web/src/components/live/DashboardChat.tsx`
-- Modify: `apps/web/src/pages/ControlPage.tsx` (redirect to monitor or delete)
+- Modify: `apps/web/src/pages/ControlPage.tsx` (replace entire file with redirect)
 - Modify: `apps/web/src/router.tsx` (remove `/control/:controlId` route or redirect)
+- Modify: `apps/web/src/components/HistoryView.tsx` (update resume navigation target)
 
 **Step 1: Delete DashboardChat**
 
@@ -1519,7 +2084,8 @@ Remove `apps/web/src/components/live/DashboardChat.tsx` (261 lines of duplicate 
 
 **Step 2: Update ControlPage to redirect**
 
-Replace the component body with a redirect to the monitor view:
+Replace the **entire file contents** (not just the component body — existing imports reference
+deleted modules and will cause tsc errors):
 
 ```tsx
 // ControlPage.tsx — redirect to monitor
@@ -1530,16 +2096,64 @@ export function ControlPage() {
 }
 ```
 
-**Step 3: Verify no broken imports**
+**Step 3: Update HistoryView resume navigation + add `?focus` consumer**
+
+Find the "Resume" button/link in `HistoryView.tsx` that navigates to `/control/${controlId}`.
+Update the target to navigate to the monitor view with a session focus parameter instead:
+
+```tsx
+// Change from:
+navigate(`/control/${controlId}?sessionId=${sessionId}`)
+// To:
+navigate(`/?focus=${sessionId}`)
+```
+
+> **AUDIT FIX W8:** The `?focus` parameter has no consumer in the current codebase. Without a handler,
+> the user navigates to `/` but no session is highlighted — a UX regression vs. the old DashboardChat
+> behavior. The implementer MUST add a `?focus` handler in **`LiveMonitorPage.tsx`** (NOT
+> `MonitorView.tsx` — MonitorView doesn't use `useSearchParams`; LiveMonitorPage already imports it
+> at line 2 and owns `searchParams` at line 52).
+>
+> **Confirmed available:**
+> - `useMonitorStore` has `selectPane: (id: string | null) => void` (monitor-store.ts line 24)
+> - `LiveMonitorPage` already has `searchParams` from `useSearchParams()` (line 52)
+> - When `?focus` is set, we also need to ensure we're in monitor view mode
+>
+> ```tsx
+> // In LiveMonitorPage, after the existing useEffect blocks (~line 202), add:
+> const selectPane = useMonitorStore((s) => s.selectPane)
+> const focusSessionId = searchParams.get('focus')
+>
+> useEffect(() => {
+>   if (focusSessionId) {
+>     // Switch to monitor view if not already there (focus only makes sense in monitor mode)
+>     if (viewMode !== 'monitor') {
+>       handleViewModeChange('monitor')
+>     }
+>     selectPane(focusSessionId)
+>     // Clear the ?focus param so it doesn't re-trigger on filter changes
+>     const params = new URLSearchParams(searchParams)
+>     params.delete('focus')
+>     setSearchParams(params, { replace: true })
+>   }
+> }, [focusSessionId])  // intentionally minimal deps — run once on mount/param change
+> ```
+>
+> **Import already present:** `useMonitorStore` is NOT imported in `LiveMonitorPage` — add:
+> ```ts
+> import { useMonitorStore } from '../store/monitor-store'
+> ```
+
+**Step 4: Verify no broken imports**
 
 Run: `cd apps/web && bunx tsc --noEmit 2>&1 | head -20`
 Expected: 0 errors (no file imports DashboardChat)
 
-**Step 4: Commit**
+**Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "refactor: delete DashboardChat, redirect ControlPage to monitor"
+git commit -m "refactor: delete DashboardChat, redirect ControlPage, update HistoryView resume"
 ```
 
 ---
@@ -1587,7 +2201,7 @@ git commit -m "fix(chat): address build/type issues from integration"
 | Task | Component | Est. Size | Dependencies |
 | --- | --- | --- | --- |
 | 1 | commands.ts + test | ~50 lines | None |
-| 2 | ContextGauge | ~30 lines | @radix-ui/react-tooltip |
+| 2 | ChatContextGauge | ~30 lines | @radix-ui/react-tooltip |
 | 3 | CostPreview | ~25 lines | @radix-ui/react-tooltip |
 | 4 | ModeSwitch | ~50 lines | @radix-ui/react-popover |
 | 5 | ModelSelector | ~50 lines | @radix-ui/react-popover |
@@ -1613,9 +2227,71 @@ git commit -m "fix(chat): address build/type issues from integration"
 **Total new code:** ~1,170 lines across 20 files
 **Code deleted:** ~270 lines (DashboardChat + ControlPage)
 **Net change:** ~900 lines
-**New dependencies:** 0 (all Radix + Lucide already installed)
+**New dependencies:** 1 — `@radix-ui/react-alert-dialog` (Task 0). All other Radix + Lucide already installed.
 **Test coverage:** commands.ts has unit tests. UI components verified via type-check + build.
 **Interaction binding:** Task 15 provides the ControlCallbacks plumbing — card button clicks → hook → WebSocket → sidecar → Claude. Read-only sessions get display-only cards (no action buttons).
 **Dormant input bar:** Task 8 implements 6-state machine (dormant/resuming/active/streaming/completed/controlled_elsewhere). Every session shows input bar; first send triggers resume.
 **External session safety:** Task 16 adds TakeoverConfirmDialog — external sessions (CLI/VS Code) require confirmation before takeover; claude-view-spawned sessions resume directly.
 **Backend prerequisite:** Tasks 20-21 need `/api/control/resume` and `/api/control/start` endpoints (already implemented in sidecar). Sidecar needs `origin` field in session info response.
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+| --- | ----- | -------- | ----------- |
+| 1 | `@radix-ui/react-alert-dialog` absent from `apps/web/package.json` | Blocker | Added **Task 0** to install with `bun add` before any other task |
+| 2 | `InputBarState` missing `'connecting'` and `'reconnecting'` states matching `ControlStatus` | Warning | **Task 8**: added both to `InputBarState` union and `STATE_CONFIG` entries |
+| 3 | `contextUsage` from `useControlSession` — scale confirmed as 0-100 percent (NOT 0-1 ratio) | ~~Blocker~~ Resolved | **All tasks**: removed `* 100` multiplication. Evidence: `ChatStatusBar.tsx:2` documents "0-100 percentage", `DashboardChat.tsx:70` passes value directly |
+| 4 | `COLORS` in `AskUserQuestionDisplay.tsx` is not exported | Warning | **Task 10**: added architecture note — define colors inline or copy from source |
+| 5 | `getToolDisplay` in `PermissionDialog.tsx` is not exported (module-private) | Blocker | **Task 11**: added Step 0 to export the function before `PermissionCard` can import it |
+| 6 | `PermissionCard` placed inside `RichPane` — architectural mismatch (control WS vs JSONL) | Blocker | **Task 11** + **Task 17**: `PermissionCard` is a sibling rendered via MonitorPane slot, never inside `RichPane` |
+| 7 | `useControlSession` has no `sendWsMessage` / `send` method | Blocker | **Task 15**: replaced with `sendRaw` helper that calls `ws.send()` directly |
+| 8 | `ControlSessionInfo` does not exist in `apps/web/src/types/control.ts` | Blocker | **Task 16**: changed from "modify existing" to **CREATE** new interface from scratch |
+| 9 | `LiveSession` type has no `controlId` field | Blocker | Added **Task 16.5** to extend `LiveSession` with `controlId?: string` |
+| 10 | `AskUserQuestion` interactive callback threading missed — flows via `PairedToolCard`, not direct dispatch | Warning | **Task 17**: complete rewrite with explicit PairedToolCard modification steps and `controlCallbacks` threading |
+| 11 | `ExitPlanMode` tool_use not detected or filtered anywhere in `RichPane` | Warning | **Task 17**: added ExitPlanMode detection steps and `PlanApprovalCard` rendering |
+| 12 | Task 18 passed entire `controlSession` hook result as a `MonitorPane` prop — wrong architecture | Blocker | **Task 18**: replaced with `chatInput?: ReactNode` + `permissionCard?: ReactNode` named slots |
+| 13 | Task 18 referenced `controlSession.stop` (method does not exist in `useControlSession`) | Warning | **Task 18**: removed; slot approach means parent composes ChatInputBar without `onStop` |
+| 14 | Task 18 referenced `mode`/`model` state vars not defined in `MonitorPane` | Warning | **Task 18**: state lives in parent; slot-based approach eliminates the issue |
+| 15 | Task 19 read `session?.controlId` inline instead of accepting it as a prop | Warning | **Task 19**: `SessionDetailPanel` now takes explicit `controlId?: string` prop |
+| 16 | Task 19 used `isStreaming`/`disabled` props that don't exist on `ChatInputBar` | Warning | **Task 19**: replaced with `state: InputBarState` per Task 8 state machine |
+| 17 | Task 20 had conditional hook call `controlId ? useControlSession(controlId) : null` | Blocker | **Task 20**: always call `useControlSession(controlId)` — hook accepts `string \| null` (confirmed line 42 and 54 of `use-control-session.ts`) |
+| 18 | Task 20 lost pending message after `setControlId` — WS not open yet on same render | Warning | **Task 20**: added `pendingMessageRef` + drain `useEffect` that fires on `waiting_input` status transition |
+| 19 | Task 20 left column missing `flex flex-col` — ChatInputBar had no bottom anchor | Minor | **Task 20**: added layout prerequisite block with Virtuoso `style={{ flex: 1 }}` note |
+| 20 | Multiple code blocks used `pendingPermission` — actual field is `permissionRequest` | Minor | **Tasks 18/19**: corrected to `permissionRequest` (confirmed `use-control-session.ts` line 25) |
+
+### Audit Round 2 (2026-03-01)
+
+| # | Issue | Severity | Fix Applied |
+| --- | ----- | -------- | ----------- |
+| B1 | `item.tool.*` field paths wrong in Task 17 — `PairedToolCardProps` has `toolUse`, not `item.tool` | Blocker | **Task 17 Step 4**: All `item.tool.*` → `toolUse.*` |
+| B2 | `RichMessage` has no `toolUseId` field — `toolUse.toolUseId` always undefined | Blocker | **Task 17**: Added prerequisite note to add `toolUseId?: string` to `RichMessage` and populate from JSONL parser |
+| B3 | Rules of Hooks violation — `useControlSession` called inside `visibleSessions.map()` in MonitorView | Blocker | **Task 18 Step 3**: Extracted `MonitorPaneWithControl` wrapper component |
+| B4 | `controlStatusToInputState` returned `'idle'` and `'disabled'` — not valid `InputBarState` values | Blocker | **Task 18 Step 3**: Fixed mapping to `'active'`, `'dormant'`, `'waiting_permission'`, etc. |
+| B5 | `controlCallbacks` passed `{ sendMessage, respondPermission }` — doesn't match `ControlCallbacks` interface | Blocker | **Task 18 Step 3**: Use `useControlCallbacks(sendRaw, respondPermission)` from Task 15 |
+| B6 | `InputBarState` type not exported — Task 18 import fails | Blocker | **Task 8**: Added `export` to `type InputBarState` |
+| B7 | `ContextGauge` name collision with existing `live/ContextGauge.tsx` (different API) | Blocker | **Task 2**: Renamed to `ChatContextGauge` everywhere |
+| B8 | `contextUsage` scale ambiguity — 0-1 vs 0-100 unknown | ~~Blocker~~ Resolved | **All tasks**: Confirmed 0-100 percent via `ChatStatusBar.tsx:2` and `DashboardChat.tsx:70`. Removed all `* 100` multiplications. No ambiguity remains |
+| B9 | Terminal tab is bare `<RichPane>` with no wrapping div — siblings need flex container | Blocker | **Task 19 Step 3**: Wrapped in `<div className="flex flex-col h-full">` |
+| B10 | `POST /api/control/start` route doesn't exist in Rust router | Blocker | **Task 21**: Added backend prerequisite note |
+| B11 | `AttachButton` receives unused `attachments` prop — `noUnusedParameters` will error | Blocker | **Task 6**: Removed `attachments` and `onRemove` from `AttachButtonProps` |
+| B12 | `waiting_permission` → `'streaming'` UX confusion — shows "Claude is responding..." during permission wait | Blocker | **Task 8**: Added `'waiting_permission'` to `InputBarState` with distinct placeholder |
+| W1 | Task 15 step ordering inverted — `useControlCallbacks` imports `sendRaw` before it exists | Warning | **Task 15**: Swapped Steps 2 and 3 |
+| W2 | HistoryView navigates to `/control/${controlId}` which becomes dead redirect | Warning | **Task 22**: Added Step 3 to update HistoryView navigation target |
+| W3 | `PlanApprovalCard` receives truncated `input` instead of full `inputData` | Warning | **Task 17 Step 4**: Changed `planContent={toolUse.input}` → `planData={toolUse.inputData}` |
+| W4 | `useEffect` deps include `controlSession` object (new ref every render) — violates CLAUDE.md rule | Warning | **Task 20**: Changed deps to `[controlId, controlSession.status, controlSession.sendMessage]` |
+| W7 | "+" button only works in dockview mode, not auto-grid | Warning | **Task 21**: Added note to constrain to custom layout mode |
+| M2 | Summary says "0 new deps" but Task 0 installs one | Minor | Fixed summary line |
+| M3 | `NewSessionInput.tsx` missing `useCallback` import | Minor | **Task 21**: Added import statement |
+| M4 | ControlPage replacement should be whole-file | Minor | **Task 22 Step 2**: Clarified to replace entire file contents |
+
+### Audit Round 3 — Adversarial Review (2026-03-01)
+
+| # | Issue | Severity | Fix Applied |
+| --- | ----- | -------- | ----------- |
+| B13 | `MonitorPaneWithControl` renders `<RichPane>` but actual `MonitorView` uses `<RichTerminalPane>` — wrong component, wrong props | Blocker | **Task 18 Step 3**: Changed to `<RichTerminalPane>` with correct props. **Step 3a**: Added concrete `RichTerminalPane` interface extension to pass `controlCallbacks` through to `RichPane` — no TODO left |
+| W8 | `/?focus=${sessionId}` navigation target has no consumer — `focus` param silently ignored | Warning | **Task 22 Step 3**: Added `?focus` handler in `LiveMonitorPage.tsx` (not MonitorView — it doesn't use `useSearchParams`). Uses confirmed `useMonitorStore.selectPane` (monitor-store.ts:24). Auto-switches to monitor view, clears param after use |
+| W9 | `handleSend` in Task 20 has no error handling on `/api/control/resume` fetch — failed resume silently strands pending message | Warning | **Task 20 Step 2**: Added try/catch + `res.ok` guard + `showToast` + `pendingMessageRef` cleanup |
+| B8r | `contextUsage * 100` in Tasks 18/19/20 would produce 0-10000 — `contextUsage` is already 0-100 percent (NOT 0-1 ratio) | Blocker | **Tasks 8/18/19/20**: Removed all `* 100` multiplications. Evidence: `ChatStatusBar.tsx:2` ("0-100 percentage"), `DashboardChat.tsx:70` (passes directly). Updated props comment and all 3 call sites |
+| M5 | Task 18 Step 5 git add uses `<ParentComponent>.tsx` placeholder | Minor | Fixed to `MonitorView.tsx` (confirmed actual filename) |

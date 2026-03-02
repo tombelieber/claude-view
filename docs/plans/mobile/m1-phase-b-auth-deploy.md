@@ -90,7 +90,7 @@ Create `.env.local` (gitignored):
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_ANON_KEY=eyJ...
+SUPABASE_PUBLISHABLE_KEY=eyJ...
 SUPABASE_JWT_SECRET=your-jwt-secret
 ```
 
@@ -120,14 +120,14 @@ Create `src/lib/supabase.ts`:
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabasePublishableKey) {
   console.warn('Supabase not configured — auth disabled')
 }
 
-export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = supabaseUrl && supabasePublishableKey
+  ? createClient(supabaseUrl, supabasePublishableKey)
   : null
 ```
 
@@ -165,7 +165,7 @@ Same pattern. Also rename `MobileMonitorPageMobile` → `MobileMonitorPage` for 
 
 ```
 VITE_SUPABASE_URL=https://<ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
 ```
 
 **Step 7: Verify it compiles**

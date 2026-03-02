@@ -1,5 +1,7 @@
 # Claude View Plugin + Skill + MCP Server — Implementation Plan
 
+> **Status:** DONE (superseded 2026-03-01) — MCP server code (Tasks 3-9B) shipped as part of `@claude-view/plugin`. Tasks 1-2 replaced by plugin manifest + skills. Tasks 10-11 replaced by plugin validation script. See `docs/plans/cross-cutting/2026-03-01-claude-view-plugin-impl.md` for the successor plan.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Create a Claude Code plugin that bundles a skill (HTTP API interface) and MCP server (native tool access) for claude-view, giving AI agents read-only access to session data, costs, and fluency scores.

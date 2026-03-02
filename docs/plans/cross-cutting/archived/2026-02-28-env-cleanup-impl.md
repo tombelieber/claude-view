@@ -161,7 +161,7 @@ Replace contents of `apps/web/.env.example` with:
 
 # Supabase Auth (publishable keys)
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_...
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 
 # Observability (optional)
 VITE_SENTRY_DSN=
@@ -260,7 +260,7 @@ Each service manages its own env vars — no root `.env`, no automatic file load
 | Variable | Purpose |
 |----------|---------|
 | `VITE_SUPABASE_URL` | Supabase URL (browser SDK) |
-| `VITE_SUPABASE_ANON_KEY` | Supabase publishable key |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
 | `VITE_SENTRY_DSN` | Sentry error tracking (optional) |
 
 **Secret management:**

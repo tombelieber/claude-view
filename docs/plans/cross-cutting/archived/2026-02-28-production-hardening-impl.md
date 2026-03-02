@@ -68,7 +68,7 @@ Add the Supabase vars to `crates/server/.env.example` (append after existing lin
 # SHARE_VIEWER_URL=https://share.claudeview.ai
 ```
 
-The web frontend vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are already in `apps/web/.env.example` (added by the env-cleanup plan).
+The web frontend vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) are already in `apps/web/.env.example` (added by the env-cleanup plan).
 
 ```bash
 git add crates/server/.env.example
@@ -1559,18 +1559,18 @@ cd apps/web && bun add @supabase/supabase-js
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 // IMPORTANT: Do NOT throw on missing env vars — this would crash the entire app
 // for any developer who hasn't configured Supabase (the majority in local dev).
 // Export null when not configured; consumers check before using.
 export const supabase: SupabaseClient | null =
-  SUPABASE_URL && SUPABASE_ANON_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
     : null;
 
 if (!supabase) {
-  console.warn("[supabase] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY not set — auth/sharing disabled");
+  console.warn("[supabase] VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY not set — auth/sharing disabled");
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -1584,7 +1584,7 @@ export async function getAccessToken(): Promise<string | null> {
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
 ```
 
 **Step 4: Create `SignInPrompt` component**

@@ -6,8 +6,9 @@ Monorepo infrastructure, CI/CD, shared types, testing, documentation.
 
 | File | Status | Description |
 |------|--------|-------------|
-
-(No active cross-cutting work — all completed.)
+| `2026-03-01-session-intelligence-design.md` | Draft RFC | Session work-type classification, modes, Plan Runner, plan dashboard. Full design in GTM repo. |
+| `2026-03-01-claude-view-plugin-design.md` | Shipped | Plugin system design (hooks, skills, MCP tools) |
+| `2026-03-01-claude-view-plugin-impl.md` | Shipped | Plugin system implementation |
 
 ## Recently Completed
 

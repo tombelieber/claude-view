@@ -49,7 +49,7 @@ Everything depends on this. Do it first.
   - Copy and save these three values:
     ```
     SUPABASE_URL=https://<ref>.supabase.co
-    SUPABASE_ANON_KEY=eyJ...
+    SUPABASE_PUBLISHABLE_KEY=eyJ...
     JWKS_URL=https://<ref>.supabase.co/auth/v1/.well-known/jwks.json
     ```
   - You will paste these into wrangler.toml, Fly.io secrets, and .env.local files below
@@ -161,7 +161,7 @@ These files are gitignored. They only exist on your machine for local developmen
   ```bash
   cat > apps/web/.env.local << 'EOF'
   VITE_SUPABASE_URL=https://<ref>.supabase.co
-  VITE_SUPABASE_ANON_KEY=eyJ...
+  VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
   VITE_SENTRY_DSN=
   EOF
   ```
@@ -223,7 +223,7 @@ Run through the full flow once to confirm everything works end-to-end.
 | `SUPABASE_URL` | Fly.io relay | `fly secrets set` (D15) |
 | `SUPABASE_URL` | Local Rust server | Shell export (D19) |
 | `SUPABASE_URL` | Web frontend | `apps/web/.env.local` (D17) |
-| `SUPABASE_ANON_KEY` | Web frontend | `apps/web/.env.local` (D17) |
+| `SUPABASE_PUBLISHABLE_KEY` | Web frontend | `apps/web/.env.local` (D17) |
 | `SENTRY_DSN` | Cloudflare Worker | `wrangler secret put` (D10) |
 | `SENTRY_DSN` | Fly.io relay | `fly secrets set` (D15) |
 | `POSTHOG_API_KEY` | Cloudflare Worker | `wrangler secret put` (D10) |

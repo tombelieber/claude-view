@@ -262,7 +262,7 @@ These are infrastructure/console steps that require your accounts and credential
 
 | # | File | Vars Needed |
 |---|------|-------------|
-| D17 | `apps/web/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SENTRY_DSN` |
+| D17 | `apps/web/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SENTRY_DSN` |
 | D18 | `apps/share/.env.local` | `VITE_WORKER_URL` (for local dev), `VITE_SENTRY_DSN`, `VITE_POSTHOG_KEY` |
 | D19 | Shell exports for Rust server | `SUPABASE_URL`, `SHARE_WORKER_URL`, `SHARE_VIEWER_URL` |
 

@@ -87,7 +87,7 @@ No changes. Relay keeps its existing Dockerfile for Fly.io deploy. No docker-com
 | **Relay** | `PORT` | `8080` | Fly.io auto | |
 | | `RUST_LOG` | `warn,claude_view_relay=info` | Fly secrets | |
 | **Web frontend** | `VITE_SUPABASE_URL` | — | `apps/web/.env.local` | Publishable |
-| | `VITE_SUPABASE_ANON_KEY` | — | `apps/web/.env.local` | Publishable |
+| | `VITE_SUPABASE_PUBLISHABLE_KEY` | — | `apps/web/.env.local` | Publishable |
 | | `VITE_SENTRY_DSN` | — | `apps/web/.env.local` | Optional |
 | **Sidecar** | `SIDECAR_SOCKET` | `/tmp/claude-view-sidecar-{ppid}.sock` | Auto | |
 | **Landing** | — | — | — | Static HTML |

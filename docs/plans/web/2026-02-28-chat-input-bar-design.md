@@ -1,7 +1,7 @@
 # ChatInputBar + Interactive Message Cards — Design
 
 > **Date:** 2026-02-28
-> **Status:** Approved (v2 — monitor-integrated)
+> **Status:** Done (implemented 2026-03-02)
 > **Scope:** Chat input + interactive cards integrated into existing monitor panels
 > **Approach:** Hybrid — plain textarea + Radix UI popovers, embedded in MonitorPane
 

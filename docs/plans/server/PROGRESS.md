@@ -6,8 +6,8 @@ Rust backend — Axum HTTP, JSONL parsing, search, live monitoring, pricing, ses
 
 | File | Status | Description |
 |------|--------|-------------|
-| `2026-02-28-plugin-skill-mcp-design.md` | approved | Claude Code plugin + skill + MCP server |
-| `2026-02-28-plugin-skill-mcp-impl.md` | approved | Implementation plan for plugin/skill/MCP |
+| `2026-02-28-plugin-skill-mcp-design.md` | done (superseded by `@claude-view/plugin`) | Claude Code plugin + skill + MCP server |
+| `2026-02-28-plugin-skill-mcp-impl.md` | done (superseded by `@claude-view/plugin`) | Implementation plan for plugin/skill/MCP — MCP code shipped in plugin, Tasks 10-11 replaced by plugin validation |
 | `2026-02-24-session-backup-design.md` | done (standalone); integration deferred | Session backup tool at `claude-backup` repo |
 
 ## Recently Completed

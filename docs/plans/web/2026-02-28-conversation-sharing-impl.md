@@ -1,8 +1,28 @@
 # Conversation Sharing — Implementation Plan
 
+> **Status:** DONE (2026-03-01) — all 9 tasks implemented, shippable audit passed (SHIP IT)
+>
+> **Post-ship fix (2026-03-02):** Viewer SPA was built but never deployed. Fixed: deployed to Cloudflare Pages (dev), fixed CORS bug, fixed Tailwind content scanning. See [Post-Ship Gaps](#post-ship-gaps-fixed-2026-03-02) below.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Let users share Claude conversations via an encrypted link (AES-256-GCM, key in URL fragment). Hosted on Cloudflare (Worker + R2 + D1).
+
+### Completion Summary
+
+All 9 tasks delivered across 4 phases. 18 commits. Shippable audit: SHIP IT (0 blockers, 2 minor warnings).
+
+| Task | Commits | Description |
+|------|---------|-------------|
+| 1 | `6237a256`, `9d6f63a1`, `67e648b4`, `6d45feb7`, `1dff3337` | Scaffold + D1 schema + auth + hardened Worker handlers |
+| 2 | `67179648` | Wire custom domains + production env config |
+| 3 | `097f4574` | AES-256-GCM session serializer (gzip then encrypt) |
+| 4 | `c3fb3623`, `bf1f712e`, `c5561ebe` | Supabase JWT + share routes + test fixes |
+| 5 | `6254e70a` | Supabase auth client + SignInPrompt component |
+| 6 | `01de1d17`, `1b9741cc` | Share button with JWT auth + error handling fixes |
+| 7 | `60ada0af` | Shared links settings section + Sentry init |
+| 8 | `1f21b539`, `bd9e10d0`, `fd2757b3`, `add0a5be` | Viewer SPA + shared component extraction |
+| 9 | `fe7d447e` | Secure blob upload auth + analytics improvements |
 
 **Architecture:** Local Rust server serializes JSONL → JSON → gzip → AES-256-GCM encrypt (random key), uploads encrypted blob to R2 via Worker. Viewer SPA decrypts in-browser using Web Crypto API. Key travels only in URL fragment (never hits server).
 
@@ -781,13 +801,13 @@ cd apps/web && bun add @supabase/supabase-js
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY");
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 export async function getAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
@@ -799,7 +819,7 @@ export async function getAccessToken(): Promise<string | null> {
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
 ```
 
 **Step 4: Create `SignInPrompt` component**
@@ -1485,3 +1505,42 @@ Phases 1 and 2 can run in parallel. Phase 3 depends on Phase 2. Phase 4 depends 
 - All surfaces rate-limited per user_id
 - CORS locked to claudeview.ai / claudeview.com
 - Errors tracked in Sentry; usage in PostHog (no PII)
+
+---
+
+### Post-Ship Gaps (Fixed 2026-03-02)
+
+The original impl marked all 9 tasks "DONE" but the viewer SPA (Task 8) was built (`apps/share/dist/`) without being deployed. Share links pointed to the Worker URL which only serves API endpoints, not the viewer HTML.
+
+#### What was broken
+
+1. **`SHARE_VIEWER_URL` pointed to the Worker** — `package.json` `dev:server` set both `SHARE_WORKER_URL` and `SHARE_VIEWER_URL` to the same Worker URL (`claude-view-share-worker-dev.vickyai-tech.workers.dev`). The Worker only has `/api/*` routes, so `/s/{token}` returned `{"error": "Not found"}`.
+
+2. **Viewer SPA never deployed to Cloudflare Pages** — `apps/share/` was built but never `wrangler pages deploy`'d. No Pages project existed.
+
+3. **CORS override bug** — The Worker's outer fetch handler blindly overwrote handler-set CORS headers. `handleGetShare` set `Access-Control-Allow-Origin: *` (public endpoint), but the outer handler replaced it with restrictive origin-locked CORS. This would block the viewer SPA (on `*.pages.dev`) from fetching the blob.
+
+4. **Tailwind content scanning missed shared components** — `apps/share/src/index.css` had `@import "tailwindcss"` but no `@source` directive pointing to `packages/shared/src/`. Tailwind v4 didn't scan the shared components, so their utility classes weren't generated (CSS was 7 KB instead of 59 KB). Result: completely broken styling.
+
+5. **Missing SPA routing** — No `_redirects` file for Cloudflare Pages. Visiting `/s/{token}` returned Pages' default 404 instead of rewriting to `index.html`.
+
+#### Fixes applied
+
+| Fix | File | Detail |
+| --- | --- | --- |
+| Deploy viewer to Pages | Cloudflare | Created `claude-view-share-viewer-dev` Pages project, deployed `apps/share/dist/` |
+| Fix `SHARE_VIEWER_URL` | `package.json` | `dev:server` now uses `https://claude-view-share-viewer-dev.pages.dev` |
+| Fix CORS override | `infra/share-worker/src/index.ts` | Outer handler checks `response.headers.has('Access-Control-Allow-Origin')` before applying default CORS |
+| Fix Tailwind scanning | `apps/share/src/index.css` | Added `@source "../../../packages/shared/src"`, `@custom-variant dark`, fonts, prose/code styles |
+| Add SPA routing | `apps/share/public/_redirects` | `/s/*  /index.html  200` |
+
+#### Remaining: Production deployment
+
+The dev viewer is live at `https://claude-view-share-viewer-dev.pages.dev`. Production still needs:
+
+1. **Create prod Pages project:** `bunx wrangler pages project create claude-view-share-viewer-prod --production-branch main`
+2. **Build with prod Worker URL:** `cd apps/share && bun run build` (`.env.production` already has `VITE_WORKER_URL=https://api-share.claudeview.ai`)
+3. **Deploy:** `bunx wrangler pages deploy dist --project-name claude-view-share-viewer-prod --branch main --commit-dirty=true`
+4. **Add custom domain:** In Cloudflare Dashboard, add `share.claudeview.ai` custom domain to the `claude-view-share-viewer-prod` Pages project
+5. **Verify `SHARE_VIEWER_URL` in `preview` script:** Already set to `https://share.claudeview.ai` — correct, no change needed
+6. **Deploy CORS fix to prod Worker:** `cd infra/share-worker && bunx wrangler deploy` (no `--env dev` flag = prod)
