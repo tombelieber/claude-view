@@ -1,7 +1,14 @@
 // apps/web/src/hooks/use-control-session.ts
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
-import type { ChatMessage, PermissionRequestMsg, ServerMessage } from '../types/control'
+import type {
+  AskUserQuestionMsg,
+  ChatMessage,
+  ElicitationMsg,
+  PermissionRequestMsg,
+  PlanApprovalMsg,
+  ServerMessage,
+} from '../types/control'
 
 export type ControlStatus =
   | 'connecting'
@@ -23,6 +30,9 @@ interface ControlSessionState {
   sessionCost: number
   lastTurnCost: number
   permissionRequest: PermissionRequestMsg | null
+  askQuestion: AskUserQuestionMsg | null
+  planApproval: PlanApprovalMsg | null
+  elicitation: ElicitationMsg | null
   error: string | null
 }
 
@@ -36,6 +46,9 @@ const initialState: ControlSessionState = {
   sessionCost: 0,
   lastTurnCost: 0,
   permissionRequest: null,
+  askQuestion: null,
+  planApproval: null,
+  elicitation: null,
   error: null,
 }
 
@@ -134,6 +147,27 @@ export function useControlSession(controlId: string | null) {
                 status: 'waiting_permission',
               }
 
+            case 'ask_user_question':
+              return {
+                ...prev,
+                askQuestion: msg,
+                status: 'waiting_permission',
+              }
+
+            case 'plan_approval':
+              return {
+                ...prev,
+                planApproval: msg,
+                status: 'waiting_permission',
+              }
+
+            case 'elicitation':
+              return {
+                ...prev,
+                elicitation: msg,
+                status: 'waiting_permission',
+              }
+
             case 'session_status':
               return {
                 ...prev,
@@ -226,6 +260,12 @@ export function useControlSession(controlId: string | null) {
     }))
   }, [])
 
+  const sendRaw = useCallback((msg: Record<string, unknown>) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify(msg))
+  }, [])
+
   const respondPermission = useCallback((requestId: string, allowed: boolean) => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
@@ -239,5 +279,37 @@ export function useControlSession(controlId: string | null) {
     }))
   }, [])
 
-  return { ...state, sendMessage, respondPermission }
+  const answerQuestion = useCallback(
+    (requestId: string, answers: Record<string, string>) => {
+      sendRaw({ type: 'question_response', requestId, answers })
+      setState((prev) => ({ ...prev, askQuestion: null }))
+    },
+    [sendRaw],
+  )
+
+  const approvePlan = useCallback(
+    (requestId: string, approved: boolean, feedback?: string) => {
+      sendRaw({ type: 'plan_response', requestId, approved, feedback })
+      setState((prev) => ({ ...prev, planApproval: null }))
+    },
+    [sendRaw],
+  )
+
+  const submitElicitation = useCallback(
+    (requestId: string, response: string) => {
+      sendRaw({ type: 'elicitation_response', requestId, response })
+      setState((prev) => ({ ...prev, elicitation: null }))
+    },
+    [sendRaw],
+  )
+
+  return {
+    ...state,
+    sendMessage,
+    sendRaw,
+    respondPermission,
+    answerQuestion,
+    approvePlan,
+    submitElicitation,
+  }
 }
