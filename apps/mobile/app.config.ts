@@ -43,12 +43,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-secure-store',
     ['expo-camera', { cameraPermission: 'Allow Claude View to scan QR codes for pairing.' }],
-    'expo-notifications',
+    [
+      'onesignal-expo-plugin',
+      {
+        mode: 'development',
+      },
+    ],
   ],
   extra: {
     eas: {
       projectId: 'YOUR_EAS_PROJECT_ID', // Replace after `eas init`
     },
+    oneSignalAppId: process.env.ONESIGNAL_APP_ID || 'YOUR_ONESIGNAL_APP_ID',
   },
   experiments: {
     typedRoutes: true,
