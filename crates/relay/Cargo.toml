@@ -21,7 +21,7 @@ base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
-jsonwebtoken = "9"
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 anyhow = { workspace = true }
 sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
 sentry-tracing = "0.38"

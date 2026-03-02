@@ -10,9 +10,10 @@ use std::sync::Arc;
 use crate::{
     auth::supabase::{extract_bearer, validate_jwt_with_rotation, AuthUser},
     error::{ApiError, ApiResult},
-    share_serializer::{key_to_base64url, serialize_and_encrypt},
+    share_serializer::{key_to_base64url, serialize_and_encrypt, ShareInput},
     state::AppState,
 };
+use claude_view_core::types::{ShareSessionMetadata, ToolUsageSummary};
 
 fn extract_raw_jwt(headers: &HeaderMap) -> Option<String> {
     headers
@@ -94,10 +95,58 @@ pub async fn create_share(
         .unwrap_or_else(|| session.preview.chars().take(80).collect::<String>());
 
     let path = std::path::PathBuf::from(&file_path);
-    let encrypted = serialize_and_encrypt(&path).await?;
+
+    let share_meta = ShareSessionMetadata {
+        session_id: session_id.clone(),
+        project_name: Some(session.display_name.clone()),
+        primary_model: session.primary_model.clone(),
+        duration_seconds: Some(session.duration_seconds as f64),
+        total_input_tokens: session.total_input_tokens,
+        total_output_tokens: session.total_output_tokens,
+        user_prompt_count: Some(session.user_prompt_count as u64),
+        tool_call_count: Some(session.tool_call_count as u64),
+        files_read_count: Some(session.files_read_count as u64),
+        files_edited_count: Some(session.files_edited_count as u64),
+        commit_count: Some(session.commit_count as u64),
+        git_branch: session.git_branch.clone(),
+        session_title: session
+            .summary
+            .clone()
+            .or_else(|| Some(session.preview.chars().take(60).collect::<String>())),
+        tools_used: vec![
+            ToolUsageSummary {
+                name: "Read".into(),
+                count: session.tool_counts.read,
+            },
+            ToolUsageSummary {
+                name: "Edit".into(),
+                count: session.tool_counts.edit,
+            },
+            ToolUsageSummary {
+                name: "Bash".into(),
+                count: session.tool_counts.bash,
+            },
+            ToolUsageSummary {
+                name: "Write".into(),
+                count: session.tool_counts.write,
+            },
+        ]
+        .into_iter()
+        .filter(|t| t.count > 0)
+        .collect(),
+        files_read: session.files_read.clone(),
+        files_edited: session.files_edited.clone(),
+        commits: vec![],
+    };
+
+    let input = ShareInput {
+        file_path: path,
+        share_metadata: Some(share_meta),
+    };
+    let encrypted = serialize_and_encrypt(&input).await?;
     let size_bytes = encrypted.blob.len();
 
-    let token_resp: serde_json::Value = share_cfg
+    let worker_resp = share_cfg
         .http_client
         .post(format!("{}/api/share", share_cfg.worker_url))
         .bearer_auth(&raw_jwt)
@@ -108,19 +157,36 @@ pub async fn create_share(
         }))
         .send()
         .await
-        .map_err(|e| ApiError::Internal(format!("Worker POST failed: {e}")))?
-        .json()
+        .map_err(|e| ApiError::Internal(format!("Worker POST failed: {e}")))?;
+
+    let status = worker_resp.status();
+    let body = worker_resp
+        .text()
         .await
-        .map_err(|e| ApiError::Internal(format!("Worker response: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Worker response read: {e}")))?;
+
+    if !status.is_success() {
+        tracing::error!(%status, %body, "Worker POST /api/share failed");
+        return Err(ApiError::Internal(format!(
+            "Worker returned {status}: {body}"
+        )));
+    }
+
+    let token_resp: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| ApiError::Internal(format!("Worker JSON parse: {e}")))?;
 
     let token = token_resp["token"]
         .as_str()
-        .ok_or_else(|| ApiError::Internal("Missing token in Worker response".into()))?
+        .ok_or_else(|| {
+            tracing::error!(%body, "Worker response missing 'token' field");
+            ApiError::Internal(format!("Missing token in Worker response: {body}"))
+        })?
         .to_string();
 
     let blob_resp = share_cfg
         .http_client
         .put(format!("{}/api/share/{}/blob", share_cfg.worker_url, token))
+        .bearer_auth(&raw_jwt)
         .body(encrypted.blob)
         .header("Content-Type", "application/octet-stream")
         .send()
