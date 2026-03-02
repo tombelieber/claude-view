@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useControlCallbacks } from '../../hooks/use-control-callbacks'
+import { useControlSession } from '../../hooks/use-control-session'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
@@ -24,6 +26,8 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
+import { ChatInputBar, type InputBarState } from '../chat/ChatInputBar'
+import { PermissionCard } from '../chat/cards/PermissionCard'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
@@ -53,6 +57,8 @@ interface SessionDetailPanelProps {
   onClose: () => void
   /** When true, render inline as a flex child instead of a fixed portal overlay. */
   inline?: boolean
+  /** Control channel ID for interactive session control (chat input, permissions). */
+  controlId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +76,25 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Map control session status to InputBarState. */
+function controlStatusToInputState(status: string | undefined): InputBarState {
+  switch (status) {
+    case 'active':
+    case 'waiting_input':
+      return 'active'
+    case 'waiting_permission':
+      return 'waiting_permission'
+    case 'connecting':
+      return 'connecting'
+    case 'reconnecting':
+      return 'reconnecting'
+    case 'completed':
+      return 'completed'
+    default:
+      return 'dormant'
+  }
+}
 
 /** Format model name for display (strip long prefixes) */
 function formatModel(model: string | null): string {
@@ -117,11 +142,19 @@ export function SessionDetailPanel({
   panelData: panelDataProp,
   onClose,
   inline,
+  controlId,
 }: SessionDetailPanelProps) {
   // Resolve to unified data shape
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
   const hasSubAgents = data.subAgents && data.subAgents.length > 0
+
+  // ---- Control session hooks (unconditional — Rules of Hooks) ----
+  const controlSession = useControlSession(controlId ?? null)
+  const controlCallbacks = useControlCallbacks(
+    controlSession.sendRaw,
+    controlSession.respondPermission,
+  )
 
   // ---- Local state ----
   const [activeTab, setActiveTab] = useState<TabId>('overview')
@@ -564,13 +597,31 @@ export function SessionDetailPanel({
 
         {/* ---- Terminal tab ---- */}
         {activeTab === 'terminal' && (
-          <RichPane
-            messages={richMessages}
-            isVisible={true}
-            verboseMode={verboseMode}
-            bufferDone={bufferDone}
-            categoryCounts={categoryCounts}
-          />
+          <div className="flex flex-col h-full">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <RichPane
+                messages={richMessages}
+                isVisible={true}
+                verboseMode={verboseMode}
+                bufferDone={bufferDone}
+                categoryCounts={categoryCounts}
+                controlCallbacks={controlCallbacks}
+              />
+            </div>
+            {controlSession.status === 'waiting_permission' && controlSession.permissionRequest && (
+              <PermissionCard
+                permission={controlSession.permissionRequest}
+                onRespond={controlSession.respondPermission}
+              />
+            )}
+            {controlId && (
+              <ChatInputBar
+                onSend={controlSession.sendMessage}
+                state={controlStatusToInputState(controlSession.status)}
+                contextPercent={Math.round(controlSession.contextUsage)}
+              />
+            )}
+          </div>
         )}
 
         {/* ---- Log tab ---- */}
