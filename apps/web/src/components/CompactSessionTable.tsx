@@ -30,6 +30,7 @@ interface BadgeData {
 
 interface CompactSessionTableProps {
   sessions: SessionInfo[]
+  liveSessionIds?: Set<string>
   onSort: (column: SortColumn) => void
   sortColumn: SortColumn
   sortDirection: SortDirection
@@ -83,6 +84,7 @@ const columnHelper = createColumnHelper<SessionInfo>()
 
 function buildColumns(
   badges: Record<string, BadgeData> | undefined,
+  liveSessionIds?: Set<string>,
 ): ColumnDef<SessionInfo, any>[] {
   return [
     columnHelper.display({
@@ -113,15 +115,24 @@ function buildColumns(
       cell: ({ row }) => {
         const s = row.original
         const end = Number(s.modifiedAt)
+        const isLive = liveSessionIds?.has(s.id) ?? false
         return (
           <Link
             to={sessionUrl(s)}
             className="block whitespace-nowrap text-[12px] text-gray-700 dark:text-gray-300"
           >
-            <span className="font-medium text-gray-900 dark:text-gray-100">
-              {formatDatePrefix(end)}
-            </span>{' '}
-            <span className="text-gray-400 dark:text-gray-500">{formatTimeShort(end)}</span>
+            <span className="inline-flex items-center gap-1.5">
+              {isLive && (
+                <span className="relative flex h-2 w-2" title="Session is live">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+              )}
+              <span className="font-medium text-gray-900 dark:text-gray-100">
+                {formatDatePrefix(end)}
+              </span>
+              <span className="text-gray-400 dark:text-gray-500">{formatTimeShort(end)}</span>
+            </span>
           </Link>
         )
       },
@@ -299,6 +310,7 @@ function buildColumns(
 
 export function CompactSessionTable({
   sessions,
+  liveSessionIds,
   onSort,
   sortColumn,
   sortDirection,
@@ -315,7 +327,7 @@ export function CompactSessionTable({
     staleTime: 60_000,
   })
 
-  const columns = useMemo(() => buildColumns(badges), [badges])
+  const columns = useMemo(() => buildColumns(badges, liveSessionIds), [badges, liveSessionIds])
 
   const sorting: SortingState = useMemo(
     () => [{ id: sortColumn, desc: sortDirection === 'desc' }],
