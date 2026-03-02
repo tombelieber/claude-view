@@ -82,7 +82,7 @@ http-body-util = { workspace = true }
 bytes = { workspace = true }
 aes-gcm = "0.10.3"
 flate2 = "1.1.9"
-jsonwebtoken = "10.3.0"
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
