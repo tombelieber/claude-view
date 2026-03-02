@@ -20,6 +20,7 @@ import { useCallback, useMemo } from 'react'
 
 interface SharedConversationViewProps {
   messages: Message[]
+  verboseMode?: boolean
 }
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
@@ -36,8 +37,11 @@ function filterMessages(messages: Message[]): Message[] {
   })
 }
 
-export function SharedConversationView({ messages }: SharedConversationViewProps) {
-  const filtered = useMemo(() => filterMessages(messages), [messages])
+export function SharedConversationView({ messages, verboseMode }: SharedConversationViewProps) {
+  const filtered = useMemo(
+    () => (verboseMode ? messages : filterMessages(messages)),
+    [messages, verboseMode],
+  )
 
   const threadMap = useMemo(() => buildThreadMap(filtered), [filtered])
 
@@ -67,7 +71,12 @@ export function SharedConversationView({ messages }: SharedConversationViewProps
                     message={message}
                     messageIndex={index}
                     messageType={message.role}
-                    metadata={message.metadata as Record<string, any>}
+                    metadata={
+                      typeof message.metadata === 'object' && message.metadata !== null
+                        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          (message.metadata as Record<string, any>)
+                        : undefined
+                    }
                     parentUuid={thread?.parentUuid}
                     indent={thread?.indent ?? 0}
                     isChildMessage={thread?.isChild ?? false}
