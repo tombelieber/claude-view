@@ -151,39 +151,39 @@ All structured data is JSON-LD injected in `<head>` via Astro's `set:html` direc
 
 ```bash
 # Cloudflare Markdown for Agents — must return markdown, not HTML
-curl -s -H "Accept: text/markdown" https://claude-view.dev/ | head -5
+curl -s -H "Accept: text/markdown" https://claudeview.ai/ | head -5
 
 # llms.txt accessible
-curl -s https://claude-view.dev/llms.txt | head -5
+curl -s https://claudeview.ai/llms.txt | head -5
 
 # llms-full.txt accessible
-curl -s https://claude-view.dev/llms-full.txt | wc -l
+curl -s https://claudeview.ai/llms-full.txt | wc -l
 
 # robots.txt has AI crawler allow rules
-curl -s https://claude-view.dev/robots.txt | grep -A1 'ClaudeBot'
+curl -s https://claudeview.ai/robots.txt | grep -A1 'ClaudeBot'
 
 # sitemap.xml generated
-curl -s https://claude-view.dev/sitemap.xml | head -5
+curl -s https://claudeview.ai/sitemap.xml | head -5
 
 # Structured data present (check for JSON-LD)
-curl -s https://claude-view.dev/ | grep -c 'application/ld+json'
-curl -s https://claude-view.dev/pricing | grep -c 'FAQPage'
-curl -s https://claude-view.dev/docs/ | grep -c 'TechArticle'
+curl -s https://claudeview.ai/ | grep -c 'application/ld+json'
+curl -s https://claudeview.ai/pricing | grep -c 'FAQPage'
+curl -s https://claudeview.ai/docs/ | grep -c 'TechArticle'
 ```
 
 ### Open Graph
 
 ```bash
 # Homepage OG tags
-curl -s https://claude-view.dev/ | grep 'og:type'
+curl -s https://claudeview.ai/ | grep 'og:type'
 # Expected: content="website"
 
 # Blog post OG tags
-curl -s https://claude-view.dev/blog/introducing-claude-view | grep 'og:type'
+curl -s https://claudeview.ai/blog/introducing-claude-view | grep 'og:type'
 # Expected: content="article"
 
 # article:published_time present on blog
-curl -s https://claude-view.dev/blog/introducing-claude-view | grep 'article:published_time'
+curl -s https://claudeview.ai/blog/introducing-claude-view | grep 'article:published_time'
 ```
 
 ### Performance

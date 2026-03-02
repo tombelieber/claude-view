@@ -10,7 +10,8 @@
     "preview": "astro preview",
     "lint": "biome check .",
     "typecheck": "astro sync && astro check",
-    "deploy": "wrangler pages deploy dist"
+    "deploy": "wrangler pages deploy dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "astro": "^5",
@@ -22,6 +23,9 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9",
-    "typescript": "^5.7"
+    "@cloudflare/workers-types": "^4.20260301.1",
+    "typescript": "^5.7",
+    "vitest": "^4.0.18",
+    "wrangler": "^4.69.0"
   }
 }

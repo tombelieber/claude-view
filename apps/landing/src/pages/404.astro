@@ -1,0 +1,117 @@
+---
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import { GITHUB_URL } from '../data/site';
+
+export const prerender = true;
+
+const suggestedLinks = [
+  { cmd: 'cd /', label: 'Home', href: '/' },
+  { cmd: 'cd /docs', label: 'Documentation', href: '/docs/' },
+  { cmd: 'cd /pricing', label: 'Pricing', href: '/pricing/' },
+  { cmd: 'cd /blog', label: 'Blog', href: '/blog/' },
+];
+---
+
+<MarketingLayout title="404 — Page Not Found" description="The page you're looking for doesn't exist.">
+  <section class="min-h-[calc(100vh-8rem)] flex items-center justify-center px-6 py-24">
+    <!-- Subtle radial glow (matches hero) -->
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
+      <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[radial-gradient(ellipse_at_center,rgba(34,197,94,0.06),transparent_70%)]"></div>
+    </div>
+
+    <div class="relative w-full max-w-2xl">
+      <!-- Error code — large, dimmed, layered behind -->
+      <div class="absolute -top-16 left-1/2 -translate-x-1/2 select-none pointer-events-none" aria-hidden="true">
+        <span class="text-[10rem] md:text-[14rem] font-bold font-[family-name:var(--font-heading)] leading-none text-slate-800/40 tracking-tighter">404</span>
+      </div>
+
+      <!-- Terminal window -->
+      <div class="relative rounded-xl border border-slate-700 bg-slate-900/80 backdrop-blur-sm shadow-2xl shadow-black/30 overflow-hidden">
+        <!-- Title bar -->
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-700/60 bg-slate-800/50">
+          <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+          <span class="w-3 h-3 rounded-full bg-amber-500/80"></span>
+          <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+          <span class="ml-3 text-xs text-slate-500 font-[family-name:var(--font-mono)]">claude-view</span>
+        </div>
+
+        <!-- Terminal body -->
+        <div class="p-6 md:p-8 font-[family-name:var(--font-mono)] text-sm md:text-base space-y-4">
+          <!-- Attempted path -->
+          <div class="flex flex-wrap items-center gap-x-2">
+            <span class="text-green-400 shrink-0">$</span>
+            <span class="text-slate-300">claude-view</span>
+            <span class="text-amber-400 break-all" id="attempted-path">/unknown</span>
+          </div>
+
+          <!-- Error output -->
+          <div class="space-y-1">
+            <p class="text-red-400">error<span class="text-slate-500">:</span> page not found</p>
+            <p class="text-slate-500 text-xs md:text-sm">The requested route does not match any known page.</p>
+          </div>
+
+          <!-- Divider -->
+          <div class="border-t border-slate-700/50"></div>
+
+          <!-- Suggested commands -->
+          <div>
+            <p class="text-slate-500 text-xs mb-3">Try one of these instead:</p>
+            <div class="space-y-2">
+              {suggestedLinks.map(({ cmd, label, href }) => (
+                <a
+                  href={href}
+                  class="group flex items-center gap-x-2 py-1 -mx-2 px-2 rounded-md hover:bg-slate-800/60 transition-colors cursor-pointer"
+                >
+                  <span class="text-green-400 shrink-0">$</span>
+                  <span class="text-slate-300 group-hover:text-green-400 transition-colors">{cmd}</span>
+                  <span class="text-slate-600 text-xs ml-auto hidden sm:inline"># {label}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="border-t border-slate-700/50"></div>
+
+          <!-- Blinking cursor prompt -->
+          <div class="flex items-center gap-x-2">
+            <span class="text-green-400">$</span>
+            <span class="inline-block w-2.5 h-5 bg-green-400/80 cursor-blink" aria-hidden="true"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help text below terminal -->
+      <p class="text-center text-slate-500 text-sm mt-6">
+        Think this is a bug?
+        <a href={`${GITHUB_URL}/issues`} class="text-green-400 hover:text-green-300 transition-colors cursor-pointer underline underline-offset-2 decoration-green-400/30 hover:decoration-green-300/60">Open an issue</a>
+      </p>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .cursor-blink {
+    animation: blink 1s step-end infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-blink {
+      animation: none;
+      opacity: 1;
+    }
+  }
+</style>
+
+<script>
+  const el = document.getElementById('attempted-path');
+  if (el) {
+    const path = window.location.pathname || '/unknown';
+    el.textContent = path;
+  }
+</script>
