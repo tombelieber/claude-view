@@ -37,7 +37,7 @@ Mission Control answers all of these questions — live.
 
 **AI Fluency Score** — a 0–100 metric that measures how effectively you collaborate with AI agents. Track your progress over time.
 
-**MCP integration** — 8 read-only tools that let other AI agents query your session data. Ask Claude "what did I work on last week?" and get a real answer.
+**Claude Code plugin** — ships as a native plugin (`claude plugin add @claude-view/plugin`) with 8 read-only tools, 3 skills (`/session-recap`, `/daily-cost`, `/standup`), and auto-start. Ask Claude "what did I work on last week?" and get a real answer.
 
 ## The mobile app (coming soon)
 
@@ -66,7 +66,7 @@ version: v0.8.0
 
 **Agent Control** — approve/reject tool calls, send messages to agents (requires cloud relay).
 
-**MCP Server** — `@claude-view/mcp` exposes 8 read-only tools for session monitoring, cost tracking, and search. Add to any Claude Code or MCP-compatible AI agent.
+**Claude Code Plugin** — `@claude-view/plugin` ships as a native Claude Code plugin with 8 read-only MCP tools, 3 skills (`/session-recap`, `/daily-cost`, `/standup`), and a SessionStart hook that auto-starts the dashboard. Install with `claude plugin add @claude-view/plugin`.
 
 **AI Fluency Score** — composite 0–100 metric measuring AI collaboration effectiveness.
 
@@ -120,7 +120,7 @@ import { Steps } from '@astrojs/starlight/components';
 
 - [Installation →](/docs/installation/) — detailed setup, ports, and config
 - [Mission Control →](/docs/features/mission-control/) — real-time agent monitoring
-- [MCP Integration →](/docs/guides/mcp-integration/) — connect AI agents to claude-view
+- [Claude Code Plugin →](/docs/guides/mcp-integration/) — 8 tools, 3 skills, auto-start hook
 
 
 --- docs/docs/features/agent-control.mdx ---
@@ -193,9 +193,9 @@ The score combines multiple signals:
 - **Reuse context** — start sessions from the same project to maximize cache hits
 - **Review tool calls** — unnecessary tool calls increase cost without outcomes
 
-## MCP access
+## Plugin access
 
-After [configuring the MCP server](/docs/guides/mcp-integration/), ask Claude Code directly:
+After [installing the plugin](/docs/guides/mcp-integration/), ask Claude Code directly:
 
 ```
 "What's my AI Fluency Score?"
@@ -364,29 +364,31 @@ Click any session to see:
 --- docs/docs/guides/mcp-integration.mdx ---
 
 ---
-title: MCP Integration
-description: Give Claude Code native tool access to your session data, costs, and fluency scores — via the claude-view plugin (coming soon).
+title: Claude Code Plugin
+description: Install the claude-view plugin for Claude Code — auto-starts the dashboard, adds 8 tools and 3 skills. One command, zero config.
 ---
 
 import { MCP_TOOL_COUNT } from '../../../../data/site';
 
-:::caution[Coming Soon]
-The claude-view plugin is in development and not yet published. This page describes the planned integration. Check back soon or [watch the repo](https://github.com/tombelieber/claude-view) for the release.
-:::
-
 ## Overview
 
-claude-view will ship as a **Claude Code plugin** (`@claude-view/plugin`) that gives Claude Code native access to {MCP_TOOL_COUNT} session tools — no manual `settings.json` editing required.
+`@claude-view/plugin` is a **Claude Code plugin** that gives Claude native access to {MCP_TOOL_COUNT} session tools and 3 skills — no manual `settings.json` editing required.
 
-Once published, installation will be a single command:
+Install with one command:
 
 ```bash
 claude plugin add @claude-view/plugin
 ```
 
-## Available tools
+## What you get
 
-The plugin exposes {MCP_TOOL_COUNT} read-only tools:
+### Auto-start hook
+
+Every time you start a Claude Code session, the plugin checks if the claude-view server is running. If not, it starts it in the background. The web dashboard appears at `http://localhost:47892` — no manual `npx claude-view` needed.
+
+### {MCP_TOOL_COUNT} MCP tools
+
+The plugin exposes {MCP_TOOL_COUNT} read-only tools via MCP (Model Context Protocol):
 
 | Tool | Description |
 |------|-------------|
@@ -401,7 +403,15 @@ The plugin exposes {MCP_TOOL_COUNT} read-only tools:
 
 All tools are read-only. All data stays local — no external requests.
 
-## Example usage (preview)
+### 3 skills
+
+| Skill | Description |
+|-------|-------------|
+| `/session-recap` | Summarize a specific session — commits, metrics, duration |
+| `/daily-cost` | Today's spending, running sessions, token usage |
+| `/standup` | Multi-session work log for standup updates |
+
+## Example usage
 
 ```
 "How much have I spent on Claude Code today?"
@@ -412,15 +422,41 @@ All tools are read-only. All data stays local — no external requests.
 
 "What's my AI Fluency Score?"
 → Uses get_fluency_score
+
+/session-recap
+→ Summarizes your most recent session
+
+/standup
+→ Generates a standup update from the last 24h
 ```
 
 ## Architecture
 
-The plugin connects to the running claude-view server on `localhost:47892`. Start the server first:
+The plugin connects to the running claude-view server on `localhost:47892`. The auto-start hook ensures the server is always running when Claude Code starts.
 
-```bash
-npx claude-view
 ```
+Claude Code session starts
+  → Plugin SessionStart hook fires
+  → Hook checks localhost:47892/api/health
+    → Running? Skip.
+    → Not running? Spawn: npx claude-view (background)
+  → MCP server registered via plugin .mcp.json
+  → Claude has 8 tools + 3 skills available
+  → Web dashboard at localhost:47892
+```
+
+## Prerequisites
+
+- **Node.js 18+** — required by the MCP server
+- The plugin auto-starts the server, but `npx claude-view` must be available (downloads the Rust binary on first run)
+
+:::note[First run]
+The very first session after install may take 5–30 seconds to download the Rust binary. The hook times out gracefully — the server starts in the background and will be ready for your next tool call or session.
+:::
+
+## Configuration
+
+Set `CLAUDE_VIEW_PORT` to override the default port (47892). Both the hook and MCP client respect this variable.
 
 
 --- docs/docs/guides/mobile-setup.mdx ---
@@ -429,10 +465,13 @@ npx claude-view
 title: Mobile App Setup
 description: Set up the claude-view mobile app on iOS or Android.
 ---
+import WaitlistForm from '../../../../components/WaitlistForm.astro';
 
 The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
 
-> **Status:** The mobile app is currently in development.
+> **Status:** The mobile app is currently in development. Join the waitlist to be notified when it launches.
+
+<WaitlistForm variant="compact" />
 
 ## Prerequisites
 
@@ -474,7 +513,7 @@ title: Installation
 description: Install claude-view on macOS. Zero config — one command.
 ---
 
-{/* Node version, platform support, and port sourced from apps/landing/src/data/site.ts */}
+import { DEFAULT_PORT, PLATFORM } from '../../../data/site';
 
 <script is:inline type="application/ld+json" set:html={JSON.stringify({
   "@context": "https://schema.org",
@@ -482,11 +521,11 @@ description: Install claude-view on macOS. Zero config — one command.
   "name": "Install claude-view",
   "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
   "totalTime": "PT15S",
-  "tool": [{"@type": "HowToTool", "name": "Node.js (v18 or later)"}],
+  "tool": [{"@type": "HowToTool", "name": `Node.js (v${PLATFORM.nodeMin} or later)`}],
   "step": [
     {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
     {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
-    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": "claude-view starts a local server and opens your browser to http://localhost:47892. You'll see all active Claude Code sessions automatically detected."}
+    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": `claude-view starts a local server and opens your browser to http://localhost:${DEFAULT_PORT}. You'll see all active Claude Code sessions automatically detected.`}
   ]
 })} />
 
@@ -498,21 +537,36 @@ npx claude-view
 
 That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
 
+## Claude Code plugin (recommended)
+
+If you use Claude Code, install the plugin for the best experience — it auto-starts the server, adds 8 MCP tools, and 3 skills:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+After installing, every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed. See the [plugin guide](/docs/guides/mcp-integration/) for details.
+
 ## Requirements
 
-| Requirement | Version |
-|-------------|---------|
-| macOS | 12 (Monterey) or later |
-| Node.js | 18 or later |
-| Claude Code | Latest |
+<table>
+  <thead>
+    <tr><th>Requirement</th><th>Version</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>macOS</td><td>{PLATFORM.macosMin} or later</td></tr>
+    <tr><td>Node.js</td><td>{PLATFORM.nodeMin} or later</td></tr>
+    <tr><td>Claude Code</td><td>Latest</td></tr>
+  </tbody>
+</table>
 
-> **Linux:** Supported in v2.1 (coming soon). Windows in v2.2.
+> **Linux:** Supported in {PLATFORM.linuxVersion} (coming soon). Windows in {PLATFORM.windowsVersion}.
 
 ## What happens on first run
 
 1. `npx` downloads the pre-built `claude-view` binary for your platform
-2. The binary starts a local HTTP server on port `47892`
-3. Your default browser opens `http://localhost:47892`
+2. The binary starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
+3. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
 4. claude-view scans for active Claude Code processes automatically
 
 ## Configuration
@@ -529,7 +583,7 @@ Or set permanently in your shell profile:
 export CLAUDE_VIEW_PORT=8080
 ```
 
-If port `47892` is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
+If port <code>{DEFAULT_PORT}</code> is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
 
 ### Persistent binary (faster startup)
 
@@ -542,18 +596,18 @@ Global install skips the `npx` download step on subsequent runs.
 
 ## Verify it's running
 
-Open `http://localhost:47892` in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
+Open <code>http://localhost:{DEFAULT_PORT}</code> in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
 
 ## Troubleshooting
 
-**"Port 47892 already in use"**
+**"Port {DEFAULT_PORT} already in use"**
 Another instance is running. Kill it with `pkill claude-view` or use a different port.
 
 **"No sessions found"**
 Start a Claude Code session in another terminal: `claude`. Sessions appear within a few seconds.
 
 **Binary download fails**
-Check your Node.js version: `node --version`. Requires v18+. If behind a proxy, set `HTTPS_PROXY`.
+Check your Node.js version: `node --version`. Requires v{PLATFORM.nodeMin}+. If behind a proxy, set `HTTPS_PROXY`.
 
 
 --- docs/docs/reference/api.mdx ---
@@ -655,7 +709,7 @@ title: CLI Options
 description: Command-line usage, subcommands, and environment variables for claude-view.
 ---
 
-{/* Default port (47892) sourced from apps/landing/src/data/site.ts */}
+import { DEFAULT_PORT } from '../../../../data/site';
 
 ## Usage
 
@@ -682,16 +736,21 @@ claude-view cleanup
 
 ## Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CLAUDE_VIEW_PORT` | Override server port | `47892` |
-| `PORT` | Alternative port variable (fallback) | — |
-| `RUST_LOG` | Log level filter | `warn` |
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CLAUDE_VIEW_PORT</code></td><td>Override server port</td><td><code>{DEFAULT_PORT}</code></td></tr>
+    <tr><td><code>PORT</code></td><td>Alternative port variable (fallback)</td><td>—</td></tr>
+    <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>warn</code></td></tr>
+  </tbody>
+</table>
 
 ## Examples
 
 ```bash
-# Default — starts server on port 47892 and opens browser
+# Default — starts server and opens browser
 npx claude-view
 
 # Custom port via env var
@@ -709,7 +768,7 @@ npx claude-view cleanup
 
 ## Port fallback
 
-If the specified port (default `47892`) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.
+If the specified port (default <code>{DEFAULT_PORT}</code>) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.
 
 
 --- docs/docs/reference/keyboard-shortcuts.mdx ---

@@ -7,8 +7,8 @@ import FeatureSection from '../components/FeatureSection.astro';
 import PhoneMockup from '../components/PhoneMockup.astro';
 import PricingCards from '../components/PricingCards.astro';
 import GitHubStars from '../components/GitHubStars.astro';
-import AppStoreBadges from '../components/AppStoreBadges.astro';
-import { GITHUB_REPO, MCP_TOOL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data/site';
+import WaitlistForm from '../components/WaitlistForm.astro';
+import { GITHUB_REPO, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data/site';
 ---
 <MarketingLayout title="Mission Control for AI Coding Agents">
 <script is:inline define:vars={{ deepLinkScheme: DEEP_LINK_SCHEME }}>
@@ -44,11 +44,15 @@ import { GITHUB_REPO, MCP_TOOL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data
         <GitHubStars repo={GITHUB_REPO} />
       </div>
 
-      <!-- MCP integrations row -->
+      <div class="mt-6">
+        <WaitlistForm />
+      </div>
+
+      <!-- Plugin integrations row -->
       <p class="text-sm text-slate-500 mb-12">
-        Works with Claude Code via
-        <a href="/docs/guides/mcp-integration/" class="text-green-400 hover:text-green-300 transition-colors">MCP — {MCP_TOOL_COUNT} tools</a>
-        for monitoring, cost tracking, and session insights.
+        Ships as a
+        <a href="/docs/guides/mcp-integration/" class="text-green-400 hover:text-green-300 transition-colors">Claude Code plugin</a>
+        — {MCP_TOOL_COUNT} tools, {PLUGIN_SKILL_COUNT} skills, auto-start hook.
       </p>
 
       <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -101,8 +105,16 @@ import { GITHUB_REPO, MCP_TOOL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data
   badge="Coming Soon"
 >
   <PhoneMockup />
-  <div class="mt-6">
-    <AppStoreBadges />
+  <div class="mt-6 text-center">
+    <a
+      href="#waitlist"
+      class="inline-flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-6 py-3 text-sm font-medium text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-colors"
+    >
+      Join the mobile waitlist
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M7 17L17 7M17 7H7M17 7V17" />
+      </svg>
+    </a>
   </div>
 </FeatureSection>
 
@@ -129,7 +141,7 @@ import { GITHUB_REPO, MCP_TOOL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data
 <section class="py-24 px-6 bg-gradient-to-b from-slate-950 to-slate-900">
   <div class="max-w-3xl mx-auto text-center">
     <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Get started in 10 seconds</h2>
-    <p class="text-lg text-slate-400 mb-8">No signup. No config. Just run one command.</p>
+    <p class="text-lg text-slate-400 mb-8">No account needed. Just run one command.</p>
     <InstallCommand />
     <p class="text-sm text-slate-500 mt-4">Requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
   </div>
