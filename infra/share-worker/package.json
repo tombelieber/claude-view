@@ -8,9 +8,10 @@
     "db:migrate:dev": "wrangler d1 execute claude-view-share-meta-dev --local --file=./migrations/001_init.sql"
   },
   "devDependencies": {
-    "wrangler": "^3.100.0",
+    "@cloudflare/unenv-preset": "^2.14.0",
     "@cloudflare/workers-types": "^4.20250214.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
   },
   "dependencies": {
     "jose": "^5.10.0",
