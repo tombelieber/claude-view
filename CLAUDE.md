@@ -34,11 +34,13 @@
 | Path | Package | Purpose |
 |------|---------|---------|
 | `apps/web/` | `@claude-view/web` | React SPA (Vite) — the main web frontend |
+| `apps/share/` | `@claude-view/share` | Share viewer SPA (Vite) — Cloudflare Pages |
 | `apps/mobile/` | `@claude-view/mobile` | Expo SDK 55 native app (Tamagui v2) |
 | `apps/landing/` | `@claude-view/landing` | Static HTML landing page (Cloudflare Pages) |
 | `packages/shared/` | `@claude-view/shared` | Relay types, theme tokens |
 | `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
 | `crates/` | — | Rust backend (unchanged) |
+| `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
 
 **Key config files:**
 
@@ -117,10 +119,23 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 | `bun run dev:web` | Web frontend only (assumes Rust server running) |
 | `bun run dev:server` | Rust backend only (with cargo-watch) |
 | `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
+| `bun run preview` | Production-like local — builds web, runs Rust with prod-like share URLs |
 | `bun run build` | `bunx turbo build` — builds all apps |
 | `bun run test` | `bunx turbo test` — runs all test suites |
 | `cd apps/web && bunx vitest run` | Run web frontend tests only |
 | `cargo test -p claude-view-server` | Run Rust server tests only |
+| `bun run deploy:share:dev` | Build share SPA (`.env.dev`) + deploy to Pages dev |
+| `bun run deploy:share` | Build share SPA (`.env.production`) + deploy to Pages prod |
+
+**Shell-injected share env vars** (Rust server reads these via `std::env::var()`):
+
+| Script | `SHARE_WORKER_URL` (API calls) | `SHARE_VIEWER_URL` (user-facing links) |
+| ------------ | --------------------------------------------------------------- | ----------------------------------------- |
+| `dev:server` | `claude-view-share-worker-dev.vickyai-tech.workers.dev` | `claude-view-share-viewer-dev.pages.dev` |
+| `preview` | `api-share.claudeview.ai` | `share.claudeview.ai` |
+| `start` | Not set — sharing disabled unless exported in shell | Not set |
+
+Both `dev:server` and `preview` use `unset SHARE_WORKER_URL SHARE_VIEWER_URL` then hardcode the values — they are NOT overridable via prior shell exports. `SUPABASE_URL` still uses `${VAR:-default}` syntax and can be overridden. `start` is bare `cargo run --release` for production where env vars are set externally (systemd, Docker, CI).
 
 ## Git Discipline — Dirty Working Tree
 
@@ -152,9 +167,10 @@ Each service manages its own env vars. No root `.env`. No automatic `.env` file 
 | **Rust server** | Shell exports (`std::env::var()`) | `crates/server/.env.example` |
 | **Relay** | Fly.io secrets / shell exports | `crates/relay/.env.example` |
 | **Web frontend** | `apps/web/.env.local` (Vite `VITE_*`) | `apps/web/.env.example` |
+| **Share viewer** | `apps/share/.env.dev` / `.env.production` (Vite `VITE_*`) | `apps/share/.env.production` |
 | **Sidecar** | `process.env` with defaults | N/A (only `SIDECAR_SOCKET`) |
 | **Landing** | None (static HTML) | N/A |
-| **Cloudflare Worker** | `wrangler secret put` / `wrangler.toml` [vars] | N/A |
+| **Share Worker** | `wrangler secret put` / `wrangler.toml` [vars] | `infra/share-worker/wrangler.toml` |
 | **CI/CD** | GitHub Actions secrets | N/A |
 
 ### Rules
@@ -172,17 +188,27 @@ Primary domain: **claudeview.ai**. `claudeview.com` redirects to `claudeview.ai`
 
 | Service | Dev | Production |
 | ------- | --- | ---------- |
-| **Share Worker** | `claude-view-share-worker-dev` | `claude-view-share-worker-prod` → `share.claudeview.ai` |
+| **Share Worker (API)** | `claude-view-share-worker-dev` (`.workers.dev`) | `claude-view-share-worker-prod` → `api-share.claudeview.ai` |
+| **Share Viewer (SPA)** | `claude-view-share-viewer-dev` (Pages) | `claude-view-share-viewer` → `share.claudeview.ai` |
 | **D1 Database** | `claude-view-share-d1-dev` | `claude-view-share-d1-prod` |
 | **R2 Bucket** | `claude-view-share-r2-dev` | `claude-view-share-r2-prod` |
 | **Landing** | Cloudflare Pages preview | `claudeview.ai` |
+
+**Two-domain split:** The share feature uses two separate Cloudflare services on different subdomains:
+
+- `api-share.claudeview.ai` — Worker (API: create/upload/fetch/delete encrypted blobs)
+- `share.claudeview.ai` — Pages (SPA: renders shared conversations in browser)
+
+The Rust server uses `SHARE_WORKER_URL` to call the API and `SHARE_VIEWER_URL` to build user-facing links. The share SPA uses `VITE_WORKER_URL` to fetch encrypted blobs from the API. Never conflate these two domains.
 
 Pattern: `claude-view-share-{type}-{env}` — always suffix with `-dev` or `-prod`.
 
 Deploy commands:
 
-- Dev: `npx wrangler deploy --env dev` (uses `-dev` suffixed resources)
-- Prod: `npx wrangler deploy` (uses `-prod` suffixed resources + custom domain)
+- Worker dev: `cd infra/share-worker && npx wrangler deploy --env dev`
+- Worker prod: `cd infra/share-worker && npx wrangler deploy`
+- Viewer dev: `bun run deploy:share:dev` (builds with `.env.dev`, deploys to Pages)
+- Viewer prod: `bun run deploy:share` (builds with `.env.production`, deploys to Pages)
 
 Secrets (set via `wrangler secret put`, NEVER in code/docs):
 
@@ -218,6 +244,7 @@ NEVER document:
 - **Startup:** Server binds port before any indexing/background work
 - **SIMD pre-filter:** `memmem::Finder` check before JSON parse
 - **Parallelism:** `Semaphore` bounded to `available_parallelism()`
+- **JWT/JWKS:** NEVER hardcode JWT algorithm (RS256, ES256, etc.). Supabase changes signing algorithms without notice (moved from HS256 → ES256). Always read the `alg` field from the JWKS response and use it dynamically. See `crates/server/src/auth/supabase.rs` — `jwk_algorithm()` parses `alg` from the JWK JSON.
 
 ### Full-Stack Wiring
 
