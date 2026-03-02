@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "version": "0.8.0",
-  "description": "Browse and search your Claude Code sessions in a beautiful local web UI",
+  "description": "Mission Control for Claude Code agents. Monitor sessions, track costs, and orchestrate your AI coding fleet.",
   "bin": {
     "claude-view": "./index.js"
   },
@@ -10,7 +10,15 @@
     "type": "git",
     "url": "https://github.com/tombelieber/claude-view"
   },
-  "keywords": ["claude", "claude-code", "sessions", "viewer", "browser"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-agent",
+    "monitor",
+    "mission-control",
+    "sessions",
+    "cost-tracking"
+  ],
   "engines": {
     "node": ">=16"
   },
