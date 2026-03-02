@@ -16,6 +16,9 @@ import {
 import { markdownComponents } from '../../lib/markdown-components'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
+import type { ControlCallbacks } from '../../types/control-callbacks'
+import { AskUserQuestionCard } from '../chat/cards/AskUserQuestionCard'
+import { PlanApprovalCard } from '../chat/cards/PlanApprovalCard'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { CompactCodeBlock } from './CompactCodeBlock'
 import { JsonTree } from './JsonTree'
@@ -122,6 +125,7 @@ export interface PairedToolCardProps {
   toolResult: RichMessage | null
   index: number
   verboseMode?: boolean
+  controlCallbacks?: ControlCallbacks
 }
 
 export function PairedToolCard({
@@ -129,6 +133,7 @@ export function PairedToolCard({
   toolResult,
   index,
   verboseMode = false,
+  controlCallbacks,
 }: PairedToolCardProps) {
   const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
@@ -161,9 +166,35 @@ export function PairedToolCard({
 
   // AskUserQuestion special case in non-verbose mode
   if (isAskUserQuestion && !verboseMode) {
+    if (controlCallbacks) {
+      return (
+        <div className="py-0.5">
+          <AskUserQuestionCard
+            inputData={inputObj}
+            requestId={`ask-${index}`}
+            onAnswer={(requestId, answers) => controlCallbacks.answerQuestion(requestId, answers)}
+          />
+        </div>
+      )
+    }
     return (
       <div className="py-0.5">
         <AskUserQuestionDisplay inputData={inputObj} variant="amber" />
+      </div>
+    )
+  }
+
+  // ExitPlanMode → interactive plan approval card
+  if (rawName === 'ExitPlanMode' && controlCallbacks) {
+    return (
+      <div className="py-0.5">
+        <PlanApprovalCard
+          requestId={`plan-${index}`}
+          planData={inputObj}
+          onApprove={(requestId, approved, feedback) =>
+            controlCallbacks.approvePlan(requestId, approved, feedback)
+          }
+        />
       </div>
     )
   }

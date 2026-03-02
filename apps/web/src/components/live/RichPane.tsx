@@ -17,6 +17,7 @@ import {
 import { markdownComponents } from '../../lib/markdown-components'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
+import type { ControlCallbacks } from '../../types/control-callbacks'
 // Progress event cards
 import { AgentProgressCard } from '../AgentProgressCard'
 import { ApiErrorCard } from '../ApiErrorCard'
@@ -77,6 +78,8 @@ export interface RichPaneProps {
   /** Pre-computed category counts from canonical message array. When provided,
    *  used directly for filter chips instead of computing internally. */
   categoryCounts?: Record<ActionCategory, number>
+  /** Optional control callbacks for interactive cards (AskUserQuestion, PlanApproval). */
+  controlCallbacks?: ControlCallbacks
 }
 
 // --- Parser ---
@@ -837,7 +840,13 @@ function DisplayItemCard({
   item,
   index,
   verboseMode = false,
-}: { item: DisplayItem; index: number; verboseMode?: boolean }) {
+  controlCallbacks,
+}: {
+  item: DisplayItem
+  index: number
+  verboseMode?: boolean
+  controlCallbacks?: ControlCallbacks
+}) {
   if (item.kind === 'tool_pair') {
     return (
       <PairedToolCard
@@ -845,6 +854,7 @@ function DisplayItemCard({
         toolResult={item.toolResult}
         index={index}
         verboseMode={verboseMode}
+        controlCallbacks={controlCallbacks}
       />
     )
   }
@@ -860,6 +870,7 @@ export function RichPane({
   verboseMode = false,
   bufferDone = false,
   categoryCounts: countsProp,
+  controlCallbacks,
 }: RichPaneProps) {
   const verboseFilter = useMonitorStore((s) => s.verboseFilter)
   const setVerboseFilter = useMonitorStore((s) => s.setVerboseFilter)
@@ -909,6 +920,8 @@ export function RichPane({
           isAskUserQuestionInput(m.inputData)
         )
           return true
+        // Show ExitPlanMode for interactive plan approval card
+        if (m.type === 'tool_use' && m.name === 'ExitPlanMode') return true
         return false
       })
     }
@@ -926,10 +939,15 @@ export function RichPane({
   const renderItem = useCallback(
     (index: number, item: DisplayItem) => (
       <div className="px-2 py-0.5">
-        <DisplayItemCard item={item} index={index} verboseMode={verboseMode} />
+        <DisplayItemCard
+          item={item}
+          index={index}
+          verboseMode={verboseMode}
+          controlCallbacks={controlCallbacks}
+        />
       </div>
     ),
-    [verboseMode],
+    [verboseMode, controlCallbacks],
   )
 
   const virtuosoRef = useRef<VirtuosoHandle>(null)

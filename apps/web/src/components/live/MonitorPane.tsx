@@ -67,6 +67,10 @@ export interface MonitorPaneProps {
   onHide: () => void
   onContextMenu: (e: React.MouseEvent) => void
   children?: ReactNode
+  /** Slot for ChatInputBar rendered between content and footer. */
+  chatInput?: ReactNode
+  /** Slot for PermissionCard rendered above the chat input. */
+  permissionCard?: ReactNode
 }
 
 // --- Component ---
@@ -85,6 +89,8 @@ export function MonitorPane({
   onHide,
   onContextMenu,
   children,
+  chatInput,
+  permissionCard,
 }: MonitorPaneProps) {
   const [isHovered, setIsHovered] = useState(false)
 
@@ -160,6 +166,12 @@ export function MonitorPane({
           </div>
         )}
       </div>
+
+      {/* Permission card (above input bar) */}
+      {permissionCard}
+
+      {/* Chat input bar */}
+      {chatInput}
 
       {/* Footer */}
       <Footer session={session} onExpand={onExpand} />
