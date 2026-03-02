@@ -10,10 +10,12 @@ feature-depth = 1
 
 # Advisory database checks — deny known vulnerabilities
 [advisories]
+git-fetch-with-cli = true
 ignore = [
     # Transitive deps — unmaintained but no security issue
     { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dep of indicatif; no replacement available yet" },
     { id = "RUSTSEC-2025-0119", reason = "number_prefix is a transitive dep of indicatif; no replacement available yet" },
+    { id = "RUSTSEC-2023-0071", reason = "rsa timing sidechannel via jsonwebtoken; no patch available, we only do JWT verification (public key) not decryption" },
 ]
 
 # License allow list — covers all current dependencies
