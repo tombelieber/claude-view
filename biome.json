@@ -13,7 +13,9 @@
       ".expo",
       ".tmp",
       "apps/web/src/types/generated",
-      "apps/landing/dist"
+      "apps/landing/dist",
+      ".astro",
+      "**/.astro"
     ]
   },
   "formatter": {
