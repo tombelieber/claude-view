@@ -53,6 +53,12 @@ test-results/
 e2e/screenshots/*
 !e2e/screenshots/.gitkeep
 
+# Turborepo cache
+.turbo/
+
+# Lighthouse reports
+lighthouse*.json
+
 # Temporary files
 .tmp/
 tmp/
