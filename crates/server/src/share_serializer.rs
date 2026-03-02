@@ -4,23 +4,36 @@ use aes_gcm::{
 };
 use flate2::{write::GzEncoder, Compression};
 use std::io::Write;
-use std::path::Path;
 
 use crate::error::{ApiError, ApiResult};
+use claude_view_core::types::{SharePayload, ShareSessionMetadata};
+
+pub struct ShareInput {
+    pub file_path: std::path::PathBuf,
+    pub share_metadata: Option<ShareSessionMetadata>,
+}
 
 pub struct EncryptedShare {
     pub blob: Vec<u8>,
     pub key: Vec<u8>,
 }
 
-pub async fn serialize_and_encrypt(file_path: &Path) -> ApiResult<EncryptedShare> {
-    let parsed = claude_view_core::parse_session(file_path)
+pub async fn serialize_and_encrypt(input: &ShareInput) -> ApiResult<EncryptedShare> {
+    let parsed = claude_view_core::parse_session(&input.file_path)
         .await
         .map_err(|e| ApiError::Internal(format!("Parse: {e}")))?;
 
-    let json =
-        serde_json::to_vec(&parsed).map_err(|e| ApiError::Internal(format!("Serialize: {e}")))?;
+    let payload = SharePayload {
+        messages: parsed.messages,
+        metadata: parsed.metadata,
+        share_metadata: input.share_metadata.clone(),
+    };
 
+    // CRITICAL: serialize `payload` (SharePayload), NOT `parsed` (ParsedSession)
+    let json =
+        serde_json::to_vec(&payload).map_err(|e| ApiError::Internal(format!("Serialize: {e}")))?;
+
+    // --- gzip + encrypt block (unchanged from current implementation) ---
     let compressed = {
         let mut enc = GzEncoder::new(Vec::new(), Compression::default());
         enc.write_all(&json)

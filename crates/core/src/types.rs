@@ -213,6 +213,76 @@ impl ParsedSession {
     }
 }
 
+/// Extended payload for share blobs — includes session metadata alongside messages.
+/// Backward-compatible: the share viewer checks for `share_metadata` presence
+/// and falls back to the basic `metadata` field if missing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharePayload {
+    pub messages: Vec<Message>,
+    pub metadata: SessionMetadata,
+    /// Rich session metadata for the share viewer's info panel.
+    /// Optional for backward compat with old share blobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_metadata: Option<ShareSessionMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareSessionMetadata {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_prompt_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_read_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_edited_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_title: Option<String>,
+    /// Tool name -> invocation count
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools_used: Vec<ToolUsageSummary>,
+    /// Files read during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_read: Vec<String>,
+    /// Files edited during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_edited: Vec<String>,
+    /// Commits made during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commits: Vec<ShareCommit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUsageSummary {
+    pub name: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareCommit {
+    pub hash: String,
+    pub message: String,
+}
+
 /// A paginated slice of session messages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
