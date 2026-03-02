@@ -84,15 +84,50 @@ export interface PongMsg {
   type: 'pong'
 }
 
+// Interactive card messages — sidecar → frontend
+export interface AskUserQuestionMsg {
+  type: 'ask_user_question'
+  requestId: string
+  questions: {
+    question: string
+    header: string
+    options: { label: string; description: string; markdown?: string }[]
+    multiSelect: boolean
+  }[]
+}
+
+export interface PlanApprovalMsg {
+  type: 'plan_approval'
+  requestId: string
+  planData: Record<string, unknown>
+}
+
+export interface ElicitationMsg {
+  type: 'elicitation'
+  requestId: string
+  prompt: string
+}
+
 export type ServerMessage =
   | AssistantChunk
   | AssistantDone
   | ToolUseStartMsg
   | ToolUseResultMsg
   | PermissionRequestMsg
+  | AskUserQuestionMsg
+  | PlanApprovalMsg
+  | ElicitationMsg
   | SessionStatusMsg
   | ErrorMsg
   | PongMsg
+
+// Control session info for takeover flow
+export interface ControlSessionInfo {
+  sessionId: string
+  controlId: string
+  status: 'idle' | 'running' | 'completed'
+  origin: 'claude-view' | 'external'
+}
 
 // Chat message for display
 export interface ChatMessage {

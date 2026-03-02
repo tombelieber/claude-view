@@ -25,6 +25,7 @@ import {
 } from '../components/live/use-live-sessions'
 import { formatCostUsd, formatTokenCount } from '../lib/format-utils'
 import { useLiveCommandStore } from '../store/live-command-context'
+import { useMonitorStore } from '../store/monitor-store'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
@@ -57,6 +58,23 @@ export function LiveMonitorPage() {
   const [showHelp, setShowHelp] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const setLiveContext = useLiveCommandStore((s) => s.setContext)
+
+  // ?focus=<sessionId> handler — deep-link from HistoryView resume
+  const selectPane = useMonitorStore((s) => s.selectPane)
+  const focusSessionId = searchParams.get('focus')
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally minimal deps — only fire when focusSessionId changes
+  useEffect(() => {
+    if (focusSessionId) {
+      if (viewMode !== 'monitor') {
+        handleViewModeChange('monitor')
+      }
+      selectPane(focusSessionId)
+      const params = new URLSearchParams(searchParams)
+      params.delete('focus')
+      setSearchParams(params, { replace: true })
+    }
+  }, [focusSessionId])
 
   // Filters
   const [filters, filterActions] = useLiveSessionFilters(searchParams, setSearchParams)

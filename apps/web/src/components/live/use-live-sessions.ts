@@ -49,6 +49,7 @@ export interface LiveSession {
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
   compactCount?: number
+  controlId?: string | null
 }
 
 export interface LiveSummary {
