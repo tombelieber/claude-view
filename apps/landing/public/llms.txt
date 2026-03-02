@@ -22,4 +22,4 @@ Landing page built with Astro 5 (zero client-side JS).
 ## Optional
 - [Blog](/blog/): Technical deep dives and release announcements
 - [Changelog](/changelog/): Version history
-- [MCP Integration](/docs/guides/mcp-integration/): AI agent integration (8 tools via stdio)
+- [Claude Code Plugin](/docs/guides/mcp-integration/): Native plugin — 8 tools, 3 skills, auto-start hook
