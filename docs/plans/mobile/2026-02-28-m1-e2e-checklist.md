@@ -16,7 +16,7 @@
 
 - [ ] **OneSignal account** — Create app at onesignal.com, upload APNs .p8 key (Apple Developer → Keys → APNs)
 - [ ] **OneSignal env vars** — `flyctl secrets set ONESIGNAL_APP_ID=xxx ONESIGNAL_REST_API_KEY=xxx` + export locally
-- [ ] **EAS project init** — `cd apps/mobile && eas init` → replaces `YOUR_EAS_PROJECT_ID` in `app.config.ts`
+- [x] **EAS project init** — ✅ (2026-03-04) `@vicky-ai/claude-view`, projectId `f395dbf3-420b-4f67-8892-d466bd185d85`
 - [ ] **Apple Developer account** — Needed for TestFlight/push notifications
 - [ ] **Deploy relay** — `cd crates/relay && flyctl deploy` (Fly.io config in `fly.toml`)
 - [ ] **Set RELAY_URL** — Export `RELAY_URL=wss://claude-view-relay.fly.dev/ws` before starting server

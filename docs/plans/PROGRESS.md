@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-03-02 (Share Viewer Upgrade shipped, Sidecar SDK Upgrade shipped, Chat Input Bar shipped, Web Auth UX done, Waitlist CTA done)
+> **Last updated:** 2026-03-04 (Landing page "Warm Aurora" visual redesign — full theme swap, 19 tasks, shippable audit passed)
 
 ---
 
@@ -23,7 +23,7 @@
 | 1 | **Phase F: Agent Control** | Node.js sidecar + Agent SDK. Type messages, approve tools, resume sessions from web dashboard. | **DONE** (sidecar + DashboardChat + PermissionDialog + ChatStatusBar) | Phase A (done) |
 | 2 | **M1: Mobile Monitor** | Expo phone app — see running agents, get push notifications, QR pairing. Read-only. | **DONE** (10/10 tasks: QR pairing, relay, push, dashboard, detail sheet) | Phase A-D APIs (done) |
 | 3 | **M2: Mobile Control** | Phone app gains control — send messages, approve/reject tools, spawn agents from phone. | Not started | Needs #1 + #2 |
-| 4 | **Landing page follow-up** | App Store badges, mobile signup CTA, Twitter handle, self-host fonts. | **Partial — custom 404 deferred** | See [`landing/2026-03-01-landing-page-followup.md`](landing/2026-03-01-landing-page-followup.md) |
+| 4 | **Landing page follow-up** | App Store badges, mobile signup CTA, Twitter handle, self-host fonts. | **DONE** (Warm Aurora redesign: self-hosted fonts, waitlist CTA, custom 404, full theme swap) | See [`landing/2026-03-01-landing-page-followup.md`](landing/2026-03-01-landing-page-followup.md) |
 | 5 | **Launch assets** | 60s demo video, Product Hunt listing, Show HN post, landing page update. | Not started | Needs #3 working |
 | 6 | **LAUNCH 1** | Ship it. "I shipped a feature from my phone." | — | Needs #5 |
 
@@ -44,6 +44,8 @@
 
 ## Recently Completed
 
+- **Landing Page "Warm Aurora" Redesign** (2026-03-04): Complete visual theme swap from dark slate to warm light theme. New fonts (Space Grotesk + Inter), orange accent (#d97757), glass morphism cards, SVG grain overlay, floating aurora blobs. Restructured index.astro with hero/waitlist CTA, ProductDemo browser mock, 3 value sections (Control/Freedom/Visibility), 4 feature cards, MetricsBar, ComparisonTable, FAQ with FAQPage JSON-LD. Restyled all 15+ components and 6 pages for light theme. 404 terminal stays dark. 19 tasks, ~23 files modified/created/deleted, shippable audit passed (SHIP IT).
+- **Unify Project Filtering** (2026-03-04): Server-side `?project=X` filter for Sessions History + activity data. Worktree-aware SQL (match `project_id` OR `git_root`). Fixed NO_BRANCH sentinel bug (`~` → `IS NULL`). 5 tasks, 5 commits, 4 files. Shippable audit passed (SHIP IT). Plan: [`2026-03-04-unify-project-filtering.md`](2026-03-04-unify-project-filtering.md)
 - **Share Viewer Upgrade** (2026-03-02): Upgraded share viewer to feature parity — ViewModeToggle + SessionInfoPanel shared components, verbose mode with Chat/Debug toggle, redesigned header with backdrop-blur branding, ChatGPT-style share modal with Copy Link/Copy Message, expanded Rust share blob with rich session metadata. 8 tasks, 7 commits, ~15 files modified. Shippable audit passed (SHIP IT). Plan: [`web/2026-03-02-share-viewer-upgrade-impl.md`](web/2026-03-02-share-viewer-upgrade-impl.md)
 - **Sidecar SDK Upgrade** (2026-03-02): Bumped Agent SDK ^0.1.0 → ^0.2.63, wired `canUseTool` callback for permissions/AskUserQuestion/ExitPlanMode/Elicitation interactive flows. 11 tasks, 5 commits, 7 files modified. Shippable audit passed (SHIP IT). Plan: [`mission-control/2026-03-01-sidecar-sdk-upgrade-impl.md`](mission-control/2026-03-01-sidecar-sdk-upgrade-impl.md)
 - **Chat Input Bar** (2026-03-02): ChatInputBar with dormant state machine (9 states), 4 interactive cards (AskUserQuestion, Permission, PlanApproval, Elicitation), ControlCallbacks dependency inversion, wired into SessionDetailPanel + ConversationView + RichPane. 24 tasks, 7 commits, ~1200 lines added, shippable audit passed (SHIP IT). Plan: [`web/2026-02-28-chat-input-bar-impl.md`](web/2026-02-28-chat-input-bar-impl.md)
@@ -150,19 +152,19 @@ See `mobile/PROGRESS.md` for M1 phase details.
 
 All code is shipped. These are cloud console + CLI steps requiring your accounts.
 
-| # | Prerequisite | Blocker For | Checklist |
-|---|-------------|-------------|-----------|
-| 1 | **Supabase project** — create project, enable auth, configure OAuth | Auth, sharing, relay JWT | [Deployment checklist D1-D5](cross-cutting/2026-02-28-deployment-checklist.md) |
-| 2 | **Cloudflare share worker** — R2 bucket, D1 database, deploy worker | Conversation sharing | [Deployment checklist D6-D14](cross-cutting/2026-02-28-deployment-checklist.md) |
-| 3 | **Fly.io relay secrets** — Supabase URL, Sentry, PostHog | Relay JWT auth | [Deployment checklist D15-D16](cross-cutting/2026-02-28-deployment-checklist.md) |
-| 4 | **OneSignal account** — create app, upload APNs .p8 key | Push notifications | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
-| 5 | **OneSignal env vars** — `flyctl secrets set ONESIGNAL_APP_ID + REST_API_KEY` | Push notifications | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
-| 6 | **EAS project init** — `cd apps/mobile && eas init` | Mobile builds | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
-| 7 | **Apple Developer account** — needed for TestFlight + push entitlement | App Store submission | [E2E checklist Phase 0](mobile/2026-02-28-m1-e2e-checklist.md) |
-| 8 | **Mobile app icons** — replace 1x1 placeholders in `apps/mobile/assets/` | App Store submission | Currently gitignored |
-| 9 | **Privacy policy URL** | App Store submission | Required by Apple |
+| # | Prerequisite | Blocker For | Status |
+|---|-------------|-------------|--------|
+| 1 | **Supabase project** — create project, enable auth, configure OAuth | Auth, sharing, relay JWT | **DONE** (2026-03-04) — Email + Google OAuth, 7 redirect URLs, tested |
+| 2 | **Cloudflare share worker** — R2 bucket, D1 database, deploy worker | Conversation sharing | **DONE** (2026-03-02) — deployed at `share.claudeview.ai` |
+| 3 | **Fly.io relay secrets** — Supabase URL | Relay JWT auth | **DONE** (2026-03-04) — `SUPABASE_URL` set, Sentry/PostHog deferred |
+| 4 | **OneSignal account** — create app, upload APNs .p8 key | Push notifications | Deferred (needs Apple Dev account) |
+| 5 | **OneSignal env vars** — `flyctl secrets set ONESIGNAL_APP_ID + REST_API_KEY` | Push notifications | Deferred (depends on #4) |
+| 6 | **EAS project init** — `cd apps/mobile && eas init` | Mobile builds | **DONE** (2026-03-04) — `@vicky-ai/claude-view`, ID `f395dbf3-...` |
+| 7 | **Apple Developer account** — needed for TestFlight + push entitlement | App Store submission | Not started |
+| 8 | **Mobile app icons** — replace 1x1 placeholders in `apps/mobile/assets/` | App Store submission | Not started |
+| 9 | **Privacy policy URL** | App Store submission | Not started |
 
-**Do in order:** #1 → #2-3 (parallel) → #4-7 (parallel) → #8-9 (before submission)
+**Done:** #1, #2, #3, #6. **Deferred:** #4-5 (OneSignal). **Remaining:** #7-9 (Apple submission).
 
 **Checklists:**
 - Infra setup: [`cross-cutting/2026-02-28-deployment-checklist.md`](cross-cutting/2026-02-28-deployment-checklist.md)
@@ -182,13 +184,13 @@ All code is shipped. These are cloud console + CLI steps requiring your accounts
 ## Code Health
 
 - **Compiles:** Yes (cargo check + `bun run build` pass)
-- **Backend tests:** 1177 (core 652 + server 525, 2 pre-existing failures unrelated)
-- **Frontend tests:** 1140 (vitest, 78 files, 2 pre-existing failures in SubAgentDrillDown.test.tsx)
+- **Backend tests:** 966 (db 429 + server 537)
+- **Frontend tests:** 1164 (vitest, 81 files)
 - **MCP tests:** 24 pass (6 files, 69 assertions)
 - **Plugin validation:** 13/13 checks pass (files, JSON, executable)
 - **TypeScript:** 0 errors (`tsc --noEmit`)
 - **Clippy:** 1 cosmetic warning (SidecarManager Default derive)
-- **Last verified:** 2026-03-02 on branch `worktree-monorepo-expo`
+- **Last verified:** 2026-03-04 on branch `worktree-monorepo-expo`
 
 ---
 

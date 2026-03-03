@@ -10,49 +10,35 @@
 
 Everything depends on this. Do it first.
 
-- [ ] **D1. Create Supabase project**
-  - Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**
-  - Name: `claude-view`
-  - Region: `ap-northeast-1` (Tokyo) or closest to your users
-  - Generate a strong database password, save it somewhere safe
-  - Wait for project to finish provisioning (~2 min)
+- [x] **D1. Create Supabase project** ✅ (2026-03-04)
+  - Project: `claude-view` at `iebjyftoadahqptmfcio.supabase.co`
 
-- [ ] **D2. Enable Email auth (magic link)**
-  - Dashboard → **Authentication** → **Providers** → **Email**
-  - Toggle ON
-  - Set **Confirm email** = OFF (magic link only, no confirmation step)
-  - Enable **Passwordless / magic link**
-  - Save
+- [x] **D2. Enable Email auth (magic link)** ✅ (2026-03-04)
+  - Passwordless magic link enabled, confirm email OFF
 
-- [ ] **D3. Enable Google OAuth**
-  - Go to [console.cloud.google.com](https://console.cloud.google.com) → **APIs & Services** → **Credentials**
-  - Create **OAuth 2.0 Client ID** (Web application)
-    - Authorized redirect URI: `https://<your-supabase-ref>.supabase.co/auth/v1/callback`
-  - Copy **Client ID** and **Client Secret**
-  - Back in Supabase dashboard → **Authentication** → **Providers** → **Google**
-  - Paste Client ID + Secret → Save
+- [x] **D3. Enable Google OAuth** ✅ (2026-03-04)
+  - GCP OAuth 2.0 Client ID created (project `claude-view`)
+  - Authorized JS origin: `https://iebjyftoadahqptmfcio.supabase.co`
+  - Authorized redirect URI: `https://iebjyftoadahqptmfcio.supabase.co/auth/v1/callback`
+  - Client ID + Secret configured in Supabase Google provider
+  - **Tested and working** (Google sign-in verified)
 
-- [ ] **D4. Configure redirect URLs**
-  - Dashboard → **Authentication** → **URL Configuration**
+- [x] **D4. Configure redirect URLs** ✅ (2026-03-04)
   - Site URL: `https://claudeview.ai`
-  - Add redirect URLs:
+  - 7 redirect URLs configured:
     ```
     https://claudeview.ai/**
     https://claudeview.com/**
     claudeview://auth
+    claude-view://auth
     http://localhost:5173/**
     http://localhost:8081/**
+    http://localhost:47892/**
     ```
 
-- [ ] **D5. Note your credentials**
-  - Dashboard → **Project Settings** → **API**
-  - Copy and save these three values:
-    ```
-    SUPABASE_URL=https://<ref>.supabase.co
-    SUPABASE_PUBLISHABLE_KEY=eyJ...
-    JWKS_URL=https://<ref>.supabase.co/auth/v1/.well-known/jwks.json
-    ```
-  - You will paste these into wrangler.toml, Fly.io secrets, and .env.local files below
+- [x] **D5. Note your credentials** ✅ (2026-03-04)
+  - Publishable key committed in `apps/web/.env.production` (safe — public key)
+  - No secret keys used (JWT validation via JWKS fetch)
 
 ---
 
@@ -135,21 +121,12 @@ cd infra/share-worker
 
 ## Phase 4: Fly.io — Relay Secrets + Deploy
 
-- [ ] **D15. Set relay secrets**
-  ```bash
-  fly secrets set \
-    SENTRY_DSN="<your-sentry-dsn>" \
-    POSTHOG_API_KEY="<your-posthog-key>" \
-    SUPABASE_URL="https://<ref>.supabase.co" \
-    -a claude-view-relay
-  ```
-  Same note as D10 — Sentry/PostHog are optional. SUPABASE_URL enables JWT auth on the relay.
+- [x] **D15. Set relay secrets** ✅ (2026-03-04)
+  - `SUPABASE_URL` set via `fly secrets set` — relay validates JWTs via JWKS
+  - Sentry/PostHog deferred (optional — relay degrades gracefully)
 
-- [ ] **D16. Deploy relay**
-  ```bash
-  fly deploy -a claude-view-relay
-  ```
-  Verify: `curl https://claude-view-relay.fly.dev/health` → `ok`
+- [x] **D16. Deploy relay** ✅ (previously deployed, 2 machines running)
+  - Verified: `claude-view-relay.fly.dev` healthy, rolling deploy on secret update
 
 ---
 
@@ -157,14 +134,9 @@ cd infra/share-worker
 
 These files are gitignored. They only exist on your machine for local development.
 
-- [ ] **D17. Web frontend** — create `apps/web/.env.local`
-  ```bash
-  cat > apps/web/.env.local << 'EOF'
-  VITE_SUPABASE_URL=https://<ref>.supabase.co
-  VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...
-  VITE_SENTRY_DSN=
-  EOF
-  ```
+- [x] **D17. Web frontend** ✅ (2026-03-04)
+  - `apps/web/.env.local` created (gitignored, local dev)
+  - `apps/web/.env.production` created (committed, CI builds use this)
 
 - [ ] **D18. Share viewer** — create `apps/share/.env.local`
   ```bash
