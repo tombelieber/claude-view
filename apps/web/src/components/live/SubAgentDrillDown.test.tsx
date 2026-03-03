@@ -34,7 +34,7 @@ describe('SubAgentDrillDown', () => {
 
   it('renders the agent id', () => {
     render(<SubAgentDrillDown {...defaultProps} />)
-    expect(screen.getByText('id:a951849')).toBeInTheDocument()
+    expect(screen.getByText('a951849')).toBeInTheDocument()
   })
 
   it('renders connection status', () => {
@@ -52,17 +52,18 @@ describe('SubAgentDrillDown', () => {
 
   it('toggles verbose/compact mode', async () => {
     render(<SubAgentDrillDown {...defaultProps} />)
-    // Starts in compact mode
-    const toggleButton = screen.getByText('compact')
-    expect(toggleButton).toBeInTheDocument()
+    expect(screen.getByText('Chat')).toBeInTheDocument()
+    expect(screen.getByText('Debug')).toBeInTheDocument()
 
-    // Click to switch to verbose
-    await userEvent.click(toggleButton)
-    expect(screen.getByText('verbose')).toBeInTheDocument()
+    // Debug mode reveals the Rich/JSON toggle.
+    await userEvent.click(screen.getByText('Debug'))
+    expect(screen.getByText('Rich')).toBeInTheDocument()
+    expect(screen.getByText('JSON')).toBeInTheDocument()
 
-    // Click again to switch back
-    await userEvent.click(screen.getByText('verbose'))
-    expect(screen.getByText('compact')).toBeInTheDocument()
+    // Chat mode hides the Rich/JSON toggle.
+    await userEvent.click(screen.getByText('Chat'))
+    expect(screen.queryByText('Rich')).not.toBeInTheDocument()
+    expect(screen.queryByText('JSON')).not.toBeInTheDocument()
   })
 })
 
