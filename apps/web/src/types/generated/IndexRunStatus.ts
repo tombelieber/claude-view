@@ -3,4 +3,4 @@
 /**
  * Status of an index run.
  */
-export type IndexRunStatus = "running" | "completed" | "failed";
+export type IndexRunStatus = 'running' | 'completed' | 'failed'

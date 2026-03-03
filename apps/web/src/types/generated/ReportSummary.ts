@@ -3,4 +3,13 @@
 /**
  * Monthly report summary.
  */
-export type ReportSummary = { month: string, sessionCount: number, linesAdded: number, linesRemoved: number, commitCount: number, estimatedCost: number, topWins: Array<string>, focusAreas: Array<string>, };
+export type ReportSummary = {
+  month: string
+  sessionCount: number
+  linesAdded: number
+  linesRemoved: number
+  commitCount: number
+  estimatedCost: number
+  topWins: Array<string>
+  focusAreas: Array<string>
+}

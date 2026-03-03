@@ -3,4 +3,4 @@
 /**
  * Top-level category (L1).
  */
-export type CategoryL1 = "code" | "support" | "thinking";
+export type CategoryL1 = 'code' | 'support' | 'thinking'

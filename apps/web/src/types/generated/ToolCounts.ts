@@ -3,4 +3,4 @@
 /**
  * Tool usage statistics for a session
  */
-export type ToolCounts = { edit: number, read: number, bash: number, write: number, };
+export type ToolCounts = { edit: number; read: number; bash: number; write: number }

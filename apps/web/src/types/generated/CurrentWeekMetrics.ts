@@ -3,4 +3,9 @@
 /**
  * Current week metrics for dashboard (Step 22).
  */
-export type CurrentWeekMetrics = { sessionCount: number, totalTokens: number, totalFilesEdited: number, commitCount: number, };
+export type CurrentWeekMetrics = {
+  sessionCount: number
+  totalTokens: number
+  totalFilesEdited: number
+  commitCount: number
+}
