@@ -13,6 +13,9 @@ export const SITE_URL = 'https://claudeview.ai'
 export const GITHUB_REPO = 'tombelieber/claude-view'
 export const GITHUB_URL = `https://github.com/${GITHUB_REPO}`
 
+/** Must match the version in root package.json and Cargo.toml workspace. */
+export const VERSION = '0.8.0'
+
 /** Set to null to disable Twitter card meta tag. Update when handle is verified. */
 export const TWITTER_HANDLE: string | null = null
 
@@ -41,8 +44,9 @@ export const PRICING = {
     features: [
       'Unlimited local sessions',
       'Session browser & search',
-      'Cost tracking',
-      'AI Fluency Score',
+      'Cost tracking & AI Fluency Score',
+      'Conversation sharing',
+      'Claude Code plugin (8 tools, 3 skills)',
       'Community support',
     ],
     cta: 'Get Started',
