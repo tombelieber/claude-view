@@ -86,6 +86,9 @@ struct SessionAccumulator {
     tool_counts_write: u32,
     /// Number of compact_boundary system messages seen.
     compact_count: u32,
+    /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
+    /// priced individually (200k tiering is per-API-request, not per-session).
+    accumulated_cost: CostBreakdown,
 }
 
 impl SessionAccumulator {
@@ -117,6 +120,7 @@ impl SessionAccumulator {
             tool_counts_bash: 0,
             tool_counts_write: 0,
             compact_count: 0,
+            accumulated_cost: CostBreakdown::default(),
         }
     }
 }
@@ -539,12 +543,7 @@ impl LiveSessionManager {
                             let (project, project_display_name, project_path, _) =
                                 extract_project_info(path, cached_cwd);
                             if let Some(acc) = accumulators.get(session_id) {
-                                let cost = manager
-                                    .pricing
-                                    .read()
-                                    .ok()
-                                    .map(|p| calculate_cost(&acc.tokens, acc.model.as_deref(), &p))
-                                    .unwrap_or_default();
+                                let cost = acc.accumulated_cost.clone();
 
                                 let cache_status = match acc.last_cache_hit_at {
                                     Some(ts) => {
@@ -1092,9 +1091,40 @@ impl LiveSessionManager {
                 }
             }
 
-            // Track model
+            // Track model (must happen BEFORE per-turn cost so model is current)
             if let Some(ref model) = line.model {
                 acc.model = Some(model.clone());
+            }
+
+            // Per-turn cost accumulation: price THIS turn's tokens individually.
+            // The 200k tiering threshold is per-API-request, not per-session.
+            let has_tokens = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some();
+            if has_tokens {
+                let turn_tokens = TokenUsage {
+                    input_tokens: line.input_tokens.unwrap_or(0),
+                    output_tokens: line.output_tokens.unwrap_or(0),
+                    cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
+                    cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
+                    cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
+                    cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
+                    total_tokens: 0,
+                };
+                if let Ok(p) = self.pricing.read() {
+                    let turn_cost = calculate_cost(&turn_tokens, acc.model.as_deref(), &p);
+                    acc.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
+                    acc.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
+                    acc.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
+                    acc.accumulated_cost.cache_creation_cost_usd +=
+                        turn_cost.cache_creation_cost_usd;
+                    acc.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
+                    acc.accumulated_cost.total_usd += turn_cost.total_usd;
+                    if turn_cost.is_estimated {
+                        acc.accumulated_cost.is_estimated = true;
+                    }
+                }
             }
 
             // Track git branch from user messages
@@ -1367,13 +1397,8 @@ impl LiveSessionManager {
             }
         }
 
-        // Calculate cost from accumulated tokens
-        let cost = self
-            .pricing
-            .read()
-            .ok()
-            .map(|p| calculate_cost(&acc.tokens, acc.model.as_deref(), &p))
-            .unwrap_or_default();
+        // Use per-turn accumulated cost (computed in the line processing loop above).
+        let cost = acc.accumulated_cost.clone();
 
         // Derive cache status from last cache hit (ground truth from API response tokens).
         let cache_status = match acc.last_cache_hit_at {
@@ -1666,7 +1691,7 @@ mod tests {
         let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
         let (encoded, display, full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-tmp");
-        assert_eq!(display, "tmp");
+        assert_eq!(display, "-tmp");
         assert_eq!(full_path, "-tmp"); // encoded name, not decoded — no cwd available
     }
 
@@ -1916,7 +1941,7 @@ mod tests {
         assert_eq!(session.status, SessionStatus::Paused);
         assert_eq!(session.agent_state.state, "awaiting_input");
         assert_eq!(session.last_activity_at, 1708500000);
-        assert_eq!(session.project_display_name, "tmp");
+        assert_eq!(session.project_display_name, "-tmp");
         // Without cwd from JSONL, project_path is the encoded name (not naive decode)
         assert_eq!(session.project_path, "-tmp");
     }

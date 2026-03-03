@@ -26,7 +26,7 @@ pub struct ExportQuery {
 
 /// Exported session data for JSON format (A5.2 schema).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedSession {
     pub id: String,
@@ -79,7 +79,7 @@ impl From<&SessionInfo> for ExportedSession {
 
 /// JSON export response wrapper.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportResponse {
     pub sessions: Vec<ExportedSession>,
@@ -319,6 +319,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
