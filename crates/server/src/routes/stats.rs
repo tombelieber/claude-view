@@ -37,7 +37,7 @@ pub struct DashboardQuery {
 
 /// Current period metrics for dashboard (adapts to selected time range).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentPeriodMetrics {
     #[ts(type = "number")]
@@ -52,7 +52,7 @@ pub struct CurrentPeriodMetrics {
 
 /// Extended dashboard stats with current period and trends.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedDashboardStats {
     /// Base dashboard stats
@@ -83,7 +83,7 @@ pub struct ExtendedDashboardStats {
 
 /// Simplified trends for dashboard display.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardTrends {
     /// Session count trend
@@ -115,7 +115,7 @@ impl From<WeekTrends> for DashboardTrends {
 
 /// Storage statistics for the settings page.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StorageStats {
     /// Size of JSONL session files in bytes.
@@ -756,6 +756,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -863,6 +864,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -986,6 +988,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -1117,6 +1120,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session, "project-ai", "Project AI")
             .await
@@ -1291,6 +1295,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session, "project-range", "Project Range")
             .await
@@ -1461,6 +1466,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha")
             .await
@@ -1588,6 +1594,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha")
             .await

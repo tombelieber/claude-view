@@ -32,6 +32,11 @@ pub struct SessionAccumulator {
     pub last_cache_hit_at: Option<i64>,
     /// Accumulated costUSD from JSONL entries (sum of per-entry `costUSD`).
     pub total_cost_usd: f64,
+    /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
+    /// priced individually (correct: 200k tiering is per-API-request, not
+    /// per-session). This avoids the inflation bug from applying tiered
+    /// pricing to cumulative session totals.
+    pub accumulated_cost: CostBreakdown,
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
@@ -71,6 +76,7 @@ impl SessionAccumulator {
             task_items: Vec::new(),
             last_cache_hit_at: None,
             total_cost_usd: 0.0,
+            accumulated_cost: CostBreakdown::default(),
         }
     }
 
@@ -143,10 +149,43 @@ impl SessionAccumulator {
         }
 
         // -----------------------------------------------------------------
-        // Model tracking
+        // Model tracking (must happen BEFORE per-turn cost so model is current)
         // -----------------------------------------------------------------
         if let Some(ref model) = line.model {
             self.model = Some(model.clone());
+        }
+
+        // -----------------------------------------------------------------
+        // Per-turn cost accumulation
+        // -----------------------------------------------------------------
+        // Compute cost from THIS turn's tokens only (not cumulative totals).
+        // The 200k tiering threshold is per-API-request, so applying it to
+        // cumulative session totals would inflate cost ~2-3x.
+        let has_tokens = line.input_tokens.is_some()
+            || line.output_tokens.is_some()
+            || line.cache_read_tokens.is_some()
+            || line.cache_creation_tokens.is_some();
+        if has_tokens {
+            let turn_tokens = TokenUsage {
+                input_tokens: line.input_tokens.unwrap_or(0),
+                output_tokens: line.output_tokens.unwrap_or(0),
+                cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
+                cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
+                cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
+                cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
+                total_tokens: 0, // unused by calculate_cost
+            };
+            let turn_cost = calculate_cost(&turn_tokens, self.model.as_deref(), pricing);
+            self.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
+            self.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
+            self.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
+            self.accumulated_cost.cache_creation_cost_usd += turn_cost.cache_creation_cost_usd;
+            self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
+            self.accumulated_cost.total_usd += turn_cost.total_usd;
+            // Mark as estimated only if ANY turn used fallback rates
+            if turn_cost.is_estimated {
+                self.accumulated_cost.is_estimated = true;
+            }
         }
 
         // -----------------------------------------------------------------
@@ -392,10 +431,12 @@ impl SessionAccumulator {
         }
     }
 
-    /// Finalize accumulation: calculate cost, derive cache status, combine
-    /// progress items, and return the complete [`RichSessionData`].
-    pub fn finish(&self, pricing: &HashMap<String, ModelPricing>) -> RichSessionData {
-        let cost = calculate_cost(&self.tokens, self.model.as_deref(), pricing);
+    /// Finalize accumulation: return per-turn accumulated cost, derive cache
+    /// status, combine progress items, and return the complete [`RichSessionData`].
+    ///
+    /// Note: `pricing` is kept in the signature for backward compatibility but is
+    /// no longer used — cost is accumulated per-turn in `process_line()`.
+    pub fn finish(&self, _pricing: &HashMap<String, ModelPricing>) -> RichSessionData {
         let cache_status = derive_cache_status(self.last_cache_hit_at);
 
         let mut progress_items = self.todo_items.clone();
@@ -403,7 +444,7 @@ impl SessionAccumulator {
 
         RichSessionData {
             tokens: self.tokens.clone(),
-            cost,
+            cost: self.accumulated_cost.clone(),
             cache_status,
             sub_agents: self.sub_agents.clone(),
             progress_items,

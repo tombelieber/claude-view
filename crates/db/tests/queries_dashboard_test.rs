@@ -287,7 +287,9 @@ async fn test_get_dashboard_stats_with_project_filter() {
     db.insert_session(&s2, "proj-y", "Project Y").await.unwrap();
 
     // Set longest_task_seconds (not written by insert_session, only by parallel indexer)
-    sqlx::query("UPDATE sessions SET longest_task_seconds = 400 WHERE id = 'sess-filter-a'")
+    sqlx::query(
+        "UPDATE sessions SET longest_task_seconds = 400, longest_task_preview = 'Longest prompt A' WHERE id = 'sess-filter-a'",
+    )
         .execute(db.pool())
         .await
         .unwrap();
@@ -332,6 +334,7 @@ async fn test_get_dashboard_stats_with_project_filter() {
     let stats = db.get_dashboard_stats(Some("proj-x"), None).await.unwrap();
     assert_eq!(stats.longest_sessions.len(), 1, "only proj-x's session");
     assert_eq!(stats.longest_sessions[0].id, "sess-filter-a");
+    assert_eq!(stats.longest_sessions[0].preview, "Longest prompt A");
 
     let stats = db
         .get_dashboard_stats(Some("proj-x"), Some("develop"))
