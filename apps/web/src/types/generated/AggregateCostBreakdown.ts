@@ -3,4 +3,11 @@
 /**
  * Aggregate cost breakdown in USD (computed from per-model token data + pricing engine).
  */
-export type AggregateCostBreakdown = { totalCostUsd: number, inputCostUsd: number, outputCostUsd: number, cacheReadCostUsd: number, cacheCreationCostUsd: number, cacheSavingsUsd: number, };
+export type AggregateCostBreakdown = {
+  totalCostUsd: number
+  inputCostUsd: number
+  outputCostUsd: number
+  cacheReadCostUsd: number
+  cacheCreationCostUsd: number
+  cacheSavingsUsd: number
+}

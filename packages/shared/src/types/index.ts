@@ -1,2 +1,9 @@
 export * from './relay'
-export * from './generated'
+export type {
+  HookEvent,
+  JsonValue,
+  LiveSession,
+  ProgressSource,
+  ProgressStatus,
+  SubAgentStatus,
+} from './generated'

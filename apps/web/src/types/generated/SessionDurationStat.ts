@@ -3,4 +3,10 @@
 /**
  * A session entry for the "Longest Tasks" dashboard card.
  */
-export type SessionDurationStat = { id: string, preview: string, projectName: string, projectDisplayName: string, durationSeconds: number, };
+export type SessionDurationStat = {
+  id: string
+  preview: string
+  projectName: string
+  projectDisplayName: string
+  durationSeconds: number
+}

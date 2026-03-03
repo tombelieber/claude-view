@@ -1,5 +1,5 @@
-import type { SubAgentInfo } from './SubAgentInfo'
 import type { ProgressItem } from './ProgressItem'
+import type { SubAgentInfo } from './SubAgentInfo'
 
 export interface RichSessionData {
   tokens: {

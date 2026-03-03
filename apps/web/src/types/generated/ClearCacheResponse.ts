@@ -3,4 +3,4 @@
 /**
  * Clear cache response.
  */
-export type ClearCacheResponse = { status: string, clearedBytes: number, };
+export type ClearCacheResponse = { status: string; clearedBytes: number }
