@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 /// Application settings (single-row table).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub llm_model: String,

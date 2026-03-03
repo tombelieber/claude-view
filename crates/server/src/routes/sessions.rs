@@ -62,11 +62,13 @@ pub struct SessionsListQuery {
     pub time_after: Option<i64>,
     /// Filter sessions before this timestamp (unix seconds)
     pub time_before: Option<i64>,
+    /// Optional project filter (matches project_id or git_root)
+    pub project: Option<String>,
 }
 
 /// Response for GET /api/sessions with pagination
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
@@ -93,7 +95,7 @@ pub struct SessionActivityResponse {
 
 /// Extended session detail with commits (for GET /api/sessions/:id)
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDetail {
     /// Base session info
@@ -107,7 +109,7 @@ pub struct SessionDetail {
 
 /// A commit linked to a session with its confidence tier
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CommitWithTier {
     pub hash: String,
@@ -137,7 +139,7 @@ impl From<(GitCommit, i32, String)> for CommitWithTier {
 
 /// Derived metrics calculated from atomic units
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DerivedMetrics {
     /// Tokens per prompt: (total_input + total_output) / user_prompt_count
@@ -306,6 +308,7 @@ pub async fn list_sessions(
         high_reedit,
         time_after: query.time_after,
         time_before: query.time_before,
+        project: query.project,
         sort: sort.clone(),
         limit,
         offset,
@@ -698,6 +701,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 

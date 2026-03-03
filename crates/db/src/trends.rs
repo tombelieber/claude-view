@@ -64,7 +64,7 @@ pub fn previous_week_bounds() -> (i64, i64) {
 
 /// A single trend metric comparing current vs previous period.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TrendMetric {
     /// Current period value.
@@ -106,7 +106,7 @@ impl TrendMetric {
 
 /// Collection of all week-over-week trend metrics.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekTrends {
     /// Session count trend.
@@ -127,7 +127,7 @@ pub struct WeekTrends {
 
 /// Index metadata for data freshness tracking.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {
     /// Unix timestamp of last successful index completion.
@@ -968,6 +968,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
