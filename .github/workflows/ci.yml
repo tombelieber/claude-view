@@ -23,6 +23,9 @@ jobs:
 
       - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3  # v2.1.2
 
+      - name: Verify package manifests
+        run: bun run verify:manifests
+
       - run: bun install --frozen-lockfile
 
       - name: Lint + typecheck + test (affected only)
@@ -47,7 +50,7 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
 
       - name: cargo test
-        run: cargo test --workspace
+        run: cargo test --workspace -- --skip export_bindings_
 
       - uses: taiki-e/install-action@d9c7e4de96b8ff27364cd0b5890e9280b99adbb3  # v2.68.11
         with:

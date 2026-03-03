@@ -12,12 +12,17 @@
       "target",
       ".expo",
       ".tmp",
-      "apps/web/src/types/generated",
       "apps/landing/dist",
       ".astro",
       "**/.astro"
     ]
   },
+  "overrides": [
+    {
+      "include": ["apps/web/src/types/generated/**", "packages/shared/src/types/generated/**"],
+      "linter": { "enabled": false }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
