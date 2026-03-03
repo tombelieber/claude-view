@@ -120,7 +120,7 @@ import { Steps } from '@astrojs/starlight/components';
 
 - [Installation →](/docs/installation/) — detailed setup, ports, and config
 - [Mission Control →](/docs/features/mission-control/) — real-time agent monitoring
-- [Claude Code Plugin →](/docs/guides/mcp-integration/) — 8 tools, 3 skills, auto-start hook
+- [Claude Code Plugin →](/docs/guides/plugin/) — 8 tools, 3 skills, auto-start hook
 
 
 --- docs/docs/features/agent-control.mdx ---
@@ -195,7 +195,7 @@ The score combines multiple signals:
 
 ## Plugin access
 
-After [installing the plugin](/docs/guides/mcp-integration/), ask Claude Code directly:
+After [installing the plugin](/docs/guides/plugin/), ask Claude Code directly:
 
 ```
 "What's my AI Fluency Score?"
@@ -361,7 +361,7 @@ Click any session to see:
 - Timeline of events
 
 
---- docs/docs/guides/mcp-integration.mdx ---
+--- docs/docs/guides/plugin.mdx ---
 
 ---
 title: Claude Code Plugin
@@ -545,7 +545,7 @@ If you use Claude Code, install the plugin for the best experience — it auto-s
 claude plugin add @claude-view/plugin
 ```
 
-After installing, every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed. See the [plugin guide](/docs/guides/mcp-integration/) for details.
+After installing, every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed. See the [plugin guide](/docs/guides/plugin/) for details.
 
 ## Requirements
 
