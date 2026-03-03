@@ -1,6 +1,6 @@
 ---
 title: Mission Control
-description: Real-time dashboard for monitoring all active Claude Code agents simultaneously.
+description: Real-time dashboard for monitoring and controlling all active Claude Code agents.
 ---
 
 Mission Control is a live view of all running Claude Code sessions. It updates in real time via WebSocket — no refresh needed.
@@ -9,25 +9,45 @@ Mission Control is a live view of all running Claude Code sessions. It updates i
 
 Each agent card shows:
 - **Status** — running (green), waiting for input (amber), done (gray), error (red)
-- **Current task** — the most recent tool call or message
+- **Current task** — the most recent tool call or user message
 - **Cost** — cumulative token cost for the session
 - **Duration** — time elapsed since session start
+- **Context gauge** — real-time context window usage
+- **Cache countdown** — time until prompt cache expires
+- **IDE file** — which file the user was editing when they last messaged
+
+## Views
+
+Mission Control offers three layout modes:
+- **Grid** — compact card grid for monitoring many agents at once
+- **List** — detailed single-column view with more information per session
+- **Monitor** — live chat grid showing streaming conversations side by side
+
+You can also create **custom layouts** using drag-and-drop panels (powered by dockview). Save and load layout presets.
 
 ## Cost tracking
 
-Token costs update live as agents work. claude-view uses current Anthropic pricing to calculate USD costs per model. The total across all active agents is shown in the header.
+Token costs update live as agents work. claude-view uses current Anthropic pricing per model (with tiered pricing for large contexts). The total across all active agents is shown in the header.
+
+## Sub-agent visualization
+
+When a session spawns sub-agents (via the Agent tool), Mission Control shows the full agent tree — parent and children, each with their own status and cost tracking.
 
 ## Session control
 
 From Mission Control, you can:
-- **Click a session** to open the full session detail view
-- **Kill a session** — stops the Claude Code process (with confirmation)
+- **Click a session** to open the full session detail view with chat history
+- **Send messages** to a running agent
+- **Approve or reject** tool call permissions
+- **Review plans** before the agent implements them
+- **Stop a session** (with confirmation)
 
 ## Real-time updates
 
-Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically.
+Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically with exponential backoff.
 
 ## Related
 
-- [Agent Control →](/docs/features/agent-control/) — send messages and approve tool calls
+- [Agent Control →](/docs/features/agent-control/) — interactive control details
 - [Cost Tracking →](/docs/features/cost-tracking/) — detailed token usage breakdown
+- [Session Browser →](/docs/features/session-browser/) — historical session list
