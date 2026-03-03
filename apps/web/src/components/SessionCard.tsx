@@ -1,5 +1,6 @@
 import {
   Code2,
+  DollarSign,
   Eye,
   FileEdit,
   GitBranch,
@@ -9,8 +10,9 @@ import {
   Terminal,
 } from 'lucide-react'
 import type { SessionInfo } from '../hooks/use-projects'
-import { formatNumber } from '../lib/format-utils'
+import { formatCostUsd, formatNumber } from '../lib/format-utils'
 import { computeWeight, weightBorderClass } from '../lib/session-weight'
+import { getDisplayLongestTaskSeconds, getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
 import { cn } from '../lib/utils'
 import { cleanPreviewText, getSessionTitle } from '../utils/get-session-title'
 import { CategoryBadge } from './CategoryBadge'
@@ -180,7 +182,13 @@ export function SessionCard({
   const durationSeconds = session?.durationSeconds ?? 0
 
   // Task time metrics
-  const longestTaskSeconds = session?.longestTaskSeconds ?? 0
+  const displayTaskTimeSeconds = getDisplayTaskTimeSeconds(session) ?? durationSeconds
+  const longestTaskSeconds = getDisplayLongestTaskSeconds(session) ?? 0
+  const taskTimeSeconds = getDisplayTaskTimeSeconds(session)
+
+  // Cost
+  const totalCostUsd = session?.totalCostUsd ?? null
+  const hasCost = totalCostUsd !== null && totalCostUsd > 0
 
   // Theme 3: Contribution metrics (optional, populated by deep index)
   const workType = session?.workType ?? null
@@ -261,11 +269,20 @@ export function SessionCard({
               <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
               <span className="text-gray-300 dark:text-gray-600">|</span>
               <span className="font-medium text-gray-500 dark:text-gray-400">
-                {formatDuration(durationSeconds)}
+                {formatDuration(displayTaskTimeSeconds)}
               </span>
             </>
           ) : (
             <span>{formatRelativeTime(Number(session.modifiedAt))}</span>
+          )}
+          {hasCost && (
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span className="inline-flex items-center gap-0.5 font-medium text-amber-600 dark:text-amber-400">
+                <DollarSign className="w-3 h-3" />
+                {formatCostUsd(totalCostUsd!).replace('$', '')}
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -292,7 +309,7 @@ export function SessionCard({
             mode="historical"
             model={session.primaryModel}
             pastTenseVerb={pickPastVerb(session.id)}
-            taskTimeSeconds={session.totalTaskTimeSeconds}
+            taskTimeSeconds={taskTimeSeconds}
           />
         </div>
       )}
