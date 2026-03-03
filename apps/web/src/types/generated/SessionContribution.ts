@@ -3,4 +3,14 @@
 /**
  * Session contribution detail for the drill-down view.
  */
-export type SessionContribution = { sessionId: string, workType: string | null, durationSeconds: number, promptCount: number, aiLinesAdded: number, aiLinesRemoved: number, filesEditedCount: number, reeditedFilesCount: number, commitCount: number, };
+export type SessionContribution = {
+  sessionId: string
+  workType: string | null
+  durationSeconds: number
+  promptCount: number
+  aiLinesAdded: number
+  aiLinesRemoved: number
+  filesEditedCount: number
+  reeditedFilesCount: number
+  commitCount: number
+}

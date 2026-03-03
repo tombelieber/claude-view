@@ -3,4 +3,10 @@
 /**
  * Storage section of system response.
  */
-export type StorageInfo = { jsonlBytes: number, indexBytes: number, dbBytes: number, cacheBytes: number, totalBytes: number, };
+export type StorageInfo = {
+  jsonlBytes: number
+  indexBytes: number
+  dbBytes: number
+  cacheBytes: number
+  totalBytes: number
+}

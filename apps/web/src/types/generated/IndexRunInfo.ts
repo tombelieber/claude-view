@@ -3,4 +3,11 @@
 /**
  * Index history entry in system response.
  */
-export type IndexRunInfo = { timestamp: string, type: string, sessionsCount: number | null, durationMs: number | null, status: string, errorMessage: string | null, };
+export type IndexRunInfo = {
+  timestamp: string
+  type: string
+  sessionsCount: number | null
+  durationMs: number | null
+  status: string
+  errorMessage: string | null
+}
