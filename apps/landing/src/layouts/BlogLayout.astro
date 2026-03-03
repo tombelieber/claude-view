@@ -40,13 +40,13 @@ const { title, description, date, author } = Astro.props;
   <article class="mx-auto max-w-3xl px-6 py-16">
     <header class="mb-12">
       <h1 class="font-heading text-4xl font-bold mb-4">{title}</h1>
-      <div class="flex items-center gap-4 text-sm text-slate-400">
+      <div class="flex items-center gap-4 text-sm text-[var(--color-text-secondary)]">
         <time datetime={date.toISOString()}>{date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</time>
         <span>·</span>
         <span>{author}</span>
       </div>
     </header>
-    <div class="prose prose-invert prose-slate max-w-none">
+    <div class="prose prose-slate max-w-none">
       <slot />
     </div>
   </article>
