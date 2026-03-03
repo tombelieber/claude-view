@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom'
 import type { SessionInfo } from '../hooks/use-projects'
 import { formatNumber, formatTokenCount } from '../lib/format-utils'
 import { computeWeight } from '../lib/session-weight'
+import { getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
 import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import { getSessionTitle } from '../utils/get-session-title'
@@ -288,9 +289,7 @@ function buildColumns(
       meta: { align: 'right' },
       cell: ({ row }) => {
         const s = row.original
-        // Prefer totalTaskTimeSeconds; fall back to durationSeconds for pre-reindex sessions
-        const taskTime = s.totalTaskTimeSeconds ?? null
-        const displaySeconds = taskTime && taskTime > 0 ? taskTime : s.durationSeconds
+        const displaySeconds = getDisplayTaskTimeSeconds(s) ?? 0
         const duration = displaySeconds > 0 ? formatDuration(displaySeconds) : null
         return (
           <Link to={sessionUrl(s)} className="block text-[12px]">

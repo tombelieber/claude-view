@@ -25,6 +25,9 @@ function buildSearchParams(params: SessionsQueryParams, offset: number): URLSear
 
   if (params.search) sp.set('q', params.search)
 
+  // Project filter (server-side)
+  if (params.sidebarProject) sp.set('project', params.sidebarProject)
+
   // Merge sidebar branch with filter branches
   const branches = [...params.filters.branches]
   if (params.sidebarBranch && !branches.includes(params.sidebarBranch)) {
