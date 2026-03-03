@@ -44,3 +44,16 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
     isDebouncing: query !== debouncedQuery,
   }
 }
+
+/** Detect regex metacharacters for grep fallback. */
+export function hasRegexMetacharacters(input: string): boolean {
+  const patterns = ['.*', '\\b', '\\d', '\\w', '\\s', '[a-', '(?:']
+  if (!patterns.some((p) => input.includes(p))) return false
+  // Confirm it actually parses as a valid regex before routing to grep
+  try {
+    new RegExp(input)
+    return true
+  } catch {
+    return false
+  }
+}
