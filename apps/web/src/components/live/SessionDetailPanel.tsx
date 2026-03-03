@@ -275,8 +275,13 @@ export function SessionDetailPanel({
       : data.status === 'paused'
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-gray-500 dark:text-gray-400'
-  const totalCostUsd =
+  // For history sessions, prefer the DB total_cost_usd (JSONL costUSD sum, includes
+  // sub-agents after v17 indexing). This matches the list card's displayed cost.
+  // For live sessions, calculate from accumulated cost + sub-agents as before.
+  const dbCostUsd = data.historyExtras?.sessionInfo?.totalCostUsd
+  const calculatedCostUsd =
     data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
+  const totalCostUsd = dbCostUsd != null && dbCostUsd > 0 ? dbCostUsd : calculatedCostUsd
   const estimatedPrefix = data.cost?.isEstimated ? '~' : ''
 
   // ---- Render ----
