@@ -1,0 +1,61 @@
+---
+/**
+ * 4-column grid of trust-building metrics — purely decorative.
+ */
+const metrics = [
+  { num: '142k', label: 'Sessions monitored' },
+  { num: '<1ms', label: 'Startup time' },
+  { num: '15MB', label: 'On disk' },
+  { num: 'Zero', label: 'Telemetry' },
+];
+---
+
+<section class="metrics-bar">
+  {metrics.map(({ num, label }) => (
+    <div class="metric-item">
+      <div class="num">{num}</div>
+      <div class="label">{label}</div>
+    </div>
+  ))}
+</section>
+
+<style>
+  .metrics-bar {
+    position: relative;
+    z-index: 1;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .metric-item {
+    text-align: center;
+    padding: 28px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.45);
+    border: 1px solid var(--color-border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .num {
+    font-family: var(--font-heading);
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    color: #111;
+  }
+  .label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .metrics-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .metrics-bar { grid-template-columns: 1fr 1fr; gap: 10px; }
+  }
+</style>

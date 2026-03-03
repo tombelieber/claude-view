@@ -21,7 +21,7 @@ const isCompact = variant === 'compact'
        Only place ONE WaitlistForm per page — duplicate ids violate HTML uniqueness.
        If you need a second CTA on the same page, use <a href="#waitlist"> to scroll to this one. -->
   <!-- Social proof counter -->
-  <p class:list={['waitlist-counter text-slate-400 mb-3', isCompact ? 'text-xs' : 'text-sm']}>
+  <p class:list={['waitlist-counter text-[var(--color-text-secondary)] mb-3', isCompact ? 'text-xs' : 'text-sm']}>
     <span class="waitlist-count-text">Join the early access waitlist</span>
   </p>
 
@@ -34,7 +34,7 @@ const isCompact = variant === 'compact'
       autocomplete="email"
       placeholder="you@example.com"
       class:list={[
-        'flex-1 rounded-lg border border-slate-700 bg-slate-900/80 text-white placeholder-slate-500 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 transition-colors',
+        'flex-1 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors',
         isCompact ? 'px-3 py-2 text-sm' : 'px-4 py-3',
       ]}
     />
@@ -45,7 +45,7 @@ const isCompact = variant === 'compact'
     <button
       type="submit"
       class:list={[
-        'waitlist-submit rounded-lg font-medium transition-colors bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
+        'waitlist-submit rounded-lg font-semibold transition-all bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
         isCompact ? 'px-4 py-2 text-sm' : 'px-6 py-3',
       ]}
     >
@@ -58,16 +58,16 @@ const isCompact = variant === 'compact'
 
   <!-- Success state (hidden by default) -->
   <div class="waitlist-success hidden">
-    <p class:list={['font-semibold text-green-400 mb-3', isCompact ? 'text-base' : 'text-lg']}>
+    <p class:list={['font-semibold text-[var(--accent)] mb-3', isCompact ? 'text-base' : 'text-lg']}>
       You're <span class="waitlist-position font-bold">#—</span> on the waitlist!
     </p>
-    <p class="text-slate-400 text-sm mb-3">Share to help us grow:</p>
+    <p class="text-[var(--color-text-secondary)] text-sm mb-3">Share to help us grow:</p>
     <div class="flex flex-col sm:flex-row gap-2 mb-3">
-      <div class="flex-1 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2">
-        <code class="waitlist-referral-link text-green-400 text-sm truncate flex-1"></code>
+      <div class="flex-1 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white/80 px-3 py-2">
+        <code class="waitlist-referral-link text-[var(--accent)] text-sm truncate flex-1"></code>
         <button
           type="button"
-          class="waitlist-copy text-slate-400 hover:text-white transition-colors text-sm font-medium whitespace-nowrap"
+          class="waitlist-copy text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors text-sm font-medium whitespace-nowrap"
           aria-label="Copy referral link"
         >
           Copy
@@ -75,7 +75,7 @@ const isCompact = variant === 'compact'
       </div>
     </div>
     <a
-      class="waitlist-share-x inline-flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+      class="waitlist-share-x inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-[rgba(0,0,0,0.12)] transition-colors"
       href="#"
       target="_blank"
       rel="noopener noreferrer"
@@ -87,6 +87,21 @@ const isCompact = variant === 'compact'
     </a>
   </div>
 </div>
+
+<style>
+  .waitlist-submit {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(217, 119, 87, 0.1);
+  }
+  .waitlist-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(217, 119, 87, 0.18), 0 0 0 1px rgba(217, 119, 87, 0.1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .waitlist-submit:hover:not(:disabled) {
+      transform: none;
+    }
+  }
+</style>
 
 <script>
   function initWaitlistForms() {
@@ -153,7 +168,7 @@ const isCompact = variant === 'compact'
                   ;(window as any).turnstile.reset(widgetId)
                 },
                 size: 'flexible',
-                theme: 'dark',
+                theme: 'light',
               })
             }
           })
@@ -172,7 +187,7 @@ const isCompact = variant === 'compact'
             ;(window as any).turnstile.reset(widgetId)
           },
           size: 'flexible',
-          theme: 'dark',
+          theme: 'light',
         })
       }
 
