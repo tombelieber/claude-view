@@ -152,6 +152,18 @@ Before ANY `git add`:
 
 **The golden rule:** Your commit should contain ONLY your changes. The user's uncommitted work is sacred — don't touch it, don't commit it, don't mix it with yours.
 
+## Git Discipline — NEVER Reset Branch Pointer
+
+**NEVER run `git reset` to FETCH_HEAD, a remote ref, or any ref that moves the branch pointer backward.** This silently orphans unpushed local commits and has caused hours of lost work.
+
+Banned commands (no exceptions without explicit user request):
+- `git reset FETCH_HEAD` — destroys all unpushed commits
+- `git reset origin/<branch>` — same effect
+- `git reset --hard` — destroys commits AND working directory changes
+- `git fetch && git reset` — the "sync" anti-pattern
+
+If you need to sync with remote, use `git pull --rebase` or ask the user first. If you need to undo your own commit, use `git revert`, not `git reset`.
+
 ## Secrets & Environment Variables
 
 ### Architecture
@@ -249,6 +261,13 @@ NEVER document:
 ### Full-Stack Wiring
 
 Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> JSON -> API response -> TS type -> hook -> component -> browser**. `Option`/`undefined` silently absorbs gaps — manual browser verification catches what tests won't.
+
+### Live Monitor / History Parity
+
+**Every UI feature in the live monitor side panel MUST also work in the history session detail panel.** They share the same `SessionDetailPanel` component via `SessionPanelData`. When adding a field:
+1. Add to `liveSessionToPanelData()` AND `historyToPanelData()` in `session-panel-data.ts`
+2. Verify the API returns the data for both live AND historical sessions
+3. This has broken 3+ times because only the live path gets wired. Never again.
 
 ### Frontend / React
 
