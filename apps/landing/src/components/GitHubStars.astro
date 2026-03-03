@@ -6,7 +6,7 @@ const { repo } = Astro.props;
 ---
 
 <a
-  class="github-stars hidden items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 text-sm text-slate-300 hover:border-slate-500 hover:text-slate-100 transition-colors cursor-pointer"
+  class="github-stars hidden items-center gap-2 px-4 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:border-[rgba(0,0,0,0.12)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
   href={`https://github.com/${repo}`}
   target="_blank"
   rel="noopener noreferrer"
