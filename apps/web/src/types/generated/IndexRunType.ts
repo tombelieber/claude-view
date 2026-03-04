@@ -3,4 +3,4 @@
 /**
  * Type of index run.
  */
-export type IndexRunType = "full" | "incremental" | "deep";
+export type IndexRunType = 'full' | 'incremental' | 'deep'

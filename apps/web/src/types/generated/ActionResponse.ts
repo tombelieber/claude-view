@@ -3,4 +3,4 @@
 /**
  * Generic action response for POST endpoints.
  */
-export type ActionResponse = { status: string, message: string | null, };
+export type ActionResponse = { status: string; message: string | null }

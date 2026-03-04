@@ -3,4 +3,4 @@
 /**
  * Insight severity/type for UI styling.
  */
-export type InsightKind = "info" | "success" | "warning" | "tip";
+export type InsightKind = 'info' | 'success' | 'warning' | 'tip'
