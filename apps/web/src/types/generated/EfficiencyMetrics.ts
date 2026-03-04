@@ -7,9 +7,27 @@ import type { Insight } from './Insight'
 export type EfficiencyMetrics = {
   totalCost: number
   totalLines: number
+  pricedLines: number
   costPerLine: number | null
   costPerCommit: number | null
   costTrend: Array<number>
-  costIsEstimated: boolean
+  /**
+   * True when any tokens were excluded from cost because model pricing was missing.
+   */
+  hasUnpricedUsage: boolean
+  pricedModelCount: number
+  unpricedModelCount: number
+  unpricedInputTokens: number
+  unpricedOutputTokens: number
+  unpricedCacheReadTokens: number
+  unpricedCacheCreationTokens: number
+  /**
+   * Fraction of tokens priced with real model rates [0.0, 1.0].
+   */
+  pricedTokenCoverage: number
+  /**
+   * `priced_models_only_full` | `priced_models_only_partial`.
+   */
+  costScope: string
   insight: Insight
 }
