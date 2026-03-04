@@ -52,7 +52,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   extra: {
     eas: {
-      projectId: 'YOUR_EAS_PROJECT_ID', // Replace after `eas init`
+      projectId: 'f395dbf3-420b-4f67-8892-d466bd185d85',
     },
     oneSignalAppId: process.env.ONESIGNAL_APP_ID || 'YOUR_ONESIGNAL_APP_ID',
   },
