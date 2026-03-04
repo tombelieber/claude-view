@@ -10,4 +10,35 @@ export type AggregateCostBreakdown = {
   cacheReadCostUsd: number
   cacheCreationCostUsd: number
   cacheSavingsUsd: number
+  /**
+   * Sum of cost components computed from models that had a pricing match.
+   */
+  computedPricedTotalCostUsd: number
+  /**
+   * Number of models in the query window that had an exact/prefix pricing match.
+   */
+  pricedModelCount: number
+  /**
+   * Number of models in the query window without pricing.
+   */
+  unpricedModelCount: number
+  /**
+   * Tokens from unpriced models (surfaced explicitly; never converted via fallback rates).
+   */
+  unpricedInputTokens: number
+  unpricedOutputTokens: number
+  unpricedCacheReadTokens: number
+  unpricedCacheCreationTokens: number
+  /**
+   * Fraction of all tokens that were priced with real model rates [0.0, 1.0].
+   */
+  pricedTokenCoverage: number
+  /**
+   * True when any usage lacked model pricing.
+   */
+  hasUnpricedUsage: boolean
+  /**
+   * `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+   */
+  totalCostSource: string
 }

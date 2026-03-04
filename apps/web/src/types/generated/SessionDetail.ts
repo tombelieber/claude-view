@@ -85,4 +85,5 @@ export type SessionDetail = {
   totalTaskTimeSeconds?: number | null
   longestTaskSeconds?: number | null
   longestTaskPreview?: string | null
+  totalCostUsd?: number | null
 }
