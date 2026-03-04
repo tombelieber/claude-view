@@ -62,8 +62,8 @@ export interface AssistantDone {
     cacheReadTokens: number
     cacheWriteTokens: number
   }
-  cost: number
-  totalCost: number
+  cost: number | null
+  totalCost: number | null
 }
 
 export interface ToolUseStart {
@@ -169,7 +169,7 @@ export interface ActiveSession {
   sessionId: string
   status: string
   turnCount: number
-  totalCost: number
+  totalCost: number | null
   startedAt: number
 }
 

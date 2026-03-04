@@ -12,9 +12,48 @@ interface ToolDef<TSchema extends z.ZodObject<any> = z.ZodObject<any>> {
 const getStatsSchema = z.object({
   project: z.string().optional().describe('Filter by project name'),
   branch: z.string().optional().describe('Filter by git branch'),
-  from: z.string().optional().describe('Start date (ISO 8601 or YYYY-MM-DD)'),
-  to: z.string().optional().describe('End date (ISO 8601 or YYYY-MM-DD)'),
+  from: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('Start time (Unix seconds, or ISO 8601 / YYYY-MM-DD date string)'),
+  to: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('End time (Unix seconds, or ISO 8601 / YYYY-MM-DD date string)'),
 })
+
+function parseUnixSeconds(
+  value: string | number | undefined,
+  field: 'from' | 'to',
+): number | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Invalid ${field} value: must be a finite number`)
+    }
+    return Math.trunc(value)
+  }
+
+  const trimmed = value.trim()
+  if (trimmed === '') {
+    return undefined
+  }
+
+  const numeric = Number(trimmed)
+  if (Number.isFinite(numeric) && /^\d+$/.test(trimmed)) {
+    return Math.trunc(numeric)
+  }
+
+  const parsedMs = Date.parse(trimmed)
+  if (!Number.isNaN(parsedMs)) {
+    return Math.trunc(parsedMs / 1000)
+  }
+
+  throw new Error(`Invalid ${field} value: expected Unix seconds or parseable date string`)
+}
 
 export const statsTools: ToolDef[] = [
   {
@@ -24,11 +63,13 @@ export const statsTools: ToolDef[] = [
     inputSchema: getStatsSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
+      const from = parseUnixSeconds(args.from, 'from')
+      const to = parseUnixSeconds(args.to, 'to')
       const data = await client.get<any>('/api/stats/dashboard', {
         project: args.project,
         branch: args.branch,
-        from: args.from,
-        to: args.to,
+        from,
+        to,
       })
       return JSON.stringify(
         {
@@ -42,6 +83,7 @@ export const statsTools: ToolDef[] = [
           tool_totals: data.toolTotals,
           current_week: data.currentWeek,
           trends: data.trends,
+          ranges: data.meta?.ranges,
         },
         null,
         2,

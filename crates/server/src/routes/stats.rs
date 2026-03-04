@@ -10,15 +10,20 @@ use axum::{
     Json, Router,
 };
 use claude_view_core::pricing::{self as pricing_engine};
-use claude_view_core::{claude_projects_dir, DashboardStats};
+use claude_view_core::{
+    claude_projects_dir, DashboardStats, EffectiveRangeMeta, EffectiveRangeSource,
+};
 use claude_view_db::trends::{TrendMetric, WeekTrends};
 use claude_view_db::{AIGenerationStats, AggregateCostBreakdown};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::error::ApiResult;
-use crate::metrics::record_request;
+use crate::metrics::{
+    record_request, record_time_range_resolution, record_time_range_resolution_error,
+};
 use crate::state::AppState;
+use crate::time_range::{resolve_from_to_or_all_time, ResolveFromToInput};
 
 /// Query parameters for dashboard stats endpoint.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -79,6 +84,25 @@ pub struct ExtendedDashboardStats {
     /// Used to display "since [date]" in the UI.
     #[ts(type = "number | null")]
     pub data_start_date: Option<i64>,
+    /// Additive section-specific effective range metadata.
+    pub meta: DashboardMeta,
+}
+
+/// Dashboard metadata wrapper.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardMeta {
+    pub ranges: DashboardRangesMeta,
+}
+
+/// Section-specific range metadata for dashboard.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardRangesMeta {
+    pub current_period: EffectiveRangeMeta,
+    pub heatmap: EffectiveRangeMeta,
 }
 
 /// Simplified trends for dashboard display.
@@ -187,18 +211,33 @@ pub async fn dashboard_stats(
     Query(query): Query<DashboardQuery>,
 ) -> ApiResult<Json<ExtendedDashboardStats>> {
     let start = Instant::now();
+    let now = chrono::Utc::now().timestamp();
 
     // Reject half-specified ranges
     if query.from.is_some() != query.to.is_some() {
+        record_time_range_resolution_error("stats_dashboard_current_period", "one_sided_input");
+        tracing::warn!(
+            endpoint = "stats_dashboard_current_period",
+            requested_from = query.from,
+            requested_to = query.to,
+            "Rejected request time range"
+        );
         return Err(crate::error::ApiError::BadRequest(
             "Both 'from' and 'to' must be provided together".to_string(),
         ));
     }
     // Reject inverted ranges
     if let (Some(from), Some(to)) = (query.from, query.to) {
-        if from >= to {
+        if from > to {
+            record_time_range_resolution_error("stats_dashboard_current_period", "inverted_range");
+            tracing::warn!(
+                endpoint = "stats_dashboard_current_period",
+                requested_from = query.from,
+                requested_to = query.to,
+                "Rejected request time range"
+            );
             return Err(crate::error::ApiError::BadRequest(
-                "'from' must be less than 'to'".to_string(),
+                "'from' must be <= 'to'".to_string(),
             ));
         }
     }
@@ -215,6 +254,54 @@ pub async fn dashboard_stats(
             None
         }
     };
+    let current_period_range = match resolve_from_to_or_all_time(ResolveFromToInput {
+        endpoint: "stats_dashboard_current_period",
+        from: query.from,
+        to: query.to,
+        now,
+        oldest_timestamp: data_start_date,
+    }) {
+        Ok(resolved) => {
+            record_time_range_resolution("stats_dashboard_current_period", resolved.source);
+            tracing::info!(
+                endpoint = "stats_dashboard_current_period",
+                from = resolved.from,
+                to = resolved.to,
+                source = resolved.source.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Resolved request time range"
+            );
+            resolved
+        }
+        Err(err) => {
+            record_time_range_resolution_error(
+                "stats_dashboard_current_period",
+                err.reason.as_str(),
+            );
+            tracing::warn!(
+                endpoint = "stats_dashboard_current_period",
+                reason = err.reason.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Rejected request time range"
+            );
+            return Err(crate::error::ApiError::BadRequest(err.message));
+        }
+    };
+    let heatmap_range = EffectiveRangeMeta {
+        from: now - 90 * 86400,
+        to: now,
+        source: EffectiveRangeSource::ExplicitRangeParam,
+    };
+    record_time_range_resolution("stats_dashboard_heatmap", heatmap_range.source);
+    tracing::info!(
+        endpoint = "stats_dashboard_heatmap",
+        from = heatmap_range.from,
+        to = heatmap_range.to,
+        source = heatmap_range.source.as_str(),
+        "Resolved section range"
+    );
 
     // Determine if we have a time range filter
     let has_time_range = query.from.is_some() && query.to.is_some();
@@ -329,6 +416,12 @@ pub async fn dashboard_stats(
         comparison_period_start: comparison_start,
         comparison_period_end: comparison_end,
         data_start_date,
+        meta: DashboardMeta {
+            ranges: DashboardRangesMeta {
+                current_period: current_period_range,
+                heatmap: heatmap_range,
+            },
+        },
     }))
 }
 
@@ -657,6 +750,7 @@ mod tests {
     };
     use claude_view_core::{SessionInfo, ToolCounts};
     use claude_view_db::{AggregateCostBreakdown, Database};
+    use sqlx::Executor;
     use tower::ServiceExt;
 
     async fn test_db() -> Database {
@@ -711,6 +805,18 @@ mod tests {
         assert!(json.get("trends").is_none() || json["trends"].is_null());
         // dataStartDate should be null for empty DB
         assert!(json["dataStartDate"].is_null());
+        assert!(json["meta"]["ranges"]["currentPeriod"]["from"].is_number());
+        assert!(json["meta"]["ranges"]["currentPeriod"]["to"].is_number());
+        assert_eq!(
+            json["meta"]["ranges"]["currentPeriod"]["source"],
+            "default_all_time"
+        );
+        assert!(json["meta"]["ranges"]["heatmap"]["from"].is_number());
+        assert!(json["meta"]["ranges"]["heatmap"]["to"].is_number());
+        assert_eq!(
+            json["meta"]["ranges"]["heatmap"]["source"],
+            "explicit_range_param"
+        );
     }
 
     #[tokio::test]
@@ -811,6 +917,14 @@ mod tests {
         assert!(json["periodEnd"].is_number());
         assert!(json["comparisonPeriodStart"].is_number());
         assert!(json["comparisonPeriodEnd"].is_number());
+        assert_eq!(
+            json["meta"]["ranges"]["currentPeriod"]["source"],
+            "explicit_from_to"
+        );
+        assert_eq!(
+            json["meta"]["ranges"]["heatmap"]["source"],
+            "explicit_range_param"
+        );
 
         // dataStartDate should be set
         assert!(json["dataStartDate"].is_number());
@@ -915,6 +1029,71 @@ mod tests {
 
         // dataStartDate should be set when there's data
         assert!(json["dataStartDate"].is_number());
+        assert_eq!(
+            json["meta"]["ranges"]["currentPeriod"]["source"],
+            "default_all_time"
+        );
+        assert_eq!(
+            json["meta"]["ranges"]["heatmap"]["source"],
+            "explicit_range_param"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_rejects_one_sided_ranges() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (from_status, from_body) =
+            do_get(app.clone(), "/api/stats/dashboard?from=1700000000").await;
+        assert_eq!(from_status, StatusCode::BAD_REQUEST);
+        let from_json: serde_json::Value = serde_json::from_str(&from_body).unwrap();
+        assert!(from_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+
+        let (to_status, to_body) = do_get(app, "/api/stats/dashboard?to=1700000000").await;
+        assert_eq!(to_status, StatusCode::BAD_REQUEST);
+        let to_json: serde_json::Value = serde_json::from_str(&to_body).unwrap();
+        assert!(to_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_rejects_inverted_range() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (status, body) =
+            do_get(app, "/api/stats/dashboard?from=1700100000&to=1700000000").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(json["details"]
+            .as_str()
+            .unwrap()
+            .contains("'from' must be <= 'to'"));
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_accepts_equal_bounds() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let ts = chrono::Utc::now().timestamp();
+        let (status, body) =
+            do_get(app, &format!("/api/stats/dashboard?from={}&to={}", ts, ts)).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["periodStart"], ts);
+        assert_eq!(json["periodEnd"], ts);
+        assert_eq!(
+            json["meta"]["ranges"]["currentPeriod"]["source"],
+            "explicit_from_to"
+        );
     }
 
     #[tokio::test]
@@ -1216,6 +1395,39 @@ mod tests {
 
         // Update the primary_model column using the db pool directly
         db.set_session_primary_model("sess-ai-1", "claude-3-5-sonnet-20241022")
+            .await
+            .unwrap();
+
+        // Ground-truth model rollups are sourced from turns.model_id.
+        db.pool()
+            .execute(sqlx::query(
+                r#"
+                    INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                    VALUES ('claude-3-5-sonnet-20241022', 'anthropic', 'sonnet', 0, 0)
+                    "#,
+            ))
+            .await
+            .unwrap();
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"
+                    INSERT INTO turns (
+                        session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                        cache_read_tokens, cache_creation_tokens, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    "#,
+                )
+                .bind("sess-ai-1")
+                .bind("turn-ai-1")
+                .bind(1)
+                .bind("claude-3-5-sonnet-20241022")
+                .bind(150000)
+                .bind(250000)
+                .bind(10000)
+                .bind(5000)
+                .bind(now - 86400),
+            )
             .await
             .unwrap();
 
