@@ -400,6 +400,81 @@ pub fn router() -> Router<Arc<AppState>> {
 
 #[cfg(test)]
 mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use claude_view_core::{SessionInfo, ToolCounts};
+    use claude_view_db::Database;
+    use tower::ServiceExt;
+
+    fn make_session_with_model(id: &str, model: &str, modified_at: i64) -> SessionInfo {
+        SessionInfo {
+            id: id.to_string(),
+            project: "project-a".to_string(),
+            project_path: "/home/user/project-a".to_string(),
+            display_name: "project-a".to_string(),
+            git_root: None,
+            file_path: format!("/tmp/{id}.jsonl"),
+            modified_at,
+            size_bytes: 2048,
+            preview: "Preview".to_string(),
+            last_message: "Last message".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 5,
+            turn_count: 3,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: Some(10_000),
+            total_output_tokens: Some(2_000),
+            total_cache_read_tokens: Some(0),
+            total_cache_creation_tokens: Some(0),
+            turn_count_api: Some(3),
+            primary_model: Some(model.to_string()),
+            user_prompt_count: 2,
+            api_call_count: 1,
+            tool_call_count: 0,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 60,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            parse_version: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
+            first_message_at: Some(modified_at),
+            total_cost_usd: None,
+        }
+    }
+
     #[test]
     fn test_cache_warm_within_5_minutes() {
         let now = 1000;
@@ -431,5 +506,40 @@ mod tests {
 
         assert!((cache_write_cost - 0.375).abs() < 0.001); // $0.375
         assert!((cache_read_cost - 0.030).abs() < 0.001); // $0.030
+    }
+
+    #[tokio::test]
+    async fn test_estimate_cost_without_pricing_returns_null_cost_fields() {
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let session =
+            make_session_with_model("sess-no-pricing", "claude-sonnet-4-20250514", now - 120);
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        let app = crate::create_app(db);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/control/estimate")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"session_id":"sess-no-pricing","model":"zzzz-unpriced-model"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["has_pricing"], false);
+        assert!(json["first_message_cost"].is_null());
+        assert!(json["per_message_cost"].is_null());
     }
 }

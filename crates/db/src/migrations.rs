@@ -597,7 +597,9 @@ CREATE TABLE IF NOT EXISTS reports (
     // Migration 26: Canonical view for user-facing session queries.
     //
     // All user-facing queries should use `valid_sessions` instead of `sessions`
-    // to ensure consistent filtering (no sidechains, valid timestamps).
+    // to ensure consistent filtering (no sidechains).
+    // Historical note: this migration included a `last_message_at > 0` guard,
+    // which was removed in migration 39.
     // System/classification queries that intentionally count ALL sessions
     // should continue using the `sessions` table directly.
     r#"CREATE VIEW IF NOT EXISTS valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0;"#,
@@ -1131,6 +1133,81 @@ mod tests {
             column_names.contains(&"tokens_used"),
             "Missing tokens_used column"
         );
+    }
+
+    #[tokio::test]
+    async fn test_migration49_classification_jobs_drop_estimate_preserves_data() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE classification_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                total_sessions INTEGER NOT NULL,
+                classified_count INTEGER DEFAULT 0,
+                skipped_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                status TEXT DEFAULT 'running',
+                error_message TEXT,
+                cost_estimate_cents INTEGER,
+                actual_cost_cents INTEGER,
+                tokens_used INTEGER,
+                CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO classification_jobs (
+                id, started_at, completed_at, total_sessions, classified_count, skipped_count, failed_count,
+                provider, model, status, error_message, cost_estimate_cents, actual_cost_cents, tokens_used
+            ) VALUES (
+                7, '2026-03-05T00:00:00Z', '2026-03-05T00:01:00Z', 10, 8, 1, 1,
+                'claude-cli', 'claude-haiku-4-5-20251001', 'completed', NULL, 99, 42, 12345
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Migration 49 is the last entry in MIGRATIONS.
+        let migration_49 = super::MIGRATIONS.last().expect("missing migration 49");
+        sqlx::raw_sql(migration_49)
+            .execute(&pool)
+            .await
+            .map(|_| ())
+            .unwrap();
+
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('classification_jobs')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        let column_names: Vec<String> = columns.into_iter().map(|(name,)| name).collect();
+        assert!(
+            !column_names.contains(&"cost_estimate_cents".to_string()),
+            "cost_estimate_cents should be dropped by migration 49"
+        );
+
+        let row: (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT id, total_sessions, actual_cost_cents, tokens_used FROM classification_jobs WHERE id = 7",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, 7);
+        assert_eq!(row.1, 10);
+        assert_eq!(row.2, 42);
+        assert_eq!(row.3, 12345);
     }
 
     #[tokio::test]

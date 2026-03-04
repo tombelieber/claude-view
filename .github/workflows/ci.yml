@@ -25,6 +25,22 @@ jobs:
       - name: Block implicit clamp and redirect regressions
         run: bash scripts/ci/check-no-implicit-30d.sh
 
+  analytics-scope-contract:
+    name: Contract Gate (Analytics Scope)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7  # stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+
+      - name: Ensure analytics scope gate script is executable
+        run: test -x scripts/ci/check-analytics-scope-contract.sh
+
+      - name: Analytics scope contract gate
+        run: bash scripts/ci/check-analytics-scope-contract.sh
+
   integrity-gates:
     name: integrity-gates
     runs-on: ubuntu-latest

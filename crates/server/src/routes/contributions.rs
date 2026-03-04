@@ -23,6 +23,8 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use chrono::Local;
+use claude_view_core::{AnalyticsScopeMeta, AnalyticsSessionBreakdown};
 use claude_view_db::{
     calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
     DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
@@ -201,6 +203,8 @@ pub struct ContributionsResponse {
     pub uncommitted_insight: String,
     /// Warnings if data is incomplete
     pub warnings: Vec<ContributionWarning>,
+    /// Additive analytics scope metadata.
+    pub meta: AnalyticsScopeMeta,
 }
 
 /// Response for GET /api/contributions/sessions/:id.
@@ -237,6 +241,8 @@ pub struct SessionContributionResponse {
     pub reedit_rate: Option<f64>,
     /// Insight about this session
     pub insight: Insight,
+    /// Additive analytics scope metadata.
+    pub meta: AnalyticsScopeMeta,
 }
 
 /// Response for GET /api/contributions/branches/:name/sessions.
@@ -248,6 +254,196 @@ pub struct BranchSessionsResponse {
     pub branch: String,
     /// Sessions for this branch
     pub sessions: Vec<BranchSession>,
+    /// Additive analytics scope metadata.
+    pub meta: AnalyticsScopeMeta,
+}
+
+fn build_session_breakdown(primary_sessions: i64, sidechain_sessions: i64) -> AnalyticsScopeMeta {
+    AnalyticsScopeMeta::new(AnalyticsSessionBreakdown::new(
+        primary_sessions,
+        sidechain_sessions,
+    ))
+}
+
+fn contributions_date_range(
+    range: TimeRange,
+    from_date: Option<&str>,
+    to_date: Option<&str>,
+) -> (String, String) {
+    match range {
+        TimeRange::Today => {
+            let today = Local::now().format("%Y-%m-%d").to_string();
+            (today.clone(), today)
+        }
+        TimeRange::Custom => {
+            let from = from_date.unwrap_or("1970-01-01").to_string();
+            let to = to_date
+                .map(ToString::to_string)
+                .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
+            (from, to)
+        }
+        TimeRange::All => (
+            "1970-01-01".to_string(),
+            Local::now().format("%Y-%m-%d").to_string(),
+        ),
+        _ => {
+            let days = range.days_back().unwrap_or(7);
+            let from = (Local::now() - chrono::Duration::days(days))
+                .format("%Y-%m-%d")
+                .to_string();
+            let to = Local::now().format("%Y-%m-%d").to_string();
+            (from, to)
+        }
+    }
+}
+
+async fn fetch_contributions_scope_meta(
+    state: &Arc<AppState>,
+    range: TimeRange,
+    from_date: Option<&str>,
+    to_date: Option<&str>,
+    project_id: Option<&str>,
+    branch: Option<&str>,
+) -> ApiResult<AnalyticsScopeMeta> {
+    let (primary_sessions, sidechain_sessions): (i64, i64) = match range {
+        TimeRange::Today => {
+            let today_start = format!("{} 00:00:00", Local::now().format("%Y-%m-%d"));
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+                FROM sessions
+                WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND (?2 IS NULL OR project_id = ?2)
+                  AND (?3 IS NULL OR git_branch = ?3)
+                "#,
+            )
+            .bind(&today_start)
+            .bind(project_id)
+            .bind(branch)
+            .fetch_one(state.db.pool())
+            .await
+        }
+        TimeRange::All => {
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+                FROM sessions
+                WHERE (?1 IS NULL OR project_id = ?1)
+                  AND (?2 IS NULL OR git_branch = ?2)
+                "#,
+            )
+            .bind(project_id)
+            .bind(branch)
+            .fetch_one(state.db.pool())
+            .await
+        }
+        _ => {
+            let (from, to) = contributions_date_range(range, from_date, to_date);
+            sqlx::query_as(
+                r#"
+                SELECT
+                    COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+                FROM sessions
+                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
+                  AND (?3 IS NULL OR project_id = ?3)
+                  AND (?4 IS NULL OR git_branch = ?4)
+                "#,
+            )
+            .bind(&from)
+            .bind(&to)
+            .bind(project_id)
+            .bind(branch)
+            .fetch_one(state.db.pool())
+            .await
+        }
+    }
+    .map_err(|e| {
+        ApiError::Internal(format!(
+            "Failed to fetch contributions session breakdown: {e}"
+        ))
+    })?;
+
+    Ok(build_session_breakdown(
+        primary_sessions,
+        sidechain_sessions,
+    ))
+}
+
+async fn fetch_session_contribution_scope_meta(
+    state: &Arc<AppState>,
+    session_id: &str,
+) -> ApiResult<AnalyticsScopeMeta> {
+    let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions
+        WHERE id = ?1
+        "#,
+    )
+    .bind(session_id)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| {
+        ApiError::Internal(format!(
+            "Failed to fetch session contribution breakdown for {session_id}: {e}"
+        ))
+    })?;
+
+    Ok(build_session_breakdown(
+        primary_sessions,
+        sidechain_sessions,
+    ))
+}
+
+async fn fetch_branch_sessions_scope_meta(
+    state: &Arc<AppState>,
+    branch_filter: Option<&str>,
+    range: TimeRange,
+    from_date: Option<&str>,
+    to_date: Option<&str>,
+    project_id: Option<&str>,
+) -> ApiResult<AnalyticsScopeMeta> {
+    let (from, to) = contributions_date_range(range, from_date, to_date);
+    let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions
+        WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+          AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
+          AND (?3 IS NULL OR project_id = ?3)
+          AND (
+                (?4 IS NULL AND git_branch IS NULL)
+             OR (?4 IS NOT NULL AND git_branch = ?4)
+          )
+        "#,
+    )
+    .bind(&from)
+    .bind(&to)
+    .bind(project_id)
+    .bind(branch_filter)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| {
+        ApiError::Internal(format!(
+            "Failed to fetch branch sessions breakdown for branch filter {:?}: {e}",
+            branch_filter
+        ))
+    })?;
+
+    Ok(build_session_breakdown(
+        primary_sessions,
+        sidechain_sessions,
+    ))
 }
 
 // ============================================================================
@@ -365,68 +561,98 @@ pub async fn get_contributions(
 
     // Compute per-model cost from ModelStats token data + pricing table.
     // Strict mode: unknown models are surfaced as unpriced; no synthetic fallback dollars.
-    let mut total_cost_usd = 0.0;
-    let mut priced_lines: i64 = 0;
-    let mut priced_model_count: i64 = 0;
-    let mut unpriced_model_count: i64 = 0;
-    let mut unpriced_input_tokens: i64 = 0;
-    let mut unpriced_output_tokens: i64 = 0;
-    let mut unpriced_cache_read_tokens: i64 = 0;
-    let mut unpriced_cache_creation_tokens: i64 = 0;
-    let mut priced_tokens_total: i64 = 0;
-    let mut all_tokens_total: i64 = 0;
-    let mut unpriced_models: Vec<String> = Vec::new();
-    let pricing = state.pricing.read().expect("pricing lock poisoned");
-    for ms in &mut by_model {
-        let tokens = TokenBreakdown {
-            input_tokens: ms.input_tokens,
-            output_tokens: ms.output_tokens,
-            cache_read_tokens: ms.cache_read_tokens,
-            cache_creation_tokens: ms.cache_creation_tokens,
-        };
-        let model_token_total =
-            ms.input_tokens + ms.output_tokens + ms.cache_read_tokens + ms.cache_creation_tokens;
-        all_tokens_total += model_token_total;
+    let (
+        total_cost_usd,
+        priced_lines,
+        priced_model_count,
+        unpriced_model_count,
+        unpriced_input_tokens,
+        unpriced_output_tokens,
+        unpriced_cache_read_tokens,
+        unpriced_cache_creation_tokens,
+        priced_token_coverage,
+        mut unpriced_models,
+    ) = {
+        let mut total_cost_usd = 0.0;
+        let mut priced_lines: i64 = 0;
+        let mut priced_model_count: i64 = 0;
+        let mut unpriced_model_count: i64 = 0;
+        let mut unpriced_input_tokens: i64 = 0;
+        let mut unpriced_output_tokens: i64 = 0;
+        let mut unpriced_cache_read_tokens: i64 = 0;
+        let mut unpriced_cache_creation_tokens: i64 = 0;
+        let mut priced_tokens_total: i64 = 0;
+        let mut all_tokens_total: i64 = 0;
+        let mut unpriced_models: Vec<String> = Vec::new();
+        let pricing = state.pricing.read().expect("pricing lock poisoned");
 
-        match lookup_pricing(&ms.model, &pricing) {
-            Some(p) => {
-                let model_cost = calculate_cost_usd(&tokens, p);
-                total_cost_usd += model_cost;
-                priced_lines += ms.lines;
-                priced_model_count += 1;
-                priced_tokens_total += model_token_total;
-                ms.cost_per_line = if ms.lines > 0 {
-                    Some(model_cost / ms.lines as f64)
-                } else {
-                    None
-                };
-            }
-            None => {
-                unpriced_model_count += 1;
-                unpriced_input_tokens += ms.input_tokens;
-                unpriced_output_tokens += ms.output_tokens;
-                unpriced_cache_read_tokens += ms.cache_read_tokens;
-                unpriced_cache_creation_tokens += ms.cache_creation_tokens;
-                unpriced_models.push(ms.model.clone());
-                ms.cost_per_line = None;
-                tracing::warn!(
-                    model = %ms.model,
-                    input_tokens = ms.input_tokens,
-                    output_tokens = ms.output_tokens,
-                    cache_read_tokens = ms.cache_read_tokens,
-                    cache_creation_tokens = ms.cache_creation_tokens,
-                    "Missing pricing for model in contributions; model cost left unpriced"
-                );
+        for ms in &mut by_model {
+            let tokens = TokenBreakdown {
+                input_tokens: ms.input_tokens,
+                output_tokens: ms.output_tokens,
+                cache_read_tokens: ms.cache_read_tokens,
+                cache_creation_tokens: ms.cache_creation_tokens,
+            };
+            let model_token_total = ms.input_tokens
+                + ms.output_tokens
+                + ms.cache_read_tokens
+                + ms.cache_creation_tokens;
+            all_tokens_total += model_token_total;
+
+            match lookup_pricing(&ms.model, &pricing) {
+                Some(p) => {
+                    let model_cost = calculate_cost_usd(&tokens, p);
+                    total_cost_usd += model_cost;
+                    priced_lines += ms.lines;
+                    priced_model_count += 1;
+                    priced_tokens_total += model_token_total;
+                    ms.cost_per_line = if ms.lines > 0 {
+                        Some(model_cost / ms.lines as f64)
+                    } else {
+                        None
+                    };
+                }
+                None => {
+                    unpriced_model_count += 1;
+                    unpriced_input_tokens += ms.input_tokens;
+                    unpriced_output_tokens += ms.output_tokens;
+                    unpriced_cache_read_tokens += ms.cache_read_tokens;
+                    unpriced_cache_creation_tokens += ms.cache_creation_tokens;
+                    unpriced_models.push(ms.model.clone());
+                    ms.cost_per_line = None;
+                    tracing::warn!(
+                        model = %ms.model,
+                        input_tokens = ms.input_tokens,
+                        output_tokens = ms.output_tokens,
+                        cache_read_tokens = ms.cache_read_tokens,
+                        cache_creation_tokens = ms.cache_creation_tokens,
+                        "Missing pricing for model in contributions; model cost left unpriced"
+                    );
+                }
             }
         }
-    }
+
+        let priced_token_coverage = if all_tokens_total > 0 {
+            priced_tokens_total as f64 / all_tokens_total as f64
+        } else {
+            1.0
+        };
+
+        (
+            total_cost_usd,
+            priced_lines,
+            priced_model_count,
+            unpriced_model_count,
+            unpriced_input_tokens,
+            unpriced_output_tokens,
+            unpriced_cache_read_tokens,
+            unpriced_cache_creation_tokens,
+            priced_token_coverage,
+            unpriced_models,
+        )
+    };
 
     let has_unpriced_usage = unpriced_model_count > 0;
-    let priced_token_coverage = if all_tokens_total > 0 {
-        priced_tokens_total as f64 / all_tokens_total as f64
-    } else {
-        1.0
-    };
 
     let total_lines = agg.ai_lines_added + agg.ai_lines_removed;
     let cost_per_line = if priced_lines > 0 {
@@ -495,6 +721,10 @@ pub async fn get_contributions(
         });
     }
 
+    let meta =
+        fetch_contributions_scope_meta(&state, range, from_date, to_date, project_id, branch)
+            .await?;
+
     // Build response
     let response = ContributionsResponse {
         overview,
@@ -508,6 +738,7 @@ pub async fn get_contributions(
         uncommitted,
         uncommitted_insight,
         warnings,
+        meta,
     };
 
     // Build cache headers
@@ -563,6 +794,7 @@ pub async fn get_session_contribution(
 
     // Generate insight
     let insight = effectiveness_insight(commit_rate, reedit_rate);
+    let meta = fetch_session_contribution_scope_meta(&state, &session_id).await?;
 
     let response = SessionContributionResponse {
         session_id: contribution.session_id,
@@ -577,6 +809,7 @@ pub async fn get_session_contribution(
         commit_rate,
         reedit_rate,
         insight,
+        meta,
     };
 
     // Cache for 5 minutes (session data doesn't change frequently)
@@ -611,7 +844,26 @@ pub async fn get_branch_sessions(
         .get_branch_sessions(&branch, range, from_date, to_date, project_id, limit)
         .await?;
 
-    let response = BranchSessionsResponse { branch, sessions };
+    let branch_filter = if branch == "(no branch)" {
+        None
+    } else {
+        Some(branch.as_str())
+    };
+    let meta = fetch_branch_sessions_scope_meta(
+        &state,
+        branch_filter,
+        range,
+        from_date,
+        to_date,
+        project_id,
+    )
+    .await?;
+
+    let response = BranchSessionsResponse {
+        branch,
+        sessions,
+        meta,
+    };
 
     // Cache for 5 minutes
     let mut headers = HeaderMap::new();
@@ -823,6 +1075,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use claude_view_db::Database;
+    use sqlx::Executor;
     use tower::ServiceExt;
 
     async fn test_db() -> Database {
@@ -846,6 +1099,44 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap(), headers)
     }
 
+    async fn insert_contribution_session(
+        db: &Database,
+        id: &str,
+        last_message_at: i64,
+        is_sidechain: bool,
+        branch: Option<&str>,
+    ) {
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"
+                    INSERT INTO sessions (
+                        id, project_id, file_path, preview, project_path, project_display_name,
+                        duration_seconds, files_edited_count, reedited_files_count, files_read_count,
+                        user_prompt_count, api_call_count, tool_call_count, commit_count, turn_count,
+                        last_message_at, size_bytes, last_message, files_touched, skills_used,
+                        files_read, files_edited, ai_lines_added, ai_lines_removed,
+                        is_sidechain, git_branch
+                    )
+                    VALUES (
+                        ?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp', 'Project',
+                        120, 2, 0, 1,
+                        3, 5, 7, 0, 4,
+                        ?2, 1024, 'last', '[]', '[]',
+                        '[]', '[]', 10, 2,
+                        ?3, ?4
+                    )
+                    "#,
+                )
+                .bind(id)
+                .bind(last_message_at)
+                .bind(is_sidechain)
+                .bind(branch),
+            )
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn test_get_contributions_empty_db() {
         let db = test_db().await;
@@ -867,6 +1158,42 @@ mod tests {
         // Empty responses should not be cached (server may still be generating snapshots)
         let cache_control = headers.get("cache-control").unwrap().to_str().unwrap();
         assert!(cache_control.contains("no-cache"));
+    }
+
+    #[tokio::test]
+    async fn test_get_contributions_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body, _) = do_get(app, "/api/contributions?range=all").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_contributions_includes_session_breakdown_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_contribution_session(&db, "cont-primary", now - 60, false, Some("main")).await;
+        insert_contribution_session(&db, "cont-sidechain", now - 30, true, Some("main")).await;
+
+        let app = build_app(db);
+        let (status, body, _) = do_get(app, "/api/contributions?range=all").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -909,6 +1236,83 @@ mod tests {
 
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["overview"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_get_session_contribution_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_contribution_session(
+            &db,
+            "session-meta-primary",
+            now - 10,
+            false,
+            Some("feature/meta"),
+        )
+        .await;
+
+        let app = build_app(db);
+        let (status, body, _) =
+            do_get(app, "/api/contributions/sessions/session-meta-primary").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_branch_sessions_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_contribution_session(
+            &db,
+            "branch-meta-primary",
+            now - 60,
+            false,
+            Some("feature/meta"),
+        )
+        .await;
+        insert_contribution_session(
+            &db,
+            "branch-meta-sidechain",
+            now - 30,
+            true,
+            Some("feature/meta"),
+        )
+        .await;
+
+        let app = build_app(db);
+        let (status, body, _) = do_get(
+            app,
+            "/api/contributions/branches/feature%2Fmeta/sessions?range=all",
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -979,6 +1383,7 @@ mod tests {
             uncommitted: vec![],
             uncommitted_insight: "No uncommitted work".to_string(),
             warnings: vec![],
+            meta: AnalyticsScopeMeta::new(AnalyticsSessionBreakdown::new(10, 2)),
         };
 
         let json = serde_json::to_string(&response).unwrap();

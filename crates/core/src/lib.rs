@@ -1,5 +1,6 @@
 // crates/core/src/lib.rs
 pub mod accumulator;
+pub mod analytics_scope_contract;
 pub mod branch_filter;
 pub mod category;
 pub mod classification;
@@ -28,6 +29,7 @@ pub mod time_range_contract;
 pub mod types;
 pub mod work_type;
 
+pub use analytics_scope_contract::*;
 pub use branch_filter::*;
 pub use category::*;
 pub use cli::{resolved_cli_path, ClaudeCliStatus};
