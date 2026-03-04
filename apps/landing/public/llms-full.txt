@@ -127,38 +127,45 @@ import { Steps } from '@astrojs/starlight/components';
 
 ---
 title: Agent Control
-description: Send messages, approve tool calls, and control Claude Code agents from any device.
+description: Send messages, approve tool calls, and resume Claude Code sessions from your web dashboard.
 ---
 
-Agent Control lets you interact with running Claude Code sessions — approve tool calls, send follow-up messages, or stop runaway agents.
-
-## Prerequisites
-
-Agent Control requires the cloud relay (`claude-view-relay`). Self-hosted users can only monitor sessions; control features require a relay connection.
-
-> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). Free tier has full monitoring.
+Agent Control lets you interact with running Claude Code sessions directly from the web dashboard — approve tool calls, send follow-up messages, review plans, or stop runaway agents.
 
 ## What you can do
 
-- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from any device
-- **Send messages** — inject a message into the agent's conversation
+- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from the dashboard
+- **Send messages** — inject a follow-up message into the agent's conversation
+- **Review plans** — approve or reject agent plans before implementation starts
+- **Answer questions** — respond to agent clarification prompts (AskUserQuestion, Elicitation)
 - **Stop agent** — gracefully stop a running session
 
 ## How it works
 
-The claude-view server connects to the Fly.io relay via WebSocket. Your mobile app or remote browser session authenticates via a QR code pairing flow. All traffic is end-to-end encrypted with NaCl (libsodium).
+Agent control uses a Node.js sidecar process powered by the Claude Agent SDK. The sidecar connects to your running Claude Code sessions via IPC and exposes control actions through the claude-view web dashboard.
 
-## Pairing your phone
+All control actions work **locally** — no cloud relay needed for web dashboard control.
 
-1. Open claude-view on your desktop: `npx claude-view`
-2. Click **Pair Mobile** in the top right
-3. Scan the QR code with the claude-view mobile app
-4. Your phone shows the same Mission Control view
+## Remote control (mobile)
+
+For controlling agents from your phone or a remote browser, the cloud relay is required. The relay forwards encrypted control messages between your device and the desktop server.
+
+> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). The web dashboard is always free.
+
+## Chat interface
+
+The dashboard includes a full chat interface with:
+- Streaming message display
+- Interactive permission cards with countdown auto-deny
+- Plan approval cards
+- Elicitation/question response cards
+- Session resume with cost estimation (ResumePreFlight)
 
 ## Related
 
 - [Mission Control →](/docs/features/mission-control/) — live agent monitoring
 - [Mobile Setup →](/docs/guides/mobile-setup/) — iOS and Android app setup
+- [Claude Code Plugin →](/docs/guides/plugin/) — auto-start, 8 tools, 3 skills
 
 
 --- docs/docs/features/ai-fluency-score.mdx ---
@@ -246,7 +253,7 @@ Access cost data programmatically via the MCP server:
 
 ---
 title: Mission Control
-description: Real-time dashboard for monitoring all active Claude Code agents simultaneously.
+description: Real-time dashboard for monitoring and controlling all active Claude Code agents.
 ---
 
 Mission Control is a live view of all running Claude Code sessions. It updates in real time via WebSocket — no refresh needed.
@@ -255,28 +262,48 @@ Mission Control is a live view of all running Claude Code sessions. It updates i
 
 Each agent card shows:
 - **Status** — running (green), waiting for input (amber), done (gray), error (red)
-- **Current task** — the most recent tool call or message
+- **Current task** — the most recent tool call or user message
 - **Cost** — cumulative token cost for the session
 - **Duration** — time elapsed since session start
+- **Context gauge** — real-time context window usage
+- **Cache countdown** — time until prompt cache expires
+- **IDE file** — which file the user was editing when they last messaged
+
+## Views
+
+Mission Control offers three layout modes:
+- **Grid** — compact card grid for monitoring many agents at once
+- **List** — detailed single-column view with more information per session
+- **Monitor** — live chat grid showing streaming conversations side by side
+
+You can also create **custom layouts** using drag-and-drop panels (powered by dockview). Save and load layout presets.
 
 ## Cost tracking
 
-Token costs update live as agents work. claude-view uses current Anthropic pricing to calculate USD costs per model. The total across all active agents is shown in the header.
+Token costs update live as agents work. claude-view uses current Anthropic pricing per model (with tiered pricing for large contexts). The total across all active agents is shown in the header.
+
+## Sub-agent visualization
+
+When a session spawns sub-agents (via the Agent tool), Mission Control shows the full agent tree — parent and children, each with their own status and cost tracking.
 
 ## Session control
 
 From Mission Control, you can:
-- **Click a session** to open the full session detail view
-- **Kill a session** — stops the Claude Code process (with confirmation)
+- **Click a session** to open the full session detail view with chat history
+- **Send messages** to a running agent
+- **Approve or reject** tool call permissions
+- **Review plans** before the agent implements them
+- **Stop a session** (with confirmation)
 
 ## Real-time updates
 
-Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically.
+Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically with exponential backoff.
 
 ## Related
 
-- [Agent Control →](/docs/features/agent-control/) — send messages and approve tool calls
+- [Agent Control →](/docs/features/agent-control/) — interactive control details
 - [Cost Tracking →](/docs/features/cost-tracking/) — detailed token usage breakdown
+- [Session Browser →](/docs/features/session-browser/) — historical session list
 
 
 --- docs/docs/features/search.mdx ---
@@ -359,6 +386,53 @@ Click any session to see:
 - Per-message token counts
 - Tool call details (input/output)
 - Timeline of events
+
+
+--- docs/docs/guides/mobile-setup.mdx ---
+
+---
+title: Mobile App Setup
+description: Set up the claude-view mobile app on iOS or Android.
+---
+import WaitlistForm from '../../../../components/WaitlistForm.astro';
+
+The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
+
+> **Status:** The mobile app is currently in development. Join the waitlist to be notified when it launches.
+
+<WaitlistForm variant="compact" />
+
+## Prerequisites
+
+- claude-view server running on your desktop (`npx claude-view`)
+- iOS 16+ or Android 12+
+- Same network OR cloud relay (Pro tier)
+
+## Coming soon
+
+The mobile app will include:
+- Real-time Mission Control view
+- Push notifications for agent events (tool approvals, completions)
+- Agent control (approve/reject tool calls, send messages)
+- QR code pairing — scan once, connect automatically
+
+## Pairing flow (preview)
+
+1. Install the claude-view app (App Store or Google Play)
+2. Open claude-view on desktop and click **Pair Mobile**
+3. A QR code appears — scan it with the mobile app
+4. Your phone connects securely via end-to-end encrypted relay
+
+All data in transit is encrypted with NaCl (libsodium). The relay never sees decrypted content.
+
+## Notifications
+
+The mobile app receives push notifications when:
+- An agent requests tool approval
+- A long-running session completes
+- An agent encounters an error
+
+Notification delivery requires the cloud relay (Pro tier).
 
 
 --- docs/docs/guides/plugin.mdx ---
@@ -457,53 +531,6 @@ The very first session after install may take 5–30 seconds to download the Rus
 ## Configuration
 
 Set `CLAUDE_VIEW_PORT` to override the default port (47892). Both the hook and MCP client respect this variable.
-
-
---- docs/docs/guides/mobile-setup.mdx ---
-
----
-title: Mobile App Setup
-description: Set up the claude-view mobile app on iOS or Android.
----
-import WaitlistForm from '../../../../components/WaitlistForm.astro';
-
-The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
-
-> **Status:** The mobile app is currently in development. Join the waitlist to be notified when it launches.
-
-<WaitlistForm variant="compact" />
-
-## Prerequisites
-
-- claude-view server running on your desktop (`npx claude-view`)
-- iOS 16+ or Android 12+
-- Same network OR cloud relay (Pro tier)
-
-## Coming soon
-
-The mobile app will include:
-- Real-time Mission Control view
-- Push notifications for agent events (tool approvals, completions)
-- Agent control (approve/reject tool calls, send messages)
-- QR code pairing — scan once, connect automatically
-
-## Pairing flow (preview)
-
-1. Install the claude-view app (App Store or Google Play)
-2. Open claude-view on desktop and click **Pair Mobile**
-3. A QR code appears — scan it with the mobile app
-4. Your phone connects securely via end-to-end encrypted relay
-
-All data in transit is encrypted with NaCl (libsodium). The relay never sees decrypted content.
-
-## Notifications
-
-The mobile app receives push notifications when:
-- An agent requests tool approval
-- A long-running session completes
-- An agent encounters an error
-
-Notification delivery requires the cloud relay (Pro tier).
 
 
 --- docs/docs/installation.mdx ---
