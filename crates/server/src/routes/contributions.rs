@@ -85,7 +85,7 @@ pub struct BranchSessionsQuery {
 
 /// Fluency metrics for the overview card.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FluencyMetrics {
     #[ts(type = "number")]
@@ -97,7 +97,7 @@ pub struct FluencyMetrics {
 
 /// Output metrics for the overview card.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OutputMetrics {
     #[ts(type = "number")]
@@ -113,7 +113,7 @@ pub struct OutputMetrics {
 
 /// Effectiveness metrics for the overview card.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EffectivenessMetrics {
     pub commit_rate: Option<f64>,
@@ -123,7 +123,7 @@ pub struct EffectivenessMetrics {
 
 /// Overview section combining all three metric cards.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OverviewMetrics {
     pub fluency: FluencyMetrics,
@@ -133,7 +133,7 @@ pub struct OverviewMetrics {
 
 /// Efficiency metrics section.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyMetrics {
     pub total_cost: f64,
@@ -148,7 +148,7 @@ pub struct EfficiencyMetrics {
 
 /// Warning attached to response when data is incomplete.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionWarning {
     pub code: String,
@@ -157,7 +157,7 @@ pub struct ContributionWarning {
 
 /// Main response for GET /api/contributions.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionsResponse {
     /// Overview cards (fluency, output, effectiveness)
@@ -186,7 +186,7 @@ pub struct ContributionsResponse {
 
 /// Response for GET /api/contributions/sessions/:id.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContributionResponse {
     /// Session ID
@@ -222,7 +222,7 @@ pub struct SessionContributionResponse {
 
 /// Response for GET /api/contributions/branches/:name/sessions.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSessionsResponse {
     /// Branch name

@@ -40,9 +40,12 @@ pub struct TokenBreakdown {
 
 /// Accumulated token counts for a live session.
 #[derive(Debug, Clone, Default, Serialize, TS)]
-#[ts(
-    export,
-    export_to = "../../../../../packages/shared/src/types/generated/"
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
@@ -59,9 +62,12 @@ pub struct TokenUsage {
 
 /// Itemized cost breakdown in USD.
 #[derive(Debug, Clone, Default, Serialize, TS)]
-#[ts(
-    export,
-    export_to = "../../../../../packages/shared/src/types/generated/"
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct CostBreakdown {
@@ -77,9 +83,12 @@ pub struct CostBreakdown {
 
 /// Whether the Anthropic prompt cache is likely warm or cold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(
-    export,
-    export_to = "../../../../../packages/shared/src/types/generated/"
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "snake_case")]
 pub enum CacheStatus {

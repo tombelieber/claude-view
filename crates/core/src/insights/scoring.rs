@@ -36,7 +36,7 @@ impl Actionability {
 
 /// Scored pattern result with individual component scores.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PatternScore {
     /// Effect size score (0.0-1.0).

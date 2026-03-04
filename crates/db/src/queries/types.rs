@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 /// Branch count for a project.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchCount {
     pub branch: Option<String>,
@@ -25,7 +25,7 @@ pub struct IndexerEntry {
 
 /// An invocable (tool/skill/MCP) with its aggregated invocation count.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InvocableWithCount {
     pub id: String,
@@ -56,7 +56,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for InvocableWithCount {
 
 /// A model record with aggregated usage stats (for GET /api/models).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelWithStats {
     pub id: String,
@@ -89,7 +89,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 
 /// Aggregate token usage statistics (for GET /api/stats/tokens).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
     #[ts(type = "number")]
@@ -109,7 +109,7 @@ pub struct TokenStats {
 
 /// Token usage breakdown by model.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByModel {
     pub model: String,
@@ -121,7 +121,7 @@ pub struct TokensByModel {
 
 /// Token usage breakdown by project.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByProject {
     pub project: String,
@@ -133,7 +133,7 @@ pub struct TokensByProject {
 
 /// Aggregate cost breakdown in USD (computed from per-model token data + pricing engine).
 #[derive(Debug, Clone, Default, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AggregateCostBreakdown {
     pub total_cost_usd: f64,
@@ -146,7 +146,7 @@ pub struct AggregateCostBreakdown {
 
 /// AI Generation statistics (for GET /api/stats/ai-generation).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AIGenerationStats {
     #[ts(type = "number")]
@@ -178,7 +178,7 @@ pub struct AIGenerationStats {
 /// Named SystemStorageStats to avoid ts-rs export collision with the richer
 /// StorageStats in routes/stats.rs (which is the user-facing settings version).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemStorageStats {
     #[ts(type = "number")]
@@ -195,7 +195,7 @@ pub struct SystemStorageStats {
 
 /// Health status enum for the system page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
     Healthy,
@@ -205,7 +205,7 @@ pub enum HealthStatus {
 
 /// Health statistics for the system page.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthStats {
     #[ts(type = "number")]
@@ -223,7 +223,7 @@ pub struct HealthStats {
 
 /// Classification status summary for the system page.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationStatus {
     #[ts(type = "number")]
@@ -244,7 +244,7 @@ pub struct ClassificationStatus {
 
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
     #[ts(type = "number")]

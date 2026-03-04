@@ -3,9 +3,10 @@
 // Also contains the two-pass indexing pipeline: Pass 1 (index JSON) and Pass 2 (deep JSONL).
 
 use claude_view_core::{
-    classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
-    ClassificationInput, ClassifyResult, Registry, ToolCounts,
+    classify_work_type, count_ai_lines, discover_orphan_sessions,
+    pricing::{calculate_cost, default_pricing, fill_tiering_gaps, ModelPricing, TokenUsage},
+    read_all_session_indexes, resolve_cwd_for_project, resolve_project_path_with_cwd,
+    resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
 use memchr::memmem;
 use serde::de::{self, SeqAccess, Visitor};
@@ -25,14 +26,17 @@ use crate::Database;
 /// Version 4: LOC estimation, AI contribution tracking, work type classification.
 /// Version 5: Git branch extraction, primary model detection.
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
-/// Version 7: Search index uses project_display_name instead of encoded project_id.
+/// Version 7: Search index uses effective project identity (git_root or project_id) for sidebar filter alignment.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
 /// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
 /// Version 11: Unified session pipeline — single-pass parse-before-write.
 /// Version 12: valid_sessions view no longer requires last_message_at > 0.
 /// Version 13: Unified pipeline writes turns, models, invocations, and search index.
-pub const CURRENT_PARSE_VERSION: i32 = 13;
+/// Version 14: Task-time turns split on interactive human tool_result responses.
+/// Version 15: Cost computed from token counts when costUSD is null in JSONL.
+/// Version 16: Per-turn cost computation (200k tiering per-API-request, not per-session).
+pub const CURRENT_PARSE_VERSION: i32 = 16;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -160,6 +164,28 @@ fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> 
         .into_iter()
         .max_by_key(|&(_, count)| count)
         .map(|(model, _)| model.to_string())
+}
+
+/// Compute total cost by summing per-turn costs (each turn = one API call).
+/// This avoids inflating cost by applying 200k tiered pricing to cumulative tokens.
+fn calculate_per_turn_cost(
+    turns: &[claude_view_core::RawTurn],
+    pricing: &HashMap<String, ModelPricing>,
+) -> f64 {
+    let mut total = 0.0;
+    for turn in turns {
+        let tokens = TokenUsage {
+            input_tokens: turn.input_tokens.unwrap_or(0),
+            output_tokens: turn.output_tokens.unwrap_or(0),
+            cache_read_tokens: turn.cache_read_tokens.unwrap_or(0),
+            cache_creation_tokens: turn.cache_creation_tokens.unwrap_or(0),
+            cache_creation_5m_tokens: 0,
+            cache_creation_1hr_tokens: 0,
+            total_tokens: 0,
+        };
+        total += calculate_cost(&tokens, Some(&turn.model_id), pricing).total_usd;
+    }
+    total
 }
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
@@ -476,7 +502,7 @@ pub struct ParseResult {
 pub struct DeepIndexResult {
     pub session_id: String,
     pub file_path: String,
-    /// Project name (from sessions table `project_id` column), used for search indexing.
+    /// Effective project identity (git_root or project_id), used for search indexing.
     pub project: String,
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
@@ -704,6 +730,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // Turn detection: tool_result user messages are continuations, not real turns
     let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
+    // Interactive tool_result markers: these represent human responses and should
+    // start a new active turn.
+    let tool_result_questions_finder = memmem::Finder::new(b"\"toolUseResult\":{\"questions\"");
+    let tool_result_rejected_finder =
+        memmem::Finder::new(b"\"toolUseResult\":\"User rejected tool use\"");
 
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
@@ -792,18 +823,27 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             user_count += 1;
             // Check if this is a tool_result continuation (not a real user turn)
             let is_tool_result = tool_result_finder.find(line).is_some();
+            let has_interactive_tool_result_marker = is_tool_result
+                && (tool_result_questions_finder.find(line).is_some()
+                    || tool_result_rejected_finder.find(line).is_some());
+            let mut is_human_tool_result = false;
             let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                if first_user_content.is_none()
-                    && !is_system_user_content(&content)
-                    && !is_tool_result
-                {
+                is_human_tool_result = is_tool_result
+                    && (has_interactive_tool_result_marker
+                        || is_human_tool_result_content(&content));
+                let is_real_user_input =
+                    !is_system_user_content(&content) && (!is_tool_result || is_human_tool_result);
+
+                if first_user_content.is_none() && is_real_user_input {
                     first_user_content = Some(content.clone());
                 }
                 last_user_content = Some(content.clone());
 
-                // Turn detection: real user prompts (not system prefixes, not tool_result)
-                if !is_tool_result && !is_system_user_content(&content) {
+                // Turn detection: real user prompts and human interactive tool responses.
+                // Regular tool_result payloads (Read/Edit/Bash output, web search output, etc.)
+                // remain continuations of the current turn.
+                if is_real_user_input {
                     let current_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
                     // Close previous turn if one was open
                     if let (Some(start_ts), Some(end_ts)) =
@@ -840,7 +880,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
-                let search_role = if is_tool_result { "tool" } else { "user" };
+                let search_role = if is_tool_result && !is_human_tool_result {
+                    "tool"
+                } else {
+                    "user"
+                };
                 result
                     .search_messages
                     .push(claude_view_core::SearchableMessage {
@@ -985,21 +1029,30 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 diag.lines_user += 1;
                 user_count += 1;
                 let is_tool_result = tool_result_finder.find(line).is_some();
+                let mut is_human_tool_result = false;
                 let fallback_user_ts = extract_timestamp_from_value(&value);
                 let mut fallback_user_text: Option<String> = None;
                 if let Some(content) =
                     extract_first_text_content(line, &content_finder, &text_finder)
                 {
-                    if first_user_content.is_none()
-                        && !is_system_user_content(&content)
-                        && !is_tool_result
-                    {
+                    let has_interactive_tool_result_marker =
+                        value.get("toolUseResult").is_some_and(|tr| {
+                            tr.get("questions").is_some()
+                                || tr.as_str() == Some("User rejected tool use")
+                        });
+                    is_human_tool_result = is_tool_result
+                        && (has_interactive_tool_result_marker
+                            || is_human_tool_result_content(&content));
+                    let is_real_user_input = !is_system_user_content(&content)
+                        && (!is_tool_result || is_human_tool_result);
+
+                    if first_user_content.is_none() && is_real_user_input {
                         first_user_content = Some(content.clone());
                     }
                     last_user_content = Some(content.clone());
 
-                    // Turn detection: real user prompts (not system prefixes, not tool_result)
-                    if !is_tool_result && !is_system_user_content(&content) {
+                    // Turn detection: real user prompts and human interactive tool responses.
+                    if is_real_user_input {
                         // Timestamp was already extracted above (before the match)
                         let current_ts = fallback_user_ts;
                         // Close previous turn if one was open
@@ -1029,7 +1082,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
-                    let search_role = if is_tool_result { "tool" } else { "user" };
+                    let search_role = if is_tool_result && !is_human_tool_result {
+                        "tool"
+                    } else {
+                        "user"
+                    };
                     result
                         .search_messages
                         .push(claude_view_core::SearchableMessage {
@@ -1933,7 +1990,7 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
     }
 }
 
-use claude_view_core::is_system_user_content;
+use claude_view_core::{is_human_tool_result_content, is_system_user_content};
 
 /// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
 /// Used when the typed AssistantLine parse fails but we still want to capture skills.
@@ -2735,7 +2792,13 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
-            meta.total_cost_usd,
+            if meta.total_cost_usd > 0.0 {
+                meta.total_cost_usd
+            } else {
+                let mut pricing = default_pricing();
+                fill_tiering_gaps(&mut pricing);
+                calculate_per_turn_cost(&result.parse_result.turns, &pricing)
+            },
         )
         .await
         .map_err(|e| {
@@ -3114,6 +3177,16 @@ where
                 .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path)
                 .map(|s| s.to_string());
 
+            // Compute cost per-turn (each turn = one API call) to avoid inflating cost
+            // by applying 200k tiered pricing to cumulative session tokens.
+            let total_cost_usd = if meta.total_cost_usd > 0.0 {
+                meta.total_cost_usd
+            } else {
+                let mut pricing = default_pricing();
+                fill_tiering_gaps(&mut pricing);
+                calculate_per_turn_cost(&parse_result.turns, &pricing)
+            };
+
             // Build ParsedSession
             let sid = session_id.clone();
             let parsed = ParsedSession {
@@ -3178,8 +3251,16 @@ where
                 total_task_time_seconds: Some(meta.total_task_time_seconds as i64),
                 longest_task_seconds: meta.longest_task_seconds.map(|v| v as i64),
                 longest_task_preview: meta.longest_task_preview.clone(),
-                total_cost_usd: meta.total_cost_usd,
+                total_cost_usd,
             };
+
+            // Use git_root as project identity for search (matches sidebar filter).
+            // Falls back to encoded project_id when git_root is absent.
+            let project_for_search = git_root
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&effective_encoded)
+                .to_string();
 
             Ok((
                 Some(IndexedSession {
@@ -3190,7 +3271,7 @@ where
                     search_messages: parse_result.search_messages,
                     cwd: cwd_owned,
                     git_root,
-                    project_for_search: effective_encoded,
+                    project_for_search,
                 }),
                 sid,
             ))
@@ -4864,6 +4945,42 @@ mod tests {
             result.deep.longest_task_preview.as_deref(),
             Some("Read the file")
         );
+    }
+
+    #[test]
+    fn test_task_time_human_tool_result_starts_new_turn() {
+        // Interactive question-response tool_result should count as user input.
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Plan the release"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"What release type do you want?"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700001000,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"User has answered your questions: \"Release type?\"=\"Patch\". You can now continue with the user's answers in mind."}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700001030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Split into 2 active runs:
+        // 1) 1700000000 -> 1700000030 = 30s
+        // 2) 1700001000 -> 1700001030 = 30s
+        assert_eq!(result.deep.total_task_time_seconds, 60);
+        assert_eq!(result.deep.longest_task_seconds, Some(30));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Plan the release")
+        );
+    }
+
+    #[test]
+    fn test_task_time_human_tool_result_detected_by_structured_marker() {
+        // Even if content wording changes, structured toolUseResult.questions
+        // should still mark this as human input that starts a new turn.
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Plan the release"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Pick one"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700001000,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"selection received"}]},"toolUseResult":{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"a"},{"label":"B","description":"b"}],"multiSelect":false}],"answers":{"Pick one":"A"}}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700001030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.total_task_time_seconds, 60);
+        assert_eq!(result.deep.longest_task_seconds, Some(30));
     }
 
     #[test]

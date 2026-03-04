@@ -500,6 +500,8 @@ pub(crate) struct SessionRow {
     pub(crate) total_task_time_seconds: Option<i32>,
     pub(crate) longest_task_seconds: Option<i32>,
     pub(crate) longest_task_preview: Option<String>,
+    // Cost (None for sessions indexed before this field existed)
+    pub(crate) total_cost_usd: Option<f64>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -575,6 +577,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             total_task_time_seconds: row.try_get("total_task_time_seconds").ok().flatten(),
             longest_task_seconds: row.try_get("longest_task_seconds").ok().flatten(),
             longest_task_preview: row.try_get("longest_task_preview").ok().flatten(),
+            // Cost — silently None if column not in SELECT or row predates this field
+            total_cost_usd: row.try_get("total_cost_usd").ok().flatten(),
         })
     }
 }
@@ -662,6 +666,8 @@ impl SessionRow {
             total_task_time_seconds: self.total_task_time_seconds.map(|v| v as u32),
             longest_task_seconds: self.longest_task_seconds.map(|v| v as u32),
             longest_task_preview: self.longest_task_preview,
+            // Cost
+            total_cost_usd: self.total_cost_usd,
         }
     }
 }

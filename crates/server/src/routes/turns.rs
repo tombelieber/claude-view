@@ -25,7 +25,7 @@ use crate::state::AppState;
 
 /// A single turn in the session breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TurnInfo {
     /// 1-based turn index.
@@ -422,6 +422,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
