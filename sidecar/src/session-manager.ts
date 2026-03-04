@@ -25,7 +25,7 @@ interface ControlSession {
   sessionId: string
   sdkSession: SDKSession
   status: 'active' | 'waiting_input' | 'waiting_permission' | 'completed' | 'error'
-  totalCost: number
+  totalCost: number | null
   turnCount: number
   contextUsage: number // 0-100 percentage of context window used
   startedAt: number
@@ -99,7 +99,7 @@ export class SessionManager {
       sessionId,
       sdkSession,
       status: 'waiting_input',
-      totalCost: 0,
+      totalCost: null,
       turnCount: 0,
       contextUsage: 0,
       startedAt: Date.now(),
@@ -320,7 +320,7 @@ export class SessionManager {
             case 'result': {
               const resultMsg = msg as SDKMessage & { type: 'result' }
               if (resultMsg.subtype === 'success') {
-                cs.totalCost = resultMsg.total_cost_usd ?? 0
+                cs.totalCost = resultMsg.total_cost_usd ?? null
                 cs.turnCount = resultMsg.num_turns ?? 0
               }
               cs.status = 'waiting_input'
@@ -328,7 +328,7 @@ export class SessionManager {
                 type: 'assistant_done',
                 messageId,
                 usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-                cost: 0,
+                cost: null,
                 totalCost: cs.totalCost,
               } satisfies ServerMessage)
               break

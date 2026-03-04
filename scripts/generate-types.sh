@@ -23,14 +23,17 @@ echo "Generating TypeScript types from Rust structs..."
 # Run only the export_bindings tests with the `codegen` feature enabled.
 # Without `--features codegen`, #[ts(export)] is gated off via cfg_attr,
 # so normal `cargo test` never touches the generated files.
-cargo test -p claude-view-core --features codegen export_bindings -- --nocapture 2>/dev/null || true
-cargo test -p claude-view-server --features codegen export_bindings -- --nocapture 2>/dev/null || true
+cargo test -p claude-view-core --features codegen export_bindings -- --nocapture
+cargo test -p claude-view-db --features codegen export_bindings -- --nocapture
+cargo test -p claude-view-server --features codegen export_bindings -- --nocapture
 
 # Post-process: fix cross-package JsonValue import that ts-rs generates
 # ts-rs resolves serde_json::Value to apps/web/... but we use a local shim
 AGENT_STATE="packages/shared/src/types/generated/AgentState.ts"
 if [ -f "$AGENT_STATE" ]; then
-  sed -i '' "s|import type { JsonValue } from .*serde_json/JsonValue.*|import type { JsonValue } from './JsonValue'|" "$AGENT_STATE"
+  tmp_file="$(mktemp)"
+  sed "s|import type { JsonValue } from .*serde_json/JsonValue.*|import type { JsonValue } from './JsonValue'|" "$AGENT_STATE" >"$tmp_file"
+  mv "$tmp_file" "$AGENT_STATE"
 fi
 
 # Format + organize imports with Biome so output matches project style and pre-commit hook
@@ -38,11 +41,9 @@ fi
 # Linting is disabled for generated dirs via biome.json overrides
 echo ""
 echo "Formatting generated types with Biome..."
-if ! bunx biome check --write --no-errors-on-unmatched \
+bunx biome check --write --no-errors-on-unmatched \
   packages/shared/src/types/generated/ \
-  apps/web/src/types/generated/; then
-  echo "WARNING: Biome formatting failed — generated types may have style diffs"
-fi
+  apps/web/src/types/generated/
 
 echo ""
 echo "=== Shared types (packages/shared/src/types/generated/) ==="

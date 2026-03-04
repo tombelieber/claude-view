@@ -33,7 +33,7 @@ export type AggregatedContributions = {
    */
   tokensUsed: number
   /**
-   * Total estimated cost in cents
+   * Total cost in cents
    */
   costCents: number
   /**

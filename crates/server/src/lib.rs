@@ -22,6 +22,7 @@ pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
 pub mod terminal_state;
+pub mod time_range;
 
 pub use error::*;
 pub use facet_ingest::{FacetIngestState, IngestStatus};
