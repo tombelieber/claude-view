@@ -1,11 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
 import type {
-  BranchSessionsResponse,
-  ContributionsResponse,
-  SessionContributionResponse,
+  BranchSessionsResponse as GeneratedBranchSessionsResponse,
+  ContributionsResponse as GeneratedContributionsResponse,
+  SessionContributionResponse as GeneratedSessionContributionResponse,
 } from '../types/generated'
+import type { AnalyticsScopeContractMeta } from './use-dashboard'
 import { HttpError, isNotFoundError } from './use-session'
 import type { TimeRangePreset } from './use-time-range'
+
+export type ContributionsResponse = GeneratedContributionsResponse & {
+  meta?: AnalyticsScopeContractMeta
+}
+
+export type SessionContributionResponse = GeneratedSessionContributionResponse & {
+  meta?: AnalyticsScopeContractMeta
+}
+
+export type BranchSessionsResponse = GeneratedBranchSessionsResponse & {
+  meta?: AnalyticsScopeContractMeta
+}
 
 /**
  * Map frontend presets to the contributions API's expected range strings.
@@ -195,9 +208,6 @@ function getStaleTime(preset: TimeRangePreset): number {
 // Re-export types for convenience
 export type {
   BranchSession,
-  BranchSessionsResponse,
-  ContributionsResponse,
-  SessionContributionResponse,
   OverviewMetrics,
   FluencyMetrics,
   OutputMetrics,

@@ -47,6 +47,43 @@ function formatShortDate(ts: number | null | undefined): string {
   })
 }
 
+type ScopeMeta = {
+  dataScope?: {
+    sessions?: ScopeValue
+    workload?: ScopeValue
+  }
+  sessionBreakdown?: {
+    primarySessions?: number
+    sidechainSessions?: number
+    otherSessions?: number
+    totalObservedSessions?: number
+  }
+}
+
+type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
+
+function scopeLabel(scope: ScopeValue | undefined): string {
+  return scope === 'primary_plus_subagent_work'
+    ? 'primary + subagent work'
+    : 'primary sessions only'
+}
+
+function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
+  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
+  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
+  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
+  const totalObservedSessions =
+    meta?.sessionBreakdown?.totalObservedSessions ??
+    primarySessions + sidechainSessions + otherSessions
+
+  return {
+    primarySessions,
+    sidechainSessions,
+    otherSessions,
+    totalObservedSessions,
+  }
+}
+
 export function StatsDashboard() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -96,6 +133,10 @@ export function StatsDashboard() {
   }
 
   const maxProjectSessions = stats.topProjects[0]?.sessionCount || 1
+  const dashboardMeta = stats.meta as ScopeMeta | undefined
+  const sessionBreakdown = resolveSessionBreakdown(dashboardMeta, stats.totalSessions)
+  const sessionsScope = scopeLabel(dashboardMeta?.dataScope?.sessions)
+  const workloadScope = scopeLabel(dashboardMeta?.dataScope?.workload)
 
   const handleInvocableClick = (name: string) => {
     navigate(`/search?q=${encodeURIComponent(`skill:${name.replace('/', '')}`)}`)
@@ -175,7 +216,7 @@ export function StatsDashboard() {
             <span>
               {stats.periodStart && stats.periodEnd
                 ? `Showing stats from ${formatTimestampDate(stats.periodStart)} - ${formatTimestampDate(stats.periodEnd)}`
-                : 'Showing all-time stats'}
+                : 'Showing full-history stats'}
             </span>
             {stats.dataStartDate && (
               <span className="text-gray-400 dark:text-gray-500">
@@ -183,6 +224,13 @@ export function StatsDashboard() {
               </span>
             )}
           </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Session counts show {sessionsScope}. Workload metrics include {workloadScope}. Observed
+            sessions: {sessionBreakdown.primarySessions.toLocaleString()} primary,{' '}
+            {sessionBreakdown.sidechainSessions.toLocaleString()} sidechain,{' '}
+            {sessionBreakdown.otherSessions.toLocaleString()} other,{' '}
+            {sessionBreakdown.totalObservedSessions.toLocaleString()} total.
+          </p>
         </div>
 
         {/* Phase 3: Week-over-week metrics grid */}

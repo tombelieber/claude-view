@@ -10,6 +10,43 @@ import { CostBreakdownCard } from './CostBreakdownCard'
 import { TokenBreakdown } from './TokenBreakdown'
 import { ProgressBar } from './ui'
 
+type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
+
+type ScopeMeta = {
+  dataScope?: {
+    sessions?: ScopeValue
+    workload?: ScopeValue
+  }
+  sessionBreakdown?: {
+    primarySessions?: number
+    sidechainSessions?: number
+    otherSessions?: number
+    totalObservedSessions?: number
+  }
+}
+
+function scopeLabel(scope: ScopeValue | undefined): string {
+  return scope === 'primary_plus_subagent_work'
+    ? 'primary + subagent work'
+    : 'primary sessions only'
+}
+
+function resolveSessionBreakdown(meta: ScopeMeta | undefined) {
+  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? 0
+  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
+  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
+  const totalObservedSessions =
+    meta?.sessionBreakdown?.totalObservedSessions ??
+    primarySessions + sidechainSessions + otherSessions
+
+  return {
+    primarySessions,
+    sidechainSessions,
+    otherSessions,
+    totalObservedSessions,
+  }
+}
+
 interface AIGenerationStatsProps {
   /** Optional time range filter */
   timeRange?: TimeRangeParams | null
@@ -71,6 +108,10 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
   // Check if we have any meaningful data
   const hasTokenData = stats.totalInputTokens > 0 || stats.totalOutputTokens > 0
   const hasFileData = stats.filesCreated > 0
+  const scopeMeta = stats.meta as ScopeMeta | undefined
+  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
+  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
 
   // If no data at all, don't show the component
   if (!hasTokenData && !hasFileData) {
@@ -79,6 +120,14 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Session counts show {sessionsScope}. Workload metrics include {workloadScope}. Observed
+        sessions: {sessionBreakdown.primarySessions.toLocaleString()} primary,{' '}
+        {sessionBreakdown.sidechainSessions.toLocaleString()} sidechain,{' '}
+        {sessionBreakdown.otherSessions.toLocaleString()} other,{' '}
+        {sessionBreakdown.totalObservedSessions.toLocaleString()} total.
+      </p>
+
       {/* Token Usage Breakdowns */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         {/* Token Usage by Model */}

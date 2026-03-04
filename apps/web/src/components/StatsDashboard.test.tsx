@@ -46,6 +46,22 @@ function makeStats(overrides = {}) {
     comparisonPeriodStart: null,
     comparisonPeriodEnd: null,
     dataStartDate: 1704067200, // Jan 1 2024
+    meta: {
+      ranges: {
+        currentPeriod: { from: 1706745600, to: 1707350400, source: 'explicit_bounds' },
+        heatmap: { from: 1699401600, to: 1707350400, source: 'explicit_bounds' },
+      },
+      dataScope: {
+        sessions: 'primary_sessions_only',
+        workload: 'primary_plus_subagent_work',
+      },
+      sessionBreakdown: {
+        primarySessions: 42,
+        sidechainSessions: 8,
+        otherSessions: 1,
+        totalObservedSessions: 51,
+      },
+    },
     currentWeek: {
       sessionCount: BigInt(10),
       totalTokens: BigInt(5000),
@@ -225,6 +241,18 @@ describe('StatsDashboard', () => {
       renderDashboard()
       expect(screen.getByTestId('ai-generation-stats')).toBeInTheDocument()
     })
+
+    it('should render scope disclosure with session breakdown', () => {
+      renderDashboard()
+      expect(
+        screen.getByText(
+          /Session counts show primary sessions only\. Workload metrics include primary \+ subagent work\./,
+        ),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/Observed sessions: 42 primary, 8 sidechain, 1 other, 51 total\./),
+      ).toBeInTheDocument()
+    })
   })
 
   describe('time range integration', () => {
@@ -260,7 +288,7 @@ describe('StatsDashboard', () => {
         refetch: mockRefetch,
       })
       renderDashboard()
-      expect(screen.getByText('Showing all-time stats')).toBeInTheDocument()
+      expect(screen.getByText('Showing full-history stats')).toBeInTheDocument()
     })
   })
 })

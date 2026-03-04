@@ -49,6 +49,18 @@ function makeStats(overrides = {}) {
       cacheCreationCostUsd: 0.3,
       cacheSavingsUsd: 0.25,
     },
+    meta: {
+      dataScope: {
+        sessions: 'primary_sessions_only',
+        workload: 'primary_plus_subagent_work',
+      },
+      sessionBreakdown: {
+        primarySessions: 44,
+        sidechainSessions: 9,
+        otherSessions: 2,
+        totalObservedSessions: 55,
+      },
+    },
     ...overrides,
   }
 }
@@ -134,6 +146,18 @@ describe('AIGenerationStats', () => {
 
       expect(screen.getByText('Token Usage by Model')).toBeInTheDocument()
       expect(screen.getByText('Top Projects by Token Usage')).toBeInTheDocument()
+    })
+
+    it('should render scope disclosure with session breakdown', () => {
+      render(<AIGenerationStats />)
+      expect(
+        screen.getByText(
+          /Session counts show primary sessions only\. Workload metrics include primary \+ subagent work\./,
+        ),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/Observed sessions: 44 primary, 9 sidechain, 2 other, 55 total\./),
+      ).toBeInTheDocument()
     })
 
     it('should render TokenBreakdown with total tokens processed', () => {

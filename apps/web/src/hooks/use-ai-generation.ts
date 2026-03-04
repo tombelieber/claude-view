@@ -1,8 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import type { AIGenerationStats } from '../types/generated'
+import type {
+  AIGenerationStats as GeneratedAIGenerationStats,
+  TokensByModel,
+  TokensByProject,
+} from '../types/generated'
 import type { TimeRangeParams } from '../types/time-range'
+import type { AnalyticsScopeContractMeta } from './use-dashboard'
 
 export type { TimeRangeParams } from '../types/time-range'
+
+export type AIGenerationStats = GeneratedAIGenerationStats & {
+  meta?: AnalyticsScopeContractMeta
+}
 
 /**
  * Fetch AI generation stats from /api/stats/ai-generation.
@@ -103,4 +112,4 @@ export function formatLineCount(lines: number, showPlus = true): string {
 }
 
 // Re-export types for convenience
-export type { AIGenerationStats, TokensByModel, TokensByProject } from '../types/generated'
+export type { TokensByModel, TokensByProject }

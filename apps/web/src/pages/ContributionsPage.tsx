@@ -17,6 +17,43 @@ import { type ContributionsTimeRange, useContributions } from '../hooks/use-cont
 import { useTimeRange } from '../hooks/use-time-range'
 import { buildSessionUrl } from '../lib/url-utils'
 
+type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
+
+type ScopeMeta = {
+  dataScope?: {
+    sessions?: ScopeValue
+    workload?: ScopeValue
+  }
+  sessionBreakdown?: {
+    primarySessions?: number
+    sidechainSessions?: number
+    otherSessions?: number
+    totalObservedSessions?: number
+  }
+}
+
+function scopeLabel(scope: ScopeValue | undefined): string {
+  return scope === 'primary_plus_subagent_work'
+    ? 'primary + subagent work'
+    : 'primary sessions only'
+}
+
+function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
+  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
+  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
+  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
+  const totalObservedSessions =
+    meta?.sessionBreakdown?.totalObservedSessions ??
+    primarySessions + sidechainSessions + otherSessions
+
+  return {
+    primarySessions,
+    sidechainSessions,
+    otherSessions,
+    totalObservedSessions,
+  }
+}
+
 /**
  * ContributionsPage - AI Contribution Tracking dashboard.
  *
@@ -136,6 +173,10 @@ export function ContributionsPage() {
   }
 
   const sessionCount = data.overview.fluency.sessions
+  const scopeMeta = data.meta as ScopeMeta | undefined
+  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
+  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, Number(sessionCount))
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden p-6">
@@ -157,6 +198,14 @@ export function ContributionsPage() {
           branchFilter={branchFilter}
           onClearBranchFilter={handleClearBranchFilter}
         />
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Session counts show {sessionsScope}. Workload metrics include {workloadScope}. Observed
+          sessions: {sessionBreakdown.primarySessions.toLocaleString()} primary,{' '}
+          {sessionBreakdown.sidechainSessions.toLocaleString()} sidechain,{' '}
+          {sessionBreakdown.otherSessions.toLocaleString()} other,{' '}
+          {sessionBreakdown.totalObservedSessions.toLocaleString()} total.
+        </p>
 
         {/* Warnings */}
         {data.warnings.length > 0 && (
