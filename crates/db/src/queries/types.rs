@@ -142,6 +142,29 @@ pub struct AggregateCostBreakdown {
     pub cache_read_cost_usd: f64,
     pub cache_creation_cost_usd: f64,
     pub cache_savings_usd: f64,
+    /// Sum of cost components computed from models that had a pricing match.
+    pub computed_priced_total_cost_usd: f64,
+    /// Number of models in the query window that had an exact/prefix pricing match.
+    #[ts(type = "number")]
+    pub priced_model_count: i64,
+    /// Number of models in the query window without pricing.
+    #[ts(type = "number")]
+    pub unpriced_model_count: i64,
+    /// Tokens from unpriced models (surfaced explicitly; never converted via fallback rates).
+    #[ts(type = "number")]
+    pub unpriced_input_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_output_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_read_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_creation_tokens: i64,
+    /// Fraction of all tokens that were priced with real model rates [0.0, 1.0].
+    pub priced_token_coverage: f64,
+    /// True when any usage lacked model pricing.
+    pub has_unpriced_usage: bool,
+    /// `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+    pub total_cost_source: String,
 }
 
 /// AI Generation statistics (for GET /api/stats/ai-generation).
@@ -167,11 +190,6 @@ pub struct AIGenerationStats {
     pub tokens_by_project: Vec<TokensByProject>,
     /// Aggregate cost breakdown (computed server-side using pricing engine).
     pub cost: AggregateCostBreakdown,
-    /// Pre-calculated total cost from JSONL costUSD entries.
-    /// None when sessions haven't been re-indexed yet.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub total_cost_usd_from_jsonl: Option<f64>,
 }
 
 /// Storage statistics for the system page (raw DB layer).
