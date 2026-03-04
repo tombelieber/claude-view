@@ -16,7 +16,6 @@ export type ClassificationJob = {
   model: string
   status: ClassificationJobStatus
   errorMessage: string | null
-  costEstimateCents: number | null
   actualCostCents: number | null
   tokensUsed: number | null
 }
