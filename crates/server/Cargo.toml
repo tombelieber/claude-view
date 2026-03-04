@@ -21,6 +21,9 @@ path = "src/main.rs"
 [features]
 default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
 
+# Gate ts-rs file generation. Not in default — only generate-types.sh enables this.
+codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen"]
+
 # Dashboard time range selector (7d/30d/90d/all-time)
 time-range = []
 

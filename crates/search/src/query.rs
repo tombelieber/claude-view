@@ -1,8 +1,13 @@
 use std::collections::HashMap;
+use std::ops::Bound;
 use std::time::Instant;
 
+use chrono::NaiveDate;
+
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, TermQuery};
+use tantivy::query::{
+    BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery,
+};
 use tantivy::schema::IndexRecordOption;
 use tantivy::schema::Value;
 use tantivy::snippet::SnippetGenerator;
@@ -24,6 +29,13 @@ fn truncate_utf8(s: &str, max_bytes: usize) -> String {
     }
     format!("{}...", &s[..end])
 }
+
+/// Boost weights for multi-signal scoring.
+/// Invariant: PHRASE > EXACT > FUZZY (verified by integration tests).
+/// These are starting values — tune based on real session data.
+const PHRASE_BOOST: f32 = 3.0;
+const EXACT_BOOST: f32 = 1.5;
+const FUZZY_BOOST: f32 = 0.5;
 
 /// A parsed qualifier extracted from the query string.
 #[derive(Debug, Clone)]
@@ -61,7 +73,9 @@ fn parse_query_string(raw: &str) -> (String, Vec<Qualifier>) {
     let mut qualifiers = Vec::new();
     let mut text_parts = Vec::new();
 
-    let known_keys = ["project", "branch", "model", "role", "skill"];
+    let known_keys = [
+        "project", "branch", "model", "role", "skill", "session", "after", "before",
+    ];
 
     // Tokenize respecting quoted strings
     let tokens = tokenize_query(raw);
@@ -135,6 +149,29 @@ fn tokenize_query(raw: &str) -> Vec<String> {
     }
 
     tokens
+}
+
+/// Tokenize free-text query terms in a way that mirrors Tantivy's default tokenizer.
+///
+/// Splits on non-alphanumeric characters, lowercases terms, and ignores empties.
+/// If the entire query is wrapped in quotes, strips the wrapper first.
+fn tokenize_text_terms(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+
+    let unquoted = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+
+    unquoted
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
+        .collect()
 }
 
 impl SearchIndex {
@@ -277,38 +314,69 @@ impl SearchIndex {
         // Build the combined query
         let mut sub_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-        // Text query (the main BM25-scored part)
+        // Text query (the main BM25-scored part) — multi-signal: phrase + exact + fuzzy
         if !text_query.trim().is_empty() {
-            // Check if the query is a quoted phrase
-            let trimmed = text_query.trim();
-            if trimmed.starts_with('"') && trimmed.ends_with('"') {
-                // Quoted phrase: use standard query parser (exact phrase match)
-                let query_parser =
-                    tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-                let parsed = query_parser.parse_query(trimmed)?;
-                sub_queries.push((Occur::Must, parsed));
-            } else {
-                // Unquoted: apply fuzzy matching per term (Levenshtein distance=1)
-                let tokens: Vec<&str> = trimmed
-                    .split_whitespace()
-                    .filter(|t| !t.is_empty())
-                    .collect();
+            let tokens = tokenize_text_terms(&text_query);
 
-                if tokens.len() == 1 {
-                    // Single term: fuzzy match
-                    let term = Term::from_field_text(self.content_field, &tokens[0].to_lowercase());
-                    let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
-                    sub_queries.push((Occur::Must, Box::new(fuzzy_query)));
-                } else {
-                    // Multiple terms: each must match (fuzzy), combined with Must
-                    let mut term_queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
-                    for token in &tokens {
-                        let term = Term::from_field_text(self.content_field, &token.to_lowercase());
-                        let fuzzy_query = FuzzyTermQuery::new(term, 1, true);
-                        term_queries.push((Occur::Must, Box::new(fuzzy_query)));
-                    }
-                    sub_queries.push((Occur::Must, Box::new(BooleanQuery::new(term_queries))));
-                }
+            // Build multi-signal query: phrase + exact + fuzzy, all as Should.
+            // At least one signal must match (BooleanQuery with only Should = OR semantics).
+            let mut text_signals: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+            // Signal 1: Exact phrase (highest weight, only for 2+ terms)
+            if tokens.len() >= 2 {
+                let phrase_terms: Vec<Term> = tokens
+                    .iter()
+                    .map(|t| Term::from_field_text(self.content_field, t))
+                    .collect();
+                let phrase_query = PhraseQuery::new(phrase_terms);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(phrase_query), PHRASE_BOOST)),
+                ));
+            }
+
+            // Signal 2: All exact terms present (BM25 scored)
+            {
+                let exact_term_queries: Vec<(Occur, Box<dyn Query>)> = tokens
+                    .iter()
+                    .map(|t| {
+                        let term = Term::from_field_text(self.content_field, t);
+                        (
+                            Occur::Must,
+                            Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+                                as Box<dyn Query>,
+                        )
+                    })
+                    .collect();
+                let exact_query = BooleanQuery::new(exact_term_queries);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(exact_query), EXACT_BOOST)),
+                ));
+            }
+
+            // Signal 3: Fuzzy terms (typo tolerance, lowest weight)
+            {
+                let fuzzy_term_queries: Vec<(Occur, Box<dyn Query>)> = tokens
+                    .iter()
+                    .map(|t| {
+                        let term = Term::from_field_text(self.content_field, t);
+                        (
+                            Occur::Must,
+                            Box::new(FuzzyTermQuery::new(term, 1, true)) as Box<dyn Query>,
+                        )
+                    })
+                    .collect();
+                let fuzzy_query = BooleanQuery::new(fuzzy_term_queries);
+                text_signals.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(fuzzy_query), FUZZY_BOOST)),
+                ));
+            }
+
+            if !text_signals.is_empty() {
+                let text_query_combined = BooleanQuery::new(text_signals);
+                sub_queries.push((Occur::Must, Box::new(text_query_combined)));
             }
         }
 
@@ -320,6 +388,48 @@ impl SearchIndex {
                 "model" => (self.model_field, true), // TEXT field: tokenized, needs lowercase
                 "role" => (self.role_field, false),
                 "skill" => (self.skills_field, false),
+                "session" => {
+                    let term = Term::from_field_text(self.session_id_field, &qual.value);
+                    sub_queries.push((
+                        Occur::Must,
+                        Box::new(TermQuery::new(term, IndexRecordOption::Basic)),
+                    ));
+                    continue;
+                }
+                "after" => {
+                    if let Ok(date) = NaiveDate::parse_from_str(&qual.value, "%Y-%m-%d") {
+                        let ts = date
+                            .and_hms_opt(0, 0, 0)
+                            .map(|dt| dt.and_utc().timestamp())
+                            .unwrap_or(0);
+                        let range = RangeQuery::new_i64_bounds(
+                            "timestamp".to_string(),
+                            Bound::Excluded(ts),
+                            Bound::Unbounded,
+                        );
+                        sub_queries.push((Occur::Must, Box::new(range)));
+                    } else {
+                        tracing::warn!(qualifier = "after", value = %qual.value, "invalid date format, expected YYYY-MM-DD");
+                    }
+                    continue;
+                }
+                "before" => {
+                    if let Ok(date) = NaiveDate::parse_from_str(&qual.value, "%Y-%m-%d") {
+                        let ts = date
+                            .and_hms_opt(0, 0, 0)
+                            .map(|dt| dt.and_utc().timestamp())
+                            .unwrap_or(0);
+                        let range = RangeQuery::new_i64_bounds(
+                            "timestamp".to_string(),
+                            Bound::Unbounded,
+                            Bound::Excluded(ts),
+                        );
+                        sub_queries.push((Occur::Must, Box::new(range)));
+                    } else {
+                        tracing::warn!(qualifier = "before", value = %qual.value, "invalid date format, expected YYYY-MM-DD");
+                    }
+                    continue;
+                }
                 _ => continue,
             };
 
@@ -367,15 +477,14 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
 
-        // Two-phase search: Count gets true total, TopDocs gets scored results.
-        // Local tool — total doc count is small, no artificial caps needed.
+        // Two-phase search: Count gets true total, TopDocs gets top scored results.
         let total_matches_all = searcher.search(&combined_query, &Count)?;
 
-        // Fetch all matching docs for accurate session grouping and ranking.
-        let top_docs = searcher.search(
-            &combined_query,
-            &TopDocs::with_limit(total_matches_all.max(1)),
-        )?;
+        // Cap fetched docs to avoid loading the entire index for common queries.
+        // We need enough docs to fill (offset + limit) session groups, over-fetching
+        // by ~50x to account for multi-doc sessions (each session has many messages).
+        let fetch_limit = ((limit + offset) * 50).min(10_000).max(1);
+        let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(fetch_limit))?;
 
         // Group by session_id
         let mut session_groups: HashMap<String, Vec<(f32, DocAddress)>> = HashMap::new();
@@ -395,20 +504,71 @@ impl SearchIndex {
 
         let total_sessions_all = session_groups.len();
 
-        // Build a snippet generator for the text query
-        // (only if we have a text query to highlight)
+        // Build snippet query from original search terms (PhraseQuery + TermQuery).
+        // IMPORTANT: Do NOT use FuzzyTermQuery for snippets — Tantivy's
+        // SnippetGenerator calls query_terms() which is a no-op for FuzzyTermQuery
+        // (inherits empty default from Query trait). Only exact terms highlight.
         let snippet_gen = if !text_query.trim().is_empty() {
-            let query_parser =
-                tantivy::query::QueryParser::for_index(&self.index, vec![self.content_field]);
-            let parsed = query_parser.parse_query(&text_query)?;
-            SnippetGenerator::create(&searcher, &*parsed, self.content_field).ok()
+            let tokens = tokenize_text_terms(&text_query);
+            if tokens.is_empty() {
+                None
+            } else {
+                let snippet_query: Box<dyn Query> = if tokens.len() >= 2 {
+                    // Combine PhraseQuery + individual TermQueries so snippets
+                    // highlight both exact phrases and scattered term matches.
+                    let mut snippet_signals: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+                    let phrase_terms: Vec<Term> = tokens
+                        .iter()
+                        .map(|t| Term::from_field_text(self.content_field, t))
+                        .collect();
+                    snippet_signals.push((Occur::Should, Box::new(PhraseQuery::new(phrase_terms))));
+                    for t in &tokens {
+                        let term = Term::from_field_text(self.content_field, t);
+                        snippet_signals.push((
+                            Occur::Should,
+                            Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs)),
+                        ));
+                    }
+                    Box::new(BooleanQuery::new(snippet_signals))
+                } else {
+                    // Single term
+                    let term = Term::from_field_text(self.content_field, &tokens[0]);
+                    Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+                };
+
+                SnippetGenerator::create(&searcher, &*snippet_query, self.content_field).ok()
+            }
         } else {
             None
         };
 
-        // Sort sessions by best score descending
+        // Sort sessions: primary by best_score descending, tiebreak by recency.
+        // When scores are within 10% of each other, newer session wins.
         let mut session_entries: Vec<(String, Vec<(f32, DocAddress)>)> =
             session_groups.into_iter().collect();
+
+        // Pre-compute max timestamps per session to avoid repeated doc reads
+        // inside the sort comparator (O(N*M) reads vs O(N*logN*M) in-sort reads).
+        let session_max_ts: HashMap<String, i64> = session_entries
+            .iter()
+            .map(|(sid, docs)| {
+                let max_ts = docs
+                    .iter()
+                    .filter_map(|(_, addr)| {
+                        let d: TantivyDocument = searcher.doc(*addr).ok()?;
+                        d.get_first(self.timestamp_field)?.as_i64()
+                    })
+                    .max()
+                    .unwrap_or(0);
+                (sid.clone(), max_ts)
+            })
+            .collect();
+
+        // Sort by composite key: quantized score bucket (descending) then
+        // timestamp (descending). Quantizing scores into buckets of 0.1 gives
+        // a stable recency tiebreak for near-equal scores without violating
+        // transitivity (which the previous "scores close" heuristic did,
+        // causing panics in Rust 1.81+ sort validation).
         session_entries.sort_by(|a, b| {
             let best_a =
                 a.1.iter()
@@ -418,9 +578,21 @@ impl SearchIndex {
                 b.1.iter()
                     .map(|(s, _)| *s)
                     .fold(f32::NEG_INFINITY, f32::max);
-            best_b
-                .partial_cmp(&best_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
+
+            // Quantize into buckets of 0.1 so near-equal scores share a bucket
+            // and get tiebroken by recency. This preserves transitivity.
+            let bucket_a = (best_a * 10.0).round() as i64;
+            let bucket_b = (best_b * 10.0).round() as i64;
+
+            match bucket_b.cmp(&bucket_a) {
+                std::cmp::Ordering::Equal => {
+                    // Same score bucket — newer session first
+                    let ts_a = session_max_ts.get(&a.0).copied().unwrap_or(0);
+                    let ts_b = session_max_ts.get(&b.0).copied().unwrap_or(0);
+                    ts_b.cmp(&ts_a)
+                }
+                ord => ord,
+            }
         });
 
         // Apply offset and limit at the session level
@@ -435,7 +607,7 @@ impl SearchIndex {
 
         for (session_id, mut scored_docs) in paginated {
             // Sort docs within session by score descending
-            scored_docs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            scored_docs.sort_by(|a, b| b.0.total_cmp(&a.0));
 
             let mut matches = Vec::with_capacity(scored_docs.len());
             let mut best_score = f32::NEG_INFINITY;
@@ -634,6 +806,12 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_text_terms_splits_hyphen() {
+        let tokens = tokenize_text_terms("pm-status");
+        assert_eq!(tokens, vec!["pm", "status"]);
+    }
+
+    #[test]
     fn test_is_session_id_valid_uuid() {
         assert!(is_session_id("136ed96f-913d-4a1a-91a9-5e651469b2a0"));
     }
@@ -709,5 +887,272 @@ mod tests {
         assert_eq!(quals[1].key, "branch");
         assert_eq!(quals[2].key, "model");
         assert_eq!(quals[3].key, "role");
+    }
+
+    #[test]
+    fn test_multi_signal_ranks_phrase_above_fuzzy() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session(
+            "session-a",
+            &[crate::indexer::SearchDocument {
+                session_id: "session-a".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "we need to deploy to production tonight".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.index_session(
+            "session-b",
+            &[crate::indexer::SearchDocument {
+                session_id: "session-b".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "production environment deploy scripts to run".to_string(),
+                turn_number: 1,
+                timestamp: 2000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx.search("deploy to production", None, 10, 0).unwrap();
+        assert!(result.total_sessions >= 2, "both sessions should match");
+
+        // Session A (exact phrase) must rank above Session B (scattered terms)
+        assert_eq!(
+            result.sessions[0].session_id, "session-a",
+            "exact phrase match should rank first"
+        );
+        assert!(
+            result.sessions[0].best_score > result.sessions[1].best_score,
+            "phrase match score ({}) should exceed term match score ({})",
+            result.sessions[0].best_score,
+            result.sessions[1].best_score
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_catches_typos() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session(
+            "session-typo",
+            &[crate::indexer::SearchDocument {
+                session_id: "session-typo".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "the deployment pipeline failed with timeout".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // "deploymnt" (typo) should still find "deployment" via fuzzy
+        let result = idx.search("deploymnt", None, 10, 0).unwrap();
+        assert_eq!(
+            result.total_sessions, 1,
+            "fuzzy should catch single-char typo"
+        );
+        assert_eq!(result.sessions[0].session_id, "session-typo");
+    }
+
+    #[test]
+    fn test_after_before_date_qualifiers() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        // Jan 15 2026 = 1768435200 unix
+        idx.index_session(
+            "old-session",
+            &[crate::indexer::SearchDocument {
+                session_id: "old-session".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "deploy the app".to_string(),
+                turn_number: 1,
+                timestamp: 1768435200,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        // Feb 15 2026 = 1771113600 unix
+        idx.index_session(
+            "new-session",
+            &[crate::indexer::SearchDocument {
+                session_id: "new-session".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "deploy the app".to_string(),
+                turn_number: 1,
+                timestamp: 1771113600,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // after:2026-02-01 should only return new-session
+        let result = idx.search("deploy after:2026-02-01", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "new-session");
+
+        // before:2026-02-01 should only return old-session
+        let result = idx.search("deploy before:2026-02-01", None, 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "old-session");
+    }
+
+    #[test]
+    fn test_session_qualifier() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session(
+            "aaa-111",
+            &[crate::indexer::SearchDocument {
+                session_id: "aaa-111".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "hello world".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.index_session(
+            "bbb-222",
+            &[crate::indexer::SearchDocument {
+                session_id: "bbb-222".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "hello world".to_string(),
+                turn_number: 1,
+                timestamp: 2000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        // session:aaa-111 should only return that session
+        let result = idx.search("hello", Some("session:aaa-111"), 10, 0).unwrap();
+        assert_eq!(result.total_sessions, 1);
+        assert_eq!(result.sessions[0].session_id, "aaa-111");
+    }
+
+    #[test]
+    fn test_recency_tiebreaks_equal_scores() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        // Two sessions with identical content (identical BM25 scores)
+        // but different timestamps
+        idx.index_session(
+            "old",
+            &[crate::indexer::SearchDocument {
+                session_id: "old".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "identical content for scoring".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.index_session(
+            "new",
+            &[crate::indexer::SearchDocument {
+                session_id: "new".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "identical content for scoring".to_string(),
+                turn_number: 1,
+                timestamp: 9999,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx
+            .search("identical content scoring", None, 10, 0)
+            .unwrap();
+        assert_eq!(result.total_sessions, 2);
+        // With identical scores, newer session should rank first
+        assert_eq!(
+            result.sessions[0].session_id, "new",
+            "recency should tiebreak equal scores — newer first"
+        );
+    }
+
+    #[test]
+    fn test_hyphenated_text_query_matches() {
+        let idx = crate::SearchIndex::open_in_ram().unwrap();
+
+        idx.index_session(
+            "session-hyphen",
+            &[crate::indexer::SearchDocument {
+                session_id: "session-hyphen".to_string(),
+                project: "test".to_string(),
+                branch: String::new(),
+                model: String::new(),
+                role: "user".to_string(),
+                content: "pm status dashboard is red".to_string(),
+                turn_number: 1,
+                timestamp: 1000,
+                skills: vec![],
+            }],
+        )
+        .unwrap();
+
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+
+        let result = idx.search("pm-status", None, 10, 0).unwrap();
+        assert_eq!(
+            result.total_sessions, 1,
+            "hyphenated query should match tokenized content terms"
+        );
+        assert_eq!(result.sessions[0].session_id, "session-hyphen");
     }
 }

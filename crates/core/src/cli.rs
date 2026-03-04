@@ -51,7 +51,7 @@ pub fn resolved_cli_path() -> Option<&'static str> {
 
 /// Claude CLI status information.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub struct ClaudeCliStatus {

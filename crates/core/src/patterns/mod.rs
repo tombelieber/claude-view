@@ -259,6 +259,7 @@ pub(crate) mod test_helpers {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
