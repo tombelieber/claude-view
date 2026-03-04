@@ -36,7 +36,8 @@ use crate::Database;
 /// Version 14: Task-time turns split on interactive human tool_result responses.
 /// Version 15: Cost computed from token counts when costUSD is null in JSONL.
 /// Version 16: Per-turn cost computation (200k tiering per-API-request, not per-session).
-pub const CURRENT_PARSE_VERSION: i32 = 16;
+/// Version 17: Merge subagent costUSD into parent total_cost_usd (matching token merge).
+pub const CURRENT_PARSE_VERSION: i32 = 17;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -2404,10 +2405,10 @@ where
                     }
                 };
 
-                // Merge subagent tokens into the parent session.
+                // Merge subagent tokens and costs into the parent session.
                 // Claude Code spawns subagents (Task tool) that write to
                 // <session-uuid>/subagents/agent-*.jsonl — these are separate
-                // API calls not included in the parent JSONL's token counts.
+                // API calls not included in the parent JSONL's token counts or costs.
                 let subagent_dir = path.with_extension("").join("subagents");
                 if subagent_dir.is_dir() {
                     if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
@@ -2422,6 +2423,7 @@ where
                             result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
                             result.deep.cache_creation_tokens +=
                                 sub_result.deep.cache_creation_tokens;
+                            result.deep.total_cost_usd += sub_result.deep.total_cost_usd;
                         }
                     }
                 }
@@ -4360,10 +4362,10 @@ mod tests {
         let project_dir = claude_dir.join("projects").join("test-project");
         std::fs::create_dir_all(&project_dir).unwrap();
 
-        // Parent session JSONL with token usage
+        // Parent session JSONL with token usage and costUSD
         let parent_jsonl = project_dir.join("sess-sub.jsonl");
         let parent_content = r#"{"type":"user","message":{"content":"hello"}}
-{"type":"assistant","message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
+{"type":"assistant","costUSD":1.50,"message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
 "#;
         std::fs::write(&parent_jsonl, parent_content).unwrap();
 
@@ -4372,12 +4374,12 @@ mod tests {
         std::fs::create_dir_all(&subagent_dir).unwrap();
 
         let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
-{"type":"assistant","message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
+{"type":"assistant","costUSD":0.80,"message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
 "#;
         std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
 
         let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
-{"type":"assistant","message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
+{"type":"assistant","costUSD":0.60,"message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
 "#;
         std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
 
@@ -4418,6 +4420,14 @@ mod tests {
             session.total_cache_creation_tokens,
             Some(350),
             "cache_create = 200 + 100 + 50"
+        );
+        // Cost = parent(1.50) + sub1(0.80) + sub2(0.60) = 2.90
+        let cost = session
+            .total_cost_usd
+            .expect("total_cost_usd should be set");
+        assert!(
+            (cost - 2.90).abs() < 0.001,
+            "cost should be ~2.90 (parent + subs), got {cost}"
         );
     }
 
