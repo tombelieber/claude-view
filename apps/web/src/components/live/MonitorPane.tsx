@@ -4,6 +4,7 @@ import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { SubAgentPills } from './SubAgentPills'
+import { hasUnavailableCost } from './cost-display'
 import type { AgentStateGroup } from './types'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
@@ -21,7 +22,9 @@ function projectName(session: LiveSession): string {
 
 function formatCost(session: LiveSession): string {
   const usd = sessionTotalCost(session)
-  return `${session.cost?.isEstimated ? '~' : ''}${formatCostUsd(usd)}`
+  return hasUnavailableCost(usd, session.cost, session.tokens.totalTokens)
+    ? 'Unavailable'
+    : formatCostUsd(usd)
 }
 
 /** Compute context window percentage from tokens + model. */
