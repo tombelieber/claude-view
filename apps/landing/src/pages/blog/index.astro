@@ -12,12 +12,12 @@ const posts = (await getCollection('blog')).sort((a, b) =>
     <div class="space-y-8">
       {posts.map(post => (
         <a href={`/blog/${post.id.replace(/\.(mdx?|md)$/, '')}/`} class="block group cursor-pointer">
-          <article class="border-b border-slate-800 pb-8">
-            <time class="text-sm text-slate-500" datetime={post.data.date.toISOString()}>
+          <article class="border-b border-[var(--color-border)] pb-8">
+            <time class="text-sm text-[var(--color-text-secondary)]" datetime={post.data.date.toISOString()}>
               {post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </time>
             <h2 class="font-heading text-xl font-semibold mt-2 group-hover:text-cta transition-colors">{post.data.title}</h2>
-            <p class="text-slate-400 mt-2">{post.data.description}</p>
+            <p class="text-[var(--color-text-secondary)] mt-2">{post.data.description}</p>
           </article>
         </a>
       ))}

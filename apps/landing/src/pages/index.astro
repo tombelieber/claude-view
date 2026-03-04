@@ -1,14 +1,15 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
-import AnimatedTerminal from '../components/AnimatedTerminal.astro';
-import DashboardPreview from '../components/DashboardPreview.astro';
-import InstallCommand from '../components/InstallCommand.astro';
-import FeatureSection from '../components/FeatureSection.astro';
+import ProductDemo from '../components/ProductDemo.astro';
 import PhoneMockup from '../components/PhoneMockup.astro';
+import MetricsBar from '../components/MetricsBar.astro';
+import ComparisonTable from '../components/ComparisonTable.astro';
+import InstallCommand from '../components/InstallCommand.astro';
 import PricingCards from '../components/PricingCards.astro';
 import GitHubStars from '../components/GitHubStars.astro';
 import WaitlistForm from '../components/WaitlistForm.astro';
-import { GITHUB_REPO, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLATFORM, DEEP_LINK_SCHEME } from '../data/site';
+import FAQ from '../components/FAQ.astro';
+import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PACKAGE, PLATFORM, DEEP_LINK_SCHEME } from '../data/site';
 ---
 <MarketingLayout title="Mission Control for AI Coding Agents">
 <script is:inline define:vars={{ deepLinkScheme: DEEP_LINK_SCHEME }}>
@@ -24,142 +25,214 @@ import { GITHUB_REPO, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLATFORM, DEEP_LINK_SC
     }
   })();
 </script>
+
   <!-- Hero Section -->
-  <section class="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-    <!-- Gradient background -->
-    <div class="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(34,197,94,0.08),transparent_60%)]"></div>
+  <section class="hero">
+    <div class="eyebrow">
+      <span class="dot-live"></span>
+      Now in public beta
+    </div>
+    <h1>See every agent.<br />Every token. Every decision.</h1>
+    <p class="subtitle">The observability layer for Claude Code. Monitor agents, track spend, approve actions — from your browser or phone.</p>
 
-    <div class="relative z-10 max-w-6xl mx-auto px-6 text-center">
-      <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6">
-        Mission Control for<br />
-        <span class="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">AI Coding Agents</span>
-      </h1>
-      <p class="text-xl text-slate-400 max-w-2xl mx-auto mb-8">
-        Monitor, orchestrate, and command your Claude Code fleet — from desktop or phone.
-      </p>
+    <div class="mt-10 mb-8">
+      <WaitlistForm />
+    </div>
 
-      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-        <InstallCommand />
+    <div class="cta-group">
+      <a href="/docs/" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Get Started Free
+      </a>
+      <a href={GITHUB_URL} class="btn-ghost" target="_blank" rel="noopener noreferrer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+        GitHub
         <GitHubStars repo={GITHUB_REPO} />
+      </a>
+    </div>
+
+    <div class="install-strip" role="button" tabindex="0" id="install-copy">
+      <span class="dollar">$</span>
+      <span class="cmd">npx claude-view</span>
+      <span class="copy-hint">copy</span>
+    </div>
+
+    <p class="plugin-link">
+      Ships as a
+      <a href="/docs/guides/plugin/">Claude Code plugin</a>
+      — {MCP_TOOL_COUNT} tools, {PLUGIN_SKILL_COUNT} skills, auto-start hook.
+    </p>
+  </section>
+
+  <!-- Product Demo -->
+  <ProductDemo />
+
+  <!-- Features anchor for nav scroll -->
+  <div id="features"></div>
+
+  <!-- Value Section 1: Control -->
+  <section class="value-section reveal-on-scroll">
+    <div class="value-grid">
+      <div class="value-copy">
+        <div class="section-label">Control</div>
+        <h2 class="section-heading">Your agents, your rules.</h2>
+        <p class="value-description">Write a plan. Approve steps. Agents build. You sleep. Don't let your $200/mo AI plan sit idle — leverage agents as your 24/7 workforce.</p>
+        <a href="#waitlist" class="value-cta">Join the waitlist
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
       </div>
-
-      <div class="mt-6">
-        <WaitlistForm />
-      </div>
-
-      <!-- Plugin integrations row -->
-      <p class="text-sm text-slate-500 mb-12">
-        Ships as a
-        <a href="/docs/guides/plugin/" class="text-green-400 hover:text-green-300 transition-colors">Claude Code plugin</a>
-        — {MCP_TOOL_COUNT} tools, {PLUGIN_SKILL_COUNT} skills, auto-start hook.
-      </p>
-
-      <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        <AnimatedTerminal />
-        <DashboardPreview />
+      <div class="value-illustration">
+        <!-- Plan runner mock -->
+        <div class="plan-mock">
+          <div class="plan-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            <span>implementation-plan.md</span>
+          </div>
+          <div class="plan-steps">
+            <div class="plan-step done"><span class="step-check">&#10003;</span> Set up project structure</div>
+            <div class="plan-step done"><span class="step-check">&#10003;</span> Implement auth module</div>
+            <div class="plan-step active"><span class="step-dot"></span> Write integration tests</div>
+            <div class="plan-step pending"><span class="step-dot pending-dot"></span> Deploy to staging</div>
+          </div>
+          <div class="plan-actions">
+            <span class="plan-btn approve">Approve</span>
+            <span class="plan-btn reject">Reject</span>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-<!-- Features anchor for nav scroll -->
-<div id="features"></div>
-
-<!-- Features -->
-<FeatureSection
-  title="See every agent. Every token. Every decision."
-  description="Real-time dashboard shows all active Claude Code sessions, token usage, costs, and tool calls. Know exactly what your agents are doing."
->
-  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-left">
-    <div class="flex items-center gap-2 mb-3">
-      <span class="w-3 h-3 rounded-full bg-green-400"></span>
-      <span class="text-sm text-slate-300">3 agents active</span>
+  <!-- Value Section 2: Freedom -->
+  <section class="value-section reveal-on-scroll">
+    <div class="value-grid reverse">
+      <div class="value-copy">
+        <div class="section-label">Freedom</div>
+        <h2 class="section-heading">Ship features from your phone.</h2>
+        <p class="value-description">The couch. The train. The beach. Push notification &rarr; review &rarr; approve &rarr; shipped. Your agents keep building while you're away.</p>
+        <a href="#waitlist" class="value-cta">Get early access
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+      <div class="value-illustration">
+        <PhoneMockup />
+      </div>
     </div>
-    <div class="space-y-2 text-xs text-slate-500 font-mono">
-      <div>agent-1 | refactor auth module | $0.42 | 12k tokens</div>
-      <div>agent-2 | write unit tests | $0.18 | 5k tokens</div>
-      <div>agent-3 | fix CI pipeline | $0.31 | 9k tokens</div>
+  </section>
+
+  <!-- Value Section 3: Visibility -->
+  <section class="value-section reveal-on-scroll">
+    <div class="value-grid">
+      <div class="value-copy">
+        <div class="section-label">Visibility</div>
+        <h2 class="section-heading">See everything. Miss nothing.</h2>
+        <p class="value-description">Every agent. Every token. Every tool call. Real-time dashboards show costs, cache efficiency, sub-agent trees, and decision history — all updated live.</p>
+      </div>
+      <div class="value-illustration">
+        <!-- Agent cards mock -->
+        <div class="agent-cards-mock">
+          <div class="agent-card-mini">
+            <div class="agent-card-header">
+              <div class="dot-sm g"></div>
+              <span class="agent-name">feature-auth</span>
+              <span class="agent-cost">$1.42</span>
+            </div>
+            <div class="agent-detail">48,291 tokens &middot; 12 tool calls &middot; 94% cache</div>
+          </div>
+          <div class="agent-card-mini">
+            <div class="agent-card-header">
+              <div class="dot-sm y"></div>
+              <span class="agent-name">test-runner</span>
+              <span class="agent-cost">$0.87</span>
+            </div>
+            <div class="agent-detail">23,104 tokens &middot; 8 tool calls &middot; 89% cache</div>
+          </div>
+          <div class="agent-card-mini">
+            <div class="agent-card-header">
+              <div class="dot-sm off"></div>
+              <span class="agent-name">docs-update</span>
+              <span class="agent-cost">$2.31</span>
+            </div>
+            <div class="agent-detail">71,452 tokens &middot; 24 tool calls &middot; 91% cache</div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</FeatureSection>
+  </section>
 
-<FeatureSection
-  title="Approve. Reject. Resume. From anywhere."
-  description="Full agent control from any device. Review tool calls, approve changes, or kill a runaway session — all without leaving your browser."
-  badge="Coming Soon"
-  reverse
->
-  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 space-y-3">
-    <div class="text-sm text-slate-300">Agent requests permission:</div>
-    <div class="text-xs text-slate-400 font-mono bg-slate-800 rounded p-2">git push origin main</div>
-    <div class="flex gap-2">
-      <span class="px-3 py-1 rounded bg-green-600 text-white text-xs">Approve</span>
-      <span class="px-3 py-1 rounded bg-red-600/20 text-red-400 text-xs border border-red-600/30">Reject</span>
+  <!-- Secondary Features: 4 compact glass cards -->
+  <section class="secondary-features reveal-on-scroll">
+    <div class="features-grid">
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <h3>Full-Text Search</h3>
+        <p>Search across all sessions — messages, tool calls, file paths. Powered by Tantivy.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3>AI Fluency Score</h3>
+        <p>Track how effectively you collaborate with AI agents over time.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <h3>Session Sharing</h3>
+        <p>Share any session via encrypted link. E2E encryption — zero server trust.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        </div>
+        <h3>100% Local</h3>
+        <p>All data stays on your machine. Zero telemetry. Zero cloud dependency.</p>
+      </div>
     </div>
-  </div>
-</FeatureSection>
+  </section>
 
-<FeatureSection
-  title="Ship features from your phone."
-  description="Native mobile app connects to your agents via cloud relay. Monitor, approve, and control from the couch, the train, or the beach."
-  badge="Coming Soon"
->
-  <PhoneMockup />
-  <div class="mt-6 text-center">
-    <a
-      href="#waitlist"
-      class="inline-flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-6 py-3 text-sm font-medium text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-colors"
-    >
-      Join the mobile waitlist
-      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path d="M7 17L17 7M17 7H7M17 7V17" />
-      </svg>
-    </a>
-  </div>
-</FeatureSection>
+  <!-- Metrics Bar -->
+  <MetricsBar />
 
-<FeatureSection
-  title="Your AI fluency, measured."
-  description="AI Fluency Score tracks how effectively you collaborate with AI agents. Session patterns, cost efficiency, and productivity trends — all quantified."
-  reverse
->
-  <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-center">
-    <div class="text-5xl font-bold text-green-400 mb-2">87</div>
-    <div class="text-sm text-slate-400">AI Fluency Score</div>
-    <div class="mt-4 flex items-end justify-center gap-1">
-      <div class="w-2 h-6 bg-slate-700 rounded-sm"></div>
-      <div class="w-2 h-8 bg-slate-700 rounded-sm"></div>
-      <div class="w-2 h-10 bg-slate-600 rounded-sm"></div>
-      <div class="w-2 h-13 bg-slate-600 rounded-sm"></div>
-      <div class="w-2 h-16 bg-green-500 rounded-sm"></div>
-      <div class="w-2 h-20 bg-green-400 rounded-sm"></div>
+  <!-- Comparison Table -->
+  <ComparisonTable />
+
+  <!-- Install CTA Section -->
+  <section class="install-cta-section reveal-on-scroll">
+    <h2>Get started in 10 seconds</h2>
+    <p class="install-subtitle">No account needed. Just run one command.</p>
+    <div class="install-commands">
+      <div class="install-cmd primary-install">
+        <span class="install-label">Plugin (recommended)</span>
+        <code>claude plugin add {PLUGIN_PACKAGE}</code>
+      </div>
+      <div class="install-cmd secondary-install">
+        <span class="install-label">Standalone</span>
+        <code>npx claude-view</code>
+      </div>
     </div>
-  </div>
-</FeatureSection>
+    <p class="install-note">Requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
+  </section>
 
-<!-- Install CTA Section -->
-<section class="py-24 px-6 bg-gradient-to-b from-slate-950 to-slate-900">
-  <div class="max-w-3xl mx-auto text-center">
-    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Get started in 10 seconds</h2>
-    <p class="text-lg text-slate-400 mb-8">No account needed. Just run one command.</p>
-    <InstallCommand />
-    <p class="text-sm text-slate-500 mt-4">Requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
-  </div>
-</section>
-
-<!-- Pricing Preview -->
-<section class="py-24 px-6">
-  <div class="max-w-6xl mx-auto text-center">
-    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Free. Forever. For local use.</h2>
-    <p class="text-lg text-slate-400 mb-12">Cloud features coming soon.</p>
+  <!-- Pricing Preview -->
+  <section class="pricing-section" id="pricing">
+    <div class="section-label" style="text-align:center">Pricing</div>
+    <h2 class="section-heading" style="text-align:center">Free. Forever. For local use.</h2>
+    <p class="pricing-subtitle">Cloud features coming soon.</p>
     <PricingCards />
-    <a href="/pricing/" class="inline-block mt-8 text-sm text-green-400 hover:text-green-300 transition-colors">
+    <a href="/pricing/" class="pricing-link">
       See full comparison &rarr;
     </a>
-  </div>
-</section>
+  </section>
+
+  <!-- FAQ -->
+  <FAQ />
 
 <script>
+  // Scroll reveal
   const observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
@@ -175,5 +248,545 @@ import { GITHUB_REPO, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLATFORM, DEEP_LINK_SC
   document.querySelectorAll('.reveal-on-scroll').forEach((el) => {
     observer.observe(el);
   });
+
+  // Install strip copy
+  const strip = document.getElementById('install-copy');
+  if (strip) {
+    strip.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('npx claude-view');
+        const hint = strip.querySelector('.copy-hint');
+        if (hint) {
+          hint.textContent = 'copied!';
+          setTimeout(() => { hint.textContent = 'copy'; }, 2000);
+        }
+      } catch {}
+    });
+    strip.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        strip.click();
+      }
+    });
+  }
 </script>
 </MarketingLayout>
+
+<style>
+  /* ─── Hero ─── */
+  .hero {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 100px 24px 56px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px 5px 9px;
+    border-radius: 99px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-text);
+    margin-bottom: 36px;
+    letter-spacing: 0.01em;
+  }
+  .dot-live {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-d 2s ease-in-out infinite;
+  }
+  @keyframes pulse-d { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .hero h1 {
+    font-family: var(--font-heading);
+    font-size: clamp(36px, 5.5vw, 60px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    margin-bottom: 20px;
+    color: #111;
+  }
+  .subtitle {
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--color-text-secondary);
+    max-width: 460px;
+    margin: 0 auto;
+    font-weight: 400;
+  }
+
+  .cta-group {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 24px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.2s;
+    text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(217,119,87,0.1);
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(217,119,87,0.18), 0 0 0 1px rgba(217,119,87,0.1);
+    color: #fff;
+  }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 11px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    border: 1px solid var(--color-border);
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+  .btn-ghost:hover {
+    border-color: rgba(0,0,0,0.15);
+    color: var(--color-text);
+  }
+  .btn-ghost svg { fill: currentColor; }
+
+  /* Install strip */
+  .install-strip {
+    position: relative;
+    z-index: 1;
+    max-width: 390px;
+    margin: 36px auto 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    background: rgba(255,255,255,0.55);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .install-strip:hover {
+    border-color: rgba(0,0,0,0.12);
+    background: rgba(255,255,255,0.8);
+  }
+  .dollar { color: var(--color-text-tertiary); }
+  .cmd { color: var(--color-text); }
+  .copy-hint {
+    font-family: var(--font-body);
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    margin-left: auto;
+    transition: color 0.15s;
+  }
+  .install-strip:hover .copy-hint { color: var(--accent); }
+
+  .plugin-link {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin-top: 20px;
+  }
+  .plugin-link a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .plugin-link a:hover {
+    color: var(--accent-hover);
+  }
+
+  /* ─── Value Sections ─── */
+  .value-section {
+    position: relative;
+    z-index: 1;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .value-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .value-grid.reverse {
+    direction: rtl;
+  }
+  .value-grid.reverse > * {
+    direction: ltr;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-text);
+    margin-bottom: 12px;
+  }
+  .section-heading {
+    font-family: var(--font-heading);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 16px;
+    color: #111;
+  }
+  .value-description {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--color-text-secondary);
+    margin-bottom: 24px;
+  }
+  .value-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    transition: gap 0.2s;
+  }
+  .value-cta:hover {
+    gap: 10px;
+  }
+
+  /* Plan runner mock */
+  .plan-mock {
+    background: rgba(255,255,255,0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .plan-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.02);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+  }
+  .plan-steps {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .plan-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+  .plan-step.done {
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
+  }
+  .plan-step.active {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+  .step-check {
+    color: #22c55e;
+    font-weight: 700;
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+  }
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin: 0 5px;
+    box-shadow: 0 0 6px rgba(217,119,87,0.3);
+  }
+  .step-dot.pending-dot {
+    background: #d4d4d8;
+    box-shadow: none;
+  }
+  .plan-actions {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border);
+  }
+  .plan-btn {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: default;
+  }
+  .plan-btn.approve {
+    background: var(--accent);
+    color: #fff;
+  }
+  .plan-btn.reject {
+    background: rgba(239,68,68,0.06);
+    color: #dc2626;
+    border: 1px solid rgba(239,68,68,0.15);
+  }
+
+  /* Agent cards mock (value section 3) */
+  .agent-cards-mock {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .agent-card-mini {
+    background: rgba(255,255,255,0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .dot-sm {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-sm.g { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.3); }
+  .dot-sm.y { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.3); }
+  .dot-sm.off { background: #d4d4d8; }
+  .agent-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+  .agent-cost {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-text);
+  }
+  .agent-detail {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  /* ─── Secondary Features ─── */
+  .secondary-features {
+    position: relative;
+    z-index: 1;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .feat-card {
+    padding: 28px 24px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    transition: all 0.25s ease;
+    cursor: default;
+  }
+  .feat-card:hover {
+    background: rgba(255,255,255,0.8);
+    border-color: rgba(0,0,0,0.1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    transform: translateY(-2px);
+  }
+  .feat-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .feat-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .feat-card h3 {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+    color: #111;
+  }
+  .feat-card p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+  }
+
+  /* ─── Install CTA ─── */
+  .install-cta-section {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .install-cta-section h2 {
+    font-family: var(--font-heading);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #111;
+    margin-bottom: 8px;
+  }
+  .install-subtitle {
+    font-size: 15px;
+    color: var(--color-text-secondary);
+    margin-bottom: 32px;
+  }
+  .install-commands {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .install-cmd {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 14px 20px;
+    text-align: left;
+  }
+  .install-cmd.primary-install {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+  }
+  .install-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-tertiary);
+    margin-bottom: 6px;
+  }
+  .primary-install .install-label {
+    color: var(--accent-text);
+  }
+  .install-cmd code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-text);
+  }
+  .install-note {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin-top: 16px;
+  }
+
+  /* ─── Pricing Section ─── */
+  .pricing-section {
+    position: relative;
+    z-index: 1;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .pricing-subtitle {
+    font-size: 15px;
+    color: var(--color-text-secondary);
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .pricing-link {
+    display: inline-block;
+    margin-top: 32px;
+    text-align: center;
+    width: 100%;
+    font-size: 14px;
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .pricing-link:hover {
+    color: var(--accent-hover);
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 768px) {
+    .value-grid {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+    .value-grid.reverse {
+      direction: ltr;
+    }
+    .features-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  @media (max-width: 480px) {
+    .features-grid {
+      grid-template-columns: 1fr;
+    }
+    .cta-group {
+      flex-direction: column;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot-live {
+      animation: none;
+    }
+  }
+</style>
