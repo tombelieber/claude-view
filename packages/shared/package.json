@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./contexts/*": "./src/contexts/*.tsx",
+    "./lib/*": "./src/lib/*.tsx",
     "./utils/*": "./src/utils/*.ts",
     "./types/message": "./src/types/message/index.ts",
     "./types/generated": "./src/types/generated/index.ts",

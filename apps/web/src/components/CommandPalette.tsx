@@ -14,11 +14,13 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useGrep } from '../hooks/use-grep'
 import type { ProjectSummary } from '../hooks/use-projects'
-import { useSearch } from '../hooks/use-search'
+import { hasRegexMetacharacters, useSearch } from '../hooks/use-search'
 import { cn } from '../lib/utils'
 import { useAppStore } from '../store/app-store'
 import { cleanPreviewText } from '../utils/get-session-title'
+import { GrepResults } from './GrepResults'
 import { SearchResultCard } from './SearchResultCard'
 import type { LiveSortField } from './live/live-filter'
 import type { LiveViewMode } from './live/types'
@@ -79,14 +81,27 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const navigate = useNavigate()
   const { recentSearches, addRecentSearch } = useAppStore()
 
-  // Live search results from Tantivy backend
+  // Detect regex metacharacters for grep fallback
+  const isRegex = useMemo(() => hasRegexMetacharacters(query), [query])
+
+  // Live search results from Tantivy backend (disabled when regex mode)
   const {
     data: searchResults,
     isLoading: isSearching,
     isDebouncing,
   } = useSearch(query, {
-    enabled: isOpen,
+    enabled: isOpen && !isRegex,
     limit: 5,
+  })
+
+  // Grep fallback for regex patterns
+  const {
+    data: grepResults,
+    isLoading: isGrepping,
+    isDebouncing: isGrepDebouncing,
+  } = useGrep(query, {
+    enabled: isOpen && isRegex,
+    limit: 50,
   })
 
   // Reset when opened
@@ -435,8 +450,12 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   if (!isOpen) return null
 
   const hasLiveResults =
-    query.trim().length > 0 && searchResults && searchResults.sessions.length > 0
-  const showLoading = query.trim().length > 0 && (isSearching || isDebouncing)
+    query.trim().length > 0 && !isRegex && searchResults && searchResults.sessions.length > 0
+  const hasGrepResults =
+    query.trim().length > 0 && isRegex && grepResults && grepResults.results.length > 0
+  const showLoading =
+    query.trim().length > 0 &&
+    (isRegex ? isGrepping || isGrepDebouncing : isSearching || isDebouncing)
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]">
@@ -462,6 +481,11 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
               spellCheck={false}
               autoComplete="off"
             />
+            {isRegex && query.trim().length > 0 && (
+              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200/80 dark:border-amber-500/20 flex-shrink-0">
+                Regex
+              </span>
+            )}
             {showLoading && (
               <Loader2 className="w-4 h-4 text-slate-400 dark:text-slate-500 animate-spin" />
             )}
@@ -475,135 +499,153 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
           </div>
         </form>
 
-        {/* Live Monitor commands section */}
-        {isLiveMonitor && filteredLiveCommands.length > 0 && (
-          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
-            <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-              Live Monitor
-            </p>
-            {filteredLiveCommands.map((item, i) => {
-              const Icon = item.icon
-              const itemIndex = i
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => executeLiveCommand(item)}
-                  onMouseEnter={() => setSelectedIndex(itemIndex)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                    selectedIndex === itemIndex
-                      ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100',
-                  )}
-                >
-                  {Icon ? (
-                    <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  ) : (
-                    <div className="w-4 h-4" />
-                  )}
-                  <span className="flex-1 truncate text-left">{item.label}</span>
-                  {item.description && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[150px]">
-                      {item.description}
-                    </span>
-                  )}
-                  {item.shortcut && (
-                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/[0.08]">
-                      {item.shortcut}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Global section header (when Live Monitor context is active) */}
-        {isLiveMonitor && (suggestions.length > 0 || hasLiveResults) && (
-          <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
-            Global
-          </p>
-        )}
-
-        {/* Suggestions (project autocomplete + recent searches) */}
-        {suggestions.length > 0 && (
-          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
-            {suggestions.map((suggestion, i) => {
-              const Icon = getIcon(suggestion.type)
-              const itemIndex = suggestionsStartIndex + i
-              return (
-                <button
-                  key={`${suggestion.type}-${suggestion.label}-${i}`}
-                  onClick={() => handleSelect(suggestion.query)}
-                  onMouseEnter={() => setSelectedIndex(itemIndex)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                    selectedIndex === itemIndex
-                      ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100',
-                  )}
-                >
-                  <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <span className="flex-1 truncate font-mono">{suggestion.label}</span>
-                  {suggestion.count !== undefined && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
-                      {suggestion.count}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Live search results from Tantivy */}
-        {hasLiveResults && (
-          <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
-            <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              {searchResults.totalSessions}{' '}
-              {searchResults.totalSessions === 1 ? 'session' : 'sessions'},{' '}
-              {searchResults.totalMatches} {searchResults.totalMatches === 1 ? 'match' : 'matches'}
-              <span className="ml-2 normal-case tracking-normal">
-                ({searchResults.elapsedMs}ms)
-              </span>
-            </p>
-            <div className="px-3 py-1 space-y-1">
-              {searchResults.sessions.map((hit, i) => {
-                const itemIndex = searchResultsStartIndex + i
+        {/* Scrollable results area */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {/* Live Monitor commands section */}
+          {isLiveMonitor && filteredLiveCommands.length > 0 && (
+            <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
+              <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                Live Monitor
+              </p>
+              {filteredLiveCommands.map((item, i) => {
+                const Icon = item.icon
+                const itemIndex = i
                 return (
-                  <SearchResultCard
-                    key={hit.sessionId}
-                    hit={hit}
-                    isSelected={selectedIndex === itemIndex}
-                    onSelect={() => handleSelectSearchResult(hit.sessionId)}
-                  />
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => executeLiveCommand(item)}
+                    onMouseEnter={() => setSelectedIndex(itemIndex)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                      selectedIndex === itemIndex
+                        ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
+                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100',
+                    )}
+                  >
+                    {Icon ? (
+                      <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                    ) : (
+                      <div className="w-4 h-4" />
+                    )}
+                    <span className="flex-1 truncate text-left">{item.label}</span>
+                    {item.description && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[150px]">
+                        {item.description}
+                      </span>
+                    )}
+                    {item.shortcut && (
+                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/[0.08]">
+                        {item.shortcut}
+                      </span>
+                    )}
+                  </button>
                 )
               })}
             </div>
-            {searchResults.totalSessions > searchResults.sessions.length && (
-              <button
-                onClick={() => handleSelect(query.trim())}
-                className="w-full px-4 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors text-center"
-              >
-                View all {searchResults.totalSessions} results
-              </button>
-            )}
-          </div>
-        )}
+          )}
 
-        {/* No results message */}
-        {query.trim().length > 0 &&
-          !isSearching &&
-          !isDebouncing &&
-          searchResults &&
-          searchResults.sessions.length === 0 &&
-          filteredLiveCommands.length === 0 &&
-          suggestions.length === 0 && (
-            <div className="py-4 border-b border-slate-200/80 dark:border-white/[0.06] text-center">
-              <p className="text-sm text-slate-400 dark:text-slate-500">No results found.</p>
+          {/* Global section header (when Live Monitor context is active) */}
+          {isLiveMonitor && (suggestions.length > 0 || hasLiveResults || hasGrepResults) && (
+            <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
+              Global
+            </p>
+          )}
+
+          {/* Suggestions (project autocomplete + recent searches) */}
+          {suggestions.length > 0 && (
+            <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
+              {suggestions.map((suggestion, i) => {
+                const Icon = getIcon(suggestion.type)
+                const itemIndex = suggestionsStartIndex + i
+                return (
+                  <button
+                    type="button"
+                    key={`${suggestion.type}-${suggestion.label}-${i}`}
+                    onClick={() => handleSelect(suggestion.query)}
+                    onMouseEnter={() => setSelectedIndex(itemIndex)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                      selectedIndex === itemIndex
+                        ? 'bg-emerald-50 dark:bg-emerald-500/[0.08] text-slate-900 dark:text-slate-100'
+                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-slate-100',
+                    )}
+                  >
+                    <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                    <span className="flex-1 truncate font-mono">{suggestion.label}</span>
+                    {suggestion.count !== undefined && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+                        {suggestion.count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
+
+          {/* Grep results (regex fallback) */}
+          {hasGrepResults && (
+            <div className="border-b border-slate-200/80 dark:border-white/[0.06]">
+              <GrepResults data={grepResults} />
+            </div>
+          )}
+
+          {/* Live search results from Tantivy */}
+          {hasLiveResults && (
+            <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
+              <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                {searchResults.totalSessions}{' '}
+                {searchResults.totalSessions === 1 ? 'session' : 'sessions'},{' '}
+                {searchResults.totalMatches}{' '}
+                {searchResults.totalMatches === 1 ? 'match' : 'matches'}
+                <span className="ml-2 normal-case tracking-normal">
+                  ({searchResults.elapsedMs}ms)
+                </span>
+              </p>
+              <div className="px-3 py-1 space-y-1">
+                {searchResults.sessions.map((hit, i) => {
+                  const itemIndex = searchResultsStartIndex + i
+                  return (
+                    <SearchResultCard
+                      key={hit.sessionId}
+                      hit={hit}
+                      isSelected={selectedIndex === itemIndex}
+                      onSelect={() => handleSelectSearchResult(hit.sessionId)}
+                    />
+                  )
+                })}
+              </div>
+              {searchResults.totalSessions > searchResults.sessions.length && (
+                <button
+                  type="button"
+                  onClick={() => handleSelect(query.trim())}
+                  className="w-full px-4 py-2 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors text-center"
+                >
+                  View all {searchResults.totalSessions} results
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* No results message */}
+          {query.trim().length > 0 &&
+            !showLoading &&
+            (isRegex
+              ? grepResults &&
+                grepResults.results.length === 0 &&
+                filteredLiveCommands.length === 0 &&
+                suggestions.length === 0
+              : searchResults &&
+                searchResults.sessions.length === 0 &&
+                filteredLiveCommands.length === 0 &&
+                suggestions.length === 0) && (
+              <div className="py-4 border-b border-slate-200/80 dark:border-white/[0.06] text-center">
+                <p className="text-sm text-slate-400 dark:text-slate-500">No results found.</p>
+              </div>
+            )}
+        </div>
 
         {/* Filter hints */}
         <div className="px-4 py-3">
@@ -613,6 +655,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
           <div className="flex flex-wrap gap-2">
             {['project:', 'path:', 'skill:', 'after:', 'before:', '"phrase"'].map((filter) => (
               <button
+                type="button"
                 key={filter}
                 onClick={() => insertFilter(filter)}
                 className="px-2 py-1 text-xs font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/[0.15] rounded-md border border-emerald-200/80 dark:border-emerald-500/20 transition-colors"
