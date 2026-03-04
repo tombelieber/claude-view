@@ -5,8 +5,9 @@ export interface CostEstimate {
   session_id: string
   history_tokens: number
   cache_warm: boolean
-  first_message_cost: number
-  per_message_cost: number
+  first_message_cost: number | null
+  per_message_cost: number | null
+  has_pricing: boolean
   model: string
   explanation: string
   session_title: string | null

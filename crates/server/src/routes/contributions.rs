@@ -26,7 +26,7 @@ use axum::{
 use claude_view_db::{
     calculate_cost_usd, lookup_pricing, AggregatedContributions, BranchBreakdown, BranchSession,
     DailyTrendPoint, FileImpact, LearningCurve, LinkedCommit, ModelStats, SkillStats, TimeRange,
-    TokenBreakdown, UncommittedWork, FALLBACK_INPUT_COST_PER_TOKEN, FALLBACK_OUTPUT_COST_PER_TOKEN,
+    TokenBreakdown, UncommittedWork,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -139,10 +139,29 @@ pub struct EfficiencyMetrics {
     pub total_cost: f64,
     #[ts(type = "number")]
     pub total_lines: i64,
+    #[ts(type = "number")]
+    pub priced_lines: i64,
     pub cost_per_line: Option<f64>,
     pub cost_per_commit: Option<f64>,
     pub cost_trend: Vec<f64>,
-    pub cost_is_estimated: bool,
+    /// True when any tokens were excluded from cost because model pricing was missing.
+    pub has_unpriced_usage: bool,
+    #[ts(type = "number")]
+    pub priced_model_count: i64,
+    #[ts(type = "number")]
+    pub unpriced_model_count: i64,
+    #[ts(type = "number")]
+    pub unpriced_input_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_output_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_read_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_creation_tokens: i64,
+    /// Fraction of tokens priced with real model rates [0.0, 1.0].
+    pub priced_token_coverage: f64,
+    /// `priced_models_only_full` | `priced_models_only_partial`.
+    pub cost_scope: String,
     pub insight: Insight,
 }
 
@@ -344,9 +363,19 @@ pub async fn get_contributions(
         },
     };
 
-    // Compute per-model cost from ModelStats token data + pricing table
+    // Compute per-model cost from ModelStats token data + pricing table.
+    // Strict mode: unknown models are surfaced as unpriced; no synthetic fallback dollars.
     let mut total_cost_usd = 0.0;
-    let mut used_fallback_pricing = false;
+    let mut priced_lines: i64 = 0;
+    let mut priced_model_count: i64 = 0;
+    let mut unpriced_model_count: i64 = 0;
+    let mut unpriced_input_tokens: i64 = 0;
+    let mut unpriced_output_tokens: i64 = 0;
+    let mut unpriced_cache_read_tokens: i64 = 0;
+    let mut unpriced_cache_creation_tokens: i64 = 0;
+    let mut priced_tokens_total: i64 = 0;
+    let mut all_tokens_total: i64 = 0;
+    let mut unpriced_models: Vec<String> = Vec::new();
     let pricing = state.pricing.read().expect("pricing lock poisoned");
     for ms in &mut by_model {
         let tokens = TokenBreakdown {
@@ -355,29 +384,53 @@ pub async fn get_contributions(
             cache_read_tokens: ms.cache_read_tokens,
             cache_creation_tokens: ms.cache_creation_tokens,
         };
-        let model_cost = match lookup_pricing(&ms.model, &pricing) {
-            Some(p) => calculate_cost_usd(&tokens, p),
-            None => {
-                used_fallback_pricing = true;
-                let input = ms.input_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN;
-                let output = ms.output_tokens as f64 * FALLBACK_OUTPUT_COST_PER_TOKEN;
-                let cache_read = ms.cache_read_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
-                let cache_creation =
-                    ms.cache_creation_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
-                input + output + cache_read + cache_creation
+        let model_token_total =
+            ms.input_tokens + ms.output_tokens + ms.cache_read_tokens + ms.cache_creation_tokens;
+        all_tokens_total += model_token_total;
+
+        match lookup_pricing(&ms.model, &pricing) {
+            Some(p) => {
+                let model_cost = calculate_cost_usd(&tokens, p);
+                total_cost_usd += model_cost;
+                priced_lines += ms.lines;
+                priced_model_count += 1;
+                priced_tokens_total += model_token_total;
+                ms.cost_per_line = if ms.lines > 0 {
+                    Some(model_cost / ms.lines as f64)
+                } else {
+                    None
+                };
             }
-        };
-        total_cost_usd += model_cost;
-        ms.cost_per_line = if ms.lines > 0 {
-            Some(model_cost / ms.lines as f64)
-        } else {
-            None
-        };
+            None => {
+                unpriced_model_count += 1;
+                unpriced_input_tokens += ms.input_tokens;
+                unpriced_output_tokens += ms.output_tokens;
+                unpriced_cache_read_tokens += ms.cache_read_tokens;
+                unpriced_cache_creation_tokens += ms.cache_creation_tokens;
+                unpriced_models.push(ms.model.clone());
+                ms.cost_per_line = None;
+                tracing::warn!(
+                    model = %ms.model,
+                    input_tokens = ms.input_tokens,
+                    output_tokens = ms.output_tokens,
+                    cache_read_tokens = ms.cache_read_tokens,
+                    cache_creation_tokens = ms.cache_creation_tokens,
+                    "Missing pricing for model in contributions; model cost left unpriced"
+                );
+            }
+        }
     }
 
+    let has_unpriced_usage = unpriced_model_count > 0;
+    let priced_token_coverage = if all_tokens_total > 0 {
+        priced_tokens_total as f64 / all_tokens_total as f64
+    } else {
+        1.0
+    };
+
     let total_lines = agg.ai_lines_added + agg.ai_lines_removed;
-    let cost_per_line = if total_lines > 0 {
-        Some(total_cost_usd / total_lines as f64)
+    let cost_per_line = if priced_lines > 0 {
+        Some(total_cost_usd / priced_lines as f64)
     } else {
         None
     };
@@ -387,10 +440,10 @@ pub async fn get_contributions(
         None
     };
 
-    // Redistribute per-model cost across trend points.
+    // Redistribute known (priced) cost across trend points.
     // Snapshot blended rate only accounts for input+output tokens and misses
     // cache tokens, producing a cost ~300x too low.  Distribute the accurate
-    // `total_cost_usd` (computed from per-model pricing) proportionally.
+    // `total_cost_usd` (computed only from priced models) proportionally.
     let total_trend_tokens: i64 = trend.iter().map(|t| t.tokens_used).sum();
     if total_cost_usd > 0.0 {
         if total_trend_tokens > 0 {
@@ -420,10 +473,23 @@ pub async fn get_contributions(
     let efficiency = EfficiencyMetrics {
         total_cost: total_cost_usd,
         total_lines,
+        priced_lines,
         cost_per_line,
         cost_per_commit,
         cost_trend: cost_trend.clone(),
-        cost_is_estimated: used_fallback_pricing || by_model.is_empty(),
+        has_unpriced_usage,
+        priced_model_count,
+        unpriced_model_count,
+        unpriced_input_tokens,
+        unpriced_output_tokens,
+        unpriced_cache_read_tokens,
+        unpriced_cache_creation_tokens,
+        priced_token_coverage,
+        cost_scope: if has_unpriced_usage {
+            "priced_models_only_partial".to_string()
+        } else {
+            "priced_models_only_full".to_string()
+        },
         insight: efficiency_insight(cost_per_line, &cost_trend),
     };
 
@@ -434,7 +500,27 @@ pub async fn get_contributions(
     let uncommitted_insight = generate_uncommitted_insight(&uncommitted, total_lines);
 
     // Detect warnings
-    let warnings = detect_warnings(&agg, &uncommitted);
+    let mut warnings = detect_warnings(&agg, &uncommitted);
+    if has_unpriced_usage {
+        unpriced_models.sort();
+        unpriced_models.dedup();
+        let sample: Vec<String> = unpriced_models.iter().take(5).cloned().collect();
+        let more = unpriced_models.len().saturating_sub(sample.len());
+        let suffix = if more > 0 {
+            format!(" (+{} more)", more)
+        } else {
+            String::new()
+        };
+        warnings.push(ContributionWarning {
+            code: "UnpricedModels".to_string(),
+            message: format!(
+                "Cost excludes usage from {} model(s) without pricing: {}{}",
+                unpriced_model_count,
+                sample.join(", "),
+                suffix
+            ),
+        });
+    }
 
     // Build response
     let response = ContributionsResponse {
@@ -692,9 +778,9 @@ fn detect_warnings(
         });
     }
 
-    // CostUnavailable: No cost data when we have sessions
-    // Cost is estimated from tokens, so if cost_cents is 0 but we have sessions, token data is missing
-    if agg.sessions_count > 0 && agg.cost_cents == 0 && agg.tokens_used == 0 {
+    // CostUnavailable: No token data when we have sessions.
+    // Cost is computed from token usage + pricing; without tokens it is unavailable.
+    if agg.sessions_count > 0 && agg.tokens_used == 0 {
         warnings.push(ContributionWarning {
             code: "CostUnavailable".to_string(),
             message: "Cost metrics unavailable - token data missing from some sessions".to_string(),
@@ -892,10 +978,19 @@ mod tests {
             efficiency: EfficiencyMetrics {
                 total_cost: 2.50,
                 total_lines: 600,
+                priced_lines: 540,
                 cost_per_line: Some(0.004),
                 cost_per_commit: Some(0.50),
                 cost_trend: vec![0.5, 0.4, 0.3],
-                cost_is_estimated: true,
+                has_unpriced_usage: true,
+                priced_model_count: 3,
+                unpriced_model_count: 1,
+                unpriced_input_tokens: 1000,
+                unpriced_output_tokens: 500,
+                unpriced_cache_read_tokens: 100,
+                unpriced_cache_creation_tokens: 50,
+                priced_token_coverage: 0.9,
+                cost_scope: "priced_models_only_partial".to_string(),
                 insight: crate::insights::Insight::info("Good"),
             },
             by_model: vec![],
