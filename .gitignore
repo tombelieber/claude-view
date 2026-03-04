@@ -50,6 +50,7 @@ coverage/
 # Playwright
 playwright-report/
 test-results/
+target-playwright/
 e2e/screenshots/*
 !e2e/screenshots/.gitkeep
 
@@ -63,6 +64,7 @@ lighthouse*.json
 .tmp/
 tmp/
 temp/
+artifacts/integrity/
 
 # Screenshots and placeholder images
 *.png
