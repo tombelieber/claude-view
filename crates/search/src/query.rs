@@ -483,7 +483,7 @@ impl SearchIndex {
         // Cap fetched docs to avoid loading the entire index for common queries.
         // We need enough docs to fill (offset + limit) session groups, over-fetching
         // by ~50x to account for multi-doc sessions (each session has many messages).
-        let fetch_limit = ((limit + offset) * 50).min(10_000).max(1);
+        let fetch_limit = ((limit + offset) * 50).clamp(1, 10_000);
         let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(fetch_limit))?;
 
         // Group by session_id
