@@ -1,3 +1,4 @@
+import { FindProvider } from '@claude-view/shared/contexts/FindContext'
 import {
   ArrowLeft,
   ChevronDown,
@@ -41,6 +42,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
 import { MessageTyped } from './MessageTyped'
+import { SearchInput } from './SearchInput'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
 import { ChatInputBar, type InputBarState } from './chat/ChatInputBar'
@@ -131,6 +133,11 @@ export function ConversationView() {
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
   const resumeMenuRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
+
+  // In-session find (Cmd+F / Ctrl+F)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const findInputRef = useRef<HTMLInputElement>(null)
 
   // Build a deterministic "back to sessions" URL, preserving project/branch filters
   const backUrl = useMemo(() => {
@@ -298,6 +305,28 @@ export function ConversationView() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf, handleResume])
+
+  // In-session find: Cmd+F / Ctrl+F to open, Escape to close
+  // Use ref to avoid re-registering the handler on every findOpen change
+  const findOpenRef = useRef(findOpen)
+  useEffect(() => {
+    findOpenRef.current = findOpen
+  }, [findOpen])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        setFindOpen(true)
+      }
+      if (e.key === 'Escape' && findOpenRef.current) {
+        setFindOpen(false)
+        setFindQuery('')
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Close export menu on outside click
   useEffect(() => {
@@ -485,6 +514,7 @@ export function ConversationView() {
             <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
           </div>
           <button
+            type="button"
             onClick={handleResume}
             aria-label="Copy resume command to clipboard"
             title={`Session file missing from disk.\nProject: ${sessionDetail?.projectPath ?? 'unknown'}\nResume may fail if the directory no longer exists.`}
@@ -578,6 +608,7 @@ export function ConversationView() {
         <div className="flex items-center gap-2">
           {/* Panel toggle */}
           <button
+            type="button"
             onClick={() => setPanelOpen(!panelOpen)}
             aria-pressed={panelOpen}
             className={cn(
@@ -590,16 +621,15 @@ export function ConversationView() {
           >
             <PanelRight className="w-4 h-4" />
           </button>
-
           <ShareModal
             sessionId={sessionId!}
             messages={session?.messages}
             projectName={projectName}
           />
-
           {/* Continue / Resume dropdown */}
           <div className="relative" ref={resumeMenuRef}>
             <button
+              type="button"
               onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
               disabled={!exportsReady}
               aria-label="Continue options"
@@ -619,10 +649,10 @@ export function ConversationView() {
                 aria-hidden="true"
               />
             </button>
-
             {resumeMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
+                  type="button"
                   onClick={() => {
                     handleCopyMarkdown()
                     setResumeMenuOpen(false)
@@ -633,6 +663,7 @@ export function ConversationView() {
                   Copy Full Transcript
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     handleResume()
                     setResumeMenuOpen(false)
@@ -651,10 +682,10 @@ export function ConversationView() {
               </div>
             )}
           </div>
-
           {/* Export overflow menu */}
           <div className="relative" ref={exportMenuRef}>
             <button
+              type="button"
               onClick={() => setExportMenuOpen(!exportMenuOpen)}
               disabled={!exportsReady}
               aria-label="Export options"
@@ -678,6 +709,7 @@ export function ConversationView() {
             {exportMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
+                  type="button"
                   onClick={() => {
                     handleExportHtml()
                     setExportMenuOpen(false)
@@ -688,6 +720,7 @@ export function ConversationView() {
                   HTML
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     handleExportPdf()
                     setExportMenuOpen(false)
@@ -698,6 +731,7 @@ export function ConversationView() {
                   PDF
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     handleExportMarkdown()
                     setExportMenuOpen(false)
@@ -717,67 +751,92 @@ export function ConversationView() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages + ChatInputBar */}
         <div className="flex-1 min-w-0 flex flex-col">
+          {/* In-session find bar (Cmd+F) */}
+          {findOpen && (
+            <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
+              <SearchInput
+                ref={findInputRef}
+                value={findQuery}
+                onChange={setFindQuery}
+                placeholder="Find in conversation..."
+                autoFocus
+                shortcutHint="Cmd+F"
+                onClose={() => {
+                  setFindOpen(false)
+                  setFindQuery('')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setFindOpen(false)
+                    setFindQuery('')
+                  }
+                }}
+              />
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-hidden">
             {!verboseMode ? (
-              <ThreadHighlightProvider>
-                <ExpandProvider>
-                  <Virtuoso
-                    data={filteredMessages}
-                    firstItemIndex={firstItemIndex}
-                    startReached={handleStartReached}
-                    initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
-                    followOutput="smooth"
-                    itemContent={(index, message) => {
-                      const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                      return (
-                        <div className="max-w-4xl mx-auto px-6 pb-4">
-                          <ErrorBoundary key={message.uuid || index}>
-                            <MessageTyped
-                              message={message}
-                              messageIndex={index}
-                              messageType={message.role}
-                              metadata={message.metadata}
-                              parentUuid={thread?.parentUuid}
-                              indent={thread?.indent ?? 0}
-                              isChildMessage={thread?.isChild ?? false}
-                              onGetThreadChain={getThreadChainForUuid}
-                              showThinking={false}
-                            />
-                          </ErrorBoundary>
-                        </div>
-                      )
-                    }}
-                    components={{
-                      Header: () =>
-                        isFetchingPreviousPage ? (
-                          <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                            Loading older messages...
+              <FindProvider value={findQuery}>
+                <ThreadHighlightProvider>
+                  <ExpandProvider>
+                    <Virtuoso
+                      data={filteredMessages}
+                      firstItemIndex={firstItemIndex}
+                      startReached={handleStartReached}
+                      initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                      followOutput="smooth"
+                      itemContent={(index, message) => {
+                        const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                        return (
+                          <div className="max-w-4xl mx-auto px-6 pb-4">
+                            <ErrorBoundary key={message.uuid || index}>
+                              <MessageTyped
+                                message={message}
+                                messageIndex={index}
+                                messageType={message.role}
+                                metadata={message.metadata}
+                                parentUuid={thread?.parentUuid}
+                                indent={thread?.indent ?? 0}
+                                isChildMessage={thread?.isChild ?? false}
+                                onGetThreadChain={getThreadChainForUuid}
+                                showThinking={false}
+                              />
+                            </ErrorBoundary>
                           </div>
-                        ) : hasPreviousPage ? (
-                          <div className="h-6" />
-                        ) : filteredMessages.length > 0 ? (
-                          <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                            Beginning of conversation
-                          </div>
-                        ) : (
-                          <div className="h-6" />
-                        ),
-                      Footer: () =>
-                        filteredMessages.length > 0 ? (
-                          <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                            {totalMessages} messages
-                            {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
-                            {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                              <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                            )}
-                          </div>
-                        ) : null,
-                    }}
-                    increaseViewportBy={{ top: 400, bottom: 400 }}
-                    className="h-full overflow-auto"
-                  />
-                </ExpandProvider>
-              </ThreadHighlightProvider>
+                        )
+                      }}
+                      components={{
+                        Header: () =>
+                          isFetchingPreviousPage ? (
+                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                              Loading older messages...
+                            </div>
+                          ) : hasPreviousPage ? (
+                            <div className="h-6" />
+                          ) : filteredMessages.length > 0 ? (
+                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                              Beginning of conversation
+                            </div>
+                          ) : (
+                            <div className="h-6" />
+                          ),
+                        Footer: () =>
+                          filteredMessages.length > 0 ? (
+                            <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                              {totalMessages} messages
+                              {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
+                              {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                                <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                              )}
+                            </div>
+                          ) : null,
+                      }}
+                      increaseViewportBy={{ top: 400, bottom: 400 }}
+                      className="h-full overflow-auto"
+                    />
+                  </ExpandProvider>
+                </ThreadHighlightProvider>
+              </FindProvider>
             ) : (
               <HistoryRichPane
                 messages={richMessagesWithHookEvents}
