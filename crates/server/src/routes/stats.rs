@@ -513,6 +513,33 @@ async fn calculate_directory_size(dir: &Path) -> u64 {
     total
 }
 
+/// Scale token-derived cost components so they add up to a known total.
+///
+/// We use this when `total_cost_usd` comes from JSONL `costUSD` sums while
+/// itemized components come from token*rate estimates. Without scaling,
+/// percentages can exceed 100% in the UI.
+fn normalize_cost_components_to_total(cost: &mut AggregateCostBreakdown, target_total_usd: f64) {
+    if target_total_usd <= 0.0 {
+        return;
+    }
+
+    let component_total = cost.input_cost_usd
+        + cost.output_cost_usd
+        + cost.cache_read_cost_usd
+        + cost.cache_creation_cost_usd;
+
+    if component_total <= 0.0 {
+        return;
+    }
+
+    let scale = target_total_usd / component_total;
+    cost.input_cost_usd *= scale;
+    cost.output_cost_usd *= scale;
+    cost.cache_read_cost_usd *= scale;
+    cost.cache_creation_cost_usd *= scale;
+    cost.cache_savings_usd *= scale;
+}
+
 /// GET /api/stats/ai-generation - AI generation statistics with time range filtering.
 ///
 /// Query params:
@@ -611,10 +638,15 @@ pub async fn ai_generation_stats(
             + cost.output_cost_usd
             + cost.cache_read_cost_usd
             + cost.cache_creation_cost_usd;
-        cost.total_cost_usd = stats
-            .total_cost_usd_from_jsonl
-            .filter(|&v| v > 0.0)
-            .unwrap_or(token_based_total);
+
+        if let Some(jsonl_total) = stats.total_cost_usd_from_jsonl.filter(|&v| v > 0.0) {
+            // Keep JSONL total (billing-accurate), but normalize itemized components
+            // so breakdown percentages are mathematically consistent.
+            normalize_cost_components_to_total(&mut cost, jsonl_total);
+            cost.total_cost_usd = jsonl_total;
+        } else {
+            cost.total_cost_usd = token_based_total;
+        }
         stats.cost = cost;
     }
 
@@ -638,7 +670,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use claude_view_core::{SessionInfo, ToolCounts};
-    use claude_view_db::Database;
+    use claude_view_db::{AggregateCostBreakdown, Database};
     use tower::ServiceExt;
 
     async fn test_db() -> Database {
@@ -659,6 +691,48 @@ mod tests {
             .await
             .unwrap();
         (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    #[test]
+    fn test_normalize_cost_components_to_total_scales_breakdown() {
+        let mut cost = AggregateCostBreakdown {
+            total_cost_usd: 0.0,
+            input_cost_usd: 10.0,
+            output_cost_usd: 30.0,
+            cache_read_cost_usd: 40.0,
+            cache_creation_cost_usd: 20.0,
+            cache_savings_usd: 50.0,
+        };
+
+        super::normalize_cost_components_to_total(&mut cost, 50.0);
+
+        let components_total = cost.input_cost_usd
+            + cost.output_cost_usd
+            + cost.cache_read_cost_usd
+            + cost.cache_creation_cost_usd;
+        assert!(
+            (components_total - 50.0).abs() < 1e-9,
+            "components should sum to target total"
+        );
+        assert!((cost.input_cost_usd - 5.0).abs() < 1e-9);
+        assert!((cost.output_cost_usd - 15.0).abs() < 1e-9);
+        assert!((cost.cache_read_cost_usd - 20.0).abs() < 1e-9);
+        assert!((cost.cache_creation_cost_usd - 10.0).abs() < 1e-9);
+        assert!(
+            (cost.cache_savings_usd - 25.0).abs() < 1e-9,
+            "cache savings should be scaled by the same factor"
+        );
+    }
+
+    #[test]
+    fn test_normalize_cost_components_to_total_is_noop_when_components_zero() {
+        let mut cost = AggregateCostBreakdown::default();
+        super::normalize_cost_components_to_total(&mut cost, 42.0);
+        assert_eq!(cost.input_cost_usd, 0.0);
+        assert_eq!(cost.output_cost_usd, 0.0);
+        assert_eq!(cost.cache_read_cost_usd, 0.0);
+        assert_eq!(cost.cache_creation_cost_usd, 0.0);
+        assert_eq!(cost.cache_savings_usd, 0.0);
     }
 
     #[tokio::test]
