@@ -3035,7 +3035,7 @@ where
             "Search index was rebuilt — forcing full re-parse to repopulate search data"
         );
     }
-    let validate_source_docs = search_index.is_some();
+    let source_docs_validation_enabled = search_index.is_some();
 
     // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
     let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new();
@@ -3112,7 +3112,7 @@ where
         let registry = registry.clone();
         let force_reindex = force_search_reindex;
         let pricing = pricing.clone();
-        let validate_source_docs = validate_source_docs;
+        let validate_source_docs = source_docs_validation_enabled;
 
         let handle = tokio::spawn(async move {
             let _permit = sem
