@@ -17,7 +17,10 @@ use ts_rs::TS;
 use claude_view_core::insights::generator::GeneratedInsight;
 use claude_view_core::patterns::calculate_all_patterns;
 use claude_view_core::types::SessionInfo;
-use claude_view_core::{EffectiveRangeMeta, EffectiveRangeSource};
+use claude_view_core::{
+    AnalyticsScopeMeta, AnalyticsSessionBreakdown, BenchmarksResponse, EffectiveRangeMeta,
+    EffectiveRangeSource,
+};
 use claude_view_db::insights_trends::{CategoryDataPoint, HeatmapCell, MetricDataPoint};
 
 use crate::error::{ApiError, ApiResult};
@@ -102,6 +105,8 @@ pub struct CategoriesResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesMeta {
     pub effective_range: EffectiveRangeMeta,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
 }
 
 /// Overall averages across all sessions for comparison.
@@ -213,6 +218,8 @@ pub struct InsightsMeta {
     pub effective_range: EffectiveRangeMeta,
     pub patterns_evaluated: u32,
     pub patterns_returned: u32,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
 }
 
 /// Trends response metadata.
@@ -221,6 +228,8 @@ pub struct InsightsMeta {
 #[serde(rename_all = "camelCase")]
 pub struct InsightsTrendsMeta {
     pub effective_range: EffectiveRangeMeta,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
 }
 
 /// Full trends response wrapper with additive metadata.
@@ -244,6 +253,16 @@ pub struct InsightsTrendsResponse {
     #[ts(type = "number")]
     pub total_sessions: i64,
     pub meta: InsightsTrendsMeta,
+}
+
+/// Benchmarks response wrapper with additive metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarksResponseWithMeta {
+    #[serde(flatten)]
+    pub base: BenchmarksResponse,
+    pub meta: AnalyticsScopeMeta,
 }
 
 // ============================================================================
@@ -419,6 +438,33 @@ impl LightSession {
     }
 }
 
+async fn fetch_analytics_scope_meta_for_range(
+    state: &Arc<AppState>,
+    from: i64,
+    to: i64,
+) -> ApiResult<AnalyticsScopeMeta> {
+    let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions
+        WHERE last_message_at >= ?1
+          AND last_message_at <= ?2
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to fetch insights session breakdown: {e}")))?;
+
+    Ok(AnalyticsScopeMeta::new(AnalyticsSessionBreakdown::new(
+        primary_sessions,
+        sidechain_sessions,
+    )))
+}
+
 // ============================================================================
 // Handler
 // ============================================================================
@@ -556,6 +602,7 @@ pub async fn get_insights(
 
     // 8. Classification status
     let classification_status = get_classification_status(pool).await?;
+    let analytics_scope = fetch_analytics_scope_meta_for_range(&state, from_ts, to_ts).await?;
 
     Ok(Json(InsightsResponse {
         top_insight,
@@ -573,6 +620,7 @@ pub async fn get_insights(
             effective_range,
             patterns_evaluated,
             patterns_returned,
+            analytics_scope,
         },
     }))
 }
@@ -881,12 +929,18 @@ pub async fn get_categories(
 
     // Calculate L1 breakdown
     let breakdown = calculate_breakdown(&counts, uncategorized, total);
+    let analytics_scope =
+        fetch_analytics_scope_meta_for_range(&state, effective_range.from, effective_range.to)
+            .await?;
 
     Ok(Json(CategoriesResponse {
         breakdown,
         categories,
         overall_averages: overall,
-        meta: CategoriesMeta { effective_range },
+        meta: CategoriesMeta {
+            effective_range,
+            analytics_scope,
+        },
     }))
 }
 
@@ -1347,6 +1401,7 @@ pub async fn get_insights_trends(
     let heatmap_insight = generate_heatmap_insight(&activity_heatmap);
 
     let classification_required = category_evolution.is_none();
+    let analytics_scope = fetch_analytics_scope_meta_for_range(&state, from, to).await?;
 
     Ok(Json(InsightsTrendsResponse {
         metric: query.metric,
@@ -1367,7 +1422,10 @@ pub async fn get_insights_trends(
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_default(),
         total_sessions,
-        meta: InsightsTrendsMeta { effective_range },
+        meta: InsightsTrendsMeta {
+            effective_range,
+            analytics_scope,
+        },
     }))
 }
 
@@ -1386,10 +1444,10 @@ pub struct BenchmarksQuery {
 pub async fn get_benchmarks(
     State(state): State<Arc<AppState>>,
     Query(query): Query<BenchmarksQuery>,
-) -> ApiResult<Json<claude_view_core::BenchmarksResponse>> {
+) -> ApiResult<Json<BenchmarksResponseWithMeta>> {
     use claude_view_core::{
-        BenchmarksResponse, CategoryPerformance, CategoryVerdict, ImprovementMetrics,
-        LearningCurvePoint, PeriodMetrics, ProgressComparison, ReportSummary, SkillAdoption,
+        CategoryPerformance, CategoryVerdict, ImprovementMetrics, LearningCurvePoint,
+        PeriodMetrics, ProgressComparison, ReportSummary, SkillAdoption,
     };
 
     let range = query.range.as_deref().unwrap_or("all");
@@ -1740,7 +1798,7 @@ pub async fn get_benchmarks(
     let top_wins = bench_top_wins(&progress, &by_category, &skill_adoption);
     let focus_areas = bench_focus_areas(&by_category);
 
-    Ok(Json(BenchmarksResponse {
+    let base = BenchmarksResponse {
         progress,
         by_category,
         user_average_reedit_rate,
@@ -1756,7 +1814,10 @@ pub async fn get_benchmarks(
             top_wins,
             focus_areas,
         },
-    }))
+    };
+    let meta = fetch_analytics_scope_meta_for_range(&state, data_start, now).await?;
+
+    Ok(Json(BenchmarksResponseWithMeta { base, meta }))
 }
 
 // ============================================================================
@@ -1966,6 +2027,14 @@ mod tests {
         .unwrap();
     }
 
+    async fn mark_session_sidechain(db: &Database, id: &str) {
+        sqlx::query("UPDATE sessions SET is_sidechain = 1 WHERE id = ?1")
+            .bind(id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn test_insights_empty_db() {
         let db = test_db().await;
@@ -2003,6 +2072,45 @@ mod tests {
         // meta
         assert!(json["meta"]["computedAt"].is_number());
         assert!(json["meta"]["patternsEvaluated"].is_number());
+    }
+
+    #[tokio::test]
+    async fn test_insights_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_insights_includes_session_breakdown_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "ins-meta-primary", now - 120, Some("code_work")).await;
+        insert_session(&db, "ins-meta-sidechain", now - 60, Some("code_work")).await;
+        mark_session_sidechain(&db, "ins-meta-sidechain").await;
+
+        let app = build_app(db);
+        let from = now - 3600;
+        let to = now;
+        let (status, body) = do_get(app, &format!("/api/insights?from={}&to={}", from, to)).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -2214,6 +2322,24 @@ mod tests {
 
         // Categories should be empty
         assert!(json["categories"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_categories_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/categories").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
     }
 
     #[tokio::test]
@@ -2443,6 +2569,33 @@ mod tests {
         assert!(json["overallAverages"]["commitRate"].is_number());
     }
 
+    #[tokio::test]
+    async fn test_benchmarks_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "bench-meta-primary", now - 3600, Some("code_work")).await;
+        insert_session(&db, "bench-meta-sidechain", now - 1800, Some("code_work")).await;
+        mark_session_sidechain(&db, "bench-meta-sidechain").await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/benchmarks?range=all").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
+    }
+
     // ========================================================================
     // GET /api/insights/trends tests (Phase 7)
     // ========================================================================
@@ -2470,6 +2623,42 @@ mod tests {
         assert_eq!(json["meta"]["effectiveRange"]["source"], "default_all_time");
         assert_eq!(json["classificationRequired"], true);
         assert!(json["categoryEvolution"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_insights_trends_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "trend-meta-primary", now - 120, Some("code_work")).await;
+        insert_session(&db, "trend-meta-sidechain", now - 60, Some("code_work")).await;
+        mark_session_sidechain(&db, "trend-meta-sidechain").await;
+
+        let app = build_app(db);
+        let from = now - 3600;
+        let to = now;
+        let (status, body) = do_get(
+            app,
+            &format!(
+                "/api/insights/trends?metric=sessions&from={}&to={}",
+                from, to
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]

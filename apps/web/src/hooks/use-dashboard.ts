@@ -1,8 +1,33 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ExtendedDashboardStats } from '../types/generated'
+import type { ExtendedDashboardStats as GeneratedExtendedDashboardStats } from '../types/generated'
 import type { TimeRangeParams } from '../types/time-range'
 
 export type { TimeRangeParams } from '../types/time-range'
+
+export type AnalyticsDataScope = 'primary_sessions_only' | 'primary_plus_subagent_work'
+
+export interface AnalyticsDataScopeContract {
+  sessions: AnalyticsDataScope
+  workload: AnalyticsDataScope
+}
+
+export interface AnalyticsSessionBreakdown {
+  primarySessions: number
+  sidechainSessions: number
+  otherSessions: number
+  totalObservedSessions: number
+}
+
+export interface AnalyticsScopeContractMeta {
+  dataScope?: AnalyticsDataScopeContract
+  sessionBreakdown?: AnalyticsSessionBreakdown
+}
+
+type DashboardMetaWithScope = GeneratedExtendedDashboardStats['meta'] & AnalyticsScopeContractMeta
+
+export type ExtendedDashboardStats = Omit<GeneratedExtendedDashboardStats, 'meta'> & {
+  meta: DashboardMetaWithScope
+}
 
 /**
  * Fetch dashboard stats with optional time range filter.
@@ -68,8 +93,8 @@ export function useDashboardStats(
 
 // Re-export types for convenience
 export type {
-  ExtendedDashboardStats,
   CurrentWeekMetrics,
+  CurrentPeriodMetrics,
   DashboardTrends,
   TrendMetric,
 } from '../types/generated'
