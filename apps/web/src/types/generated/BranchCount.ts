@@ -3,4 +3,4 @@
 /**
  * Branch count for a project.
  */
-export type BranchCount = { branch: string | null, count: number, };
+export type BranchCount = { branch: string | null; count: number }
