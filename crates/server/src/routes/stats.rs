@@ -513,33 +513,6 @@ async fn calculate_directory_size(dir: &Path) -> u64 {
     total
 }
 
-/// Scale token-derived cost components so they add up to a known total.
-///
-/// We use this when `total_cost_usd` comes from JSONL `costUSD` sums while
-/// itemized components come from token*rate estimates. Without scaling,
-/// percentages can exceed 100% in the UI.
-fn normalize_cost_components_to_total(cost: &mut AggregateCostBreakdown, target_total_usd: f64) {
-    if target_total_usd <= 0.0 {
-        return;
-    }
-
-    let component_total = cost.input_cost_usd
-        + cost.output_cost_usd
-        + cost.cache_read_cost_usd
-        + cost.cache_creation_cost_usd;
-
-    if component_total <= 0.0 {
-        return;
-    }
-
-    let scale = target_total_usd / component_total;
-    cost.input_cost_usd *= scale;
-    cost.output_cost_usd *= scale;
-    cost.cache_read_cost_usd *= scale;
-    cost.cache_creation_cost_usd *= scale;
-    cost.cache_savings_usd *= scale;
-}
-
 /// GET /api/stats/ai-generation - AI generation statistics with time range filtering.
 ///
 /// Query params:
@@ -605,13 +578,20 @@ pub async fn ai_generation_stats(
         let pricing = state.pricing.read().unwrap_or_else(|e| e.into_inner());
         let mut cost = AggregateCostBreakdown::default();
 
+        let mut priced_tokens_total: i64 = 0;
+        let mut all_tokens_total: i64 = 0;
+
         // Use flat base rates — NOT tiered_cost(). The 200k tiering threshold is
         // per-API-request, but these totals are aggregated across all sessions for
         // each model. Applying tiering to aggregates inflates costs ~1.4-2x because
         // the bulk of tokens sits above the 200k threshold at the aggregate level,
         // even though individual requests rarely exceed it.
         for (model_id, input, output, cache_read, cache_create) in &model_tokens {
+            let model_token_total = *input + *output + *cache_read + *cache_create;
+            all_tokens_total += model_token_total;
             if let Some(mp) = pricing_engine::lookup_pricing(model_id, &pricing) {
+                cost.priced_model_count += 1;
+                priced_tokens_total += model_token_total;
                 cost.input_cost_usd += *input as f64 * mp.input_cost_per_token;
                 cost.output_cost_usd += *output as f64 * mp.output_cost_per_token;
                 let cr_cost = *cache_read as f64 * mp.cache_read_cost_per_token;
@@ -620,33 +600,39 @@ pub async fn ai_generation_stats(
                     *cache_create as f64 * mp.cache_creation_cost_per_token;
                 cost.cache_savings_usd += *cache_read as f64 * mp.input_cost_per_token - cr_cost;
             } else {
-                cost.input_cost_usd +=
-                    *input as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN;
-                cost.output_cost_usd +=
-                    *output as f64 * pricing_engine::FALLBACK_OUTPUT_COST_PER_TOKEN;
-                cost.cache_read_cost_usd +=
-                    *cache_read as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
-                cost.cache_creation_cost_usd +=
-                    *cache_create as f64 * pricing_engine::FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
+                cost.unpriced_model_count += 1;
+                cost.unpriced_input_tokens += *input;
+                cost.unpriced_output_tokens += *output;
+                cost.unpriced_cache_read_tokens += *cache_read;
+                cost.unpriced_cache_creation_tokens += *cache_create;
+                tracing::warn!(
+                    model_id = %model_id,
+                    input,
+                    output,
+                    cache_read,
+                    cache_create,
+                    "Missing pricing for model in ai-generation stats; cost left unpriced"
+                );
             }
         }
 
-        // Total: prefer JSONL costUSD sum (most accurate), fall back to token-based calc.
-        // Filter out 0.0 — sessions re-indexed without costUSD in JSONL produce SUM = 0.0,
-        // which would hide the cost card. Fall back to token-based in that case.
-        let token_based_total = cost.input_cost_usd
+        let computed_priced_total = cost.input_cost_usd
             + cost.output_cost_usd
             + cost.cache_read_cost_usd
             + cost.cache_creation_cost_usd;
-
-        if let Some(jsonl_total) = stats.total_cost_usd_from_jsonl.filter(|&v| v > 0.0) {
-            // Keep JSONL total (billing-accurate), but normalize itemized components
-            // so breakdown percentages are mathematically consistent.
-            normalize_cost_components_to_total(&mut cost, jsonl_total);
-            cost.total_cost_usd = jsonl_total;
+        cost.computed_priced_total_cost_usd = computed_priced_total;
+        cost.has_unpriced_usage = cost.unpriced_model_count > 0;
+        cost.priced_token_coverage = if all_tokens_total > 0 {
+            priced_tokens_total as f64 / all_tokens_total as f64
         } else {
-            cost.total_cost_usd = token_based_total;
-        }
+            1.0
+        };
+        cost.total_cost_usd = computed_priced_total;
+        cost.total_cost_source = if cost.has_unpriced_usage {
+            "computed_priced_tokens_partial".to_string()
+        } else {
+            "computed_priced_tokens_full".to_string()
+        };
         stats.cost = cost;
     }
 
@@ -694,45 +680,13 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_cost_components_to_total_scales_breakdown() {
-        let mut cost = AggregateCostBreakdown {
-            total_cost_usd: 0.0,
-            input_cost_usd: 10.0,
-            output_cost_usd: 30.0,
-            cache_read_cost_usd: 40.0,
-            cache_creation_cost_usd: 20.0,
-            cache_savings_usd: 50.0,
-        };
-
-        super::normalize_cost_components_to_total(&mut cost, 50.0);
-
-        let components_total = cost.input_cost_usd
-            + cost.output_cost_usd
-            + cost.cache_read_cost_usd
-            + cost.cache_creation_cost_usd;
-        assert!(
-            (components_total - 50.0).abs() < 1e-9,
-            "components should sum to target total"
-        );
-        assert!((cost.input_cost_usd - 5.0).abs() < 1e-9);
-        assert!((cost.output_cost_usd - 15.0).abs() < 1e-9);
-        assert!((cost.cache_read_cost_usd - 20.0).abs() < 1e-9);
-        assert!((cost.cache_creation_cost_usd - 10.0).abs() < 1e-9);
-        assert!(
-            (cost.cache_savings_usd - 25.0).abs() < 1e-9,
-            "cache savings should be scaled by the same factor"
-        );
-    }
-
-    #[test]
-    fn test_normalize_cost_components_to_total_is_noop_when_components_zero() {
-        let mut cost = AggregateCostBreakdown::default();
-        super::normalize_cost_components_to_total(&mut cost, 42.0);
-        assert_eq!(cost.input_cost_usd, 0.0);
-        assert_eq!(cost.output_cost_usd, 0.0);
-        assert_eq!(cost.cache_read_cost_usd, 0.0);
-        assert_eq!(cost.cache_creation_cost_usd, 0.0);
-        assert_eq!(cost.cache_savings_usd, 0.0);
+    fn test_aggregate_cost_breakdown_defaults_are_explicit() {
+        let cost = AggregateCostBreakdown::default();
+        assert_eq!(cost.total_cost_usd, 0.0);
+        assert_eq!(cost.computed_priced_total_cost_usd, 0.0);
+        assert_eq!(cost.total_cost_source, "");
+        assert!(!cost.has_unpriced_usage);
+        assert_eq!(cost.priced_token_coverage, 0.0);
     }
 
     #[tokio::test]
@@ -1246,16 +1200,16 @@ mod tests {
             0,
             0, // lines_added, lines_removed, loc_source
             0,
-            0,    // ai_lines_added, ai_lines_removed
-            None, // work_type
-            None, // git_branch
-            None, // primary_model
-            None, // last_message_at
-            None, // first_user_prompt
-            0,    // total_task_time_seconds
-            None, // longest_task_seconds
-            None, // longest_task_preview
-            0.0,  // total_cost_usd
+            0,         // ai_lines_added, ai_lines_removed
+            None,      // work_type
+            None,      // git_branch
+            None,      // primary_model
+            None,      // last_message_at
+            None,      // first_user_prompt
+            0,         // total_task_time_seconds
+            None,      // longest_task_seconds
+            None,      // longest_task_preview
+            Some(0.0), // total_cost_usd
         )
         .await
         .unwrap();
@@ -1421,16 +1375,16 @@ mod tests {
             0,
             0, // lines_added, lines_removed, loc_source
             0,
-            0,    // ai_lines_added, ai_lines_removed
-            None, // work_type
-            None, // git_branch
-            None, // primary_model
-            None, // last_message_at
-            None, // first_user_prompt
-            0,    // total_task_time_seconds
-            None, // longest_task_seconds
-            None, // longest_task_preview
-            0.0,  // total_cost_usd
+            0,         // ai_lines_added, ai_lines_removed
+            None,      // work_type
+            None,      // git_branch
+            None,      // primary_model
+            None,      // last_message_at
+            None,      // first_user_prompt
+            0,         // total_task_time_seconds
+            None,      // longest_task_seconds
+            None,      // longest_task_preview
+            Some(0.0), // total_cost_usd
         )
         .await
         .unwrap();

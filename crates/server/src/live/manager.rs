@@ -15,7 +15,7 @@ use tracing::{error, info, warn};
 
 use claude_view_core::live_parser::{parse_tail, LineType, TailFinders};
 use claude_view_core::pricing::{
-    calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
+    calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
@@ -89,6 +89,9 @@ struct SessionAccumulator {
     /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
     /// priced individually (200k tiering is per-API-request, not per-session).
     accumulated_cost: CostBreakdown,
+    /// Dedup guard for split assistant content blocks.
+    /// Keyed by `message.id:requestId` so one API response is counted once.
+    seen_api_calls: std::collections::HashSet<String>,
 }
 
 impl SessionAccumulator {
@@ -121,6 +124,7 @@ impl SessionAccumulator {
             tool_counts_write: 0,
             compact_count: 0,
             accumulated_cost: CostBreakdown::default(),
+            seen_api_calls: std::collections::HashSet::new(),
         }
     }
 }
@@ -543,7 +547,8 @@ impl LiveSessionManager {
                             let (project, project_display_name, project_path, _) =
                                 extract_project_info(path, cached_cwd);
                             if let Some(acc) = accumulators.get(session_id) {
-                                let cost = acc.accumulated_cost.clone();
+                                let mut cost = acc.accumulated_cost.clone();
+                                finalize_cost_breakdown(&mut cost, &acc.tokens);
 
                                 let cache_status = match acc.last_cache_hit_at {
                                     Some(ts) => {
@@ -1031,32 +1036,57 @@ impl LiveSessionManager {
             acc.tool_counts_bash = 0;
             acc.tool_counts_write = 0;
             acc.compact_count = 0;
+            acc.accumulated_cost = CostBreakdown::default();
+            acc.seen_api_calls.clear();
         }
 
         for line in &new_lines {
-            // Accumulate tokens (cumulative, for cost calculation)
-            if let Some(input) = line.input_tokens {
-                acc.tokens.input_tokens += input;
-                acc.tokens.total_tokens += input;
-            }
-            if let Some(output) = line.output_tokens {
-                acc.tokens.output_tokens += output;
-                acc.tokens.total_tokens += output;
-            }
-            if let Some(cache_read) = line.cache_read_tokens {
-                acc.tokens.cache_read_tokens += cache_read;
-                acc.tokens.total_tokens += cache_read;
-            }
-            if let Some(cache_creation) = line.cache_creation_tokens {
-                acc.tokens.cache_creation_tokens += cache_creation;
-                acc.tokens.total_tokens += cache_creation;
-            }
-            // Accumulate split cache creation by TTL
-            if let Some(tokens_5m) = line.cache_creation_5m_tokens {
-                acc.tokens.cache_creation_5m_tokens += tokens_5m;
-            }
-            if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
-                acc.tokens.cache_creation_1hr_tokens += tokens_1hr;
+            // Content-block dedup (same policy as core SessionAccumulator):
+            // only count tokens/cost once per API response.
+            let has_measurement_data = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
+            let should_count_block = match (line.message_id.as_deref(), line.request_id.as_deref())
+            {
+                (Some(msg_id), Some(req_id)) => {
+                    if has_measurement_data {
+                        let key = format!("{}:{}", msg_id, req_id);
+                        acc.seen_api_calls.insert(key)
+                    } else {
+                        false
+                    }
+                }
+                _ => true, // Legacy lines without IDs: no safe dedup key available.
+            };
+
+            if should_count_block {
+                // Accumulate tokens (cumulative, for cost calculation)
+                if let Some(input) = line.input_tokens {
+                    acc.tokens.input_tokens += input;
+                    acc.tokens.total_tokens += input;
+                }
+                if let Some(output) = line.output_tokens {
+                    acc.tokens.output_tokens += output;
+                    acc.tokens.total_tokens += output;
+                }
+                if let Some(cache_read) = line.cache_read_tokens {
+                    acc.tokens.cache_read_tokens += cache_read;
+                    acc.tokens.total_tokens += cache_read;
+                }
+                if let Some(cache_creation) = line.cache_creation_tokens {
+                    acc.tokens.cache_creation_tokens += cache_creation;
+                    acc.tokens.total_tokens += cache_creation;
+                }
+                // Accumulate split cache creation by TTL
+                if let Some(tokens_5m) = line.cache_creation_5m_tokens {
+                    acc.tokens.cache_creation_5m_tokens += tokens_5m;
+                }
+                if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
+                    acc.tokens.cache_creation_1hr_tokens += tokens_1hr;
+                }
             }
 
             // Track last cache hit time when we see cache activity.
@@ -1101,8 +1131,10 @@ impl LiveSessionManager {
             let has_tokens = line.input_tokens.is_some()
                 || line.output_tokens.is_some()
                 || line.cache_read_tokens.is_some()
-                || line.cache_creation_tokens.is_some();
-            if has_tokens {
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
+            if should_count_block && has_tokens {
                 let turn_tokens = TokenUsage {
                     input_tokens: line.input_tokens.unwrap_or(0),
                     output_tokens: line.output_tokens.unwrap_or(0),
@@ -1121,9 +1153,13 @@ impl LiveSessionManager {
                         turn_cost.cache_creation_cost_usd;
                     acc.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
                     acc.accumulated_cost.total_usd += turn_cost.total_usd;
-                    if turn_cost.is_estimated {
-                        acc.accumulated_cost.is_estimated = true;
-                    }
+                    acc.accumulated_cost.unpriced_input_tokens += turn_cost.unpriced_input_tokens;
+                    acc.accumulated_cost.unpriced_output_tokens += turn_cost.unpriced_output_tokens;
+                    acc.accumulated_cost.unpriced_cache_read_tokens +=
+                        turn_cost.unpriced_cache_read_tokens;
+                    acc.accumulated_cost.unpriced_cache_creation_tokens +=
+                        turn_cost.unpriced_cache_creation_tokens;
+                    acc.accumulated_cost.has_unpriced_usage |= turn_cost.has_unpriced_usage;
                 }
             }
 
@@ -1398,7 +1434,8 @@ impl LiveSessionManager {
         }
 
         // Use per-turn accumulated cost (computed in the line processing loop above).
-        let cost = acc.accumulated_cost.clone();
+        let mut cost = acc.accumulated_cost.clone();
+        finalize_cost_breakdown(&mut cost, &acc.tokens);
 
         // Derive cache status from last cache hit (ground truth from API response tokens).
         let cache_status = match acc.last_cache_hit_at {
