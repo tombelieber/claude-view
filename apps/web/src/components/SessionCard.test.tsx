@@ -695,6 +695,30 @@ describe('SessionCard', () => {
       expect(screen.getByText(/45 min/)).toBeInTheDocument()
     })
 
+    it('uses sanitized task duration when wall-clock task metrics are outliers', () => {
+      const now = Math.floor(Date.now() / 1000)
+      const session = createMockSession({
+        modifiedAt: now,
+        // Outlier task metric (50.3h) from stale turn boundary
+        totalTaskTimeSeconds: 182_111,
+        longestTaskSeconds: 181_128,
+        // Claude turn_duration data indicates much lower active work time
+        turnDurationAvgMs: 513_702,
+        turnDurationMaxMs: 982_402,
+        turnCount: 92,
+        // Keep wall-clock session span high to ensure fallback is not from durationSeconds
+        durationSeconds: 241_299,
+      })
+
+      render(<SessionCard session={session} />, {
+        wrapper: createWrapper(),
+      })
+
+      // 513,702ms * 92 turns = 47,261s -> 13.1 hr
+      expect(screen.getByText(/13\.1 hr/)).toBeInTheDocument()
+      expect(screen.queryByText(/50\.3 hr/)).not.toBeInTheDocument()
+    })
+
     it('should still show metrics: prompts, tokens, files', () => {
       const session = createMockSession({
         userPromptCount: 12,
