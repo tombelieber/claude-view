@@ -476,21 +476,31 @@ impl Database {
         Ok((sessions, total))
     }
 
-    /// List distinct branches with session counts for a project.
+    /// List distinct branches with session counts for a project identity.
     ///
     /// Returns branches sorted by session count DESC.
     /// Includes sessions with `git_branch = NULL` as a separate entry.
-    pub async fn list_branches_for_project(&self, project_id: &str) -> DbResult<Vec<BranchCount>> {
+    ///
+    /// `project_identity` may be either:
+    /// - `project_id` (legacy per-worktree identity), or
+    /// - `git_root` (effective sidebar identity for merged worktrees).
+    pub async fn list_branches_for_project(
+        &self,
+        project_identity: &str,
+    ) -> DbResult<Vec<BranchCount>> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
             SELECT NULLIF(git_branch, '') as branch, COUNT(*) as count
             FROM valid_sessions
-            WHERE project_id = ?1
+            WHERE (
+                project_id = ?1
+                OR (git_root IS NOT NULL AND git_root != '' AND git_root = ?1)
+            )
             GROUP BY NULLIF(git_branch, '')
             ORDER BY count DESC
             "#,
         )
-        .bind(project_id)
+        .bind(project_identity)
         .fetch_all(self.pool())
         .await?;
 
