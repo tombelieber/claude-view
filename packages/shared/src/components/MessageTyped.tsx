@@ -25,7 +25,9 @@ import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import { useCodeBlock } from '../contexts/CodeRenderContext'
+import { useFindQuery } from '../contexts/FindContext'
 import { useThreadHighlight } from '../contexts/ThreadHighlightContext'
+import { highlightText } from '../lib/highlight-text'
 import type { Message } from '../types/message'
 import { cn } from '../utils/cn'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -401,6 +403,7 @@ export function MessageTyped({
   const Icon = config.icon
   const time = formatTime(message.timestamp)
   const [copied, setCopied] = useState(false)
+  const findQuery = useFindQuery()
 
   // Cap indent at MAX_INDENT_LEVEL
   const clampedIndent = Math.min(Math.max(indent, 0), MAX_INDENT_LEVEL)
@@ -437,6 +440,22 @@ export function MessageTyped({
   // Memoize content processing to avoid re-running XML extraction on every render
   const contentSegments = useMemo(() => processContent(message.content), [message.content])
 
+  /** Recursively highlight string children for in-session find */
+  const highlightChildren = useCallback(
+    (children: React.ReactNode): React.ReactNode => {
+      if (!findQuery.trim()) return children
+      if (typeof children === 'string') return highlightText(children, findQuery)
+      if (Array.isArray(children))
+        return children.map((child, i) => {
+          if (typeof child === 'string')
+            return <span key={i}>{highlightText(child, findQuery)}</span>
+          return child
+        })
+      return children
+    },
+    [findQuery],
+  )
+
   // Memoize ReactMarkdown components to prevent full subtree re-mount on every render.
   // react-markdown re-mounts when the components object reference changes.
   const markdownComponents = useMemo(
@@ -462,7 +481,7 @@ export function MessageTyped({
         return <>{children}</>
       },
       p({ children }: any) {
-        return <p className="mb-2 last:mb-0">{children}</p>
+        return <p className="mb-2 last:mb-0">{highlightChildren(children)}</p>
       },
       ul({ children }: any) {
         return <ul className="list-disc pl-4 mb-2">{children}</ul>
@@ -471,7 +490,7 @@ export function MessageTyped({
         return <ol className="list-decimal pl-4 mb-2">{children}</ol>
       },
       li({ children }: any) {
-        return <li className="mb-1">{children}</li>
+        return <li className="mb-1">{highlightChildren(children)}</li>
       },
       a({ href, children }: any) {
         return (
@@ -481,7 +500,7 @@ export function MessageTyped({
             target="_blank"
             rel="noopener noreferrer"
           >
-            {children}
+            {highlightChildren(children)}
           </a>
         )
       },
@@ -493,16 +512,16 @@ export function MessageTyped({
         )
       },
       h1({ children }: any) {
-        return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
+        return <h1 className="text-lg font-bold mt-3 mb-2">{highlightChildren(children)}</h1>
       },
       h2({ children }: any) {
-        return <h2 className="text-base font-bold mt-2 mb-2">{children}</h2>
+        return <h2 className="text-base font-bold mt-2 mb-2">{highlightChildren(children)}</h2>
       },
       h3({ children }: any) {
-        return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
+        return <h3 className="text-sm font-bold mt-2 mb-1">{highlightChildren(children)}</h3>
       },
     }),
-    [CodeBlock],
+    [CodeBlock, highlightChildren],
   )
 
   if ((type === 'system' || type === 'progress') && !message.content && !message.thinking) {
