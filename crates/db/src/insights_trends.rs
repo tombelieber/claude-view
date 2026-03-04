@@ -95,9 +95,11 @@ impl Database {
                 "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0.0)"
             }
             "sessions" => "CAST(COUNT(*) AS REAL)",
-            "lines" => "CAST(SUM(files_edited_count * 50) AS REAL)",
+            "lines" => {
+                "CAST(SUM(COALESCE(ai_lines_added, 0) + COALESCE(ai_lines_removed, 0)) AS REAL)"
+            }
             "cost_per_line" => {
-                "COALESCE(CAST(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)) AS REAL) / NULLIF(SUM(files_edited_count * 50), 0) * 0.00001, 0.0)"
+                "COALESCE(SUM(total_cost_usd) / NULLIF(SUM(CASE WHEN total_cost_usd IS NOT NULL THEN (COALESCE(ai_lines_added, 0) + COALESCE(ai_lines_removed, 0)) ELSE 0 END), 0), 0.0)"
             }
             "prompts" => "COALESCE(CAST(SUM(user_prompt_count) AS REAL) / NULLIF(COUNT(*), 0), 0.0)",
             _ => {
@@ -486,6 +488,75 @@ mod tests {
             .await
             .unwrap();
         assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_metric_timeseries_lines_uses_canonical_ai_line_fields() {
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, last_message_at,
+                files_edited_count, ai_lines_added, ai_lines_removed
+            )
+            VALUES
+                ('lines-1', 'proj', '/tmp/lines-1.jsonl', 'test', ?1, 10, 7, 3),
+                ('lines-2', 'proj', '/tmp/lines-2.jsonl', 'test', ?1, 2, 1, 1)
+            "#,
+        )
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let data = db
+            .get_metric_timeseries("lines", now - 3600, now + 3600, "day")
+            .await
+            .unwrap();
+
+        assert_eq!(data.len(), 1);
+        assert!(
+            (data[0].value - 12.0).abs() < 0.0001,
+            "lines must use ai_lines_added + ai_lines_removed (expected 12, got {})",
+            data[0].value
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_metric_timeseries_cost_per_line_uses_priced_lines_denominator() {
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, last_message_at,
+                files_edited_count, ai_lines_added, ai_lines_removed, total_cost_usd
+            )
+            VALUES
+                ('cpl-1', 'proj', '/tmp/cpl-1.jsonl', 'test', ?1, 40, 9, 3, 1.2),
+                ('cpl-2', 'proj', '/tmp/cpl-2.jsonl', 'test', ?1, 20, 2, 1, 0.3),
+                ('cpl-3', 'proj', '/tmp/cpl-3.jsonl', 'test', ?1, 1, 100, 0, NULL)
+            "#,
+        )
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let data = db
+            .get_metric_timeseries("cost_per_line", now - 3600, now + 3600, "day")
+            .await
+            .unwrap();
+
+        assert_eq!(data.len(), 1);
+        assert!(
+            (data[0].value - 0.1).abs() < 0.0001,
+            "cost_per_line should use SUM(total_cost_usd) / priced lines (expected 0.1, got {})",
+            data[0].value
+        );
     }
 
     #[tokio::test]

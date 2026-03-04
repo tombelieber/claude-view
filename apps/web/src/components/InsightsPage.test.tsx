@@ -73,7 +73,10 @@ vi.mock('./insights/TimeRangeFilter', () => ({
 }))
 
 vi.mock('./insights/PatternsTabs', () => ({
-  PatternsTabs: ({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) => (
+  PatternsTabs: ({
+    activeTab,
+    onTabChange,
+  }: { activeTab: string; onTabChange: (tab: string) => void }) => (
     <div>
       <span data-testid="active-tab-value">{activeTab}</span>
       <button onClick={() => onTabChange('patterns')}>Tab patterns</button>
@@ -84,7 +87,9 @@ vi.mock('./insights/PatternsTabs', () => ({
 }))
 
 vi.mock('./insights/TrendsChart', () => ({
-  TrendsChart: ({ onGranularityChange }: { onGranularityChange: (value: 'day' | 'week' | 'month') => void }) => (
+  TrendsChart: ({
+    onGranularityChange,
+  }: { onGranularityChange: (value: 'day' | 'week' | 'month') => void }) => (
     <button onClick={() => onGranularityChange('month')}>Set month granularity</button>
   ),
 }))
@@ -114,6 +119,16 @@ const mockInsightsResponse = {
     patternsReturned: 0,
     minSessionsRequired: 20,
     hasEnoughData: true,
+    dataScope: {
+      sessions: 'primary_sessions_only',
+      workload: 'primary_plus_subagent_work',
+    },
+    sessionBreakdown: {
+      primarySessions: 25,
+      sidechainSessions: 6,
+      otherSessions: 2,
+      totalObservedSessions: 33,
+    },
   },
 }
 
@@ -201,6 +216,19 @@ describe('InsightsPage', () => {
       expect(screen.getByTestId('active-tab-value')).toHaveTextContent('patterns')
       expect(mockUseInsights).toHaveBeenLastCalledWith({ timeRange: '30d' })
     })
+  })
+
+  it('renders scope disclosure with session breakdown', () => {
+    renderInsightsPage('/insights')
+
+    expect(
+      screen.getByText(
+        /Session counts show primary sessions only\. Workload metrics include primary \+ subagent work\./,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Observed sessions: 25 primary, 6 sidechain, 2 other, 33 total\./),
+    ).toBeInTheDocument()
   })
 
   it('updates URL params when controls change', async () => {

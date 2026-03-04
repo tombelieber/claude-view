@@ -52,8 +52,8 @@ impl Database {
             r#"
             SELECT
                 t.model_id,
-                COALESCE(SUM(COALESCE(t.input_tokens, 0)), 0) as input_tokens,
-                COALESCE(SUM(COALESCE(t.output_tokens, 0)), 0) as output_tokens
+                COALESCE(SUM(t.input_tokens), 0) as input_tokens,
+                COALESCE(SUM(t.output_tokens), 0) as output_tokens
             FROM valid_sessions s
             JOIN turns t ON t.session_id = s.id
             WHERE s.last_message_at >= ?1
@@ -62,7 +62,7 @@ impl Database {
               AND (?4 IS NULL OR s.git_branch = ?4)
               AND t.model_id IS NOT NULL
             GROUP BY t.model_id
-            ORDER BY (COALESCE(SUM(COALESCE(t.input_tokens, 0)), 0) + COALESCE(SUM(COALESCE(t.output_tokens, 0)), 0)) DESC
+            ORDER BY (COALESCE(SUM(t.input_tokens), 0) + COALESCE(SUM(t.output_tokens), 0)) DESC
             "#,
         )
         .bind(from)

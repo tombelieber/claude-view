@@ -14,6 +14,43 @@ import { QuickStatsRow } from './insights/QuickStatsRow'
 import { TimeRangeFilter } from './insights/TimeRangeFilter'
 import { TrendsTab } from './insights/TrendsTab'
 
+type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
+
+type ScopeMeta = {
+  dataScope?: {
+    sessions?: ScopeValue
+    workload?: ScopeValue
+  }
+  sessionBreakdown?: {
+    primarySessions?: number
+    sidechainSessions?: number
+    otherSessions?: number
+    totalObservedSessions?: number
+  }
+}
+
+function scopeLabel(scope: ScopeValue | undefined): string {
+  return scope === 'primary_plus_subagent_work'
+    ? 'primary + subagent work'
+    : 'primary sessions only'
+}
+
+function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
+  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
+  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
+  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
+  const totalObservedSessions =
+    meta?.sessionBreakdown?.totalObservedSessions ??
+    primarySessions + sidechainSessions + otherSessions
+
+  return {
+    primarySessions,
+    sidechainSessions,
+    otherSessions,
+    totalObservedSessions,
+  }
+}
+
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
 const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks', 'quality']
 
@@ -35,6 +72,10 @@ export function InsightsPage() {
   const activeTab: TabId = isValidTab(tabFromUrl) ? tabFromUrl : 'patterns'
 
   const { data, isLoading, error, refetch } = useInsights({ timeRange })
+  const scopeMeta = data?.meta as ScopeMeta | undefined
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, data?.meta.totalSessions ?? 0)
+  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
+  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
 
   const handleTimeRangeChange = (range: TimeRange) => {
     const params = new URLSearchParams(searchParams)
@@ -132,6 +173,13 @@ export function InsightsPage() {
         <PageHeader timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
 
         <ExperimentalBanner />
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Session counts show {sessionsScope}. Workload metrics include {workloadScope}. Observed
+          sessions: {sessionBreakdown.primarySessions.toLocaleString()} primary,{' '}
+          {sessionBreakdown.sidechainSessions.toLocaleString()} sidechain,{' '}
+          {sessionBreakdown.otherSessions.toLocaleString()} other,{' '}
+          {sessionBreakdown.totalObservedSessions.toLocaleString()} total.
+        </p>
 
         <div className="space-y-6">
           {/* Hero Insight */}
