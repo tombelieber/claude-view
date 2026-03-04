@@ -8,6 +8,7 @@ import { RichTerminalPane } from './RichTerminalPane'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
 import { ViewModeControls } from './ViewModeControls'
+import { hasUnavailableCost } from './cost-display'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 interface TerminalOverlayProps {
@@ -54,13 +55,18 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
   const contextPercent = Math.min(100, Math.round((session.contextWindowTokens / 200_000) * 100))
   const totalCost = sessionTotalCost(session)
-  const formattedCost =
-    totalCost === 0
+  const showUnavailableCost = hasUnavailableCost(
+    totalCost,
+    session.cost,
+    session.tokens.totalTokens,
+  )
+  const formattedCost = showUnavailableCost
+    ? 'Unavailable'
+    : totalCost === 0
       ? '$0.00'
       : totalCost < 0.01
         ? `$${totalCost.toFixed(4)}`
         : `$${totalCost.toFixed(2)}`
-  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
 
   return createPortal(
     <div
@@ -132,7 +138,6 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {/* Metrics */}
           <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums">
-            {estimatedPrefix}
             {formattedCost}
           </span>
           <span className="text-xs text-gray-400 dark:text-[#6E7681] tabular-nums">
