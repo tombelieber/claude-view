@@ -1,7 +1,10 @@
 // crates/db/src/queries/system.rs
 // System-level queries: storage stats, health, classification status, reset.
 
-use super::{ClassificationStatus, HealthStats, HealthStatus, SystemStorageStats};
+use super::row_types::IndexRunIntegrityCountersRow;
+use super::{
+    ClassificationStatus, HealthStats, HealthStatus, IndexRunIntegrityCounters, SystemStorageStats,
+};
 use crate::{Database, DbResult};
 use chrono::Utc;
 
@@ -250,6 +253,35 @@ impl Database {
             is_running,
             progress,
         })
+    }
+
+    /// Get integrity counters from the latest index run.
+    ///
+    /// Returns all-zero counters when there are no index runs yet.
+    pub async fn get_latest_integrity_counters(&self) -> DbResult<IndexRunIntegrityCounters> {
+        let row: Option<IndexRunIntegrityCountersRow> = sqlx::query_as(
+            r#"
+            SELECT
+                unknown_top_level_type_count,
+                unknown_required_path_count,
+                imaginary_path_access_count,
+                legacy_fallback_path_count,
+                dropped_line_invalid_json_count,
+                schema_mismatch_count,
+                unknown_source_role_count,
+                derived_source_message_doc_count,
+                source_message_non_source_provenance_count
+            FROM index_runs
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row
+            .map(IndexRunIntegrityCountersRow::into_integrity_counters)
+            .unwrap_or_default())
     }
 
     /// Reset all application data (factory reset).

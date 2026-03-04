@@ -505,41 +505,6 @@ fn strip_markdown_json(s: &str) -> String {
 }
 
 // ============================================================================
-// Cost Estimation
-// ============================================================================
-
-/// Estimate the classification cost in cents.
-///
-/// Uses approximate token counts for Claude Haiku:
-/// - System prompt: ~800 tokens
-/// - Per session: ~200 tokens input, ~50 tokens output
-/// - Haiku pricing: $0.25/MTok input, $1.25/MTok output
-pub fn estimate_cost_cents(session_count: i64, batch_size: i64) -> i64 {
-    let num_batches = (session_count + batch_size - 1) / batch_size;
-    let system_tokens = 800; // per batch
-    let per_session_input = 200;
-    let per_session_output = 50;
-
-    let total_input = num_batches * system_tokens + session_count * per_session_input;
-    let total_output = session_count * per_session_output;
-
-    // Haiku: $0.25/MTok input, $1.25/MTok output
-    // Convert to cents: $0.25/1M = 0.025 cents/1K tokens
-    let input_cost_cents = total_input as f64 * 0.025 / 1000.0;
-    let output_cost_cents = total_output as f64 * 0.125 / 1000.0;
-
-    (input_cost_cents + output_cost_cents).ceil() as i64
-}
-
-/// Estimate duration in seconds for classification.
-///
-/// Assumes ~2 seconds per batch (Claude CLI overhead + Haiku response time).
-pub fn estimate_duration_secs(session_count: i64, batch_size: i64) -> i64 {
-    let num_batches = (session_count + batch_size - 1) / batch_size;
-    num_batches * 2 // ~2 seconds per batch
-}
-
-// ============================================================================
 // Constants
 // ============================================================================
 
@@ -718,19 +683,6 @@ mod tests {
         let results = parse_batch_response(&json).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].l1, "thinking");
-    }
-
-    #[test]
-    fn test_estimate_cost_cents() {
-        let cost = estimate_cost_cents(100, 5);
-        assert!(cost > 0);
-        assert!(cost < 100); // Should be well under $1 for 100 sessions
-    }
-
-    #[test]
-    fn test_estimate_duration_secs() {
-        let duration = estimate_duration_secs(100, 5);
-        assert_eq!(duration, 40); // 20 batches * 2 sec
     }
 
     #[test]
