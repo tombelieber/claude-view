@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ErrorResponse {
     pub error: String,
