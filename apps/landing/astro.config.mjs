@@ -8,6 +8,9 @@ import { defineConfig } from 'astro/config'
 export default defineConfig({
   site: 'https://claudeview.ai',
   trailingSlash: 'always',
+  redirects: {
+    '/docs/guides/mcp-integration/': '/docs/guides/plugin/',
+  },
   prefetch: {
     defaultStrategy: 'hover',
     prefetchAll: true,
