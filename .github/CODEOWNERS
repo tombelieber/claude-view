@@ -1,0 +1,16 @@
+# Integrity gate-oracle ownership
+crates/db/tests/golden_fixtures/integrity_expected.json @tombelieber
+crates/db/tests/golden_fixtures/integrity_fixture.sha256 @tombelieber
+scripts/integrity/replay.sh @tombelieber
+scripts/integrity/assert-replay-thresholds.sh @tombelieber
+
+# Integrity gate wiring ownership
+scripts/integrity/static-regression-checks.sh @tombelieber
+scripts/integrity/ci-gates.sh @tombelieber
+crates/db/tests/integrity_corpus_snapshot/manifest.json @tombelieber
+crates/db/tests/golden_fixtures/integrity_nonzero_tool_index.jsonl @tombelieber
+crates/db/tests/golden_fixtures/integrity_progress_nested_content.jsonl @tombelieber
+crates/db/tests/golden_fixtures/integrity_tool_use_result_polymorphic.jsonl @tombelieber
+crates/db/tests/golden_fixtures/integrity_type_substring_noise.jsonl @tombelieber
+crates/db/tests/indexer_integrity_test.rs @tombelieber
+crates/db/tests/integrity_real_shape_fixtures.rs @tombelieber
