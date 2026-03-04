@@ -40,7 +40,13 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       cacheReadCostUsd: 0.1,
       cacheCreationCostUsd: 0.03,
       cacheSavingsUsd: 0.2,
-      isEstimated: false,
+      hasUnpricedUsage: false,
+      unpricedInputTokens: 0,
+      unpricedOutputTokens: 0,
+      unpricedCacheReadTokens: 0,
+      unpricedCacheCreationTokens: 0,
+      pricedTokenCoverage: 1,
+      totalCostSource: 'computed_priced_tokens_full',
     },
     cacheStatus: 'warm',
     ...overrides,
@@ -98,12 +104,42 @@ describe('MonitorPane', () => {
             cacheReadCostUsd: 0.5,
             cacheCreationCostUsd: 0.06,
             cacheSavingsUsd: 0,
-            isEstimated: false,
+            hasUnpricedUsage: false,
+            unpricedInputTokens: 0,
+            unpricedOutputTokens: 0,
+            unpricedCacheReadTokens: 0,
+            unpricedCacheCreationTokens: 0,
+            pricedTokenCoverage: 1,
+            totalCostSource: 'computed_priced_tokens_full',
           },
         }),
       })
 
       expect(screen.getByText('$4.56')).toBeInTheDocument()
+    })
+
+    it('renders "Unavailable" when usage is unpriced and total USD is zero', () => {
+      renderMonitorPane({
+        session: createMockSession({
+          cost: {
+            totalUsd: 0,
+            inputCostUsd: 0,
+            outputCostUsd: 0,
+            cacheReadCostUsd: 0,
+            cacheCreationCostUsd: 0,
+            cacheSavingsUsd: 0,
+            hasUnpricedUsage: true,
+            unpricedInputTokens: 10_000,
+            unpricedOutputTokens: 2_000,
+            unpricedCacheReadTokens: 0,
+            unpricedCacheCreationTokens: 0,
+            pricedTokenCoverage: 0,
+            totalCostSource: 'computed_priced_tokens_partial',
+          },
+        }),
+      })
+
+      expect(screen.getByText('Unavailable')).toBeInTheDocument()
     })
 
     it('renders context percentage with sky color when low', () => {
