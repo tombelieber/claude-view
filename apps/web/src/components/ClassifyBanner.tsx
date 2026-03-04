@@ -1,7 +1,6 @@
 import { FlaskConical, Loader2, Sparkles, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useClassification } from '../hooks/use-classification'
-import { formatCostUsd } from '../lib/format-utils'
 
 const CLASSIFY_COUNT_KEY = 'classify-single-count'
 const BANNER_DISMISSED_KEY = 'classify-banner-dismissed'
@@ -9,14 +8,13 @@ const SHOW_AFTER_COUNT = 3
 
 interface ClassifyBannerProps {
   unclassifiedCount: number
-  estimatedCostCents: number
 }
 
 /**
  * Inline banner that appears after the user has classified 3+ sessions individually.
- * Prompts them to classify all remaining sessions with a clear cost estimate.
+ * Prompts them to classify all remaining sessions.
  */
-export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: ClassifyBannerProps) {
+export function ClassifyBanner({ unclassifiedCount }: ClassifyBannerProps) {
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem(BANNER_DISMISSED_KEY) === 'true',
   )
@@ -51,9 +49,6 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
     return null
   }
 
-  const costDisplay =
-    estimatedCostCents < 1 ? '<$0.01' : `~${formatCostUsd(estimatedCostCents / 100)}`
-
   const handleClassifyAll = async () => {
     setIsStarting(true)
     await startClassification('unclassified')
@@ -70,8 +65,8 @@ export function ClassifyBanner({ unclassifiedCount, estimatedCostCents }: Classi
       <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
         <Sparkles className="w-4 h-4 flex-shrink-0" />
         <span>
-          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all ({costDisplay}, ~
-          {Math.ceil(unclassifiedCount * 0.4)}s)
+          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all (cost is
+          recorded from real usage after completion)
         </span>
         <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
           <FlaskConical className="w-2.5 h-2.5" />

@@ -3,7 +3,6 @@ import { useCallback, useRef, useState } from 'react'
 import { cn } from '../../lib/utils'
 import { AttachButton, AttachmentChips } from './AttachButton'
 import { ChatContextGauge } from './ChatContextGauge'
-import { CostPreview } from './CostPreview'
 import { ModeSwitch } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
@@ -68,7 +67,6 @@ export interface ChatInputBarProps {
   model?: string
   onModelChange?: (model: string) => void
   contextPercent?: number
-  estimatedCost?: { cached: number; uncached: number } | null
   commands?: SlashCommand[]
   onCommand?: (command: string) => void
 }
@@ -92,7 +90,6 @@ export function ChatInputBar({
   model = 'claude-sonnet-4-6',
   onModelChange,
   contextPercent,
-  estimatedCost,
   commands: commandsProp,
   onCommand,
 }: ChatInputBarProps) {
@@ -295,10 +292,6 @@ export function ChatInputBar({
             <AttachButton onAttach={handleAttach} disabled={isDisabled} />
 
             {contextPercent != null && <ChatContextGauge percent={contextPercent} />}
-
-            {estimatedCost && (
-              <CostPreview cached={estimatedCost.cached} uncached={estimatedCost.uncached} />
-            )}
           </div>
 
           {/* Send / Stop button */}

@@ -190,10 +190,16 @@ export function ReportCard({
           {preview.sessionCount} sessions &middot; {preview.projectCount} projects &middot;{' '}
           {formatDuration(preview.totalDurationSecs)}
           {preview.totalCostCents > 0 && (
-            <span title="Estimated API cost for sessions in this period">
-              {' \u00B7 ~'}
+            <span title="API cost for sessions in this period">
+              {' \u00B7 '}
               {formatCost(preview.totalCostCents)}
               {' API usage'}
+              {preview.hasUnpricedUsage && ' (priced sessions only)'}
+            </span>
+          )}
+          {preview.totalCostCents === 0 && preview.hasUnpricedUsage && (
+            <span title="Cost unavailable because sessions in this period have unpriced usage">
+              {' \u00B7 Cost unavailable (unpriced sessions)'}
             </span>
           )}
         </p>

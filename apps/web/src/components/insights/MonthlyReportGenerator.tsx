@@ -12,6 +12,7 @@ interface MonthlyReportGeneratorProps {
  * Generate a plain-text report suitable for download or clipboard.
  */
 function generateReportText(report: ReportSummary): string {
+  const costText = report.totalCostUsd == null ? 'N/A (unpriced usage)' : `$${report.totalCostUsd.toFixed(2)}`
   const lines = [
     '='.repeat(60),
     'Claude Code Monthly Report',
@@ -24,7 +25,7 @@ function generateReportText(report: ReportSummary): string {
     `Lines Added:   +${report.linesAdded.toLocaleString()}`,
     `Lines Removed: -${report.linesRemoved.toLocaleString()}`,
     `Commits:       ${report.commitCount}`,
-    `Est. Cost:     $${report.estimatedCost.toFixed(2)}`,
+    `Cost:          ${costText}`,
     '',
     'Top Achievements',
     '-'.repeat(40),
@@ -43,6 +44,9 @@ function generateReportText(report: ReportSummary): string {
 export function MonthlyReportGenerator({ reportSummary, className }: MonthlyReportGeneratorProps) {
   const [showPreview, setShowPreview] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  const costDisplay =
+    reportSummary.totalCostUsd == null ? 'N/A' : `$${reportSummary.totalCostUsd.toFixed(2)}`
 
   const handleDownload = () => {
     const text = generateReportText(reportSummary)
@@ -119,11 +123,16 @@ export function MonthlyReportGenerator({ reportSummary, className }: MonthlyRepo
           </div>
           <div className="text-center">
             <p className="text-2xl font-semibold text-gray-600 dark:text-gray-400 font-mono">
-              ${reportSummary.estimatedCost.toFixed(2)}
+              {costDisplay}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Est. Cost</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Cost</p>
           </div>
         </div>
+        {reportSummary.hasUnpricedUsage && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+            Includes unpriced sessions; cost shows priced sessions only.
+          </p>
+        )}
 
         {/* Top wins */}
         {reportSummary.topWins.length > 0 && (
@@ -221,6 +230,9 @@ interface ReportPreviewModalProps {
 }
 
 function ReportPreviewModal({ reportSummary, onClose, onDownload }: ReportPreviewModalProps) {
+  const costDisplay =
+    reportSummary.totalCostUsd == null ? 'N/A' : `$${reportSummary.totalCostUsd.toFixed(2)}`
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -273,11 +285,16 @@ function ReportPreviewModal({ reportSummary, onClose, onDownload }: ReportPrevie
             </div>
             <div className="text-center">
               <p className="text-2xl font-semibold text-gray-600 dark:text-gray-400 font-mono">
-                ${reportSummary.estimatedCost.toFixed(2)}
+                {costDisplay}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Est. Cost</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Cost</p>
             </div>
           </div>
+          {reportSummary.hasUnpricedUsage && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+              Includes unpriced sessions; cost shows priced sessions only.
+            </p>
+          )}
 
           {/* Top wins */}
           {reportSummary.topWins.length > 0 && (
