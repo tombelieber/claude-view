@@ -1,5 +1,4 @@
 import { AlertTriangle, BarChart3, Lightbulb, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type TabId, type TimeRange, useInsights } from '../hooks/use-insights'
 import { ExperimentalBadge } from './ExperimentalBadge'
@@ -29,30 +28,31 @@ function isValidTab(value: string | null): value is TabId {
 export function InsightsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Initialize time range from URL or default to 30d
+  // URL is the source of truth for range and tab.
   const rangeFromUrl = searchParams.get('range')
-  const initialRange: TimeRange = isValidTimeRange(rangeFromUrl) ? rangeFromUrl : '30d'
-
-  // Initialize active tab from URL or default to patterns
   const tabFromUrl = searchParams.get('tab')
-  const initialTab: TabId = isValidTab(tabFromUrl) ? tabFromUrl : 'patterns'
-
-  const [timeRange, setTimeRange] = useState<TimeRange>(initialRange)
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
+  const timeRange: TimeRange = isValidTimeRange(rangeFromUrl) ? rangeFromUrl : '30d'
+  const activeTab: TabId = isValidTab(tabFromUrl) ? tabFromUrl : 'patterns'
 
   const { data, isLoading, error, refetch } = useInsights({ timeRange })
 
   const handleTimeRangeChange = (range: TimeRange) => {
-    setTimeRange(range)
     const params = new URLSearchParams(searchParams)
-    params.set('range', range)
+    if (range === '30d') {
+      params.delete('range')
+    } else {
+      params.set('range', range)
+    }
     setSearchParams(params)
   }
 
   const handleTabChange = (tab: TabId) => {
-    setActiveTab(tab)
     const params = new URLSearchParams(searchParams)
-    params.set('tab', tab)
+    if (tab === 'patterns') {
+      params.delete('tab')
+    } else {
+      params.set('tab', tab)
+    }
     setSearchParams(params)
   }
 

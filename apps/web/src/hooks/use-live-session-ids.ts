@@ -1,7 +1,7 @@
 /**
  * Lightweight hook that polls GET /api/live/sessions to build:
  * - a Set<string> of currently-live session IDs
- * - a Map<sessionId, totalCostUsd> for live cost fallback on history cards
+ * - a Map<sessionId, totalCostUsd> for live cost override on active history cards
  *
  * Polls every 10 seconds — much cheaper than opening a second SSE connection.
  */

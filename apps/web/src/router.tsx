@@ -4,6 +4,7 @@ import { ConversationView } from './components/ConversationView'
 import { HistoryView } from './components/HistoryView'
 import { SearchResults } from './components/SearchResults'
 import { SettingsPage } from './components/SettingsPage'
+import { InsightsPage } from './components/InsightsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
@@ -75,7 +76,7 @@ export const router = createBrowserRouter([
       { path: 'mission-control', element: <Navigate to="/" replace /> },
       // Redirects for old URLs
       { path: 'history', element: <Navigate to="/sessions" replace /> },
-      { path: 'insights', element: <Navigate to="/analytics?tab=insights" replace /> },
+      { path: 'insights', element: <InsightsPage /> },
       // Redirect old singular /session/:id to /sessions/:id
       { path: 'session/:sessionId', element: <SingularSessionRedirect /> },
       // Legacy redirect
