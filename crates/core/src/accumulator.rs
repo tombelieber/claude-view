@@ -37,6 +37,10 @@ pub struct SessionAccumulator {
     /// per-session). This avoids the inflation bug from applying tiered
     /// pricing to cumulative session totals.
     pub accumulated_cost: CostBreakdown,
+    /// Dedup: track seen `message.id:requestId` pairs to avoid counting
+    /// tokens/cost multiple times when Claude Code splits one API response into
+    /// multiple JSONL lines (one per content block: thinking, text, tool_use).
+    seen_api_calls: std::collections::HashSet<String>,
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
@@ -77,6 +81,7 @@ impl SessionAccumulator {
             last_cache_hit_at: None,
             total_cost_usd: 0.0,
             accumulated_cost: CostBreakdown::default(),
+            seen_api_calls: std::collections::HashSet::new(),
         }
     }
 
@@ -92,52 +97,29 @@ impl SessionAccumulator {
         pricing: &HashMap<String, ModelPricing>,
     ) {
         // -----------------------------------------------------------------
-        // Token accumulation (cumulative, for cost calculation)
+        // Content-block dedup: Claude Code writes one JSONL line per content
+        // block (thinking, text, tool_use), each carrying the full message-level
+        // usage. Only count tokens/cost for the first block per API response.
         // -----------------------------------------------------------------
-        if let Some(input) = line.input_tokens {
-            self.tokens.input_tokens += input;
-            self.tokens.total_tokens += input;
-        }
-        if let Some(output) = line.output_tokens {
-            self.tokens.output_tokens += output;
-            self.tokens.total_tokens += output;
-        }
-        if let Some(cache_read) = line.cache_read_tokens {
-            self.tokens.cache_read_tokens += cache_read;
-            self.tokens.total_tokens += cache_read;
-        }
-        if let Some(cache_creation) = line.cache_creation_tokens {
-            self.tokens.cache_creation_tokens += cache_creation;
-            self.tokens.total_tokens += cache_creation;
-        }
-        // Split cache creation by TTL
-        if let Some(tokens_5m) = line.cache_creation_5m_tokens {
-            self.tokens.cache_creation_5m_tokens += tokens_5m;
-        }
-        if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
-            self.tokens.cache_creation_1hr_tokens += tokens_1hr;
-        }
-
-        // -----------------------------------------------------------------
-        // Accumulate costUSD from JSONL entries
-        // -----------------------------------------------------------------
-        if let Some(cost) = line.cost_usd {
-            self.total_cost_usd += cost;
-        }
-
-        // -----------------------------------------------------------------
-        // Track last cache hit time from Anthropic API response tokens
-        // -----------------------------------------------------------------
-        if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
-            || line.cache_creation_tokens.map(|v| v > 0).unwrap_or(false)
-        {
-            if let Some(ref ts) = line.timestamp {
-                self.last_cache_hit_at = parse_timestamp_to_unix(ts);
+        let is_first_block = match (line.message_id.as_deref(), line.request_id.as_deref()) {
+            (Some(msg_id), Some(req_id)) => {
+                let key = format!("{}:{}", msg_id, req_id);
+                self.seen_api_calls.insert(key) // true if newly inserted
             }
+            _ => true, // no IDs available — count it (legacy data / live streaming)
+        };
+
+        // -----------------------------------------------------------------
+        // Model tracking (must happen BEFORE per-turn cost so model is current,
+        // and outside the dedup guard since we want the latest model always)
+        // -----------------------------------------------------------------
+        if let Some(ref model) = line.model {
+            self.model = Some(model.clone());
         }
 
         // -----------------------------------------------------------------
-        // Context window fill from latest assistant turn
+        // Context window fill from latest assistant turn (always update,
+        // even on duplicate blocks — we want the latest context window size)
         // -----------------------------------------------------------------
         if line.line_type == LineType::Assistant {
             let turn_input = line.input_tokens.unwrap_or(0)
@@ -149,42 +131,75 @@ impl SessionAccumulator {
         }
 
         // -----------------------------------------------------------------
-        // Model tracking (must happen BEFORE per-turn cost so model is current)
+        // Track last cache hit time (always update for accurate cache status)
         // -----------------------------------------------------------------
-        if let Some(ref model) = line.model {
-            self.model = Some(model.clone());
+        if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
+            || line.cache_creation_tokens.map(|v| v > 0).unwrap_or(false)
+        {
+            if let Some(ref ts) = line.timestamp {
+                self.last_cache_hit_at = parse_timestamp_to_unix(ts);
+            }
         }
 
         // -----------------------------------------------------------------
-        // Per-turn cost accumulation
+        // Token + cost accumulation — guarded by dedup
         // -----------------------------------------------------------------
-        // Compute cost from THIS turn's tokens only (not cumulative totals).
-        // The 200k tiering threshold is per-API-request, so applying it to
-        // cumulative session totals would inflate cost ~2-3x.
-        let has_tokens = line.input_tokens.is_some()
-            || line.output_tokens.is_some()
-            || line.cache_read_tokens.is_some()
-            || line.cache_creation_tokens.is_some();
-        if has_tokens {
-            let turn_tokens = TokenUsage {
-                input_tokens: line.input_tokens.unwrap_or(0),
-                output_tokens: line.output_tokens.unwrap_or(0),
-                cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
-                cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
-                cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
-                cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
-                total_tokens: 0, // unused by calculate_cost
-            };
-            let turn_cost = calculate_cost(&turn_tokens, self.model.as_deref(), pricing);
-            self.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
-            self.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
-            self.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
-            self.accumulated_cost.cache_creation_cost_usd += turn_cost.cache_creation_cost_usd;
-            self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
-            self.accumulated_cost.total_usd += turn_cost.total_usd;
-            // Mark as estimated only if ANY turn used fallback rates
-            if turn_cost.is_estimated {
-                self.accumulated_cost.is_estimated = true;
+        if is_first_block {
+            if let Some(input) = line.input_tokens {
+                self.tokens.input_tokens += input;
+                self.tokens.total_tokens += input;
+            }
+            if let Some(output) = line.output_tokens {
+                self.tokens.output_tokens += output;
+                self.tokens.total_tokens += output;
+            }
+            if let Some(cache_read) = line.cache_read_tokens {
+                self.tokens.cache_read_tokens += cache_read;
+                self.tokens.total_tokens += cache_read;
+            }
+            if let Some(cache_creation) = line.cache_creation_tokens {
+                self.tokens.cache_creation_tokens += cache_creation;
+                self.tokens.total_tokens += cache_creation;
+            }
+            // Split cache creation by TTL
+            if let Some(tokens_5m) = line.cache_creation_5m_tokens {
+                self.tokens.cache_creation_5m_tokens += tokens_5m;
+            }
+            if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
+                self.tokens.cache_creation_1hr_tokens += tokens_1hr;
+            }
+
+            // Accumulate costUSD from JSONL entries
+            if let Some(cost) = line.cost_usd {
+                self.total_cost_usd += cost;
+            }
+
+            // Per-turn cost accumulation
+            let has_tokens = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some();
+            if has_tokens {
+                let turn_tokens = TokenUsage {
+                    input_tokens: line.input_tokens.unwrap_or(0),
+                    output_tokens: line.output_tokens.unwrap_or(0),
+                    cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
+                    cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
+                    cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
+                    cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
+                    total_tokens: 0, // unused by calculate_cost
+                };
+                let turn_cost = calculate_cost(&turn_tokens, self.model.as_deref(), pricing);
+                self.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
+                self.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
+                self.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
+                self.accumulated_cost.cache_creation_cost_usd +=
+                    turn_cost.cache_creation_cost_usd;
+                self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
+                self.accumulated_cost.total_usd += turn_cost.total_usd;
+                if turn_cost.is_estimated {
+                    self.accumulated_cost.is_estimated = true;
+                }
             }
         }
 
@@ -580,6 +595,8 @@ mod tests {
             skill_names: Vec::new(),
             is_compact_boundary: false,
             ide_file: None,
+            message_id: None,
+            request_id: None,
         }
     }
 
@@ -626,6 +643,111 @@ mod tests {
         assert_eq!(data.tokens.cache_read_tokens, 200);
         assert_eq!(data.tokens.cache_creation_tokens, 50);
         assert_eq!(data.tokens.total_tokens, 3000 + 1300 + 200 + 50);
+    }
+
+    #[test]
+    fn test_content_block_dedup() {
+        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+        // each carrying the same message-level usage tokens. We must only count once per
+        // unique message_id:requestId pair.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // First content block of API response "msg1:req1"
+        let mut block1 = empty_line();
+        block1.line_type = LineType::Assistant;
+        block1.input_tokens = Some(1000);
+        block1.output_tokens = Some(500);
+        block1.message_id = Some("msg1".to_string());
+        block1.request_id = Some("req1".to_string());
+        acc.process_line(&block1, 0, &pricing);
+
+        // Second content block of the SAME API response — should be deduped
+        let mut block2 = empty_line();
+        block2.line_type = LineType::Assistant;
+        block2.input_tokens = Some(1000);
+        block2.output_tokens = Some(500);
+        block2.message_id = Some("msg1".to_string());
+        block2.request_id = Some("req1".to_string());
+        acc.process_line(&block2, 0, &pricing);
+
+        // Third content block, still same response
+        let mut block3 = empty_line();
+        block3.line_type = LineType::Assistant;
+        block3.input_tokens = Some(1000);
+        block3.output_tokens = Some(500);
+        block3.message_id = Some("msg1".to_string());
+        block3.request_id = Some("req1".to_string());
+        acc.process_line(&block3, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        // Should count tokens only once, not 3x
+        assert_eq!(data.tokens.input_tokens, 1000);
+        assert_eq!(data.tokens.output_tokens, 500);
+        assert_eq!(data.tokens.total_tokens, 1500);
+    }
+
+    #[test]
+    fn test_content_block_dedup_different_requests() {
+        // Two different API responses should both be counted
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(1000);
+        line1.output_tokens = Some(500);
+        line1.message_id = Some("msg1".to_string());
+        line1.request_id = Some("req1".to_string());
+        acc.process_line(&line1, 0, &pricing);
+
+        // Duplicate of first response — should be deduped
+        let mut dup = empty_line();
+        dup.line_type = LineType::Assistant;
+        dup.input_tokens = Some(1000);
+        dup.output_tokens = Some(500);
+        dup.message_id = Some("msg1".to_string());
+        dup.request_id = Some("req1".to_string());
+        acc.process_line(&dup, 0, &pricing);
+
+        // Different API response — should be counted
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(2000);
+        line2.output_tokens = Some(800);
+        line2.message_id = Some("msg2".to_string());
+        line2.request_id = Some("req2".to_string());
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 3000); // 1000 + 2000
+        assert_eq!(data.tokens.output_tokens, 1300); // 500 + 800
+    }
+
+    #[test]
+    fn test_content_block_dedup_no_ids_fallback() {
+        // Lines without message_id/request_id should always be counted (legacy/live data)
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(1000);
+        line1.output_tokens = Some(500);
+        // No message_id or request_id set
+        acc.process_line(&line1, 0, &pricing);
+
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(2000);
+        line2.output_tokens = Some(800);
+        // No IDs either
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        // Both counted since no IDs for dedup
+        assert_eq!(data.tokens.input_tokens, 3000);
+        assert_eq!(data.tokens.output_tokens, 1300);
     }
 
     #[test]
