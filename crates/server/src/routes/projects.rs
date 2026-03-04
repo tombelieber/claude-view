@@ -412,6 +412,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_project_branches_support_git_root_identity() {
+        let db = test_db().await;
+
+        let repo_root = "/Users/dev/repo";
+        let encoded_repo_root = "%2FUsers%2Fdev%2Frepo";
+
+        let s1 = SessionInfo {
+            git_branch: Some("main".to_string()),
+            ..make_session("sess-1", "repo-worktree-a", 1000)
+        };
+        let s2 = SessionInfo {
+            git_branch: Some("feature/auth".to_string()),
+            ..make_session("sess-2", "repo-worktree-b", 2000)
+        };
+
+        db.insert_session(&s1, "repo-worktree-a", "Repo A")
+            .await
+            .unwrap();
+        db.insert_session(&s2, "repo-worktree-b", "Repo B")
+            .await
+            .unwrap();
+        db.set_git_root("sess-1", repo_root).await.unwrap();
+        db.set_git_root("sess-2", repo_root).await.unwrap();
+
+        let app = build_app(db);
+        let (status, body) =
+            do_get(app, &format!("/api/projects/{encoded_repo_root}/branches")).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let branches = json["branches"]
+            .as_array()
+            .expect("should have branches array");
+
+        assert_eq!(branches.len(), 2);
+        assert!(
+            branches
+                .iter()
+                .any(|b| b["branch"] == "main" && b["count"] == 1),
+            "should include main from worktree sessions"
+        );
+        assert!(
+            branches
+                .iter()
+                .any(|b| b["branch"] == "feature/auth" && b["count"] == 1),
+            "should include feature/auth from worktree sessions"
+        );
+    }
+
+    #[tokio::test]
     async fn test_project_branches_excludes_sidechains() {
         let db = test_db().await;
 
