@@ -1523,13 +1523,14 @@ pub async fn get_benchmarks(
         .and_utc()
         .timestamp();
 
-    let report_row: (i64, i64, i64) = sqlx::query_as(
+    let report_row: (i64, i64, i64, f64) = sqlx::query_as(
         r#"
         SELECT COUNT(*),
                (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                 INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                 WHERE s2.last_message_at >= ?1),
-               COALESCE(SUM(total_input_tokens + total_output_tokens), 0)
+               COALESCE(SUM(total_input_tokens + total_output_tokens), 0),
+               COALESCE(SUM(total_cost_usd), 0.0)
         FROM valid_sessions WHERE last_message_at >= ?1
         "#,
     )
@@ -1540,8 +1541,8 @@ pub async fn get_benchmarks(
 
     let report_session_count = report_row.0 as u32;
     let report_commit_count = report_row.1 as u32;
-    let total_tokens = report_row.2;
-    let estimated_cost = total_tokens as f64 / 1000.0 * 0.005;
+    let _total_tokens = report_row.2;
+    let estimated_cost = report_row.3;
 
     let month_name = format!(
         "{} {}",
