@@ -19,11 +19,6 @@ use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Legacy blended cost per token in cents (0.00025 cents = $2.50/M tokens).
-/// Used only by `estimate_cost_cents()` for snapshot generation.
-/// For accurate per-model pricing, use `pricing::calculate_cost_usd()`.
-const BLENDED_COST_PER_TOKEN_CENTS: f64 = 0.00025;
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -591,7 +586,7 @@ impl Database {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let today_start = format!("{} 00:00:00", today);
 
-        let row: (i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
+        let row: (i64, i64, i64, i64, i64, i64, f64) = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
                 SELECT
@@ -600,7 +595,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -621,7 +617,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND (?2 IS NULL OR git_branch = ?2)
@@ -675,8 +672,7 @@ impl Database {
                 .await?
             };
 
-        // Estimate cost (simplified - uses average pricing)
-        let cost_cents = estimate_cost_cents(row.3);
+        let cost_cents = usd_to_cents(row.6);
 
         Ok(AggregatedContributions {
             sessions_count: row.0,
@@ -702,7 +698,7 @@ impl Database {
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -710,7 +706,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND (?2 IS NULL OR git_branch = ?2)
@@ -740,7 +737,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -755,7 +752,7 @@ impl Database {
             })
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -763,7 +760,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE git_branch = ?1
                 "#,
@@ -789,7 +787,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -804,7 +802,7 @@ impl Database {
             })
         } else {
             // Global: query sessions directly (consistent with dashboard canonical filter)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -812,7 +810,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 "#,
             )
@@ -834,7 +833,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -863,7 +862,7 @@ impl Database {
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -871,7 +870,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -909,7 +909,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -924,7 +924,7 @@ impl Database {
             })
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -932,7 +932,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -966,7 +967,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -981,7 +982,7 @@ impl Database {
             })
         } else {
             // Global: query sessions directly (consistent with dashboard canonical filter)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -989,7 +990,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1019,7 +1021,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_to_cents(row.6);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -1077,7 +1079,7 @@ impl Database {
         let sparse = if let Some(pid) = project_id {
             // Project-filtered: query sessions directly grouped by date
             // (snapshots only have global data)
-            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
+            let rows: Vec<(String, i64, i64, i64, i64, i64, f64)> = sqlx::query_as(
                 r#"
                 SELECT
                     date(s.last_message_at, 'unixepoch', 'localtime') as date,
@@ -1091,7 +1093,8 @@ impl Database {
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(s.total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions s
                 WHERE s.project_id = ?1
                   AND s.is_sidechain = 0
@@ -1111,8 +1114,15 @@ impl Database {
 
             rows.into_iter()
                 .map(
-                    |(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                        let cost_cents = estimate_cost_cents(tokens_used);
+                    |(
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_usd,
+                    )| {
                         DailyTrendPoint {
                             date,
                             lines_added,
@@ -1120,14 +1130,14 @@ impl Database {
                             commits,
                             sessions,
                             tokens_used,
-                            cost_cents,
+                            cost_cents: usd_to_cents(cost_usd),
                         }
                     },
                 )
                 .collect()
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
+            let rows: Vec<(String, i64, i64, i64, i64, i64, f64)> = sqlx::query_as(
                 r#"
                 SELECT
                     date(s.last_message_at, 'unixepoch', 'localtime') as date,
@@ -1139,7 +1149,8 @@ impl Database {
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(s.total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions s
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1156,8 +1167,15 @@ impl Database {
 
             rows.into_iter()
                 .map(
-                    |(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                        let cost_cents = estimate_cost_cents(tokens_used);
+                    |(
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_usd,
+                    )| {
                         DailyTrendPoint {
                             date,
                             lines_added,
@@ -1165,7 +1183,7 @@ impl Database {
                             commits,
                             sessions,
                             tokens_used,
-                            cost_cents,
+                            cost_cents: usd_to_cents(cost_usd),
                         }
                     },
                 )
@@ -2253,14 +2271,15 @@ impl Database {
     /// and upserts it into the contribution_snapshots table.
     pub async fn generate_daily_snapshot(&self, date: &str) -> DbResult<()> {
         // Get session aggregates for the date (global)
-        let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        let session_agg: (i64, i64, i64, i64, i64, f64) = sqlx::query_as(
             r#"
             SELECT
                 COUNT(*) as sessions_count,
                 COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                 COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
             FROM valid_sessions
             WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
             "#,
@@ -2286,7 +2305,7 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        let cost_cents = estimate_cost_cents(session_agg.3);
+        let cost_cents = usd_to_cents(session_agg.5);
 
         // Upsert global snapshot (project_id = NULL, branch = NULL)
         self.upsert_snapshot(
@@ -2335,14 +2354,15 @@ impl Database {
 
         for date in &dates {
             // Inline the snapshot generation to use the transaction
-            let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
+            let session_agg: (i64, i64, i64, i64, i64, f64) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
                     COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
                 "#,
@@ -2372,7 +2392,7 @@ impl Database {
                 continue;
             }
 
-            let cost_cents = estimate_cost_cents(session_agg.3);
+            let cost_cents = usd_to_cents(session_agg.5);
 
             // Delete any existing row for this (date, NULL, NULL) combo,
             // since UNIQUE(date, project_id, branch) doesn't catch NULL duplicates.
@@ -2817,19 +2837,9 @@ impl Database {
 // Helper Functions
 // ============================================================================
 
-/// Estimate cost in cents from token count.
-///
-/// Uses a blended rate assuming ~50% Sonnet, ~40% Haiku, ~10% Opus usage.
-/// Input:output ratio assumed to be 2:1.
-///
-/// Pricing (per million tokens):
-/// - Opus: $15 input, $75 output
-/// - Sonnet: $3 input, $15 output
-/// - Haiku: $0.25 input, $1.25 output
-///
-/// Blended rate: ~$2.5 per million tokens average
-fn estimate_cost_cents(total_tokens: i64) -> i64 {
-    (total_tokens as f64 * BLENDED_COST_PER_TOKEN_CENTS).round() as i64
+/// Convert real USD totals to whole cents.
+fn usd_to_cents(total_cost_usd: f64) -> i64 {
+    (total_cost_usd * 100.0).round() as i64
 }
 
 // ============================================================================
@@ -2871,15 +2881,10 @@ mod tests {
     }
 
     #[test]
-    fn test_estimate_cost_cents() {
-        // 1 million tokens = ~$2.50 = 250 cents
-        assert_eq!(estimate_cost_cents(1_000_000), 250);
-
-        // 0 tokens = 0 cost
-        assert_eq!(estimate_cost_cents(0), 0);
-
-        // 10k tokens = ~2.5 cents
-        assert_eq!(estimate_cost_cents(10_000), 3); // rounded
+    fn test_usd_to_cents() {
+        assert_eq!(usd_to_cents(2.50), 250);
+        assert_eq!(usd_to_cents(0.0), 0);
+        assert_eq!(usd_to_cents(0.026), 3); // rounded
     }
 
     #[tokio::test]

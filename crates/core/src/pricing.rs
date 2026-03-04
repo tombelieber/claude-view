@@ -77,8 +77,17 @@ pub struct CostBreakdown {
     pub cache_read_cost_usd: f64,
     pub cache_creation_cost_usd: f64,
     pub cache_savings_usd: f64,
-    /// True when model was not found and fallback rate was used.
-    pub is_estimated: bool,
+    /// True when any tokens were excluded from USD due to missing model pricing.
+    pub has_unpriced_usage: bool,
+    /// Tokens excluded from USD totals (no pricing match).
+    pub unpriced_input_tokens: u64,
+    pub unpriced_output_tokens: u64,
+    pub unpriced_cache_read_tokens: u64,
+    pub unpriced_cache_creation_tokens: u64,
+    /// Fraction of all tokens priced with real model rates [0.0, 1.0].
+    pub priced_token_coverage: f64,
+    /// `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+    pub total_cost_source: String,
 }
 
 /// Whether the Anthropic prompt cache is likely warm or cold.
@@ -96,11 +105,6 @@ pub enum CacheStatus {
     Cold,
     Unknown,
 }
-
-/// Blended fallback rate for unknown models (USD per token).
-/// Applied to input tokens only; output uses 5x this rate.
-pub const FALLBACK_INPUT_COST_PER_TOKEN: f64 = 3e-6; // $3/M (sonnet-class)
-pub const FALLBACK_OUTPUT_COST_PER_TOKEN: f64 = 15e-6; // $15/M (sonnet-class)
 
 /// Anthropic pricing structure multipliers.
 ///
@@ -145,8 +149,8 @@ pub fn fill_tiering_gaps(pricing: &mut HashMap<String, ModelPricing>) {
 
 /// Calculate cost for a token snapshot using model-specific pricing.
 ///
-/// If `model` is `None` or not found, falls back to sonnet-class rates
-/// and sets `is_estimated = true`.
+/// If `model` is `None` or not found, USD is left at zero and tokens are
+/// recorded as unpriced (never converted using synthetic fallback rates).
 pub fn calculate_cost(
     tokens: &TokenUsage,
     model: Option<&str>,
@@ -216,30 +220,69 @@ pub fn calculate_cost(
                 cache_read_cost_usd,
                 cache_creation_cost_usd,
                 cache_savings_usd,
-                is_estimated: false,
+                has_unpriced_usage: false,
+                unpriced_input_tokens: 0,
+                unpriced_output_tokens: 0,
+                unpriced_cache_read_tokens: 0,
+                unpriced_cache_creation_tokens: 0,
+                priced_token_coverage: 1.0,
+                total_cost_source: "computed_priced_tokens_full".to_string(),
             }
         }
         None => {
-            let input_cost_usd = tokens.input_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN;
-            let output_cost_usd = tokens.output_tokens as f64 * FALLBACK_OUTPUT_COST_PER_TOKEN;
-            let cache_read_cost_usd =
-                tokens.cache_read_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 0.1;
-            let cache_creation_cost_usd =
-                tokens.cache_creation_tokens as f64 * FALLBACK_INPUT_COST_PER_TOKEN * 1.25;
-            let total_usd =
-                input_cost_usd + output_cost_usd + cache_read_cost_usd + cache_creation_cost_usd;
-
+            let unpriced_total = tokens.input_tokens
+                + tokens.output_tokens
+                + tokens.cache_read_tokens
+                + tokens.cache_creation_tokens;
+            let has_unpriced_usage = unpriced_total > 0;
             CostBreakdown {
-                total_usd,
-                input_cost_usd,
-                output_cost_usd,
-                cache_read_cost_usd,
-                cache_creation_cost_usd,
+                total_usd: 0.0,
+                input_cost_usd: 0.0,
+                output_cost_usd: 0.0,
+                cache_read_cost_usd: 0.0,
+                cache_creation_cost_usd: 0.0,
                 cache_savings_usd: 0.0,
-                is_estimated: true,
+                has_unpriced_usage,
+                unpriced_input_tokens: tokens.input_tokens,
+                unpriced_output_tokens: tokens.output_tokens,
+                unpriced_cache_read_tokens: tokens.cache_read_tokens,
+                unpriced_cache_creation_tokens: tokens.cache_creation_tokens,
+                priced_token_coverage: 0.0,
+                total_cost_source: if has_unpriced_usage {
+                    "computed_priced_tokens_partial".to_string()
+                } else {
+                    "computed_priced_tokens_full".to_string()
+                },
             }
         }
     }
+}
+
+/// Finalize source/coverage fields for aggregated session cost.
+///
+/// Call this after summing per-turn `CostBreakdown`s into a session-level total.
+pub fn finalize_cost_breakdown(cost: &mut CostBreakdown, tokens: &TokenUsage) {
+    let total_tokens = tokens.input_tokens
+        + tokens.output_tokens
+        + tokens.cache_read_tokens
+        + tokens.cache_creation_tokens;
+    let unpriced_tokens = cost.unpriced_input_tokens
+        + cost.unpriced_output_tokens
+        + cost.unpriced_cache_read_tokens
+        + cost.unpriced_cache_creation_tokens;
+    let priced_tokens = total_tokens.saturating_sub(unpriced_tokens);
+
+    cost.has_unpriced_usage = unpriced_tokens > 0;
+    cost.priced_token_coverage = if total_tokens > 0 {
+        priced_tokens as f64 / total_tokens as f64
+    } else {
+        1.0
+    };
+    cost.total_cost_source = if cost.has_unpriced_usage {
+        "computed_priced_tokens_partial".to_string()
+    } else {
+        "computed_priced_tokens_full".to_string()
+    };
 }
 
 /// Calculate cost in USD from a `TokenBreakdown` (historical queries).
@@ -408,11 +451,11 @@ mod tests {
         };
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         assert!((cost.total_usd - 4.0).abs() < 0.01);
-        assert!(!cost.is_estimated);
+        assert!(!cost.has_unpriced_usage);
     }
 
     #[test]
-    fn test_fallback_is_estimated() {
+    fn test_unknown_model_has_no_fake_usd() {
         let pricing = default_pricing();
         let tokens = TokenUsage {
             input_tokens: 1_000_000,
@@ -420,21 +463,29 @@ mod tests {
             ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("gpt-4o"), &pricing);
-        assert!(cost.is_estimated);
-        assert!((cost.input_cost_usd - 3.0).abs() < 0.01);
+        assert_eq!(cost.total_usd, 0.0);
+        assert!(cost.has_unpriced_usage);
+        assert_eq!(cost.unpriced_input_tokens, 1_000_000);
     }
 
     #[test]
-    fn test_fallback_output_uses_higher_rate() {
+    fn test_unknown_model_marks_all_unpriced_token_fields() {
         let pricing = default_pricing();
         let tokens = TokenUsage {
+            input_tokens: 7,
             output_tokens: 1_000_000,
+            cache_read_tokens: 42,
+            cache_creation_tokens: 33,
             total_tokens: 1_000_000,
             ..Default::default()
         };
         let cost = calculate_cost(&tokens, Some("unknown-model"), &pricing);
-        assert!(cost.is_estimated);
-        assert!((cost.output_cost_usd - 15.0).abs() < 0.01);
+        assert!(cost.has_unpriced_usage);
+        assert_eq!(cost.total_usd, 0.0);
+        assert_eq!(cost.unpriced_input_tokens, 7);
+        assert_eq!(cost.unpriced_output_tokens, 1_000_000);
+        assert_eq!(cost.unpriced_cache_read_tokens, 42);
+        assert_eq!(cost.unpriced_cache_creation_tokens, 33);
     }
 
     #[test]
@@ -443,7 +494,7 @@ mod tests {
         let tokens = TokenUsage::default();
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         assert_eq!(cost.total_usd, 0.0);
-        assert!(!cost.is_estimated);
+        assert!(!cost.has_unpriced_usage);
     }
 
     #[test]
@@ -477,7 +528,7 @@ mod tests {
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         // First 200k at $0.50/M = $0.10, remaining 300k at $1.00/M = $0.30 => $0.40
         assert!((cost.cache_read_cost_usd - 0.40).abs() < 0.001);
-        assert!(!cost.is_estimated);
+        assert!(!cost.has_unpriced_usage);
     }
 
     #[test]
@@ -534,6 +585,29 @@ mod tests {
         let cost = calculate_cost(&tokens, Some("claude-opus-4-6"), &pricing);
         // 200k at $6.25/M + 300k at $12.50/M = $1.25 + $3.75 = $5.00
         assert!((cost.cache_creation_cost_usd - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_finalize_cost_breakdown_marks_partial_with_unpriced_tokens() {
+        let mut cost = CostBreakdown {
+            total_usd: 1.0,
+            unpriced_output_tokens: 500,
+            ..Default::default()
+        };
+        let tokens = TokenUsage {
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            total_tokens: 1500,
+            ..Default::default()
+        };
+
+        finalize_cost_breakdown(&mut cost, &tokens);
+
+        assert!(cost.has_unpriced_usage);
+        assert_eq!(cost.total_cost_source, "computed_priced_tokens_partial");
+        assert!((cost.priced_token_coverage - (1000.0 / 1500.0)).abs() < 1e-9);
     }
 
     /// Helper: assert Option<f64> is Some and approximately equal.

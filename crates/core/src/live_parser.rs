@@ -77,8 +77,6 @@ pub struct LiveLine {
     pub cache_creation_tokens: Option<u64>,
     pub cache_creation_5m_tokens: Option<u64>,
     pub cache_creation_1hr_tokens: Option<u64>,
-    /// Pre-calculated cost in USD from JSONL entry (top-level `costUSD` field).
-    pub cost_usd: Option<f64>,
     pub timestamp: Option<String>,
     pub stop_reason: Option<String>,
     /// Git branch extracted from user-type JSONL lines.
@@ -303,7 +301,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 cache_creation_tokens: None,
                 cache_creation_5m_tokens: None,
                 cache_creation_1hr_tokens: None,
-                cost_usd: None,
                 timestamp: None,
                 stop_reason: None,
                 git_branch: None,
@@ -410,9 +407,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         UsageTokens::default()
     };
-
-    // Extract top-level costUSD (pre-calculated cost from Claude Code API)
-    let cost_usd = parsed.get("costUSD").and_then(|v| v.as_f64());
 
     // Extract message.id and requestId for content-block dedup.
     // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
@@ -770,7 +764,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         cache_creation_tokens,
         cache_creation_5m_tokens,
         cache_creation_1hr_tokens,
-        cost_usd,
         timestamp,
         stop_reason,
         git_branch,
