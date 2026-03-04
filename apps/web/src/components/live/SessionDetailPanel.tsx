@@ -39,6 +39,7 @@ import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
 import { ViewModeControls } from './ViewModeControls'
 import { ActionLogTab } from './action-log'
+import { hasUnavailableCost } from './cost-display'
 import type { SessionPanelData } from './session-panel-data'
 import { liveSessionToPanelData } from './session-panel-data'
 import type { LiveSession } from './use-live-sessions'
@@ -275,14 +276,19 @@ export function SessionDetailPanel({
       : data.status === 'paused'
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-gray-500 dark:text-gray-400'
-  // For history sessions, prefer the DB total_cost_usd (JSONL costUSD sum, includes
-  // sub-agents after v17 indexing). This matches the list card's displayed cost.
-  // For live sessions, calculate from accumulated cost + sub-agents as before.
+  // Canonical display rule:
+  // - If rich/live-calculated cost exists, use it (matches live parser math).
+  // - Fall back to DB total_cost_usd only when rich data is unavailable.
   const dbCostUsd = data.historyExtras?.sessionInfo?.totalCostUsd
   const calculatedCostUsd =
     data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
-  const totalCostUsd = dbCostUsd != null && dbCostUsd > 0 ? dbCostUsd : calculatedCostUsd
-  const estimatedPrefix = data.cost?.isEstimated ? '~' : ''
+  const totalCostUsd = calculatedCostUsd > 0 ? calculatedCostUsd : (dbCostUsd ?? 0)
+  const totalCostLabel = hasUnavailableCost(totalCostUsd, data.cost, data.tokens.totalTokens)
+    ? 'Unavailable'
+    : formatCostUsd(totalCostUsd)
+  const cacheCreation5mTokens = data.tokens?.cacheCreation5mTokens ?? 0
+  const cacheCreation1hrTokens = data.tokens?.cacheCreation1hrTokens ?? 0
+  const hasCacheCreationSplit = cacheCreation5mTokens > 0 || cacheCreation1hrTokens > 0
 
   // ---- Render ----
   const content = (
@@ -356,8 +362,7 @@ export function SessionDetailPanel({
           <div className="flex-1" />
 
           <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-            {estimatedPrefix}
-            {formatCostUsd(totalCostUsd)}
+            {totalCostLabel}
           </span>
           <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
             Turn {data.turnCount}
@@ -454,13 +459,20 @@ export function SessionDetailPanel({
                   </span>
                 </div>
                 <div className="text-xl font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
-                  {estimatedPrefix}
-                  {formatCostUsd(totalCostUsd)}
+                  {totalCostLabel}
                 </div>
-                <div className="flex gap-3 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
                   <span>In: ${(data.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
                   <span>Out: ${(data.cost?.outputCostUsd ?? 0).toFixed(2)}</span>
+                  <span>CacheR: ${(data.cost?.cacheReadCostUsd ?? 0).toFixed(2)}</span>
+                  <span>CacheW: ${(data.cost?.cacheCreationCostUsd ?? 0).toFixed(2)}</span>
                 </div>
+                {hasCacheCreationSplit && (
+                  <div className="mt-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                    CacheW tokens: 5m {cacheCreation5mTokens.toLocaleString()} · 1h{' '}
+                    {cacheCreation1hrTokens.toLocaleString()}
+                  </div>
+                )}
                 {(data.cost?.cacheSavingsUsd ?? 0) > 0 && (
                   <div className="text-[10px] font-mono text-green-600 dark:text-green-400 mt-0.5">
                     Saved: ${(data.cost?.cacheSavingsUsd ?? 0).toFixed(2)}

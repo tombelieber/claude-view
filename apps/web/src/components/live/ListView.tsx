@@ -6,6 +6,7 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { ContextBar } from './ContextBar'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
+import { hasUnavailableCost } from './cost-display'
 import { GROUP_ORDER } from './types'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
@@ -40,7 +41,9 @@ function formatRelativeTime(ts: number): string {
 
 function formatCost(session: LiveSession): string {
   const usd = sessionTotalCost(session)
-  return `${session.cost?.isEstimated ? '~' : ''}${formatCostUsd(usd)}`
+  return hasUnavailableCost(usd, session.cost, session.tokens.totalTokens)
+    ? 'Unavailable'
+    : formatCostUsd(usd)
 }
 
 const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] =

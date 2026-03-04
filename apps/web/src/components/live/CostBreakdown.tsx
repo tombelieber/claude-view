@@ -1,5 +1,6 @@
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
 import type { LiveSession } from './use-live-sessions'
 
 interface CostBreakdownProps {
@@ -11,11 +12,17 @@ interface CostBreakdownProps {
 export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
   const subAgentTotal = subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
   const grandTotal = cost.totalUsd + subAgentTotal
-  const estimatedPrefix = cost?.isEstimated ? '~' : ''
+  const cacheCreation5mTokens = tokens?.cacheCreation5mTokens ?? 0
+  const cacheCreation1hrTokens = tokens?.cacheCreation1hrTokens ?? 0
+  const hasCacheCreationSplit = cacheCreation5mTokens > 0 || cacheCreation1hrTokens > 0
+  const unpricedTokens = unpricedTokenTotal(cost)
+  const pricedCoverage = pricedCoveragePercent(cost)
 
   // Effective rate: cost per 1M tokens (total cost / total tokens * 1M)
   const totalTokens = tokens?.totalTokens ?? 0
   const effectiveRate = totalTokens > 0 ? (grandTotal / totalTokens) * 1_000_000 : 0
+  const showUnavailableTotal = hasUnavailableCost(grandTotal, cost, totalTokens)
+  const showUnavailableMainAgent = hasUnavailableCost(cost.totalUsd, cost, totalTokens)
 
   // What it would cost without caching (add savings back)
   const uncachedTotal = grandTotal + (cost.cacheSavingsUsd ?? 0)
@@ -27,10 +34,15 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
       <div className="flex items-baseline justify-between">
         <span className="text-sm text-gray-500 dark:text-gray-400">Total Cost</span>
         <span className="text-2xl font-mono font-semibold text-gray-900 dark:text-gray-100">
-          {estimatedPrefix}
-          {formatCostUsd(grandTotal)}
+          {showUnavailableTotal ? 'Unavailable' : formatCostUsd(grandTotal)}
         </span>
       </div>
+      {cost.hasUnpricedUsage && (
+        <div className="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-2 text-[11px] text-amber-700 dark:text-amber-300">
+          Partial pricing: {formatTokenCount(unpricedTokens)} unpriced tokens are excluded from USD
+          totals ({pricedCoverage}% priced coverage).
+        </div>
+      )}
 
       {/* Breakdown table with tokens + cost columns */}
       <div className="space-y-1">
@@ -52,11 +64,31 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           />
         )}
         {(cost.cacheCreationCostUsd > 0 || (tokens?.cacheCreationTokens ?? 0) > 0) && (
-          <CostTokenRow
-            label="Cache write"
-            tokens={tokens?.cacheCreationTokens}
-            cost={cost.cacheCreationCostUsd}
-          />
+          <>
+            <CostTokenRow
+              label={hasCacheCreationSplit ? 'Cache write (total)' : 'Cache write'}
+              tokens={tokens?.cacheCreationTokens}
+              cost={cost.cacheCreationCostUsd}
+            />
+            {hasCacheCreationSplit && (
+              <>
+                {cacheCreation5mTokens > 0 && (
+                  <CostTokenRow
+                    label="  ↳ 5m cache write"
+                    tokens={cacheCreation5mTokens}
+                    tokenClassName="text-gray-400 dark:text-gray-500"
+                  />
+                )}
+                {cacheCreation1hrTokens > 0 && (
+                  <CostTokenRow
+                    label="  ↳ 1h cache write"
+                    tokens={cacheCreation1hrTokens}
+                    tokenClassName="text-gray-400 dark:text-gray-500"
+                  />
+                )}
+              </>
+            )}
+          </>
         )}
 
         {cost.cacheSavingsUsd > 0 && (
@@ -76,11 +108,17 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">Effective rate</span>
             <span className="font-mono tabular-nums font-medium text-gray-900 dark:text-gray-100">
-              {formatCostUsd(effectiveRate)}
-              <span className="text-gray-400 dark:text-gray-500 font-normal"> / 1M tokens</span>
+              {showUnavailableTotal ? (
+                'Unavailable'
+              ) : (
+                <>
+                  {formatCostUsd(effectiveRate)}
+                  <span className="text-gray-400 dark:text-gray-500 font-normal"> / 1M tokens</span>
+                </>
+              )}
             </span>
           </div>
-          {cost.cacheSavingsUsd > 0 && uncachedRate > 0 && (
+          {cost.cacheSavingsUsd > 0 && uncachedRate > 0 && !showUnavailableTotal && (
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-400 dark:text-gray-500">Without caching</span>
               <span className="font-mono tabular-nums text-gray-400 dark:text-gray-500">
@@ -97,7 +135,11 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
             Cost by Agent
           </h4>
-          <CostRow label="Main agent" value={cost.totalUsd} />
+          <CostRow
+            label="Main agent"
+            value={cost.totalUsd}
+            valueText={showUnavailableMainAgent ? 'Unavailable' : undefined}
+          />
           {subAgents
             .filter((a) => a.costUsd != null && a.costUsd > 0)
             .map((a) => (
@@ -121,7 +163,7 @@ function CostTokenRow({
 }: {
   label: string
   tokens?: number
-  cost: number
+  cost?: number
   tokenClassName?: string
 }) {
   return (
@@ -133,7 +175,7 @@ function CostTokenRow({
         {tokens != null ? formatTokenCount(tokens) : '--'}
       </span>
       <span className="w-20 text-right font-mono tabular-nums text-gray-700 dark:text-gray-300">
-        {formatCostUsd(cost)}
+        {cost != null ? formatCostUsd(cost) : 'incl.'}
       </span>
     </div>
   )
@@ -143,12 +185,18 @@ function CostRow({
   label,
   value,
   className,
-}: { label: string; value: number; className?: string }) {
+  valueText,
+}: {
+  label: string
+  value: number
+  className?: string
+  valueText?: string
+}) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-500 truncate mr-4">{label}</span>
       <span className={`font-mono tabular-nums ${className ?? 'text-gray-700 dark:text-gray-300'}`}>
-        {formatCostUsd(Math.abs(value))}
+        {valueText ?? formatCostUsd(Math.abs(value))}
       </span>
     </div>
   )

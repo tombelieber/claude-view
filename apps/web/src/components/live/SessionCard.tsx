@@ -27,6 +27,7 @@ import { CostTooltip } from './CostTooltip'
 import { SessionToolChips } from './SessionToolChips'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
+import { hasUnavailableCost } from './cost-display'
 import type { AgentState } from './types'
 import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
@@ -104,7 +105,9 @@ export function SessionCard({
   const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
   const totalCost = sessionTotalCost(session)
-  const estimatedPrefix = session.cost?.isEstimated ? '~' : ''
+  const totalCostLabel = hasUnavailableCost(totalCost, session.cost, session.tokens.totalTokens)
+    ? 'Unavailable'
+    : formatCostUsd(totalCost)
 
   const cardClassName =
     'group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors'
@@ -141,12 +144,12 @@ export function SessionCard({
           <CostTooltip
             cost={session.cost}
             cacheStatus={session.cacheStatus}
+            tokens={session.tokens}
             subAgents={session.subAgents}
             compactCount={session.compactCount}
           >
             <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-              {estimatedPrefix}
-              {formatCostUsd(totalCost)}
+              {totalCostLabel}
             </span>
           </CostTooltip>
         </div>
