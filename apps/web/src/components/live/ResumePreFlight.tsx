@@ -166,18 +166,28 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
 
               {/* Cost Breakdown */}
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">First message</span>
-                  <span className="font-mono text-gray-900 dark:text-gray-100">
-                    ${data.first_message_cost.toFixed(4)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Per follow-up</span>
-                  <span className="font-mono text-gray-900 dark:text-gray-100">
-                    ~${data.per_message_cost.toFixed(4)}
-                  </span>
-                </div>
+                {data.has_pricing ? (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">First message</span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">
+                        ${data.first_message_cost?.toFixed(4) ?? '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Per follow-up estimate
+                      </span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">
+                        ${data.per_message_cost?.toFixed(4) ?? '--'}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-amber-700 dark:text-amber-300">
+                    Cost estimate unavailable for this model (pricing data missing).
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{data.explanation}</p>
               </div>
 

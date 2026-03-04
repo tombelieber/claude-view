@@ -35,8 +35,9 @@ pub struct CostEstimate {
     pub session_id: String,
     pub history_tokens: u64,
     pub cache_warm: bool,
-    pub first_message_cost: f64,
-    pub per_message_cost: f64,
+    pub first_message_cost: Option<f64>,
+    pub per_message_cost: Option<f64>,
+    pub has_pricing: bool,
     pub model: String,
     pub explanation: String,
     pub session_title: Option<String>,
@@ -75,33 +76,46 @@ async fn estimate_cost(
     let pricing = state.pricing.read().expect("pricing lock poisoned");
     let model_pricing = claude_view_core::pricing::lookup_pricing(&model, &pricing);
 
-    let input_base = match model_pricing {
-        Some(p) => p.input_cost_per_token * 1_000_000.0,
-        None => 3.0, // fallback to Sonnet pricing per 1M tokens
-    };
-
     let per_million =
         |tokens: u64, rate_per_m: f64| -> f64 { (tokens as f64 / 1_000_000.0) * rate_per_m };
 
-    let first_message_cost = if cache_warm {
-        per_million(history_tokens, input_base * 0.10) // cache read
-    } else {
-        per_million(history_tokens, input_base * 1.25) // cache write
-    };
-
-    let per_message_cost = per_million(history_tokens, input_base * 0.10); // always cache read
-
     let secs_ago = now - last_activity;
-
-    let explanation = if cache_warm {
-        format!(
-            "Cache is warm (last active {}s ago). First message: ${:.4} (cached). Each follow-up: ~${:.4}.",
-            secs_ago, first_message_cost, per_message_cost,
+    let (first_message_cost, per_message_cost, has_pricing, explanation) = if let Some(p) =
+        model_pricing
+    {
+        let input_base = p.input_cost_per_token * 1_000_000.0;
+        let first_message_cost = if cache_warm {
+            per_million(history_tokens, input_base * 0.10) // cache read
+        } else {
+            per_million(history_tokens, input_base * 1.25) // cache write
+        };
+        let per_message_cost = per_million(history_tokens, input_base * 0.10); // always cache read
+        let explanation = if cache_warm {
+            format!(
+                "Cache is warm (last active {}s ago). First message: ${:.4} (cached). Each follow-up: ~${:.4}.",
+                secs_ago, first_message_cost, per_message_cost,
+            )
+        } else {
+            format!(
+                "Cache is cold (last active {}m ago). First message: ${:.4} (cache warming). Follow-ups drop to ~${:.4} (cached).",
+                secs_ago / 60, first_message_cost, per_message_cost,
+            )
+        };
+        (
+            Some(first_message_cost),
+            Some(per_message_cost),
+            true,
+            explanation,
         )
     } else {
-        format!(
-            "Cache is cold (last active {}m ago). First message: ${:.4} (cache warming). Follow-ups drop to ~${:.4} (cached).",
-            secs_ago / 60, first_message_cost, per_message_cost,
+        (
+            None,
+            None,
+            false,
+            format!(
+                "Model pricing not found for {} (last active {}s ago). Cost estimate unavailable without real pricing data.",
+                model, secs_ago
+            ),
         )
     };
 
@@ -120,6 +134,7 @@ async fn estimate_cost(
         cache_warm,
         first_message_cost,
         per_message_cost,
+        has_pricing,
         model,
         explanation,
         session_title: session.longest_task_preview.clone(),

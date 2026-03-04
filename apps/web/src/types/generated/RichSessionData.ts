@@ -18,7 +18,13 @@ export interface RichSessionData {
     cacheReadCostUsd: number
     cacheCreationCostUsd: number
     cacheSavingsUsd: number
-    isEstimated: boolean
+    hasUnpricedUsage: boolean
+    unpricedInputTokens: number
+    unpricedOutputTokens: number
+    unpricedCacheReadTokens: number
+    unpricedCacheCreationTokens: number
+    pricedTokenCoverage: number
+    totalCostSource: 'computed_priced_tokens_full' | 'computed_priced_tokens_partial'
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
   subAgents: SubAgentInfo[]
