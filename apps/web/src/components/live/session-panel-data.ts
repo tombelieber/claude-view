@@ -141,6 +141,7 @@ export function historyToPanelData(
     cost,
     cacheStatus: richData?.cacheStatus ?? 'unknown',
     subAgents: richData?.subAgents,
+    progressItems: richData?.progressItems,
     lastUserMessage: richData?.lastUserMessage ?? undefined,
     historyExtras: {
       sessionDetail,
