@@ -72,7 +72,7 @@ export function ReportDetails(props: ReportDetailsProps) {
         <span>Details</span>
         {!expanded && (
           <span className="ml-1 text-gray-300 dark:text-gray-600">
-            {totalCostCents > 0 && `· ~$${(totalCostCents / 100).toFixed(2)} API usage`}
+            {totalCostCents > 0 && `· $${(totalCostCents / 100).toFixed(2)} API usage`}
             {digest.total_input_tokens
               ? ` · ${formatTokens(digest.total_input_tokens + (digest.total_output_tokens ?? 0))} tokens`
               : ''}
@@ -115,10 +115,10 @@ export function ReportDetails(props: ReportDetailsProps) {
             {/* Row 1: Session API usage + Tokens */}
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-gray-600 dark:text-gray-400">
               {totalCostCents > 0 && (
-                <span title="Estimated from session token usage">
+                <span title="Computed from priced session totals">
                   API usage:{' '}
                   <span className="text-gray-900 dark:text-gray-200 font-medium">
-                    ~${(totalCostCents / 100).toFixed(2)}
+                    ${(totalCostCents / 100).toFixed(2)}
                   </span>
                 </span>
               )}
