@@ -9,8 +9,22 @@ use memchr::memmem;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::progress::{RawTaskCreate, RawTaskIdAssignment, RawTaskUpdate, RawTodoItem};
+
+static PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Number of times progress parsing fell back from
+/// `data.message.message.content` to `data.message.content`.
+pub fn progress_message_content_fallback_count() -> u64 {
+    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.load(Ordering::Relaxed)
+}
+
+/// Reset fallback counter. Primarily useful for tests.
+pub fn reset_progress_message_content_fallback_count() {
+    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.store(0, Ordering::Relaxed);
+}
 
 /// Byte offset + timestamp for incremental tailing.
 pub struct TailState {
@@ -133,12 +147,6 @@ pub enum LineType {
 /// Pre-compiled SIMD substring finders. Build once at startup via
 /// [`TailFinders::new`] and share across polls.
 pub struct TailFinders {
-    pub type_user: memmem::Finder<'static>,
-    pub type_assistant: memmem::Finder<'static>,
-    pub type_system: memmem::Finder<'static>,
-    pub type_progress: memmem::Finder<'static>,
-    pub type_summary: memmem::Finder<'static>,
-    pub type_result: memmem::Finder<'static>,
     pub content_key: memmem::Finder<'static>,
     pub model_key: memmem::Finder<'static>,
     pub usage_key: memmem::Finder<'static>,
@@ -159,12 +167,6 @@ impl TailFinders {
     /// Create all finders once. The needles are `'static` string slices.
     pub fn new() -> Self {
         Self {
-            type_user: memmem::Finder::new(b"\"user\""),
-            type_assistant: memmem::Finder::new(b"\"assistant\""),
-            type_system: memmem::Finder::new(b"\"system\""),
-            type_progress: memmem::Finder::new(b"\"progress\""),
-            type_summary: memmem::Finder::new(b"\"summary\""),
-            type_result: memmem::Finder::new(b"\"result\""),
             content_key: memmem::Finder::new(b"\"content\""),
             model_key: memmem::Finder::new(b"\"model\""),
             usage_key: memmem::Finder::new(b"\"usage\""),
@@ -247,6 +249,161 @@ pub fn parse_tail(
     Ok((lines, new_offset))
 }
 
+#[derive(Debug, Default, Clone)]
+struct ToolUseResultPayload {
+    agent_id: Option<String>,
+    status: Option<String>,
+    total_duration_ms: Option<u64>,
+    total_tool_use_count: Option<u32>,
+    usage_input_tokens: Option<u64>,
+    usage_output_tokens: Option<u64>,
+    usage_cache_read_tokens: Option<u64>,
+    usage_cache_creation_tokens: Option<u64>,
+}
+
+impl ToolUseResultPayload {
+    fn has_data(&self) -> bool {
+        self.agent_id.is_some()
+            || self.status.is_some()
+            || self.total_duration_ms.is_some()
+            || self.total_tool_use_count.is_some()
+            || self.usage_input_tokens.is_some()
+            || self.usage_output_tokens.is_some()
+            || self.usage_cache_read_tokens.is_some()
+            || self.usage_cache_creation_tokens.is_some()
+    }
+
+    fn merge(&mut self, other: ToolUseResultPayload) {
+        if other.agent_id.is_some() && self.agent_id.is_none() {
+            self.agent_id = other.agent_id;
+        }
+        if other.status.is_some() {
+            self.status = other.status;
+        }
+        if other.total_duration_ms.is_some() && self.total_duration_ms.is_none() {
+            self.total_duration_ms = other.total_duration_ms;
+        }
+        if other.total_tool_use_count.is_some() && self.total_tool_use_count.is_none() {
+            self.total_tool_use_count = other.total_tool_use_count;
+        }
+        if other.usage_input_tokens.is_some() && self.usage_input_tokens.is_none() {
+            self.usage_input_tokens = other.usage_input_tokens;
+        }
+        if other.usage_output_tokens.is_some() && self.usage_output_tokens.is_none() {
+            self.usage_output_tokens = other.usage_output_tokens;
+        }
+        if other.usage_cache_read_tokens.is_some() && self.usage_cache_read_tokens.is_none() {
+            self.usage_cache_read_tokens = other.usage_cache_read_tokens;
+        }
+        if other.usage_cache_creation_tokens.is_some() && self.usage_cache_creation_tokens.is_none()
+        {
+            self.usage_cache_creation_tokens = other.usage_cache_creation_tokens;
+        }
+    }
+}
+
+fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResultPayload> {
+    match tur {
+        serde_json::Value::Object(obj) => {
+            let has_known_key = obj.contains_key("status")
+                || obj.contains_key("agentId")
+                || obj.contains_key("totalDurationMs")
+                || obj.contains_key("totalToolUseCount")
+                || obj.contains_key("usage");
+            if !has_known_key {
+                return None;
+            }
+
+            let status = obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| Some("completed".to_string()));
+            let usage = obj.get("usage");
+
+            Some(ToolUseResultPayload {
+                agent_id: obj
+                    .get("agentId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                status,
+                total_duration_ms: obj.get("totalDurationMs").and_then(|v| v.as_u64()),
+                total_tool_use_count: obj
+                    .get("totalToolUseCount")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32),
+                usage_input_tokens: usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_output_tokens: usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_cache_read_tokens: usage
+                    .and_then(|u| u.get("cache_read_input_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_cache_creation_tokens: usage
+                    .and_then(|u| u.get("cache_creation_input_tokens"))
+                    .and_then(|v| v.as_u64()),
+            })
+        }
+        serde_json::Value::String(status) => {
+            let status = status.trim();
+            if status.is_empty() {
+                None
+            } else {
+                Some(ToolUseResultPayload {
+                    status: Some(status.to_string()),
+                    ..ToolUseResultPayload::default()
+                })
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let mut merged = ToolUseResultPayload::default();
+            for item in items {
+                if let Some(parsed) = parse_tool_use_result_payload(item) {
+                    merged.merge(parsed);
+                }
+            }
+            if merged.has_data() {
+                Some(merged)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn progress_content_blocks(data: &serde_json::Value) -> (Option<&Vec<serde_json::Value>>, bool) {
+    let primary = data
+        .get("message")
+        .and_then(|m| m.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array());
+    if primary.is_some() {
+        return (primary, false);
+    }
+
+    let fallback = data
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array());
+    (fallback, fallback.is_some())
+}
+
+fn json_value_kind(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
 /// Classify and extract fields from a single JSONL line.
 ///
 /// Claude Code JSONL wraps API messages inside a `"message"` field:
@@ -256,41 +413,12 @@ pub fn parse_tail(
 /// ```
 /// We check both the top level and the nested `message` object for each field.
 pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
-    // Fast classification via SIMD substring search (avoids JSON parse for
-    // lines that don't contain the keys we care about).
-    // Check result/progress/summary BEFORE user/assistant because these lines
-    // may contain nested "role":"assistant" which would match the assistant finder.
-    let line_type =
-        if finders.type_result.find(raw).is_some() && finders.type_progress.find(raw).is_none() {
-            // "result" appears in result lines AND in toolUseResult lines.
-            // Disambiguate: if line has "result" but NOT "user", it's a
-            // top-level result line. If it has both "result" and "user", it's
-            // a toolUseResult on a user line → classify as User below.
-            if finders.type_user.find(raw).is_none() {
-                LineType::Result
-            } else {
-                LineType::User
-            }
-        } else if finders.type_progress.find(raw).is_some() {
-            LineType::Progress
-        } else if finders.type_summary.find(raw).is_some() {
-            LineType::Summary
-        } else if finders.type_user.find(raw).is_some() {
-            LineType::User
-        } else if finders.type_assistant.find(raw).is_some() {
-            LineType::Assistant
-        } else if finders.type_system.find(raw).is_some() {
-            LineType::System
-        } else {
-            LineType::Other
-        };
-
     // Parse JSON to extract structured fields
     let parsed: serde_json::Value = match serde_json::from_slice(raw) {
         Ok(v) => v,
         Err(_) => {
             return LiveLine {
-                line_type,
+                line_type: LineType::Other,
                 role: None,
                 content_preview: String::new(),
                 tool_names: Vec::new(),
@@ -322,6 +450,17 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 request_id: None,
             };
         }
+    };
+
+    // Classification must come from exact top-level `type`.
+    let line_type = match parsed.get("type").and_then(|t| t.as_str()) {
+        Some("user") => LineType::User,
+        Some("assistant") => LineType::Assistant,
+        Some("system") => LineType::System,
+        Some("progress") => LineType::Progress,
+        Some("summary") => LineType::Summary,
+        Some("result") => LineType::Result,
+        _ => LineType::Other,
     };
 
     // The nested message object (most fields live here in Claude Code JSONL)
@@ -493,6 +632,17 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
             // Extract toolUseResult from top-level (NOT inside message.content)
             parsed.get("toolUseResult").and_then(|tur| {
+                let parsed_tur = match parse_tool_use_result_payload(tur) {
+                    Some(parsed) => parsed,
+                    None => {
+                        tracing::debug!(
+                            kind = json_value_kind(tur),
+                            "Ignoring unsupported toolUseResult variant"
+                        );
+                        return None;
+                    }
+                };
+
                 // Find the matching tool_use_id from the tool_result block in content
                 let tool_use_id = msg
                     .and_then(|m| m.get("content"))
@@ -508,40 +658,16 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                             }
                         })
                     })?;
-
-                let agent_id = tur
-                    .get("agentId")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let status = tur
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("completed")
-                    .to_string();
-                let total_duration_ms = tur.get("totalDurationMs").and_then(|v| v.as_u64());
-                let total_tool_use_count = tur
-                    .get("totalToolUseCount")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32);
-                let usage = tur.get("usage");
                 Some(SubAgentResult {
                     tool_use_id,
-                    agent_id,
-                    status,
-                    total_duration_ms,
-                    total_tool_use_count,
-                    usage_input_tokens: usage
-                        .and_then(|u| u.get("input_tokens"))
-                        .and_then(|v| v.as_u64()),
-                    usage_output_tokens: usage
-                        .and_then(|u| u.get("output_tokens"))
-                        .and_then(|v| v.as_u64()),
-                    usage_cache_read_tokens: usage
-                        .and_then(|u| u.get("cache_read_input_tokens"))
-                        .and_then(|v| v.as_u64()),
-                    usage_cache_creation_tokens: usage
-                        .and_then(|u| u.get("cache_creation_input_tokens"))
-                        .and_then(|v| v.as_u64()),
+                    agent_id: parsed_tur.agent_id,
+                    status: parsed_tur.status.unwrap_or_else(|| "completed".to_string()),
+                    total_duration_ms: parsed_tur.total_duration_ms,
+                    total_tool_use_count: parsed_tur.total_tool_use_count,
+                    usage_input_tokens: parsed_tur.usage_input_tokens,
+                    usage_output_tokens: parsed_tur.usage_output_tokens,
+                    usage_cache_read_tokens: parsed_tur.usage_cache_read_tokens,
+                    usage_cache_creation_tokens: parsed_tur.usage_cache_creation_tokens,
                 })
             })
         } else {
@@ -549,29 +675,29 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         };
 
     // --- Sub-agent progress detection (progress lines with agent_progress) ---
-    // SIMD pre-filter on "agent_progress" then verify the parsed JSON `type` field
-    // for an extra safety check (belt-and-suspenders with the line_type classification).
-    let sub_agent_progress = if finders.agent_progress_key.find(raw).is_some()
-        && parsed.get("type").and_then(|t| t.as_str()) == Some("progress")
-    {
-        parsed.get("data").and_then(|data| {
-            if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
-                return None;
-            }
-            let parent_tool_use_id = parsed
-                .get("parentToolUseID")
-                .and_then(|v| v.as_str())
-                .map(String::from)?;
-            let agent_id = data
-                .get("agentId")
-                .and_then(|v| v.as_str())
-                .map(String::from)?;
-            // Extract current tool from the latest tool_use block in message.content
-            let current_tool = data
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-                .and_then(|blocks| {
+    // SIMD pre-filter on "agent_progress" + exact LineType::Progress check.
+    let sub_agent_progress =
+        if line_type == LineType::Progress && finders.agent_progress_key.find(raw).is_some() {
+            parsed.get("data").and_then(|data| {
+                if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
+                    return None;
+                }
+                let parent_tool_use_id = parsed
+                    .get("parentToolUseID")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)?;
+                let agent_id = data
+                    .get("agentId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)?;
+                // Primary: data.message.message.content[*]
+                // Fallback: data.message.content[*]
+                let (progress_blocks, used_fallback) = progress_content_blocks(data);
+                if used_fallback {
+                    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+                }
+
+                let current_tool = progress_blocks.and_then(|blocks| {
                     blocks.iter().rev().find_map(|b| {
                         if b.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
                             b.get("name").and_then(|n| n.as_str()).map(String::from)
@@ -580,15 +706,15 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                         }
                     })
                 });
-            Some(SubAgentProgress {
-                parent_tool_use_id,
-                agent_id,
-                current_tool,
+                Some(SubAgentProgress {
+                    parent_tool_use_id,
+                    agent_id,
+                    current_tool,
+                })
             })
-        })
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // --- TodoWrite detection (assistant lines with TodoWrite tool_use) ---
     let todo_write =
@@ -1044,7 +1170,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("single.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(f, r#"{{"role":"user","content":"Hello world"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Hello world"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -1116,7 +1246,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("incremental.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(f, r#"{{"role":"user","content":"first"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"first"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -1131,7 +1265,11 @@ mod tests {
             .append(true)
             .open(&path)
             .unwrap();
-        writeln!(f, r#"{{"role":"assistant","content":"second"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"second"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         // Second read from previous offset

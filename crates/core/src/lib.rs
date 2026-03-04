@@ -24,6 +24,7 @@ pub mod report;
 pub mod session_index;
 pub mod subagent;
 pub mod tail;
+pub mod time_range_contract;
 pub mod types;
 pub mod work_type;
 
@@ -38,5 +39,6 @@ pub use metrics::*;
 pub use parser::*;
 pub use registry::*;
 pub use session_index::*;
+pub use time_range_contract::*;
 pub use types::*;
 pub use work_type::*;

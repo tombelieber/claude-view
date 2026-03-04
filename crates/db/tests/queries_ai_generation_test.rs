@@ -2,6 +2,7 @@
 //! Integration tests for Database AI generation stats query methods.
 
 use claude_view_db::Database;
+use sqlx::Executor;
 
 #[tokio::test]
 async fn test_get_ai_generation_stats() {
@@ -160,6 +161,72 @@ async fn test_get_ai_generation_stats() {
     )
     .await
     .unwrap();
+
+    // Ground-truth model usage comes from turns.model_id.
+    db.pool()
+        .execute(sqlx::query(
+            r#"
+                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                VALUES ('claude-opus-4-5-20251101', 'anthropic', 'opus', 0, 0)
+                "#,
+        ))
+        .await
+        .unwrap();
+    db.pool()
+        .execute(sqlx::query(
+            r#"
+                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                VALUES ('claude-sonnet-4-20250514', 'anthropic', 'sonnet', 0, 0)
+                "#,
+        ))
+        .await
+        .unwrap();
+
+    db.pool()
+        .execute(
+            sqlx::query(
+                r#"
+                INSERT INTO turns (
+                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind("ai-gen-1")
+            .bind("turn-ai-gen-1")
+            .bind(1)
+            .bind("claude-opus-4-5-20251101")
+            .bind(3000)
+            .bind(2000)
+            .bind(0)
+            .bind(0)
+            .bind(1000),
+        )
+        .await
+        .unwrap();
+
+    db.pool()
+        .execute(
+            sqlx::query(
+                r#"
+                INSERT INTO turns (
+                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind("ai-gen-2")
+            .bind("turn-ai-gen-2")
+            .bind(1)
+            .bind("claude-sonnet-4-20250514")
+            .bind(1000)
+            .bind(500)
+            .bind(0)
+            .bind(0)
+            .bind(2000),
+        )
+        .await
+        .unwrap();
 
     // Test all-time (no range filter)
     let stats = db

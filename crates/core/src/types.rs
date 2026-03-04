@@ -741,8 +741,6 @@ pub struct ClassificationJob {
     pub status: ClassificationJobStatus,
     pub error_message: Option<String>,
     #[ts(type = "number | null")]
-    pub cost_estimate_cents: Option<i64>,
-    #[ts(type = "number | null")]
     pub actual_cost_cents: Option<i64>,
     #[ts(type = "number | null")]
     pub tokens_used: Option<i64>,
@@ -938,7 +936,9 @@ pub struct ReportSummary {
     #[ts(type = "number")]
     pub lines_removed: i64,
     pub commit_count: u32,
-    pub estimated_cost: f64,
+    pub total_cost_usd: Option<f64>,
+    /// True when some sessions in this period had unpriced usage (NULL total_cost_usd).
+    pub has_unpriced_usage: bool,
     pub top_wins: Vec<String>,
     pub focus_areas: Vec<String>,
 }
