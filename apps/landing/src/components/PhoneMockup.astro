@@ -12,15 +12,15 @@
       <!-- Notification badges -->
       <div class="notification notification-1">
         <span class="notification-dot bg-green-400"></span>
-        <span class="text-xs text-slate-300">Agent completed task</span>
+        <span class="text-xs text-[var(--color-text-secondary)]">Agent completed task</span>
       </div>
       <div class="notification notification-2">
         <span class="notification-dot bg-yellow-400"></span>
-        <span class="text-xs text-slate-300">Awaiting approval</span>
+        <span class="text-xs text-[var(--color-text-secondary)]">Awaiting approval</span>
       </div>
       <div class="notification notification-3">
         <span class="notification-dot bg-blue-400"></span>
-        <span class="text-xs text-slate-300">3 agents active</span>
+        <span class="text-xs text-[var(--color-text-secondary)]">3 agents active</span>
       </div>
     </div>
   </div>
@@ -36,18 +36,18 @@
   .phone-frame {
     width: 240px;
     height: 480px;
-    background: linear-gradient(135deg, #1e293b, #0f172a);
+    background: linear-gradient(135deg, #f8f8f6, #eeecea);
     border-radius: 36px;
-    border: 2px solid #334155;
+    border: 2px solid var(--color-border);
     padding: 12px;
     transform: rotateY(-8deg) rotateX(2deg);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.12);
   }
 
   .phone-notch {
     width: 80px;
     height: 24px;
-    background: #0f172a;
+    background: #e8e6e3;
     border-radius: 0 0 16px 16px;
     margin: 0 auto 16px;
   }
@@ -64,9 +64,9 @@
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    background: rgba(30, 41, 59, 0.8);
+    background: rgba(255, 255, 255, 0.8);
     border-radius: 12px;
-    border: 1px solid #334155;
+    border: 1px solid var(--color-border);
     opacity: 0;
     animation: slide-in 0.5s ease forwards;
   }

@@ -2,40 +2,40 @@
 // Site footer
 import { GITHUB_URL } from '../data/site';
 ---
-<footer class="border-t border-slate-800 bg-slate-900/50">
+<footer class="relative z-[1] border-t border-[var(--color-border)] bg-transparent">
   <div class="mx-auto max-w-7xl px-6 py-12">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
       <div>
-        <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Product</h3>
+        <h3 class="font-heading text-sm font-semibold text-[var(--color-text)] mb-4">Product</h3>
         <ul class="space-y-2">
-          <li><a href="/#features" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Features</a></li>
-          <li><a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Pricing</a></li>
-          <li><a href="/changelog/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Changelog</a></li>
+          <li><a href="/#features" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Features</a></li>
+          <li><a href="/pricing/" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Pricing</a></li>
+          <li><a href="/changelog/" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Changelog</a></li>
         </ul>
       </div>
       <div>
-        <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Resources</h3>
+        <h3 class="font-heading text-sm font-semibold text-[var(--color-text)] mb-4">Resources</h3>
         <ul class="space-y-2">
-          <li><a href="/docs/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Documentation</a></li>
-          <li><a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Blog</a></li>
-          <li><a href="/docs/reference/api/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">API Reference</a></li>
+          <li><a href="/docs/" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Documentation</a></li>
+          <li><a href="/blog/" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Blog</a></li>
+          <li><a href="/docs/reference/api/" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">API Reference</a></li>
         </ul>
       </div>
       <div>
-        <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Community</h3>
+        <h3 class="font-heading text-sm font-semibold text-[var(--color-text)] mb-4">Community</h3>
         <ul class="space-y-2">
-          <li><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">GitHub</a></li>
+          <li><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">GitHub</a></li>
         </ul>
       </div>
       <div>
-        <h3 class="font-heading text-sm font-semibold text-slate-50 mb-4">Legal</h3>
+        <h3 class="font-heading text-sm font-semibold text-[var(--color-text)] mb-4">Legal</h3>
         <ul class="space-y-2">
-          <li><a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">MIT License</a></li>
+          <li><a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer" class="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">MIT License</a></li>
         </ul>
       </div>
     </div>
-    <div class="mt-12 pt-8 border-t border-slate-800 text-center">
-      <p class="text-sm text-slate-500">Open source. Built with Rust + Astro.</p>
+    <div class="mt-12 pt-8 border-t border-[var(--color-border)] text-center">
+      <p class="text-sm text-[var(--color-text-tertiary)]">Open source. Built with Rust + Astro.</p>
     </div>
   </div>
 </footer>
