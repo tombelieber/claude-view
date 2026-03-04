@@ -114,6 +114,10 @@ pub struct LiveLine {
     pub is_compact_boundary: bool,
     /// Filename extracted from `<ide_opened_file>` tag, if present.
     pub ide_file: Option<String>,
+    /// `message.id` from the API response (for dedup: one API response = multiple JSONL lines).
+    pub message_id: Option<String>,
+    /// `requestId` from the JSONL entry (for dedup: combined with message_id).
+    pub request_id: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -317,6 +321,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 skill_names: Vec::new(),
                 is_compact_boundary: false,
                 ide_file: None,
+                message_id: None,
+                request_id: None,
             };
         }
     };
@@ -407,6 +413,19 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
 
     // Extract top-level costUSD (pre-calculated cost from Claude Code API)
     let cost_usd = parsed.get("costUSD").and_then(|v| v.as_f64());
+
+    // Extract message.id and requestId for content-block dedup.
+    // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+    // each carrying the full message-level usage. We need these IDs to avoid counting
+    // tokens/cost multiple times for the same API response.
+    let message_id = msg
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let request_id = parsed
+        .get("requestId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let timestamp = parsed
         .get("timestamp")
@@ -769,6 +788,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         skill_names,
         is_compact_boundary,
         ide_file,
+        message_id,
+        request_id,
     }
 }
 
