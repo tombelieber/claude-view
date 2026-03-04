@@ -13,6 +13,36 @@ pub struct ClassificationRequest {
     pub skills_used: Vec<String>,
 }
 
+/// Token usage metadata from an LLM classification call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClassificationUsage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<u64>,
+}
+
+impl ClassificationUsage {
+    /// Total billed tokens when required usage fields are present.
+    ///
+    /// Requires `input_tokens` and `output_tokens` from telemetry.
+    /// Cache token fields are optional and default to 0 when absent.
+    pub fn total_tokens(&self) -> Option<u64> {
+        let input = self.input_tokens?;
+        let output = self.output_tokens?;
+        Some(
+            input
+                .saturating_add(output)
+                .saturating_add(self.cache_creation_input_tokens.unwrap_or(0))
+                .saturating_add(self.cache_read_input_tokens.unwrap_or(0)),
+        )
+    }
+}
+
 /// Classification response from an LLM provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassificationResponse {
@@ -22,6 +52,18 @@ pub struct ClassificationResponse {
     pub confidence: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ClassificationUsage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_cost_usd: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl ClassificationResponse {
+    pub fn total_tokens_used(&self) -> Option<u64> {
+        self.usage.as_ref()?.total_tokens()
+    }
 }
 
 /// Request for a general-purpose LLM completion.
@@ -107,6 +149,9 @@ mod tests {
         assert_eq!(resp.category_l3, "error-fix");
         assert!((resp.confidence - 0.92).abs() < f64::EPSILON);
         assert!(resp.reasoning.is_none());
+        assert!(resp.usage.is_none());
+        assert!(resp.total_cost_usd.is_none());
+        assert!(resp.model.is_none());
     }
 
     #[test]
@@ -123,6 +168,18 @@ mod tests {
             resp.reasoning,
             Some("User is building a new React component".to_string())
         );
+        assert!(resp.usage.is_none());
+    }
+
+    #[test]
+    fn test_classification_usage_total_tokens() {
+        let usage = ClassificationUsage {
+            input_tokens: Some(1200),
+            output_tokens: Some(340),
+            cache_creation_input_tokens: Some(0),
+            cache_read_input_tokens: Some(45000),
+        };
+        assert_eq!(usage.total_tokens(), Some(46540));
     }
 
     #[test]
