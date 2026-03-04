@@ -3,6 +3,7 @@ import type { ClassificationInfo } from './ClassificationInfo'
 import type { ClaudeCliStatus } from './ClaudeCliStatus'
 import type { HealthInfo } from './HealthInfo'
 import type { IndexRunInfo } from './IndexRunInfo'
+import type { IntegrityInfo } from './IntegrityInfo'
 import type { PerformanceInfo } from './PerformanceInfo'
 import type { StorageInfo } from './StorageInfo'
 
@@ -13,6 +14,7 @@ export type SystemResponse = {
   storage: StorageInfo
   performance: PerformanceInfo
   health: HealthInfo
+  integrity: IntegrityInfo
   indexHistory: Array<IndexRunInfo>
   classification: ClassificationInfo
   claudeCli: ClaudeCliStatus

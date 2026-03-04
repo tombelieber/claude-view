@@ -741,20 +741,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 
     // Job completed
     classify_state.set_completed();
-    let actual_cost_cents = if cost_known && total_cost_usd.is_finite() {
-        let cents = (total_cost_usd * 100.0).round();
-        if cents <= i64::MAX as f64 {
-            Some(cents as i64)
-        } else {
-            tracing::warn!(
-                total_cost_usd,
-                "Classification cost overflow; storing NULL actual_cost_cents"
-            );
-            None
-        }
-    } else {
-        None
-    };
+    let actual_cost_cents = actual_cost_cents_from_total(total_cost_usd, cost_known);
     if let Err(e) = db
         .complete_classification_job(db_job_id, actual_cost_cents)
         .await
@@ -786,6 +773,30 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     );
 }
 
+fn actual_cost_cents_from_total(total_cost_usd: f64, cost_known: bool) -> Option<i64> {
+    if !cost_known || !total_cost_usd.is_finite() {
+        return None;
+    }
+
+    let cents = (total_cost_usd * 100.0).round();
+    if cents > i64::MAX as f64 {
+        tracing::warn!(
+            total_cost_usd,
+            "Classification cost overflow; storing NULL actual_cost_cents"
+        );
+        return None;
+    }
+    if cents < i64::MIN as f64 {
+        tracing::warn!(
+            total_cost_usd,
+            "Classification cost underflow; storing NULL actual_cost_cents"
+        );
+        return None;
+    }
+
+    Some(cents as i64)
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -810,6 +821,76 @@ pub fn router() -> Router<Arc<AppState>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_view_core::{SessionInfo, ToolCounts};
+    use claude_view_db::Database;
+    use tower::ServiceExt;
+
+    fn make_unclassified_session(id: &str, modified_at: i64) -> SessionInfo {
+        SessionInfo {
+            id: id.to_string(),
+            project: "project-a".to_string(),
+            project_path: "/home/user/project-a".to_string(),
+            display_name: "project-a".to_string(),
+            git_root: None,
+            file_path: format!("/tmp/{id}.jsonl"),
+            modified_at,
+            size_bytes: 1024,
+            preview: "Preview".to_string(),
+            last_message: "Last message".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: Some(1),
+            primary_model: None,
+            user_prompt_count: 1,
+            api_call_count: 0,
+            tool_call_count: 0,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 0,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            parse_version: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
+            first_message_at: Some(modified_at),
+            total_cost_usd: None,
+        }
+    }
 
     #[test]
     fn test_router_creation() {
@@ -878,8 +959,6 @@ mod tests {
     async fn test_start_classification_empty_db() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use claude_view_db::Database;
-        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -906,8 +985,6 @@ mod tests {
     async fn test_get_status_idle() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use claude_view_db::Database;
-        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -938,8 +1015,6 @@ mod tests {
     async fn test_cancel_when_not_running() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use claude_view_db::Database;
-        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -981,8 +1056,6 @@ mod tests {
     async fn test_classify_single_session_not_found() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use claude_view_db::Database;
-        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
@@ -1002,5 +1075,66 @@ mod tests {
 
         // Should return 404 because session doesn't exist
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_start_classification_dry_run_returns_scope_only_and_creates_no_job() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let session = make_unclassified_session("sess-dry-run", now);
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        let app = Router::new()
+            .nest("/api", router())
+            .with_state(AppState::new(db.clone()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/classify")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"mode":"unclassified","dryRun":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "dry_run");
+        assert_eq!(json["jobId"], 0);
+        assert_eq!(json["totalSessions"], 1);
+
+        let jobs_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM classification_jobs")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            jobs_count.0, 0,
+            "dry run must not create classification job"
+        );
+    }
+
+    #[test]
+    fn test_actual_cost_cents_from_total_null_when_unknown_or_invalid() {
+        assert_eq!(actual_cost_cents_from_total(1.23, false), None);
+        assert_eq!(actual_cost_cents_from_total(f64::NAN, true), None);
+        assert_eq!(actual_cost_cents_from_total(f64::INFINITY, true), None);
+        assert_eq!(actual_cost_cents_from_total(1.0e20, true), None);
+    }
+
+    #[test]
+    fn test_actual_cost_cents_from_total_known_finite() {
+        assert_eq!(actual_cost_cents_from_total(0.0, true), Some(0));
+        assert_eq!(actual_cost_cents_from_total(1.234, true), Some(123));
     }
 }

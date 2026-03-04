@@ -11,7 +11,8 @@ use axum::{
 };
 use claude_view_core::pricing::{self as pricing_engine};
 use claude_view_core::{
-    claude_projects_dir, DashboardStats, EffectiveRangeMeta, EffectiveRangeSource,
+    claude_projects_dir, AnalyticsScopeMeta, AnalyticsSessionBreakdown, DashboardStats,
+    EffectiveRangeMeta, EffectiveRangeSource,
 };
 use claude_view_db::trends::{TrendMetric, WeekTrends};
 use claude_view_db::{AIGenerationStats, AggregateCostBreakdown};
@@ -94,6 +95,8 @@ pub struct ExtendedDashboardStats {
 #[serde(rename_all = "camelCase")]
 pub struct DashboardMeta {
     pub ranges: DashboardRangesMeta,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
 }
 
 /// Section-specific range metadata for dashboard.
@@ -122,6 +125,16 @@ pub struct DashboardTrends {
     pub avg_tokens_per_prompt: TrendMetric,
     /// Avg re-edit rate trend (percentage 0-100)
     pub avg_reedit_rate: TrendMetric,
+}
+
+/// AI generation response wrapper with additive metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct AIGenerationStatsResponse {
+    #[serde(flatten)]
+    pub base: AIGenerationStats,
+    pub meta: AnalyticsScopeMeta,
 }
 
 impl From<WeekTrends> for DashboardTrends {
@@ -189,6 +202,41 @@ pub struct StorageStats {
     pub index_path: Option<String>,
     /// Parent app data directory — safe to delete, rebuilt on next launch.
     pub app_data_path: Option<String>,
+}
+
+async fn fetch_session_breakdown(
+    state: &Arc<AppState>,
+    from: Option<i64>,
+    to: Option<i64>,
+    project: Option<&str>,
+    branch: Option<&str>,
+) -> ApiResult<AnalyticsSessionBreakdown> {
+    let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0) AS primary_sessions,
+            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0) AS sidechain_sessions
+        FROM sessions
+        WHERE (?1 IS NULL OR last_message_at >= ?1)
+          AND (?2 IS NULL OR last_message_at <= ?2)
+          AND (?3 IS NULL OR project_id = ?3)
+          AND (?4 IS NULL OR git_branch = ?4)
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(project)
+    .bind(branch)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| {
+        crate::error::ApiError::Internal(format!("Failed to fetch session breakdown: {e}"))
+    })?;
+
+    Ok(AnalyticsSessionBreakdown::new(
+        primary_sessions,
+        sidechain_sessions,
+    ))
 }
 
 /// GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.
@@ -404,6 +452,15 @@ pub async fn dashboard_stats(
         }
     };
 
+    let session_breakdown = fetch_session_breakdown(
+        &state,
+        if has_time_range { query.from } else { None },
+        if has_time_range { query.to } else { None },
+        query.project.as_deref(),
+        query.branch.as_deref(),
+    )
+    .await?;
+
     // Record successful request metrics
     record_request("dashboard_stats", "200", start.elapsed());
 
@@ -421,6 +478,7 @@ pub async fn dashboard_stats(
                 current_period: current_period_range,
                 heatmap: heatmap_range,
             },
+            analytics_scope: AnalyticsScopeMeta::new(session_breakdown),
         },
     }))
 }
@@ -621,7 +679,7 @@ async fn calculate_directory_size(dir: &Path) -> u64 {
 pub async fn ai_generation_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DashboardQuery>,
-) -> ApiResult<Json<AIGenerationStats>> {
+) -> ApiResult<Json<AIGenerationStatsResponse>> {
     let start = Instant::now();
 
     // Reject half-specified ranges
@@ -729,8 +787,20 @@ pub async fn ai_generation_stats(
         stats.cost = cost;
     }
 
+    let session_breakdown = fetch_session_breakdown(
+        &state,
+        Some(query.from.unwrap_or(1)),
+        Some(query.to.unwrap_or(i64::MAX)),
+        query.project.as_deref(),
+        query.branch.as_deref(),
+    )
+    .await?;
+
     record_request("ai_generation_stats", "200", start.elapsed());
-    Ok(Json(stats))
+    Ok(Json(AIGenerationStatsResponse {
+        base: stats,
+        meta: AnalyticsScopeMeta::new(session_breakdown),
+    }))
 }
 
 /// Create the stats routes router.
@@ -771,6 +841,73 @@ mod tests {
             .await
             .unwrap();
         (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    fn session_fixture(id: &str, modified_at: i64, is_sidechain: bool) -> SessionInfo {
+        SessionInfo {
+            id: id.to_string(),
+            project: "project-meta".to_string(),
+            project_path: "/home/user/project-meta".to_string(),
+            display_name: "project-meta".to_string(),
+            git_root: None,
+            file_path: format!("/path/{}.jsonl", id),
+            modified_at,
+            size_bytes: 2048,
+            preview: "Test".to_string(),
+            last_message: "Test msg".to_string(),
+            files_touched: vec!["src/main.rs".to_string()],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 10,
+            turn_count: 5,
+            summary: None,
+            git_branch: Some("main".to_string()),
+            is_sidechain,
+            deep_indexed: false,
+            total_input_tokens: Some(100),
+            total_output_tokens: Some(200),
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: None,
+            primary_model: None,
+            user_prompt_count: 2,
+            api_call_count: 4,
+            tool_call_count: 6,
+            files_read: vec![],
+            files_edited: vec!["src/main.rs".to_string()],
+            files_read_count: 1,
+            files_edited_count: 1,
+            reedited_files_count: 0,
+            duration_seconds: 120,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            parse_version: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
+            first_message_at: None,
+            total_cost_usd: None,
+        }
     }
 
     #[test]
@@ -817,6 +954,49 @@ mod tests {
             json["meta"]["ranges"]["heatmap"]["source"],
             "explicit_range_param"
         );
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/dashboard").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_includes_session_breakdown_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+
+        let primary = session_fixture("dash-primary", now - 120, false);
+        let sidechain = session_fixture("dash-sidechain", now - 60, true);
+        db.insert_session(&primary, "project-meta", "Project Meta")
+            .await
+            .unwrap();
+        db.insert_session(&sidechain, "project-meta", "Project Meta")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/dashboard").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -1247,6 +1427,96 @@ mod tests {
         // Arrays should be empty
         assert!(json["tokensByModel"].as_array().unwrap().is_empty());
         assert!(json["tokensByProject"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+
+        let primary = session_fixture("ai-primary", now - 120, false);
+        let sidechain = session_fixture("ai-sidechain", now - 60, true);
+        db.insert_session(&primary, "project-meta", "Project Meta")
+            .await
+            .unwrap();
+        db.insert_session(&sidechain, "project-meta", "Project Meta")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/ai-generation").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_ai_generation_stats_marks_partial_when_unpriced_model_present() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+
+        let session = session_fixture("sess-aigen-unpriced", now - 60, false);
+        db.insert_session(&session, "project-meta", "Project Meta")
+            .await
+            .unwrap();
+
+        // Unknown model exists in DB but has no pricing entry.
+        db.pool()
+            .execute(sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                VALUES ('unknown-model-without-pricing', 'unknown', 'unknown', 0, 0)
+                "#,
+            ))
+            .await
+            .unwrap();
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"
+                    INSERT INTO turns (
+                        session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                        cache_read_tokens, cache_creation_tokens, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    "#,
+                )
+                .bind("sess-aigen-unpriced")
+                .bind("turn-unpriced-1")
+                .bind(1)
+                .bind("unknown-model-without-pricing")
+                .bind(5_000)
+                .bind(1_000)
+                .bind(0)
+                .bind(0)
+                .bind(now - 60),
+            )
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/ai-generation").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["cost"]["hasUnpricedUsage"], true);
+        assert_eq!(
+            json["cost"]["totalCostSource"],
+            "computed_priced_tokens_partial"
+        );
+        assert_eq!(json["cost"]["unpricedModelCount"], 1);
+        assert_eq!(json["cost"]["pricedTokenCoverage"], 0.0);
     }
 
     #[tokio::test]

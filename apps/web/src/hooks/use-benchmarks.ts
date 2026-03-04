@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import type { BenchmarksResponse } from '../types/generated/BenchmarksResponse'
+import type { BenchmarksResponse as GeneratedBenchmarksResponse } from '../types/generated/BenchmarksResponse'
+import type { AnalyticsScopeContractMeta } from './use-dashboard'
+
+export type BenchmarksResponse = GeneratedBenchmarksResponse & {
+  meta?: AnalyticsScopeContractMeta
+}
 
 interface UseBenchmarksOptions {
   range?: 'all' | '30d' | '90d' | '1y'
