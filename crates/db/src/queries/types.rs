@@ -260,6 +260,31 @@ pub struct ClassificationStatus {
     pub progress: Option<i64>,
 }
 
+/// Integrity counters emitted during indexing.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct IndexRunIntegrityCounters {
+    #[ts(type = "number")]
+    pub unknown_top_level_type_count: i64,
+    #[ts(type = "number")]
+    pub unknown_required_path_count: i64,
+    #[ts(type = "number")]
+    pub imaginary_path_access_count: i64,
+    #[ts(type = "number")]
+    pub legacy_fallback_path_count: i64,
+    #[ts(type = "number")]
+    pub dropped_line_invalid_json_count: i64,
+    #[ts(type = "number")]
+    pub schema_mismatch_count: i64,
+    #[ts(type = "number")]
+    pub unknown_source_role_count: i64,
+    #[ts(type = "number")]
+    pub derived_source_message_doc_count: i64,
+    #[ts(type = "number")]
+    pub source_message_non_source_provenance_count: i64,
+}
+
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[cfg_attr(feature = "codegen", ts(export))]

@@ -1,0 +1,11 @@
+{
+  "report_version": 1,
+  "baseline_git_commit": "c1c21929361091d5c7585490e02bad37cbd58ce1",
+  "target_parse_version": 21,
+  "fixtures": [
+    "crates/db/tests/golden_fixtures/integrity_nonzero_tool_index.jsonl",
+    "crates/db/tests/golden_fixtures/integrity_progress_nested_content.jsonl",
+    "crates/db/tests/golden_fixtures/integrity_tool_use_result_polymorphic.jsonl",
+    "crates/db/tests/golden_fixtures/integrity_type_substring_noise.jsonl"
+  ]
+}

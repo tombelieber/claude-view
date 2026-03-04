@@ -6,7 +6,8 @@ use tokio::process::Command as TokioCommand;
 
 use super::provider::LlmProvider;
 use super::types::{
-    ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError,
+    ClassificationRequest, ClassificationResponse, ClassificationUsage, CompletionRequest,
+    CompletionResponse, LlmError,
 };
 
 /// Return type for streaming completions: a text-chunk receiver paired with a task handle.
@@ -421,6 +422,13 @@ L3: feature→new-component|add-functionality|integration, bugfix→error-fix|lo
 pub fn parse_classification_response(
     json: serde_json::Value,
 ) -> Result<ClassificationResponse, LlmError> {
+    let wrapper_usage = extract_cli_usage(&json);
+    let wrapper_total_cost_usd = json.get("total_cost_usd").and_then(|v| v.as_f64());
+    let wrapper_model = json
+        .get("modelUsage")
+        .and_then(|v| v.as_object())
+        .and_then(|m| m.keys().next().cloned());
+
     // Claude CLI wraps output in { "result": "..." } — check for that
     let inner = if let Some(result_str) = json.get("result").and_then(|v| v.as_str()) {
         // Try direct parse first
@@ -439,8 +447,20 @@ pub fn parse_classification_response(
         json
     };
 
-    serde_json::from_value(inner)
-        .map_err(|e| LlmError::InvalidFormat(format!("response missing required fields: {}", e)))
+    let mut parsed: ClassificationResponse = serde_json::from_value(inner)
+        .map_err(|e| LlmError::InvalidFormat(format!("response missing required fields: {}", e)))?;
+
+    if parsed.usage.is_none() {
+        parsed.usage = wrapper_usage;
+    }
+    if parsed.total_cost_usd.is_none() {
+        parsed.total_cost_usd = wrapper_total_cost_usd;
+    }
+    if parsed.model.is_none() {
+        parsed.model = wrapper_model;
+    }
+
+    Ok(parsed)
 }
 
 /// Extract the first JSON object `{...}` from a text string.
@@ -464,6 +484,20 @@ fn extract_json_from_text(text: &str) -> Option<serde_json::Value> {
     }
     let json_str = &text[start..end?];
     serde_json::from_str(json_str).ok()
+}
+
+fn extract_cli_usage(json: &serde_json::Value) -> Option<ClassificationUsage> {
+    let usage = json.get("usage")?;
+    Some(ClassificationUsage {
+        input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()),
+        output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()),
+        cache_creation_input_tokens: usage
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_u64()),
+        cache_read_input_tokens: usage
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_u64()),
+    })
 }
 
 #[cfg(test)]
@@ -535,6 +569,34 @@ mod tests {
         assert_eq!(resp.category_l2, "explanation");
         assert_eq!(resp.category_l3, "code-understanding");
         assert!((resp.confidence - 0.88).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_classification_response_wrapper_extracts_telemetry() {
+        let json = serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "result": r#"{"category_l1":"code_work","category_l2":"bugfix","category_l3":"error-fix","confidence":0.91}"#,
+            "usage": {
+                "input_tokens": 1200,
+                "output_tokens": 340,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 45000
+            },
+            "modelUsage": {
+                "claude-haiku-4-5-20251001": {
+                    "inputTokens": 1200,
+                    "outputTokens": 340
+                }
+            },
+            "total_cost_usd": 0.006163
+        });
+
+        let resp = parse_classification_response(json).unwrap();
+        assert_eq!(resp.category_l1, "code_work");
+        assert_eq!(resp.total_cost_usd, Some(0.006163));
+        assert_eq!(resp.model.as_deref(), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(resp.total_tokens_used(), Some(46540));
     }
 
     #[test]
