@@ -8,6 +8,14 @@ export type ReportPreview = {
   sessionCount: number
   projectCount: number
   totalDurationSecs: number
+  /**
+   * Sum of priced session costs only (sessions with NULL total_cost_usd are excluded).
+   */
   totalCostCents: number
+  /**
+   * True when one or more sessions in range have unpriced usage.
+   */
+  hasUnpricedUsage: boolean
+  unpricedSessionCount: number
   projects: Array<ProjectPreview>
 }

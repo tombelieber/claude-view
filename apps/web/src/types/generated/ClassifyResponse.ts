@@ -6,7 +6,5 @@
 export type ClassifyResponse = {
   jobId: number
   totalSessions: number
-  estimatedCostCents: number
-  estimatedDurationSecs: number
   status: string
 }
