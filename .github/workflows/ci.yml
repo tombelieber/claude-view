@@ -13,6 +13,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  no-implicit-clamp:
+    name: Contract Gate (No Implicit 30d Clamp)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Ensure clamp gate script is executable
+        run: test -x scripts/ci/check-no-implicit-30d.sh
+
+      - name: Block implicit clamp and redirect regressions
+        run: bash scripts/ci/check-no-implicit-30d.sh
+
+  integrity-gates:
+    name: integrity-gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7  # stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+
+      - name: Run integrity gates
+        run: bash scripts/integrity/ci-gates.sh
+
+      - name: Upload integrity artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: integrity-artifacts
+          path: artifacts/integrity/**
+          if-no-files-found: error
+
   js:
     name: JS (lint + typecheck + test)
     runs-on: ubuntu-latest
@@ -58,3 +91,43 @@ jobs:
 
       - name: cargo deny
         run: cargo deny check
+
+  web-e2e:
+    name: Web E2E (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3  # v2.1.2
+
+      - uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7  # stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser (Chromium) and OS deps
+        run: |
+          cd apps/web
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            bunx playwright install --with-deps chromium
+          else
+            bunx playwright install chromium
+          fi
+
+      - name: Build web assets for STATIC_DIR
+        run: cd apps/web && bun run build
+
+      - name: Run web e2e contract checks
+        run: cd apps/web && bun run test:e2e e2e/dashboard-time-range.spec.ts e2e/insights-range-contract.spec.ts
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-report-macos
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
