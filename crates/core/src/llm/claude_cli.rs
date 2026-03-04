@@ -571,8 +571,7 @@ mod tests {
             "modelUsage": {
                 "claude-haiku-4-5-20251001": {
                     "inputTokens": 1200,
-                    "outputTokens": 340,
-                    "costUSD": 0.006163
+                    "outputTokens": 340
                 }
             },
             "total_cost_usd": 0.006163

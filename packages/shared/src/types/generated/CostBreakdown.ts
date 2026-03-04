@@ -11,7 +11,22 @@ export type CostBreakdown = {
   cacheCreationCostUsd: number
   cacheSavingsUsd: number
   /**
-   * True when model was not found and fallback rate was used.
+   * True when any tokens were excluded from USD due to missing model pricing.
    */
-  isEstimated: boolean
+  hasUnpricedUsage: boolean
+  /**
+   * Tokens excluded from USD totals (no pricing match).
+   */
+  unpricedInputTokens: bigint
+  unpricedOutputTokens: bigint
+  unpricedCacheReadTokens: bigint
+  unpricedCacheCreationTokens: bigint
+  /**
+   * Fraction of all tokens priced with real model rates [0.0, 1.0].
+   */
+  pricedTokenCoverage: number
+  /**
+   * `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+   */
+  totalCostSource: string
 }

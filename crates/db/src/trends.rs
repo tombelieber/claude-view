@@ -708,16 +708,16 @@ mod tests {
             0,
             0, // lines_added, lines_removed, loc_source
             0,
-            0,    // ai_lines_added, ai_lines_removed
-            None, // work_type
-            None, // git_branch
-            None, // primary_model
-            None, // last_message_at
-            None, // first_user_prompt
-            0,    // total_task_time_seconds
-            None, // longest_task_seconds
-            None, // longest_task_preview
-            0.0,  // total_cost_usd
+            0,         // ai_lines_added, ai_lines_removed
+            None,      // work_type
+            None,      // git_branch
+            None,      // primary_model
+            None,      // last_message_at
+            None,      // first_user_prompt
+            0,         // total_task_time_seconds
+            None,      // longest_task_seconds
+            None,      // longest_task_preview
+            Some(0.0), // total_cost_usd
         )
         .await
         .unwrap();

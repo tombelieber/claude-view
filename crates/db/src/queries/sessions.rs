@@ -742,7 +742,7 @@ impl Database {
         total_task_time_seconds: i32,
         longest_task_seconds: Option<i32>,
         longest_task_preview: Option<&str>,
-        total_cost_usd: f64,
+        total_cost_usd: Option<f64>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -1164,7 +1164,7 @@ mod upsert_tests {
             total_task_time_seconds: Some(0),
             longest_task_seconds: Some(0),
             longest_task_preview: None,
-            total_cost_usd: 0.05,
+            total_cost_usd: Some(0.05),
         }
     }
 

@@ -29,15 +29,17 @@ use crate::Database;
 /// Version 7: Search index uses effective project identity (git_root or project_id) for sidebar filter alignment.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
-/// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
+/// Version 10: Persist session total_cost_usd.
 /// Version 11: Unified session pipeline — single-pass parse-before-write.
 /// Version 12: valid_sessions view no longer requires last_message_at > 0.
 /// Version 13: Unified pipeline writes turns, models, invocations, and search index.
 /// Version 14: Task-time turns split on interactive human tool_result responses.
-/// Version 15: Cost computed from token counts when costUSD is null in JSONL.
+/// Version 15: Cost computed from token counts.
 /// Version 16: Per-turn cost computation (200k tiering per-API-request, not per-session).
-/// Version 17: Merge subagent costUSD into parent total_cost_usd (matching token merge).
-pub const CURRENT_PARSE_VERSION: i32 = 17;
+/// Version 18: Per-turn fallback cost honors cache_creation split (5m/1h).
+/// Version 19: Remove JSONL top-level cost-field parsing path; compute from token usage only.
+/// Version 20: Strict cost integrity: if any turn model is unpriced, session total_cost_usd is NULL.
+pub const CURRENT_PARSE_VERSION: i32 = 20;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -106,7 +108,7 @@ pub struct ParsedSession {
     pub total_task_time_seconds: Option<i64>,
     pub longest_task_seconds: Option<i64>,
     pub longest_task_preview: Option<String>,
-    pub total_cost_usd: f64,
+    pub total_cost_usd: Option<f64>,
 }
 
 /// Hints from sessions-index.json — merged during parse, never written to DB directly.
@@ -169,24 +171,32 @@ fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> 
 
 /// Compute total cost by summing per-turn costs (each turn = one API call).
 /// This avoids inflating cost by applying 200k tiered pricing to cumulative tokens.
+/// Returns `None` if any turn had tokens for an unpriced model.
 fn calculate_per_turn_cost(
     turns: &[claude_view_core::RawTurn],
     pricing: &HashMap<String, ModelPricing>,
-) -> f64 {
+) -> Option<f64> {
     let mut total = 0.0;
+    let mut has_unpriced_usage = false;
     for turn in turns {
         let tokens = TokenUsage {
             input_tokens: turn.input_tokens.unwrap_or(0),
             output_tokens: turn.output_tokens.unwrap_or(0),
             cache_read_tokens: turn.cache_read_tokens.unwrap_or(0),
             cache_creation_tokens: turn.cache_creation_tokens.unwrap_or(0),
-            cache_creation_5m_tokens: 0,
-            cache_creation_1hr_tokens: 0,
+            cache_creation_5m_tokens: turn.cache_creation_5m_tokens.unwrap_or(0),
+            cache_creation_1hr_tokens: turn.cache_creation_1hr_tokens.unwrap_or(0),
             total_tokens: 0,
         };
-        total += calculate_cost(&tokens, Some(&turn.model_id), pricing).total_usd;
+        let turn_cost = calculate_cost(&tokens, Some(&turn.model_id), pricing);
+        total += turn_cost.total_usd;
+        has_unpriced_usage |= turn_cost.has_unpriced_usage;
     }
-    total
+    if has_unpriced_usage {
+        None
+    } else {
+        Some(total)
+    }
 }
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
@@ -228,10 +238,6 @@ pub struct ExtendedMetadata {
     pub cache_read_tokens: u64,
     pub cache_creation_tokens: u64,
     pub thinking_block_count: u32,
-
-    /// Accumulated costUSD from JSONL entries (ccusage "auto" mode).
-    /// Sum of per-entry `costUSD` when present.
-    pub total_cost_usd: f64,
 
     // System line metrics
     pub turn_durations_ms: Vec<u64>,
@@ -312,8 +318,6 @@ struct AssistantLine {
     #[serde(rename = "requestId")]
     request_id: Option<String>,
     message: Option<AssistantMessage>,
-    #[serde(rename = "costUSD")]
-    cost_usd: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -331,7 +335,14 @@ struct UsageBlock {
     output_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
     cache_creation_input_tokens: Option<u64>,
+    cache_creation: Option<CacheCreationUsage>,
     service_tier: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CacheCreationUsage {
+    ephemeral_5m_input_tokens: Option<u64>,
+    ephemeral_1h_input_tokens: Option<u64>,
 }
 
 /// Custom visitor result — avoids #[serde(untagged)] buffering overhead.
@@ -1368,14 +1379,6 @@ fn handle_assistant_line(
             }
         }
 
-        // Accumulate costUSD (top-level field, not inside message.usage)
-        // Only count on first block to avoid double-counting multi-block responses
-        if is_first_block {
-            if let Some(cost) = parsed.cost_usd {
-                deep.total_cost_usd += cost;
-            }
-        }
-
         // Extract turn data (model + tokens) for turns table
         if let Some(ref model) = message.model {
             let model_id = model.clone();
@@ -1397,7 +1400,7 @@ fn handle_assistant_line(
             };
 
             // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc) = if is_first_block {
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if is_first_block {
                 (
                     message.usage.as_ref().and_then(|u| u.input_tokens),
                     message.usage.as_ref().and_then(|u| u.output_tokens),
@@ -1409,9 +1412,19 @@ fn handle_assistant_line(
                         .usage
                         .as_ref()
                         .and_then(|u| u.cache_creation_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation.as_ref())
+                        .and_then(|c| c.ephemeral_5m_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation.as_ref())
+                        .and_then(|c| c.ephemeral_1h_input_tokens),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0))
+                (Some(0), Some(0), Some(0), Some(0), Some(0), Some(0))
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -1424,6 +1437,8 @@ fn handle_assistant_line(
                 output_tokens: outp,
                 cache_read_tokens: cr,
                 cache_creation_tokens: cc,
+                cache_creation_5m_tokens: cc_5m,
+                cache_creation_1hr_tokens: cc_1hr,
                 service_tier: message.usage.as_ref().and_then(|u| u.service_tier.clone()),
                 timestamp: ts,
             });
@@ -1568,13 +1583,6 @@ fn handle_assistant_value(
         }
     }
 
-    // Accumulate costUSD from top-level field
-    if is_first_block {
-        if let Some(cost) = value.get("costUSD").and_then(|v| v.as_f64()) {
-            deep.total_cost_usd += cost;
-        }
-    }
-
     // Extract turn data (model + tokens) for turns table
     if let Some(message) = value.get("message") {
         if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
@@ -1604,7 +1612,7 @@ fn handle_assistant_value(
             let timestamp = extract_timestamp_from_value(value);
 
             // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc) = if is_first_block {
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if is_first_block {
                 (
                     usage
                         .and_then(|u| u.get("input_tokens"))
@@ -1618,9 +1626,17 @@ fn handle_assistant_value(
                     usage
                         .and_then(|u| u.get("cache_creation_input_tokens"))
                         .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation"))
+                        .and_then(|c| c.get("ephemeral_5m_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation"))
+                        .and_then(|c| c.get("ephemeral_1h_input_tokens"))
+                        .and_then(|v| v.as_u64()),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0))
+                (Some(0), Some(0), Some(0), Some(0), Some(0), Some(0))
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -1633,6 +1649,8 @@ fn handle_assistant_value(
                 output_tokens: outp,
                 cache_read_tokens: cr,
                 cache_creation_tokens: cc,
+                cache_creation_5m_tokens: cc_5m,
+                cache_creation_1hr_tokens: cc_1hr,
                 service_tier: usage
                     .and_then(|u| u.get("service_tier"))
                     .and_then(|v| v.as_str())
@@ -2405,10 +2423,10 @@ where
                     }
                 };
 
-                // Merge subagent tokens and costs into the parent session.
+                // Merge subagent tokens into the parent session.
                 // Claude Code spawns subagents (Task tool) that write to
                 // <session-uuid>/subagents/agent-*.jsonl — these are separate
-                // API calls not included in the parent JSONL's token counts or costs.
+                // API calls not included in the parent JSONL's token counts.
                 let subagent_dir = path.with_extension("").join("subagents");
                 if subagent_dir.is_dir() {
                     if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
@@ -2423,7 +2441,14 @@ where
                             result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
                             result.deep.cache_creation_tokens +=
                                 sub_result.deep.cache_creation_tokens;
-                            result.deep.total_cost_usd += sub_result.deep.total_cost_usd;
+                            // Include sub-agent turns so total_cost_usd (computed later from
+                            // per-turn pricing) reflects the same merged workload as tokens.
+                            for model in &sub_result.models_seen {
+                                if !result.models_seen.contains(model) {
+                                    result.models_seen.push(model.clone());
+                                }
+                            }
+                            result.turns.extend(sub_result.turns);
                         }
                     }
                 }
@@ -2794,9 +2819,7 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
-            if meta.total_cost_usd > 0.0 {
-                meta.total_cost_usd
-            } else {
+            {
                 let mut pricing = default_pricing();
                 fill_tiering_gaps(&mut pricing);
                 calculate_per_turn_cost(&result.parse_result.turns, &pricing)
@@ -3181,9 +3204,8 @@ where
 
             // Compute cost per-turn (each turn = one API call) to avoid inflating cost
             // by applying 200k tiered pricing to cumulative session tokens.
-            let total_cost_usd = if meta.total_cost_usd > 0.0 {
-                meta.total_cost_usd
-            } else {
+            // Strict integrity: NULL when any turn has unpriced model usage.
+            let total_cost_usd = {
                 let mut pricing = default_pricing();
                 fill_tiering_gaps(&mut pricing);
                 calculate_per_turn_cost(&parse_result.turns, &pricing)
@@ -4362,10 +4384,10 @@ mod tests {
         let project_dir = claude_dir.join("projects").join("test-project");
         std::fs::create_dir_all(&project_dir).unwrap();
 
-        // Parent session JSONL with token usage and costUSD
+        // Parent session JSONL with token usage
         let parent_jsonl = project_dir.join("sess-sub.jsonl");
         let parent_content = r#"{"type":"user","message":{"content":"hello"}}
-{"type":"assistant","costUSD":1.50,"message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
+{"type":"assistant","message":{"id":"msg_parent1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
 "#;
         std::fs::write(&parent_jsonl, parent_content).unwrap();
 
@@ -4374,12 +4396,12 @@ mod tests {
         std::fs::create_dir_all(&subagent_dir).unwrap();
 
         let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
-{"type":"assistant","costUSD":0.80,"message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
+{"type":"assistant","message":{"id":"msg_sub1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
 "#;
         std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
 
         let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
-{"type":"assistant","costUSD":0.60,"message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
+{"type":"assistant","message":{"id":"msg_sub2","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
 "#;
         std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
 
@@ -4421,13 +4443,49 @@ mod tests {
             Some(350),
             "cache_create = 200 + 100 + 50"
         );
-        // Cost = parent(1.50) + sub1(0.80) + sub2(0.60) = 2.90
+        // Cost is always computed from token usage + model pricing.
         let cost = session
             .total_cost_usd
             .expect("total_cost_usd should be set");
         assert!(
-            (cost - 2.90).abs() < 0.001,
-            "cost should be ~2.90 (parent + subs), got {cost}"
+            (cost - 0.0040725).abs() < 1e-9,
+            "cost should be computed from tokens (~0.0040725), got {cost}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pass_2_sets_null_cost_when_model_unpriced() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let session_jsonl = project_dir.join("sess-unpriced.jsonl");
+        let content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_1","model":"unpriced-model-xyz","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}},"requestId":"req_1"}
+"#;
+        std::fs::write(&session_jsonl, content).unwrap();
+
+        let index = format!(
+            r#"[{{"sessionId":"sess-unpriced","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            session_jsonl.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 1);
+
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+        assert_eq!(session.total_input_tokens, Some(100));
+        assert_eq!(session.total_output_tokens, Some(50));
+        assert!(
+            session.total_cost_usd.is_none(),
+            "strict mode: session total_cost_usd must be NULL when model pricing is missing"
         );
     }
 
@@ -5512,20 +5570,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cost_usd_accumulation() {
-        // Entry 1: has costUSD
-        let line1 = r#"{"type":"assistant","costUSD":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
-        // Entry 2: has costUSD
-        let line2 = r#"{"type":"assistant","costUSD":0.03,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
-        // Entry 3: no costUSD (fallback should not crash)
-        let line3 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"No cost"}],"usage":{"input_tokens":500,"output_tokens":200}}}"#;
-
-        let input = format!("{}\n{}\n{}\n", line1, line2, line3);
+    fn test_parse_bytes_ignores_unknown_top_level_fields() {
+        let line1 = r#"{"type":"assistant","ignoredTopLevelCost":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
+        let line2 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
+        let input = format!("{}\n{}\n", line1, line2);
         let result = parse_bytes(input.as_bytes());
-
-        let cost = result.deep.total_cost_usd;
-        // 0.05 + 0.03 = 0.08 (third entry has no costUSD, contributes 0)
-        assert!((cost - 0.08).abs() < 0.0001, "Expected 0.08, got {cost}");
+        assert_eq!(result.turns.len(), 2);
+        assert_eq!(result.deep.total_input_tokens, 1800);
+        assert_eq!(result.deep.total_output_tokens, 800);
     }
 }
 

@@ -323,12 +323,13 @@ impl Database {
     /// `start_ts` and `end_ts` are unix timestamps for the range bounds.
     pub async fn get_report_preview(&self, start_ts: i64, end_ts: i64) -> DbResult<ReportPreview> {
         // Aggregate stats
-        let stats: (i64, i64, i64, i64) = sqlx::query_as(
+        let stats: (i64, i64, i64, i64, f64) = sqlx::query_as(
             r#"SELECT
                 COUNT(*) as session_count,
                 COUNT(DISTINCT project_display_name) as project_count,
                 COALESCE(SUM(duration_seconds), 0) as total_duration,
-                COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total_tokens
+                COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total_tokens,
+                COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
             FROM valid_sessions
             WHERE first_message_at >= ? AND first_message_at <= ?"#,
         )
@@ -358,9 +359,7 @@ impl Database {
             })
             .collect();
 
-        // Estimate cost from total tokens using blended rate (~$2.50/M tokens = 0.00025 cents/token)
-        let total_tokens = stats.3;
-        let total_cost_cents = (total_tokens as f64 * 0.00025).round() as i64;
+        let total_cost_cents = (stats.4 * 100.0).round() as i64;
 
         Ok(ReportPreview {
             session_count: stats.0,
