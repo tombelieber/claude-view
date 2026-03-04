@@ -3,4 +3,4 @@
 /**
  * Status of a sub-agent within a live session.
  */
-export type SubAgentStatus = "running" | "complete" | "error";
+export type SubAgentStatus = 'running' | 'complete' | 'error'

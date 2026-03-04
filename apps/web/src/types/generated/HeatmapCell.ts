@@ -3,4 +3,9 @@
 /**
  * Activity heatmap cell.
  */
-export type HeatmapCell = { dayOfWeek: number, hourOfDay: number, sessions: number, avgReeditRate: number, };
+export type HeatmapCell = {
+  dayOfWeek: number
+  hourOfDay: number
+  sessions: number
+  avgReeditRate: number
+}

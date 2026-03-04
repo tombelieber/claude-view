@@ -3,4 +3,10 @@
 /**
  * Response metadata.
  */
-export type InsightsMeta = { computedAt: number, timeRangeStart: number, timeRangeEnd: number, patternsEvaluated: number, patternsReturned: number, };
+export type InsightsMeta = {
+  computedAt: number
+  timeRangeStart: number
+  timeRangeEnd: number
+  patternsEvaluated: number
+  patternsReturned: number
+}

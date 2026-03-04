@@ -3,4 +3,14 @@
 /**
  * Classification status summary for the system page.
  */
-export type ClassificationStatus = { classifiedCount: number, unclassifiedCount: number, lastRunAt: string | null, lastRunDurationMs: number | null, lastRunCostCents: number | null, provider: string, model: string, isRunning: boolean, progress: number | null, };
+export type ClassificationStatus = {
+  classifiedCount: number
+  unclassifiedCount: number
+  lastRunAt: string | null
+  lastRunDurationMs: number | null
+  lastRunCostCents: number | null
+  provider: string
+  model: string
+  isRunning: boolean
+  progress: number | null
+}
