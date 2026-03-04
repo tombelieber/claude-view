@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::live_parser::{parse_tail, LineType, TailFinders};
-use crate::pricing::{calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage};
+use crate::pricing::{
+    calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
+};
 use crate::progress::{ProgressItem, ProgressSource, ProgressStatus};
 use crate::subagent::{SubAgentInfo, SubAgentStatus};
 
@@ -30,8 +32,6 @@ pub struct SessionAccumulator {
     pub todo_items: Vec<ProgressItem>,
     pub task_items: Vec<ProgressItem>,
     pub last_cache_hit_at: Option<i64>,
-    /// Accumulated costUSD from JSONL entries (sum of per-entry `costUSD`).
-    pub total_cost_usd: f64,
     /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
     /// priced individually (correct: 200k tiering is per-API-request, not
     /// per-session). This avoids the inflation bug from applying tiered
@@ -79,7 +79,6 @@ impl SessionAccumulator {
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
-            total_cost_usd: 0.0,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
         }
@@ -108,8 +107,7 @@ impl SessionAccumulator {
             || line.cache_read_tokens.is_some()
             || line.cache_creation_tokens.is_some()
             || line.cache_creation_5m_tokens.is_some()
-            || line.cache_creation_1hr_tokens.is_some()
-            || line.cost_usd.is_some();
+            || line.cache_creation_1hr_tokens.is_some();
 
         let should_count_block = match (line.message_id.as_deref(), line.request_id.as_deref()) {
             (Some(msg_id), Some(req_id)) => {
@@ -183,11 +181,6 @@ impl SessionAccumulator {
                 self.tokens.cache_creation_1hr_tokens += tokens_1hr;
             }
 
-            // Accumulate costUSD from JSONL entries
-            if let Some(cost) = line.cost_usd {
-                self.total_cost_usd += cost;
-            }
-
             // Per-turn cost accumulation
             let has_tokens = line.input_tokens.is_some()
                 || line.output_tokens.is_some()
@@ -212,9 +205,13 @@ impl SessionAccumulator {
                 self.accumulated_cost.cache_creation_cost_usd += turn_cost.cache_creation_cost_usd;
                 self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
                 self.accumulated_cost.total_usd += turn_cost.total_usd;
-                if turn_cost.is_estimated {
-                    self.accumulated_cost.is_estimated = true;
-                }
+                self.accumulated_cost.unpriced_input_tokens += turn_cost.unpriced_input_tokens;
+                self.accumulated_cost.unpriced_output_tokens += turn_cost.unpriced_output_tokens;
+                self.accumulated_cost.unpriced_cache_read_tokens +=
+                    turn_cost.unpriced_cache_read_tokens;
+                self.accumulated_cost.unpriced_cache_creation_tokens +=
+                    turn_cost.unpriced_cache_creation_tokens;
+                self.accumulated_cost.has_unpriced_usage |= turn_cost.has_unpriced_usage;
             }
         }
 
@@ -471,10 +468,12 @@ impl SessionAccumulator {
 
         let mut progress_items = self.todo_items.clone();
         progress_items.extend(self.task_items.clone());
+        let mut cost = self.accumulated_cost.clone();
+        finalize_cost_breakdown(&mut cost, &self.tokens);
 
         RichSessionData {
             tokens: self.tokens.clone(),
-            cost: self.accumulated_cost.clone(),
+            cost,
             cache_status,
             sub_agents: self.sub_agents.clone(),
             progress_items,
@@ -592,7 +591,6 @@ mod tests {
             cache_creation_tokens: None,
             cache_creation_5m_tokens: None,
             cache_creation_1hr_tokens: None,
-            cost_usd: None,
             timestamp: None,
             stop_reason: None,
             git_branch: None,
@@ -790,29 +788,6 @@ mod tests {
         assert_eq!(data.tokens.input_tokens, 1200);
         assert_eq!(data.tokens.output_tokens, 300);
         assert_eq!(data.tokens.total_tokens, 1500);
-    }
-
-    #[test]
-    fn test_content_block_dedup_cost_usd_only() {
-        // costUSD-only duplicate blocks should still dedup correctly.
-        let mut acc = SessionAccumulator::new();
-        let pricing = HashMap::new();
-
-        let mut block1 = empty_line();
-        block1.line_type = LineType::Assistant;
-        block1.cost_usd = Some(0.25);
-        block1.message_id = Some("msg-cost".to_string());
-        block1.request_id = Some("req-cost".to_string());
-        acc.process_line(&block1, 0, &pricing);
-
-        let mut block2 = empty_line();
-        block2.line_type = LineType::Assistant;
-        block2.cost_usd = Some(0.25);
-        block2.message_id = Some("msg-cost".to_string());
-        block2.request_id = Some("req-cost".to_string());
-        acc.process_line(&block2, 0, &pricing);
-
-        assert_eq!(acc.total_cost_usd, 0.25);
     }
 
     #[test]
@@ -1397,7 +1372,8 @@ mod tests {
         acc.process_line(&line, 0, &pricing);
 
         let data = acc.finish(&pricing);
-        assert!(!data.cost.is_estimated);
+        assert!(!data.cost.has_unpriced_usage);
+        assert_eq!(data.cost.priced_token_coverage, 1.0);
         assert!(data.cost.total_usd > 0.0);
     }
 
@@ -1414,8 +1390,11 @@ mod tests {
         acc.process_line(&line, 0, &pricing);
 
         let data = acc.finish(&pricing);
-        assert!(data.cost.is_estimated);
-        assert!(data.cost.total_usd > 0.0);
+        assert!(data.cost.has_unpriced_usage);
+        assert_eq!(data.cost.total_usd, 0.0);
+        assert_eq!(data.cost.unpriced_input_tokens, 1000);
+        assert_eq!(data.cost.unpriced_output_tokens, 500);
+        assert_eq!(data.cost.priced_token_coverage, 0.0);
     }
 
     #[test]
@@ -1529,7 +1508,7 @@ mod tests {
         assert_eq!(data.model.as_deref(), Some("claude-sonnet-4-6"));
         assert_eq!(data.tokens.input_tokens, 1000);
         assert_eq!(data.tokens.output_tokens, 200);
-        assert!(!data.cost.is_estimated);
+        assert!(!data.cost.has_unpriced_usage);
     }
 
     #[test]

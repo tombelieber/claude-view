@@ -594,6 +594,8 @@ pub struct RawTurn {
     pub output_tokens: Option<u64>,
     pub cache_read_tokens: Option<u64>,
     pub cache_creation_tokens: Option<u64>,
+    pub cache_creation_5m_tokens: Option<u64>,
+    pub cache_creation_1hr_tokens: Option<u64>,
     pub service_tier: Option<String>,
     pub timestamp: Option<i64>,
 }

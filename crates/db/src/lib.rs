@@ -49,8 +49,7 @@ pub use trends::WeekTrends;
 // Re-export unified pricing types (owned by claude_view_core::pricing)
 pub use claude_view_core::pricing::{
     calculate_cost, calculate_cost_usd, default_pricing, lookup_pricing, CacheStatus,
-    CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage, FALLBACK_INPUT_COST_PER_TOKEN,
-    FALLBACK_OUTPUT_COST_PER_TOKEN,
+    CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage,
 };
 // Re-export DB-owned pricing refresh helpers.
 pub use pricing::{fetch_litellm_pricing, load_pricing_cache, merge_pricing, save_pricing_cache};

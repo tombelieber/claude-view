@@ -514,7 +514,7 @@ async fn test_update_session_deep_fields_phase3() {
         0,                            // total_task_time_seconds
         None,                         // longest_task_seconds
         None,                         // longest_task_preview
-        0.0,                          // total_cost_usd
+        Some(0.0),                    // total_cost_usd
     )
     .await
     .unwrap();
@@ -657,7 +657,7 @@ async fn test_list_sessions_for_project_includes_phase3_fields() {
         0,          // total_task_time_seconds
         None,       // longest_task_seconds
         None,       // longest_task_preview
-        0.0,        // total_cost_usd
+        Some(0.0),  // total_cost_usd
     )
     .await
     .unwrap();
