@@ -44,7 +44,15 @@ export function EfficiencyMetricsSection({
 }: EfficiencyMetricsSectionProps) {
   const [metric, setMetric] = useState<CostMetric>('commit')
 
-  const { totalCost, totalLines, costPerLine, costPerCommit, costIsEstimated, insight } = efficiency
+  const {
+    totalCost,
+    totalLines,
+    costPerLine,
+    costPerCommit,
+    hasUnpricedUsage,
+    pricedTokenCoverage,
+    insight,
+  } = efficiency
 
   const costPerSession = sessionCount > 0 ? totalCost / sessionCount : null
 
@@ -117,9 +125,9 @@ export function EfficiencyMetricsSection({
       <div className="flex flex-wrap items-center gap-2 text-lg mb-4">
         <span className="font-semibold text-gray-900 dark:text-gray-100">
           {formatCostUsd(totalCost)} spent
-          {costIsEstimated && (
+          {hasUnpricedUsage && (
             <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-1">
-              (estimated)
+              (partial: {(pricedTokenCoverage * 100).toFixed(1)}% priced)
             </span>
           )}
         </span>

@@ -31,6 +31,8 @@ export interface SessionPanelData {
     outputTokens: number
     cacheReadTokens: number
     cacheCreationTokens: number
+    cacheCreation5mTokens?: number
+    cacheCreation1hrTokens?: number
     totalTokens: number
   }
   contextWindowTokens: number
@@ -41,7 +43,13 @@ export interface SessionPanelData {
     cacheReadCostUsd: number
     cacheCreationCostUsd: number
     cacheSavingsUsd: number
-    isEstimated: boolean
+    hasUnpricedUsage: boolean
+    unpricedInputTokens: number
+    unpricedOutputTokens: number
+    unpricedCacheReadTokens: number
+    unpricedCacheCreationTokens: number
+    pricedTokenCoverage: number
+    totalCostSource: 'computed_priced_tokens_full' | 'computed_priced_tokens_partial'
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
 
@@ -114,7 +122,13 @@ export function historyToPanelData(
     outputTokens: sessionDetail.totalOutputTokens ?? 0,
     cacheReadTokens: sessionDetail.totalCacheReadTokens ?? 0,
     cacheCreationTokens: sessionDetail.totalCacheCreationTokens ?? 0,
-    totalTokens: (sessionDetail.totalInputTokens ?? 0) + (sessionDetail.totalOutputTokens ?? 0),
+    cacheCreation5mTokens: 0,
+    cacheCreation1hrTokens: 0,
+    totalTokens:
+      (sessionDetail.totalInputTokens ?? 0) +
+      (sessionDetail.totalOutputTokens ?? 0) +
+      (sessionDetail.totalCacheReadTokens ?? 0) +
+      (sessionDetail.totalCacheCreationTokens ?? 0),
   }
 
   const cost = richData?.cost ?? {
@@ -124,7 +138,13 @@ export function historyToPanelData(
     cacheReadCostUsd: 0,
     cacheCreationCostUsd: 0,
     cacheSavingsUsd: 0,
-    isEstimated: true,
+    hasUnpricedUsage: false,
+    unpricedInputTokens: 0,
+    unpricedOutputTokens: 0,
+    unpricedCacheReadTokens: 0,
+    unpricedCacheCreationTokens: 0,
+    pricedTokenCoverage: 1,
+    totalCostSource: 'computed_priced_tokens_full' as const,
   }
 
   return {
