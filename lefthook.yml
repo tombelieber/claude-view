@@ -21,4 +21,18 @@ pre-push:
     clippy:
       run: cargo clippy --workspace -- -D warnings
     cargo-deny:
-      run: cargo deny check
+      run: |
+        # Self-healing: if advisory DB is corrupted (untracked files from
+        # project contamination), nuke it and let cargo-deny reclone fresh.
+        DB_DIR="$HOME/.cargo/advisory-dbs"
+        if [ -d "$DB_DIR" ]; then
+          for db in "$DB_DIR"/advisory-db-*/; do
+            [ -d "$db" ] || continue
+            if (cd "$db" && git status --porcelain 2>/dev/null | grep -q '^??'); then
+              echo "cargo-deny: advisory DB has untracked files, resetting..."
+              rm -rf "$DB_DIR"
+              break
+            fi
+          done
+        fi
+        cargo deny check
