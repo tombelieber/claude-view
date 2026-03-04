@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-03-01T10:00:00Z","message":{"content":[{"type":"text","text":"Please update main.rs and lib.rs"}]}}
+{"type":"assistant","timestamp":"2026-03-01T10:00:05Z","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Edit","input":{"file_path":"src/main.rs","old_string":"fn old() {\n    println!(\"old\");\n}","new_string":"fn new() {\n    println!(\"new\");\n}"}},{"type":"tool_use","id":"toolu_2","name":"Write","input":{"file_path":"src/lib.rs","content":"pub fn helper() {\n    println!(\"helper\");\n}"}}]}}

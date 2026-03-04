@@ -26,6 +26,7 @@ pub use queries::BranchCount;
 pub use queries::ClassificationStatus;
 pub use queries::HealthStats;
 pub use queries::HealthStatus;
+pub use queries::IndexRunIntegrityCounters;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
@@ -237,12 +238,54 @@ impl Database {
             ("insertions", "INTEGER"),
             ("deletions", "INTEGER"),
         ];
+        let expected_index_run_cols = &[
+            (
+                "unknown_top_level_type_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_top_level_type_count >= 0)",
+            ),
+            (
+                "unknown_required_path_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_required_path_count >= 0)",
+            ),
+            (
+                "imaginary_path_access_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (imaginary_path_access_count >= 0)",
+            ),
+            (
+                "legacy_fallback_path_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (legacy_fallback_path_count >= 0)",
+            ),
+            (
+                "dropped_line_invalid_json_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (dropped_line_invalid_json_count >= 0)",
+            ),
+            (
+                "schema_mismatch_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (schema_mismatch_count >= 0)",
+            ),
+            (
+                "unknown_source_role_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_source_role_count >= 0)",
+            ),
+            (
+                "derived_source_message_doc_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (derived_source_message_doc_count >= 0)",
+            ),
+            (
+                "source_message_non_source_provenance_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (source_message_non_source_provenance_count >= 0)",
+            ),
+        ];
 
         for (col, typedef) in expected_session_cols {
             self.add_column_if_missing("sessions", col, typedef).await?;
         }
         for (col, typedef) in expected_commit_cols {
             self.add_column_if_missing("commits", col, typedef).await?;
+        }
+        for (col, typedef) in expected_index_run_cols {
+            self.add_column_if_missing("index_runs", col, typedef)
+                .await?;
         }
 
         // Ensure contribution_snapshots table exists

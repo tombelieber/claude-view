@@ -4,7 +4,6 @@
 use chrono::Utc;
 use claude_view_core::SessionInfo;
 use claude_view_db::Database;
-use sqlx::Executor;
 
 mod queries_shared;
 use queries_shared::make_session;

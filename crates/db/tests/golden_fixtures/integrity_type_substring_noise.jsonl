@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-03-01T10:03:00Z","message":{"content":[{"type":"text","text":"The words assistant summary and progress are plain text."}]}}
+{"type":"assistant","timestamp":"2026-03-01T10:03:05Z","message":{"role":"assistant","content":[{"type":"text","text":"This response mentions user and system as substrings only."}]}}

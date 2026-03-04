@@ -1079,7 +1079,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_finds_session_summary_content() {
+    fn test_search_excludes_session_summary_content() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
         let docs = vec![
@@ -1112,7 +1112,10 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         let result = idx.search("brainstorming", None, 10, 0).expect("search");
-        assert_eq!(result.total_sessions, 1, "should find via summary content");
+        assert_eq!(
+            result.total_sessions, 0,
+            "summary-role documents must be excluded from source-message indexing"
+        );
     }
 
     #[test]

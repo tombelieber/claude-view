@@ -4,6 +4,10 @@ use tracing::{debug, info};
 
 use crate::{SearchError, SearchIndex};
 
+fn is_allowed_source_role(role: &str) -> bool {
+    matches!(role, "user" | "assistant" | "tool")
+}
+
 /// A document to be indexed in Tantivy, representing a single message
 /// from a Claude Code conversation.
 pub struct SearchDocument {
@@ -43,7 +47,19 @@ impl SearchIndex {
         writer.delete_term(delete_term);
 
         // Add new documents
+        let mut indexed_doc_count = 0usize;
+        let mut skipped_invalid_role_count = 0usize;
         for doc_data in docs {
+            if !is_allowed_source_role(doc_data.role.as_str()) {
+                skipped_invalid_role_count += 1;
+                debug!(
+                    session_id = session_id,
+                    role = doc_data.role.as_str(),
+                    "skipping search document with invalid source role"
+                );
+                continue;
+            }
+
             let mut tantivy_doc = doc!(
                 self.session_id_field => doc_data.session_id.as_str(),
                 self.project_field => doc_data.project.as_str(),
@@ -61,11 +77,13 @@ impl SearchIndex {
             }
 
             writer.add_document(tantivy_doc)?;
+            indexed_doc_count += 1;
         }
 
         debug!(
             session_id = session_id,
-            doc_count = docs.len(),
+            doc_count = indexed_doc_count,
+            skipped_invalid_roles = skipped_invalid_role_count,
             "indexed session documents"
         );
 

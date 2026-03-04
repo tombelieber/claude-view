@@ -646,6 +646,70 @@ COMMIT;"#,
     // No longer needed — the unified pipeline guarantees all rows have real timestamps.
     r#"DROP VIEW IF EXISTS valid_sessions;
 CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0;"#,
+    // Migrations 40-48: Index run integrity counters (non-negative, default zero).
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_top_level_type_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_top_level_type_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_required_path_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_required_path_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN imaginary_path_access_count INTEGER NOT NULL DEFAULT 0 CHECK (imaginary_path_access_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN legacy_fallback_path_count INTEGER NOT NULL DEFAULT 0 CHECK (legacy_fallback_path_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN dropped_line_invalid_json_count INTEGER NOT NULL DEFAULT 0 CHECK (dropped_line_invalid_json_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN schema_mismatch_count INTEGER NOT NULL DEFAULT 0 CHECK (schema_mismatch_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_source_role_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_source_role_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN derived_source_message_doc_count INTEGER NOT NULL DEFAULT 0 CHECK (derived_source_message_doc_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN source_message_non_source_provenance_count INTEGER NOT NULL DEFAULT 0 CHECK (source_message_non_source_provenance_count >= 0);"#,
+    // Migration 49: Remove deprecated pre-run estimate field from classification_jobs.
+    // Data-preserving table rebuild to stay compatible across SQLite versions.
+    r#"BEGIN;
+CREATE TABLE classification_jobs_v2 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    total_sessions INTEGER NOT NULL,
+    classified_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT DEFAULT 'running',
+    error_message TEXT,
+    actual_cost_cents INTEGER,
+    tokens_used INTEGER,
+    CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
+);
+INSERT INTO classification_jobs_v2 (
+    id,
+    started_at,
+    completed_at,
+    total_sessions,
+    classified_count,
+    skipped_count,
+    failed_count,
+    provider,
+    model,
+    status,
+    error_message,
+    actual_cost_cents,
+    tokens_used
+)
+SELECT
+    id,
+    started_at,
+    completed_at,
+    total_sessions,
+    classified_count,
+    skipped_count,
+    failed_count,
+    provider,
+    model,
+    status,
+    error_message,
+    actual_cost_cents,
+    tokens_used
+FROM classification_jobs;
+DROP TABLE classification_jobs;
+ALTER TABLE classification_jobs_v2 RENAME TO classification_jobs;
+CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_classification_jobs_started ON classification_jobs(started_at DESC);
+COMMIT;"#,
 ];
 
 // ============================================================================
@@ -1056,8 +1120,8 @@ mod tests {
             "Missing error_message column"
         );
         assert!(
-            column_names.contains(&"cost_estimate_cents"),
-            "Missing cost_estimate_cents column"
+            !column_names.contains(&"cost_estimate_cents"),
+            "cost_estimate_cents should be removed by migration 49"
         );
         assert!(
             column_names.contains(&"actual_cost_cents"),
@@ -1112,6 +1176,113 @@ mod tests {
             column_names.contains(&"error_message"),
             "Missing error_message column"
         );
+        assert!(
+            column_names.contains(&"unknown_top_level_type_count"),
+            "Missing unknown_top_level_type_count column"
+        );
+        assert!(
+            column_names.contains(&"unknown_required_path_count"),
+            "Missing unknown_required_path_count column"
+        );
+        assert!(
+            column_names.contains(&"imaginary_path_access_count"),
+            "Missing imaginary_path_access_count column"
+        );
+        assert!(
+            column_names.contains(&"legacy_fallback_path_count"),
+            "Missing legacy_fallback_path_count column"
+        );
+        assert!(
+            column_names.contains(&"dropped_line_invalid_json_count"),
+            "Missing dropped_line_invalid_json_count column"
+        );
+        assert!(
+            column_names.contains(&"schema_mismatch_count"),
+            "Missing schema_mismatch_count column"
+        );
+        assert!(
+            column_names.contains(&"unknown_source_role_count"),
+            "Missing unknown_source_role_count column"
+        );
+        assert!(
+            column_names.contains(&"derived_source_message_doc_count"),
+            "Missing derived_source_message_doc_count column"
+        );
+        assert!(
+            column_names.contains(&"source_message_non_source_provenance_count"),
+            "Missing source_message_non_source_provenance_count column"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_migration40_index_runs_integrity_counter_defaults() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO index_runs (started_at, type, status) VALUES ('2026-02-05T12:00:00Z', 'full', 'running')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                unknown_top_level_type_count,
+                unknown_required_path_count,
+                imaginary_path_access_count,
+                legacy_fallback_path_count,
+                dropped_line_invalid_json_count,
+                schema_mismatch_count,
+                unknown_source_role_count,
+                derived_source_message_doc_count,
+                source_message_non_source_provenance_count
+            FROM index_runs
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0);
+        assert_eq!(row.1, 0);
+        assert_eq!(row.2, 0);
+        assert_eq!(row.3, 0);
+        assert_eq!(row.4, 0);
+        assert_eq!(row.5, 0);
+        assert_eq!(row.6, 0);
+        assert_eq!(row.7, 0);
+        assert_eq!(row.8, 0);
+    }
+
+    #[tokio::test]
+    async fn test_migration40_index_runs_integrity_counter_check_constraints() {
+        let pool = setup_db().await;
+
+        let counters = [
+            "unknown_top_level_type_count",
+            "unknown_required_path_count",
+            "imaginary_path_access_count",
+            "legacy_fallback_path_count",
+            "dropped_line_invalid_json_count",
+            "schema_mismatch_count",
+            "unknown_source_role_count",
+            "derived_source_message_doc_count",
+            "source_message_non_source_provenance_count",
+        ];
+
+        for column in counters {
+            let sql = format!(
+                "INSERT INTO index_runs (started_at, type, status, {column}) VALUES ('2026-02-05T12:00:00Z', 'full', 'running', -1)"
+            );
+            let result = sqlx::query(&sql).execute(&pool).await;
+            assert!(
+                result.is_err(),
+                "Negative value should be rejected for {}",
+                column
+            );
+        }
     }
 
     #[tokio::test]
