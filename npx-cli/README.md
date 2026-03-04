@@ -1,46 +1,84 @@
+<div align="center">
+
 # claude-view
 
-Browse and search your Claude Code sessions in a beautiful local web UI.
+**You have 10 Claude sessions running right now. What are they doing?**
 
-## Quick Start
+<p>
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
+</p>
+
+</div>
+
+Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it.
+
+**You're paying $200/mo for Claude Code. You deserve a dashboard.**
+
+<div align="center">
 
 ```bash
 npx claude-view
 ```
 
-This downloads the pre-built binary for your platform, caches it locally, and starts a local web server. Open the printed URL in your browser to explore your Claude Code sessions.
+**One command. Every session visible. Real-time.**
 
-## What It Does
+</div>
 
-- Reads your local `~/.claude/` session files (JSONL)
-- Indexes them into a local SQLite database for fast search
-- Serves a React UI at `http://localhost:47892`
-- Everything stays on your machine -- no data is sent anywhere
+---
+
+## What You Get
+
+- **Live session cards** — see what every session is working on, right now
+- **Notification sounds** — get pinged when a session finishes or needs input
+- **Context gauge** — real-time context window usage per session
+- **Cache warm countdown** — time your messages to save tokens
+- **Cost tracking** — per-session and aggregate spend with cache savings
+- **Sub-agent visualization** — see the full agent tree, tool calls, MCP invocations
+- **Full-text search** — search across all sessions, messages, tool calls, file paths
+- **Analytics** — activity heatmap, cost ROI, model comparison, AI Fluency Score
+- **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
+
+---
+
+## How It Works
+
+On first run, `npx claude-view` downloads a platform-specific Rust binary (~10 MB) from GitHub Releases. The binary is cached at `~/.cache/claude-view/` so subsequent runs start instantly.
+
+Everything stays on your machine. Zero telemetry, zero cloud, zero network requests.
+
+---
 
 ## Configuration
 
 | Env Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `CLAUDE_VIEW_PORT` | `47892` | Port for the local server |
 | `PORT` | `47892` | Alternative port override |
 
 ## Supported Platforms
 
 | OS | Architecture |
-|---|---|
+| --- | --- |
 | macOS | Apple Silicon (arm64), Intel (x64) |
 | Linux | x64 |
 | Windows | x64 |
 
-## How It Works
-
-On first run, `npx claude-view` downloads a platform-specific tarball from GitHub Releases containing a compiled Rust binary and bundled frontend assets. The binary is cached at `~/.cache/claude-view/` so subsequent runs start instantly.
+---
 
 ## Links
 
-- [GitHub Repository](https://github.com/tombelieber/claude-view)
+- [GitHub Repository](https://github.com/tombelieber/claude-view) — full feature list, comparison table, architecture details
+- [claude-backup](https://github.com/tombelieber/claude-backup) — Claude Code deletes your sessions after 30 days. This saves them.
 - [Report an Issue](https://github.com/tombelieber/claude-view/issues)
+- [Discord](https://discord.gg/G7wdZTpRfu)
 
-## License
+---
+
+<div align="center">
 
 MIT
+
+</div>

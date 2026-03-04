@@ -1,10 +1,18 @@
+<div align="center">
+
 # claude-view
 
-<p align="center">
-  <strong>Live monitor & co-pilot for Claude Code power users.</strong>
+**You have 10 Claude sessions running right now. What are they doing?**
+
+<p>
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center">
+<p>
   <a href="./README.md">English</a> ·
   <a href="./README.zh-TW.md">繁體中文</a> ·
   <a href="./README.zh-CN.md">简体中文</a> ·
@@ -18,32 +26,21 @@
   <a href="./README.nl.md">Nederlands</a>
 </p>
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
-  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
-  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
-</p>
+</div>
 
----
+Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it. You <kbd>Cmd</kbd>+<kbd>Tab</kbd> through 15 terminals trying to remember which session was doing what. A cache expired while you weren't looking. A session finished 10 minutes ago and you didn't notice. Another one hit its context limit and you're burning tokens on a dead conversation.
 
-## The Problem
+**You're paying $200/mo for Claude Code. You deserve a dashboard.**
 
-You have 3 projects open. Each project has multiple git worktrees. Each worktree has multiple Claude Code sessions running. Some are thinking, some are waiting for you, some are about to hit context limits, and one finished 10 minutes ago but you forgot about it.
-
-You Cmd-Tab through 15 terminal windows trying to remember which session was doing what. You burn tokens because a cache expired while you weren't looking. You lose flow because there's no single place to see everything. And behind that "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it.
-
-**Claude Code is incredibly powerful. But flying 10+ concurrent sessions without a dashboard is like driving without a speedometer.**
-
-## The Solution
-
-**claude-view** is a real-time dashboard that sits alongside your Claude Code sessions. One browser tab, every session visible, full context at a glance.
+<div align="center">
 
 ```bash
 npx claude-view
 ```
 
-That's it. Opens in your browser. All your sessions — live and past — in one workspace.
+**One command. Every session visible. Real-time.**
+
+</div>
 
 ---
 
@@ -77,7 +74,9 @@ That's it. Opens in your browser. All your sessions — live and past — in one
 |---------|---------------|
 | **Full-text search** | Search across all sessions — messages, tool calls, file paths |
 | **Project & branch filters** | Scope to the project you're working on right now |
-| **Command palette** | Cmd+K to jump between sessions, switch views, find anything |
+| **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
+
+---
 
 ### Agent Internals — See What's Hidden
 
@@ -88,16 +87,20 @@ Claude Code does a lot behind `"thinking..."` that never shows in your terminal.
 | **Sub-agent conversations** | See the full tree of spawned agents, their prompts, and their outputs |
 | **MCP server calls** | See which MCP tools are being invoked and their results |
 | **Skill / hook / plugin tracking** | Know which skills fired, which hooks ran, what plugins are active |
-| **Hook event recording** | Every hook event is captured and browsable — go back and check what fired and when. *(Requires claude-view to be running while sessions are active; cannot trace historical events retroactively)* |
+| **Hook event recording** | Every hook event captured and browsable *(requires claude-view running during session)* |
 | **Tool use timeline** | Action log of every tool_use/tool_result pair with timing |
 | **Error surfacing** | Errors bubble up to the session card — no more buried failures |
 | **Raw message inspector** | Drill into any message's raw JSON when you need the full picture |
+
+---
 
 ### Analytics
 
 A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but deeper.
 
-**Dashboard Overview**
+<details>
+<summary><strong>Dashboard Overview</strong></summary>
+<br>
 
 | Feature | Description |
 |---------|-------------|
@@ -108,7 +111,11 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 | **Tool usage breakdown** | Total edits, reads, and bash commands across all sessions |
 | **Longest sessions** | Quick access to your marathon sessions with duration |
 
-**AI Contributions**
+</details>
+
+<details>
+<summary><strong>AI Contributions</strong></summary>
+<br>
 
 | Feature | Description |
 |---------|-------------|
@@ -119,7 +126,11 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 | **Branch breakdown** | Collapsible per-branch view with session drill-down |
 | **Skill effectiveness** | Which skills actually improve your output vs which ones don't |
 
-**Insights** *(experimental)*
+</details>
+
+<details>
+<summary><strong>Insights</strong> <em>(experimental)</em></summary>
+<br>
 
 | Feature | Description |
 |---------|-------------|
@@ -128,21 +139,21 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 | **Category breakdown** | Treemap of what you use Claude for — refactoring, features, debugging, etc. |
 | **AI Fluency Score** | Single 0-100 number tracking your overall effectiveness |
 
-> **Note:** Insights and Fluency Score are in early experimental stage. Treat as directional, not definitive.
+> Insights and Fluency Score are in early experimental stage. Treat as directional, not definitive.
+
+</details>
 
 ---
 
-## Built for Flow
+## Built for the Power User
 
-claude-view is designed for the developer who:
+claude-view is for the developer who:
 
 - Runs **3+ projects simultaneously**, each with multiple worktrees
 - Has **10-20 Claude Code sessions** open at any time
 - Needs to context-switch fast without losing track of what's running
 - Wants to **optimize token spend** by timing messages around cache windows
-- Gets frustrated by Cmd-Tabbing through terminals to check on agents
-
-One browser tab. All sessions. Stay in flow.
+- Gets frustrated by <kbd>Cmd</kbd>+<kbd>Tab</kbd>-bing through terminals to check on agents
 
 ---
 
@@ -152,11 +163,13 @@ One browser tab. All sessions. Stay in flow.
 |---|---|
 | **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
 | **Real-time** | File watcher + SSE + WebSocket for sub-second live updates across all sessions |
-| **Tiny footprint** | ~10 MB download, ~27 MB on disk (binary + frontend). No runtime dependencies, no background daemons |
+| **Tiny footprint** | ~10 MB download, ~27 MB on disk. No runtime dependencies, no background daemons |
 | **100% local** | All data stays on your machine. Zero telemetry, zero cloud, zero network requests |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
 
-### Why Rust? — The Numbers
+<details>
+<summary><strong>Why Rust? — The Numbers</strong></summary>
+<br>
 
 Measured on an M-series Mac with 1,493 sessions across 26 projects:
 
@@ -169,68 +182,19 @@ Measured on an M-series Mac with 1,493 sessions across 26 projects:
 | **Deep-index 1,500 sessions** | **< 1 s** | N/A |
 | **Runtime dependencies** | **0** | Node.js + Chromium |
 
-<details>
-<summary>Reproduce locally</summary>
-
-```bash
-cargo build --release
-/usr/bin/time -l target/release/claude-view   # peak RSS + wall time
-```
-</details>
-
-Key techniques that make this possible:
+Key techniques:
 
 - **SIMD pre-filter** — `memchr` scans raw bytes before touching a JSON parser
 - **Memory-mapped I/O** — JSONL files are mmap'd and parsed in-place, never copied
 - **Tantivy search** — Same engine behind Quickwit; indexes 1,500 sessions in under a second
 - **Zero-copy where it counts** — Borrowed slices from mmap through parse to response
 
----
-
-## Quick Start
-
 ```bash
-npx claude-view
+cargo build --release
+/usr/bin/time -l target/release/claude-view   # peak RSS + wall time
 ```
 
-Opens at `http://localhost:47892`.
-
-### Configuration
-
-| Env Variable | Default | Description |
-|-------------|---------|-------------|
-| `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
-| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Override data directory (see [Corporate Setup](#setup-for-corporatesandbox-environments)) |
-
----
-
-## Installation
-
-| Method | Command |
-|--------|---------|
-| **npx** (recommended) | `npx claude-view` |
-| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-
-### Requirements
-
-- **Claude Code** installed ([get it here](https://docs.anthropic.com/en/docs/claude-code)) — this creates the session files we monitor
-
-### Setup for Corporate/Sandbox Environments
-
-If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP), set all claude-view writes to stay inside the project directory:
-
-```bash
-CLAUDE_VIEW_DATA_DIR=./.data npx claude-view
-```
-
-Or export it in your shell profile:
-
-```bash
-export CLAUDE_VIEW_DATA_DIR=./.data
-```
-
-This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
+</details>
 
 ---
 
@@ -238,23 +202,21 @@ This keeps the database, search index, and lock files in `.data/` inside the rep
 
 The Claude Code ecosystem has great tools — chat UIs, history viewers, session managers. claude-view fills a different gap: **real-time monitoring + deep history + analytics in one lightweight workspace.**
 
-### Landscape
+| Tool | Category | Stack | Size | Live monitor | Search | Analytics |
+|------|----------|-------|:----:|:------------:|:------:|:---------:|
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Yes** | **Yes** | **Yes** |
+| [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 | ~13 MB | Partial | No | Yes |
+| [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | No | No | CLI |
+| [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron | ~140 MB | No | No | No |
+| [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript | ~500 KB | Partial | Basic | No |
 
-| Tool | Category | Stack | Download | Runtime deps | Live monitor | Full-text search | Analytics |
-|------|----------|-------|:--------:|:------------:|:------------:|:----------------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **None** | **Yes** | **Yes** | **Yes** |
-| [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 (Rust + React) | ~13 MB (macOS) | None | Partial | No | Yes |
-| [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | Node.js | No | No | CLI-only |
-| [CUI](https://github.com/wbopan/cui) | Web chat UI | TypeScript (React) | — | Node.js ≥20 | No | No | No |
-| [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron + Next.js | **~140 MB** (macOS) | Bundled Chromium | No | No | No |
-| [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript (React) | ~500 KB | Node.js ≥20 | Partial | Basic | No |
-| [claude-code-webui](https://github.com/sugyan/claude-code-webui) | Web chat UI | TypeScript (React) | — | Node.js / Deno | No | No | No |
+> Chat UIs (CodePilot, CUI, claude-code-webui) are interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary, not competing.
 
-> **Note:** Chat UIs (CodePilot, CUI, claude-code-webui) solve a different problem — they're interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary, not competing.
+<details>
+<summary><strong>Why the size difference matters</strong></summary>
+<br>
 
-### Why the size difference matters
-
-| | claude-view | Electron app (e.g. CodePilot) |
+| | claude-view | Electron app |
 |---|:-:|:-:|
 | **Download** | ~10 MB | ~140 MB |
 | **On disk** | ~27 MB | ~400 MB |
@@ -265,6 +227,51 @@ The Claude Code ecosystem has great tools — chat UIs, history viewers, session
 
 When you're already running 10+ Claude Code sessions eating RAM and CPU, the last thing you want is a 300 MB dashboard competing for resources.
 
+</details>
+
+---
+
+## Installation
+
+```bash
+npx claude-view
+```
+
+Opens at `http://localhost:47892`.
+
+| Method | Command |
+|--------|---------|
+| **npx** (recommended) | `npx claude-view` |
+| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
+| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
+
+**Only requirement:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed — this creates the session files we monitor.
+
+<details>
+<summary><strong>Configuration</strong></summary>
+<br>
+
+| Env Variable | Default | Description |
+|-------------|---------|-------------|
+| `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
+
+</details>
+
+<details>
+<summary><strong>Corporate / Sandbox Environments</strong></summary>
+<br>
+
+If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP):
+
+```bash
+cp .env.example .env
+# Uncomment the CLAUDE_VIEW_DATA_DIR line
+```
+
+This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
+
+</details>
+
 ---
 
 ## Community
@@ -273,21 +280,9 @@ Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature re
 
 ---
 
-## Like this project?
-
-If **claude-view** helps you fly Claude Code, consider giving it a star. It helps others discover this tool.
-
-<p align="center">
-  <a href="https://github.com/tombelieber/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
-  </a>
-</p>
-
----
-
-## Development
-
-**Monorepo** — Turborepo + Bun workspaces, with a Rust backend.
+<details>
+<summary><strong>Development</strong></summary>
+<br>
 
 Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo install cargo-watch`
 
@@ -315,86 +310,30 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | `bun run dev:server` | Rust backend only (with cargo-watch) |
 | `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
 | `bun run build` | Build all workspaces |
+| `bun run preview` | Build web + serve via release binary |
 | `bun run lint` | Lint all JS/TS workspaces |
 | `bun run lint:all` | Lint JS/TS + Rust (Clippy) |
 | `bun run typecheck` | TypeScript type checking |
 | `bun run test` | Run all tests (Turbo) |
 | `bun run test:rust` | Run Rust tests (`cargo test --workspace`) |
-| `bun run check` | Biome check across all workspaces |
+| `cd apps/web && bunx vitest run` | Run web frontend tests only |
 | `bun run fmt` | Format Rust code |
 | `bun run cleanupport` | Kill processes on dev ports (47892, 5173) |
 
-### Environment Variables & Secrets
-
-**End users need ZERO configuration.** `npx claude-view` works out of the box.
-
-This section is for **developers contributing to claude-view**.
-
-Each service manages its own env vars — no root `.env`, no automatic file loading.
-
-**Rust server** (`crates/server/.env.example`) — set via shell exports:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `CLAUDE_VIEW_PORT` | `47892` | Override the default port |
-| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Override data directory |
-| `RELAY_URL` | None (disabled) | Mobile relay WebSocket endpoint |
-| `SUPABASE_URL` | — | Supabase project URL (sharing/auth) |
-| `SHARE_WORKER_URL` | — | Cloudflare Share Worker endpoint |
-| `SHARE_VIEWER_URL` | — | Share viewer SPA URL |
-| `RUST_LOG` | `warn` | Tracing verbosity |
-
-**Relay server** (`crates/relay/.env.example`) — set via Fly.io secrets:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `PORT` | `8080` | Fly.io sets this automatically |
-| `RUST_LOG` | `warn,claude_view_relay=info` | Tracing verbosity |
-
-**Web frontend** (`apps/web/.env.local`) — Vite reads `VITE_*` at build time:
-
-| Variable | Purpose |
-|----------|---------|
-| `VITE_SUPABASE_URL` | Supabase URL (browser SDK) |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
-| `VITE_SENTRY_DSN` | Sentry error tracking (optional) |
-
-**Secret management:**
-
-| Service | How secrets are managed |
-|---------|------------------------|
-| Cloudflare Worker | `wrangler secret put` (encrypted at rest) |
-| Fly.io Relay | `fly secrets set` |
-| Web frontend | `VITE_*` baked at CI build time (publishable keys only) |
-| Rust server | Shell exports |
-| CI/CD | GitHub Actions secrets |
-
-```bash
-# Developer setup
-cp apps/web/.env.example apps/web/.env.local   # Fill in Supabase credentials
-export RELAY_URL=ws://localhost:47893/ws        # Optional: enable mobile pairing
-bun dev                                        # Start full-stack dev
-```
-
-> **Note:** `.env.local` is gitignored. Never commit real credentials. The shipped binary contains only publishable keys.
-
-### Testing Production Distribution
+**Testing Production Distribution:**
 
 ```bash
 bun run dist:test    # One command: build → pack → install → run
 ```
-
-Or step by step:
 
 | Command | Description |
 |---------|-------------|
 | `bun run dist:pack` | Package binary + frontend into tarball at `/tmp/` |
 | `bun run dist:install` | Extract tarball to `~/.cache/claude-view/` (simulates first-run download) |
 | `bun run dist:run` | Run the npx wrapper using the cached binary |
-| `bun run dist:test` | All of the above in one shot |
 | `bun run dist:clean` | Remove all dist cache and temp files |
 
-### Releasing
+**Releasing:**
 
 ```bash
 bun run release          # patch bump: 0.1.0 → 0.1.1
@@ -402,11 +341,11 @@ bun run release:minor    # minor bump: 0.1.0 → 0.2.0
 bun run release:major    # major bump: 0.1.0 → 1.0.0
 ```
 
-This bumps the version in `npx-cli/package.json`, commits, and creates a git tag. Then:
-
 ```bash
 git push origin main --tags    # triggers CI → builds all platforms → auto-publishes to npm
 ```
+
+</details>
 
 ---
 
@@ -421,6 +360,22 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ---
 
-## License
+## Related
+
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
+
+---
+
+<div align="center">
+
+If **claude-view** helps you fly Claude Code, consider giving it a star.
+
+<a href="https://github.com/tombelieber/claude-view/stargazers">
+  <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+</a>
+
+<br><br>
 
 MIT © 2026
+
+</div>
